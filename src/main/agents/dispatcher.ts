@@ -192,6 +192,8 @@ function systemPrompt() {
 class Dispatcher {
   session: AgentSession | null = null;
   statusText = '';
+  /** Context size when the user asked to compact; null when no compaction was requested. */
+  private compactingFrom: number | null = null;
 
   get busy() { return !!this.session?.busy; }
 
@@ -227,6 +229,14 @@ class Dispatcher {
       onText: (text) => { store.chat('dispatcher', text); },
       onTool: (_n, summary) => { this.statusText = summary; store.changed(); },
       onContext: (n) => { d.contextTokens = n; store.changed(); },
+      onTurnEnd: (r) => {
+        if (!r.internal || this.compactingFrom === null) return;
+        const from = this.compactingFrom;
+        this.compactingFrom = null;
+        this.statusText = '';
+        const kb = (n: number) => `${Math.round(n / 1000)}K`;
+        store.chat(r.isError ? 'error' : 'event', r.isError ? t('ev.compactFailed') : t('ev.compacted', { a: kb(from), b: kb(d.contextTokens) }));
+      },
       onStatus: (st, text) => {
         if (st === 'error') store.chat('error', t('err.dispatcher', { msg: text }));
         if (st !== 'busy') this.statusText = '';
@@ -264,6 +274,33 @@ class Dispatcher {
 
   async stop() {
     await this.session?.interrupt();
+  }
+
+  /** The user asked to compact the conversation now. */
+  compact() {
+    if (this.busy) throw new Error(t('err.dispatcherBusy'));
+    const d = store.data.dispatcher;
+    // A new day starts a new session anyway; nothing to compact.
+    if (!d.sessionId || d.date !== today()) return;
+    const s = this.open();
+    if (!s) throw new Error(accounts.list().length ? t('err.allLimited') : t('err.noAccount'));
+    this.compactingFrom = d.contextTokens;
+    this.statusText = t('st.compacting');
+    s.compact();
+    store.changed();
+  }
+
+  /** The user asked for a fresh conversation. The chat on screen stays; the Dispatcher forgets it. */
+  clear() {
+    if (this.busy) throw new Error(t('err.dispatcherBusy'));
+    this.session?.close();
+    this.session = null;
+    const d = store.data.dispatcher;
+    d.sessionId = null;
+    d.contextTokens = 0;
+    d.date = today();
+    store.chat('event', t('ev.dispatcherCleared'));
+    store.changed();
   }
 
   close() {

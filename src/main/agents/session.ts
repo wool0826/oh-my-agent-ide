@@ -112,6 +112,14 @@ export class AgentSession {
     this.input!.push(userMsg(text));
   }
 
+  /** Summarize the conversation so far (/compact). The turn is hidden from the chat. */
+  compact() {
+    if (this.closed) return;
+    if (!this.q) this.start();
+    this.ev.onStatus?.('busy', '');
+    this.sendInternal('/compact');
+  }
+
   /** Change the effort level, live if the session is running, otherwise for its next start. */
   setEffort(effort: Options['effort']) {
     if (!effort || effort === this.cfg.effort) return;

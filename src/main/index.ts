@@ -104,6 +104,8 @@ function registerIpc() {
   handle('state', () => snapshot());
   handle('chat:send', (text: string, files?: string[]) => dispatcher.send(text, files ?? []));
   handle('chat:stop', () => dispatcher.stop());
+  handle('dispatcher:compact', () => dispatcher.compact());
+  handle('dispatcher:clear', () => dispatcher.clear());
   handle('chat:clear', (kind: 'result' | 'auto') => {
     if (kind === 'auto') store.data.autoAnswers.forEach((a) => { a.cleared = true; });
     else store.data.chat.forEach((c) => { if (c.kind === 'result' || c.kind === 'error') c.cleared = true; });

@@ -373,6 +373,7 @@ function renderChat(force = false) {
   if (nearBottom || force) th.scrollTop = th.scrollHeight;
   const ctx = s.dispatcher.contextTokens;
   $('#chat-ctx').innerHTML = `${ring(ctx / COMPACT_AT).replace('class="ring"', '')}${k(ctx)} / 250K`;
+  $<HTMLButtonElement>('#chat-ctx').disabled = !!s.dispatcher.busy;
   updateSendButton();
 }
 
@@ -1182,6 +1183,21 @@ async function act(el: HTMLElement, e: Event) {
   switch (a) {
     case 'view': setView(el.dataset.v as any); break;
     case 'open-settings': openSettings(); break;
+    case 'ctx-menu': {
+      const menu = $('#ctxmenu');
+      if (!menu.hidden && menu.dataset.for === 'ctx') { menu.hidden = true; break; }
+      const empty = !S!.dispatcher.contextTokens;
+      menu.dataset.for = 'ctx';
+      menu.innerHTML = `<button data-action="ctx-compact"${empty ? ' disabled' : ''}>${t('ctx.compact')}</button><button data-action="ctx-clear"${empty ? ' disabled' : ''}>${t('ctx.clear')}</button>`;
+      menu.hidden = false;
+      const r = el.getBoundingClientRect();
+      menu.style.left = `${Math.max(8, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
+      menu.style.top = `${r.top - menu.offsetHeight - 6}px`;
+      menu.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+      break;
+    }
+    case 'ctx-compact': $('#ctxmenu').hidden = true; await call('dispatcher:compact'); break;
+    case 'ctx-clear': $('#ctxmenu').hidden = true; await call('dispatcher:clear'); break;
     case 'close-settings': closeSettings(); break;
     case 'pane': showPane(id as Pane); break;
     case 'goto-decision': {
@@ -1424,7 +1440,7 @@ function init() {
     if (pop.el && !pop.el.contains(tgt) && tgt !== pop.owner) closePop();
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu')) $('#ctxmenu').hidden = true;
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx')) $('#ctxmenu').hidden = true;
   });
   document.addEventListener('change', async (e) => {
     const el = e.target as HTMLSelectElement;
@@ -1488,6 +1504,7 @@ function init() {
     if (!el) { menu.hidden = true; return; }
     e.preventDefault();
     const id = el.dataset.id!;
+    menu.dataset.for = 'aa';
     menu.innerHTML = `<button data-action="aa-edit" data-id="${id}">${t('aa.correct')}…</button><button data-action="view" data-v="memory">${t('aa.viewMemory')}</button>`;
     menu.style.left = `${Math.min(e.clientX, innerWidth - 200)}px`;
     menu.style.top = `${Math.min(e.clientY, innerHeight - 90)}px`;

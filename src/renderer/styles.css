@@ -133,6 +133,10 @@ button { font: inherit; }
 .field.input:focus-visible { box-shadow: inset 0 0 0 1px var(--blue); }
 .ctx { flex: none; display: flex; align-items: center; gap: 5px; margin: 0 8px 0 4px; font-size: calc(11 * var(--px)); color: var(--label-2); white-space: nowrap; font-variant-numeric: tabular-nums; align-self: center; }
 .ctx svg { width: 15px; height: 15px; }
+button.ctx { border: 0; background: none; padding: 4px 7px; margin: 0 4px 0 0; border-radius: 7px; cursor: pointer; font: inherit; font-size: calc(11 * var(--px)); }
+button.ctx:hover:not(:disabled) { background: var(--fill-2); color: var(--label); }
+button.ctx:disabled { cursor: default; opacity: .6; }
+button.ctx:focus-visible { outline: var(--focus); }
 .ring .trk, .ctx .trk { fill: none; stroke: var(--fill); stroke-width: 2.6; }
 .ring .val, .ctx .val { fill: none; stroke: var(--label-2); stroke-width: 2.6; stroke-linecap: round; }
 .ring { width: 14px; height: 14px; }
@@ -436,7 +440,8 @@ textarea.inp { resize: vertical; min-height: 60px; line-height: 1.45; }
 
 .ctxmenu { position: fixed; z-index: 50; min-width: 180px; padding: 5px; border-radius: 9px; background: #2c2c2e; box-shadow: 0 12px 32px rgba(0, 0, 0, .35), 0 0 0 .5px var(--win-line); }
 .ctxmenu button { display: block; width: 100%; text-align: left; color: var(--label); background: none; border: 0; padding: 4px 10px; border-radius: 5px; cursor: default; font-size: var(--ui-font-size); }
-.ctxmenu button:hover, .ctxmenu button:focus { background: var(--blue); color: #fff; outline: none; }
+.ctxmenu button:hover:not(:disabled), .ctxmenu button:focus-visible { background: var(--blue); color: #fff; outline: none; }
+.ctxmenu button:disabled { color: var(--label-3); }
 .ctxmenu hr { border: 0; height: .5px; background: var(--sep); margin: 4px 8px; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #2c2c2e; color: var(--label); padding: 8px 14px; border-radius: 10px; font-size: calc(12.5 * var(--px)); box-shadow: 0 10px 30px rgba(0,0,0,.4), 0 0 0 .5px var(--win-line); z-index: 60; max-width: 70vw; }
 .toast.err { color: var(--red); }

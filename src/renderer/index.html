@@ -74,7 +74,7 @@
     <form class="composer" id="chat-form" autocomplete="off">
       <div class="fchips" id="chat-files" hidden></div>
       <textarea class="field input" id="chat-input" rows="1" aria-label="Message"></textarea>
-      <span class="ctx" id="chat-ctx" data-i18n-title="chat.ctxHint"></span>
+      <button type="button" class="ctx" id="chat-ctx" data-action="ctx-menu" aria-haspopup="menu" data-i18n-title="chat.ctxHint"></button>
       <button class="send" type="submit" id="chat-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
     </form>
   </main>
