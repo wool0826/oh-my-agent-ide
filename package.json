@@ -11,7 +11,8 @@
     "dev": "node build.mjs && electron .",
     "dist": "node build.mjs && electron-builder",
     "dist:win": "node build.mjs && electron-builder --win",
-    "dist:mac": "node build.mjs && electron-builder --mac"
+    "dist:mac": "node build.mjs && electron-builder --mac",
+    "icon": "node scripts/make-icon.mjs && electron scripts/render-icon.cjs"
   },
   "author": "",
   "license": "UNLICENSED",
@@ -52,7 +53,8 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "OhMyAgentIDE-Setup-${version}.${ext}"
+      "artifactName": "OhMyAgentIDE-Setup-${version}.${ext}",
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -62,7 +64,8 @@
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png"
     }
   },
   "overrides": {
