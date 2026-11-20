@@ -6,6 +6,7 @@ import { accounts } from '../accounts';
 import { store } from '../store';
 import { createDecision } from '../decisions';
 import { remember, searchMemory, memoryDigest } from '../memory';
+import { memoryDirFor, searchClaudeMemory, userRulesSection } from '../claudeContext';
 import { registerRepo } from '../repos';
 import { paths } from '../paths';
 import { loadSettings } from '../settings';
@@ -146,9 +147,12 @@ function boardServer() {
         text: z.string(),
         repo: z.string().optional(),
       }, async (a) => ok(`Saved to ${remember(a.scope, a.text, a.repo)}.`)),
-      tool('recall', 'Search IDE memory.', { query: z.string() }, async (a) => {
-        const hits = searchMemory(a.query, 10);
-        return ok(hits.length ? hits.map((h) => `${h.path}:${h.line} ${h.text}`).join('\n') : 'Nothing relevant in memory.');
+      tool('recall', 'Search IDE memory and the Claude Code memory kept for registered repositories.', { query: z.string() }, async (a) => {
+        const ide = searchMemory(a.query, 10).map((h) => `[ide] ${h.path}:${h.line} ${h.text}`);
+        const dirs = loadSettings().claudeMemory ? [memoryDirFor(paths().home), ...store.data.repos.map((r) => memoryDirFor(r.path))] : [];
+        const cc = searchClaudeMemory(a.query, dirs, 8).map((h) => `[claude] ${h.file}:${h.line} ${h.text}`);
+        const lines = [...ide, ...cc];
+        return ok(lines.length ? lines.join('\n') : 'Nothing relevant in memory.');
       }),
       tool('task_detail', 'Show one task\'s instructions, status and result.', { task_id: z.string() }, async (a) => {
         const task = store.task(a.task_id);
@@ -186,7 +190,7 @@ function systemPrompt() {
     '',
     'IDE memory digest',
     memoryDigest(5000) || '(empty)',
-  ].join('\n');
+  ].join('\n') + (loadSettings().claudeRules ? userRulesSection() : '');
 }
 
 class Dispatcher {

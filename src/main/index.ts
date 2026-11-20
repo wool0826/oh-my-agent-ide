@@ -15,9 +15,10 @@ import { startPrMonitor, checkPrs, checkPrsSoon } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { attachmentBlock, registerAttachments } from './attachments';
 import { t } from './i18n';
+import { claudeHome, ruleFiles } from './claudeContext';
 import { log } from './log';
 import { nowIso, oneLine } from './util';
-import { ALLOW, DENY, type AccountPlan, type AppState, type SettingsView } from '../shared/types';
+import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -178,6 +179,8 @@ function registerIpc() {
     const before = loadSettings();
     const homeChanged = !!patch.home && patch.home !== before.home;
     const langChanged = (!!patch.language && patch.language !== before.language)
+      || (patch.claudeRules !== undefined && patch.claudeRules !== before.claudeRules)
+      || (patch.claudeMemory !== undefined && patch.claudeMemory !== before.claudeMemory)
       || (!!patch.dispatcherEffort && patch.dispatcherEffort !== before.dispatcherEffort)
       || (patch.effortPerTask !== undefined && patch.effortPerTask !== before.effortPerTask);
     updateSettings(patch);
@@ -207,6 +210,7 @@ function registerIpc() {
   handle('reveal:path', (p: string) => shell.showItemInFolder(p));
   handle('pr:check', () => checkPrs());
   handle('app:version', () => app.getVersion());
+  handle('claude:info', (): ClaudeInfo => ({ home: claudeHome(), rules: ruleFiles(), memoryHome: path.join(claudeHome(), 'projects') }));
   handle('app:relaunch', () => { app.relaunch(); app.quit(); });
 }
 

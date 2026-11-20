@@ -1,13 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, tool, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
+import { z } from 'zod';
 import { AgentSession, summarizeTool } from './session';
 import { alwaysAskHook, ALWAYS_ASK_PREFIX } from './permissions';
 import { adviseOnQuestion } from './advisor';
 import { accounts } from '../accounts';
 import { store } from '../store';
 import { ask } from '../decisions';
-import { remember } from '../memory';
+import { remember, searchMemory } from '../memory';
+import { memoryDirFor, searchClaudeMemory, userRulesSection } from '../claudeContext';
 import { paths } from '../paths';
 import { loadSettings } from '../settings';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
@@ -39,6 +41,12 @@ function workerPrompt(w: Worker) {
     '',
     'Non-code tasks (research, documents, reports):',
     '- Create the output folder named in the task message and save results there as files (usually markdown).',
+    '',
+    'Memory:',
+    "- Before choices the user may care about (naming, style, libraries, scope), search the user's preferences and past decisions with the recall tool.",
+    ...(s.claudeMemory
+      ? ["- Your Claude Code auto-memory folder is shared by every Worker on this repository and by the user's own Claude Code sessions in it. Save only durable facts about the repository or the user's preferences there; never task progress or anything specific to this branch. Update an existing memory instead of adding a duplicate."]
+      : []),
     '',
     'Questions:',
     '- Use AskUserQuestion only when the user really must decide. Make minor choices yourself and mention them in the final report.',
@@ -125,11 +133,16 @@ class WorkerManager {
     const cur = accounts.get(w.accountId);
     const acc = cur && !accounts.isLimited(cur) ? cur : accounts.pick();
     if (!acc) return null;
+    const memDir = workerMemoryDir(w);
     const s = new AgentSession({
       label: w.id,
       model: w.model,
       cwd: w.cwd,
-      systemAppend: workerPrompt(w),
+      systemAppend: workerPrompt(w) + (loadSettings().claudeRules ? userRulesSection() : ''),
+      // One auto-memory per repository, shared with the user's own Claude Code sessions there (not one per worktree).
+      // Off in Settings: no Claude Code auto-memory at all, rather than a separate one per worktree.
+      settings: loadSettings().claudeMemory ? { autoMemoryDirectory: memDir } : { autoMemoryEnabled: false },
+      mcpServers: { oma: memoryTools(loadSettings().claudeMemory ? memDir : null) },
       accountId: acc.id,
       resume: w.sessionId,
       settingSources: w.repo ? ['project', 'local'] : [],
@@ -514,6 +527,29 @@ class WorkerManager {
   }
 
   ghEnv() { return ghEnv(); }
+}
+
+/** Claude Code memory of the repository's main checkout; Workers without a repository share the IDE home's. */
+function workerMemoryDir(w: Worker) {
+  const repo = w.repo ? store.repo(w.repo) : null;
+  return memoryDirFor(repo ? repo.path : paths().home);
+}
+
+/** Read-only memory search for Workers: IDE memory plus the shared Claude Code memory. */
+function memoryTools(memDir: string | null) {
+  return createSdkMcpServer({
+    name: 'oma',
+    version: '0.2.0',
+    alwaysLoad: true,
+    tools: [
+      tool('recall', "Search the user's memory: preferences, repository notes, past decisions and finished tasks (IDE memory), and the Claude Code memory shared for this repository.", { query: z.string() }, async (a) => {
+        const ide = searchMemory(a.query, 8).map((h) => `[ide] ${h.path}:${h.line} ${h.text}`);
+        const cc = memDir ? searchClaudeMemory(a.query, [memDir], 8).map((h) => `[claude] ${h.file}:${h.line} ${h.text}`) : [];
+        const lines = [...ide, ...cc];
+        return { content: [{ type: 'text' as const, text: lines.length ? lines.join('\n') : 'Nothing relevant in memory.' }] };
+      }),
+    ],
+  });
 }
 
 function needsPlan(task: Task | null) {

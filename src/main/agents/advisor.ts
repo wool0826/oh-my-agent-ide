@@ -2,6 +2,8 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { accounts } from '../accounts';
 import { loadSettings } from '../settings';
 import { memoryDigest, searchMemory } from '../memory';
+import { memoryDirFor, searchClaudeMemory, userRules } from '../claudeContext';
+import { store } from '../store';
 import { claudeExecutable } from '../runtime';
 import { paths } from '../paths';
 import { log } from '../log';
@@ -18,6 +20,11 @@ export async function adviseOnQuestion(input: { workerId: string; taskTitle: str
   if (!acc) return null;
   const hits = searchMemory(`${input.question} ${input.options.join(' ')} ${input.taskTitle}`, 10)
     .map((h) => `- (${h.path}:${h.line}) ${h.text}`).join('\n');
+  const w = store.worker(input.workerId);
+  const repo = w?.repo ? store.repo(w.repo) : null;
+  const ccHits = !loadSettings().claudeMemory ? '' : searchClaudeMemory(`${input.question} ${input.options.join(' ')}`, [memoryDirFor(repo ? repo.path : paths().home)], 6)
+    .map((h) => `- (${h.file}:${h.line}) ${h.text}`).join('\n');
+  const rules = loadSettings().claudeRules ? userRules(undefined, 6000) : '';
   const prompt = [
     `While working on "${input.taskTitle}", Worker ${input.workerId} asked the user this question.`,
     `Question: ${input.question}`,
@@ -28,8 +35,10 @@ export async function adviseOnQuestion(input: { workerId: string; taskTitle: str
     '',
     'Memory lines that look related to the question:',
     hits || '(none)',
+    ccHits ? `\nRelated lines from the Claude Code memory for this repository:\n${ccHits}` : '',
+    rules ? `\nThe user's own rules for Claude:\n${rules}` : '',
     '',
-    'Set canAnswer=true only if memory clearly supports an answer (a preference or past decision on the same topic).',
+    'Set canAnswer=true only if memory or the user\'s rules clearly support an answer (a preference, rule or past decision on the same topic).',
     'If it needs guessing, or concerns cost, security, deleting data, or making something public, set canAnswer=false.',
     `If there are options, answer with an option's exact wording. basis is one sentence, in ${langName()}, quoting the memory it relies on.`,
   ].filter(Boolean).join('\n');

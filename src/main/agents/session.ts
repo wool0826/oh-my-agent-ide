@@ -26,6 +26,8 @@ export interface SessionConfig {
   tools?: Options['tools'];
   /** Default auto. plan = read-only until ExitPlanMode is approved. */
   permissionMode?: PermissionMode;
+  /** Flag settings for this session (e.g. where Claude Code keeps its auto-memory). */
+  settings?: Options['settings'];
 }
 
 export interface SessionEvents {
@@ -89,6 +91,7 @@ export class AgentSession {
       additionalDirectories: this.cfg.additionalDirectories,
       hooks: this.cfg.hooks,
       tools: this.cfg.tools,
+      settings: this.cfg.settings,
       resume: this.sessionId ?? undefined,
       pathToClaudeCodeExecutable: claudeExecutable(),
       stderr: (d) => log.warn(`[${this.cfg.label}]`, d.trim().slice(0, 500)),

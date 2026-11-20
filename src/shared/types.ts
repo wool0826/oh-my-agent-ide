@@ -163,7 +163,14 @@ export interface SettingsView {
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */
   fontSize: number;
+  /** Give agents the user's Claude Code rules (~/.claude/CLAUDE.md, rules/*.md). */
+  claudeRules: boolean;
+  /** Workers read and write the Claude Code memory of their repository's checkout. */
+  claudeMemory: boolean;
 }
+
+/** What Settings shows about the user's Claude Code setup. */
+export interface ClaudeInfo { home: string; rules: string[]; memoryHome: string }
 
 export interface AppState {
   ready: boolean;

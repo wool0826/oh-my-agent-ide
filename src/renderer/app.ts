@@ -1,4 +1,4 @@
-import type { AppState, AutoAnswer, ChatItem, Decision, DiffView, MemoryFile, MemoryHit, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
+import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, MemoryFile, MemoryHit, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
@@ -51,6 +51,8 @@ const ui = {
   accRemove: null as string | null,
   setQ: '',
   version: '',
+  claude: null as ClaudeInfo | null,
+  accKind: 'token' as 'token' | 'login',
   wTab: 'chat' as 'chat' | 'changes',
   diffs: new Map<string, DiffView | 'loading' | null>(),
   diffOpen: new Set<string>(),
@@ -60,6 +62,11 @@ const ui = {
 
 function esc(s: unknown) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+}
+
+/** Escaped one-line text with `code` spans, for summaries written by agents. */
+function inline(s: unknown) {
+  return esc(s).replace(/`([^`\n]+)`/g, '<code>$1</code>');
 }
 
 function linkify(html: string) {
@@ -102,6 +109,13 @@ function sym(id: string, cls = '') {
 }
 
 const locale = () => (lang() === 'ko' ? 'ko-KR' : 'en-US');
+/** Short time for lists: the time today, the date before that. */
+function when(iso: string) {
+  const d = new Date(iso);
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
+}
 function hhmm(iso: string) {
   const d = new Date(iso);
   const time = d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
@@ -347,7 +361,7 @@ function chatItemHtml(c: ChatItem) {
       const x = task(c.ref);
       const links = resultLinks(x);
       if (x?.workerId) links.push(`<a data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
-      return `<div class="attach"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${esc(c.text)}</span><span class="links">${links.join('')}</span></span></div>`;
+      return `<div class="attach"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${inline(c.text)}</span><span class="links">${links.join('')}</span></span></div>`;
     }
   }
 }
@@ -361,11 +375,18 @@ function renderChat(force = false) {
   const nearBottom = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
   let html = '';
   let last = 0;
+  // The same error said again right after itself (e.g. every account at its limit) shows once with a count.
+  const items: { c: ChatItem; n: number }[] = [];
   for (const c of s.chat) {
+    const prev = items[items.length - 1];
+    if (prev && c.kind === 'error' && prev.c.kind === 'error' && prev.c.text === c.text && !c.ref && !prev.c.ref) { prev.n++; continue; }
+    items.push({ c, n: 1 });
+  }
+  for (const { c, n } of items) {
     const ts = Date.parse(c.ts);
     if (ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
     last = ts;
-    html += chatItemHtml(c);
+    html += n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
   }
   if (!s.chat.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><span>${t('chat.emptyBody')}</span></div>`;
   if (s.dispatcher.busy) html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(s.dispatcher.statusText ? oneLine(s.dispatcher.statusText, 80) : '')}</div>`;
@@ -438,7 +459,8 @@ function renderChatInspector() {
   const root = $('#chat-ins');
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
-    const results = s.chat.filter((c) => (c.kind === 'result' || c.kind === 'error') && !c.cleared).slice(-30).reverse();
+    // Task outcomes only. Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
+    const results = s.chat.filter((c) => (c.kind === 'result' || (c.kind === 'error' && c.ref)) && !c.cleared).slice(-30).reverse();
     const autos = s.autoAnswers.filter((a) => !a.cleared).slice(-30).reverse();
     let html = '';
     if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map(decisionHtml).join('')}</div></div>`;
@@ -446,7 +468,7 @@ function renderChatInspector() {
       html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.map((c) => {
         const x = task(c.ref);
         const lk = resultLinks(x);
-        return `<div class="res"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}<span>${esc(oneLine(c.text, 140))}</span></span></div>`;
+        return `<div class="res"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" title="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}<span>${inline(oneLine(c.text, 140))}</span></span></div>`;
       }).join('')}</div></div>`;
     }
     if (autos.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.map(aaHtml).join('')}</div></div>`;
@@ -512,7 +534,7 @@ function workerReport(text: string) {
     ...files.map((f) => `<a data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${sym('s-doc')}${esc(base(f))}</a>`),
   ].filter(Boolean).join('');
   const rest = lines.slice(i).join('\n').trim();
-  const title = esc(summary).replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  const title = inline(summary);
   return `<div class="rep-h"><b>${title}</b>${links ? `<span class="rep-l">${links}</span>` : ''}</div>${rest ? md(rest) : ''}`;
 }
 
@@ -943,10 +965,11 @@ function settingsHtml() {
 
   const accounts = `${grp(s.accounts.map(accountCard).join('') || `<div class="srow"><span class="lbl muted">${t('acc.none')}</span></div>`, `${t('acc.registered')} <small>${s.accounts.length} / ${MAX_ACCOUNTS}</small>`)}
     ${full ? '' : grp(`
+      ${hasLogin ? '' : row(t('acc.method'), 'acc-kind', segc('acc-kind', ui.accKind, [{ value: 'token', label: t('acc.methodToken') }, { value: 'login', label: t('acc.methodLogin') }], t('acc.method'), 'data-change="acc-kind"'))}
       ${row(t('acc.name'), 'acc-label', `<input class="inp w" id="acc-label" placeholder="${t('acc.namePh')}">`)}
       ${row(t('acc.plan'), 'acc-plan', segc('acc-plan', 'team', PLAN_OPTS, t('acc.plan')))}
-      ${row(t('acc.token'), 'acc-token', `<input class="inp w" id="acc-token" type="password" placeholder="sk-ant-…">`)}
-      <div class="srow end"><button class="btn" data-action="acc-add-login" ${hasLogin ? 'disabled' : ''}>${t('acc.useLogin')}</button><button class="btn def" data-action="acc-add">${t('acc.addToken')}</button></div>`, t('acc.add'))}`;
+      ${row(t('acc.token'), 'acc-token', `<input class="inp w" id="acc-token" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">`, 'acc-token-row')}
+      <div class="srow end"><button class="btn def" data-action="acc-add" id="acc-add-btn">${t('acc.addToken')}</button><button class="btn def" data-action="acc-add-login" id="acc-login-btn">${t('acc.addLogin')}</button></div>`, t('acc.add'))}`;
 
   const general = grp(`
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
@@ -965,8 +988,15 @@ function settingsHtml() {
       ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
       ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`);
 
-  const memory = grp(`
-      ${row(t('set.memRemote'), 'set-mem', `<input class="inp w" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}`);
+  const ci = ui.claude;
+  const rulesText = !ci ? '…' : ci.rules.length ? ci.rules.join(', ') : t('set.claudeNoRules');
+  const memory = `${grp(`
+      ${row(t('set.memFolder'), 'set-memdir', `<span class="sval" id="set-memdir" title="${esc(st.home)}">${esc(shortPath(`${st.home}/memory`))}</span><button class="btn" data-action="reveal-memory">${t('set.open')}</button>`)}
+      ${row(t('set.memRemote'), 'set-mem', `<input class="inp w" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}`, t('set.ideMemory'))}
+    ${grp(`
+      ${row(t('set.claudeRules'), 'set-crules', `<span class="sval${ci && !ci.rules.length ? ' muted' : ''}" title="${esc(ci ? ci.home : '')}">${esc(rulesText)}</span><input class="switch" id="set-crules" type="checkbox" ${st.claudeRules ? 'checked' : ''}>`)}
+      ${row(t('set.claudeMemory'), 'set-cmem', `<input class="switch" id="set-cmem" type="checkbox" ${st.claudeMemory ? 'checked' : ''}>`)}
+      ${row(t('set.claudeFolder'), 'set-cdir', `<span class="sval" id="set-cdir" title="${esc(ci ? ci.home : '')}">${esc(ci ? shortPath(ci.home, 2) : '…')}</span><button class="btn" data-action="reveal-claude">${t('set.open')}</button>`)}`, 'Claude Code')}`;
 
   const m = MODEL_IDS;
   const models = `${grp(`
@@ -996,8 +1026,16 @@ function settingsHtml() {
 }
 
 /** Re-render the settings window, keeping unsaved field values. */
+/** Claude Code rule files for the Memory pane; read each time Settings opens. */
+async function loadClaudeInfo() {
+  ui.claude = (await call<ClaudeInfo>('claude:info')) ?? null;
+  if (ui.settingsShown) openSettings();
+}
+
 function openSettings(pane?: Pane) {
   if (pane) ui.pane = pane;
+  // Each time the window opens (button, shortcut or first run), not on every re-render.
+  if (!ui.settingsShown) void loadClaudeInfo();
   closePop();
   const root = $('#sheet');
   const keep = new Map<string, string | boolean>();
@@ -1019,6 +1057,7 @@ function openSettings(pane?: Pane) {
   if (ren) { ren.focus(); ren.select(); } else if (focusId) document.getElementById(focusId)?.focus();
   if (!pane) root.querySelector('.spanes')!.scrollTop = scroll;
   syncSoundRows();
+  syncAccRows();
   filterPanes();
   syncDirty();
   root.hidden = false;
@@ -1031,6 +1070,15 @@ function syncSlider(el: HTMLInputElement) {
   el.style.setProperty('--val', `${el.value}%`);
   const out = el.parentElement?.querySelector('output');
   if (out) out.textContent = el.value;
+}
+
+function syncAccRows() {
+  const login = ($('#acc-kind') as HTMLInputElement | null)?.value === 'login';
+  document.querySelectorAll<HTMLElement>('.acc-token-row').forEach((el) => { el.hidden = login; });
+  const add = document.getElementById('acc-add-btn');
+  const lg = document.getElementById('acc-login-btn');
+  if (add) add.hidden = login;
+  if (lg) lg.hidden = !login;
 }
 
 function syncSoundRows() {
@@ -1101,7 +1149,7 @@ function readSettingsForm() {
   return {
     language: v('set-lang') as Lang,
     home: v('set-home'),
-    githubHost: v('set-gh').replace(/^https?:\/\//, '').replace(/\/$/, ''),
+    githubHost: v('set-gh').replace(/^[a-z]+:\/\//i, '').replace(/[/?#].*$/, '').toLowerCase(),
     archiveDays: Math.max(1, Number(v('set-arch')) || 7),
     notifications: ($('#set-noti') as HTMLInputElement).checked,
     sound: v('set-sound') as SoundName,
@@ -1116,6 +1164,8 @@ function readSettingsForm() {
     effortPerTask: ($('#set-ept') as HTMLInputElement).checked,
     fontFamily: normalizeFontFamily(v('set-font')),
     fontSize: clampFontSize(v('set-fsize')),
+    claudeRules: ($('#set-crules') as HTMLInputElement).checked,
+    claudeMemory: ($('#set-cmem') as HTMLInputElement).checked,
   };
 }
 
@@ -1183,6 +1233,8 @@ async function act(el: HTMLElement, e: Event) {
   switch (a) {
     case 'view': setView(el.dataset.v as any); break;
     case 'open-settings': openSettings(); break;
+    case 'reveal-memory': await call('open:path', `${S!.settings.home}/memory`); break;
+    case 'reveal-claude': if (ui.claude) await call('open:path', ui.claude.home); break;
     case 'ctx-menu': {
       const menu = $('#ctxmenu');
       if (!menu.hidden && menu.dataset.for === 'ctx') { menu.hidden = true; break; }
@@ -1303,7 +1355,7 @@ async function act(el: HTMLElement, e: Event) {
     }
     case 'acc-add-login': {
       const r = await call('account:add', $<HTMLInputElement>('#acc-label').value || t('acc.loginName'), 'login', '', $<HTMLInputElement>('#acc-plan').value);
-      if (r) { $<HTMLInputElement>('#acc-label').value = ''; toast(t('toast.loginAdded')); }
+      if (r) { $<HTMLInputElement>('#acc-label').value = ''; ui.accKind = 'token'; toast(t('toast.loginAdded')); }
       break;
     }
     case 'acc-menu': ui.accMenu = ui.accMenu === id ? null : id; ui.accRename = null; openSettings(); break;
@@ -1445,6 +1497,7 @@ function init() {
   document.addEventListener('change', async (e) => {
     const el = e.target as HTMLSelectElement;
     if (el.dataset.change === 'sound-kind') syncSoundRows();
+    if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
     if (el.closest?.('#sheet')) syncDirty();
   });
   document.addEventListener('input', (e) => {

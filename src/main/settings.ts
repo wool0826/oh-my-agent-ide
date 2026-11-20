@@ -48,6 +48,8 @@ export const DEFAULTS: SettingsView = {
   effortPerTask: true,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
+  claudeRules: true,
+  claudeMemory: true,
 };
 
 let cache: Settings | null = null;
