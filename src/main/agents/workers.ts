@@ -133,7 +133,7 @@ class WorkerManager {
       accountId: acc.id,
       resume: w.sessionId,
       settingSources: w.repo ? ['project', 'local'] : [],
-      effort: 'high',
+      effort: loadSettings().workerEffort,
       canUseTool: this.permissionHandler(w),
       hooks: { PreToolUse: [alwaysAskHook(() => roots, () => {})] },
     }, {
@@ -350,7 +350,14 @@ class WorkerManager {
       store.changed();
       return;
     }
+    s.setEffort(this.effortFor(task));
     s.send(this.taskMessage(w, task));
+  }
+
+  /** The task's own effort when per-task effort is on, otherwise the Worker default. */
+  effortFor(task: Task | null) {
+    const st = loadSettings();
+    return (st.effortPerTask && task?.effort) || st.workerEffort;
   }
 
   send(workerId: string, from: 'user' | 'dispatcher', text: string) {

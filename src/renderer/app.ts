@@ -1,5 +1,5 @@
 import type { AppState, AutoAnswer, ChatItem, Decision, MemoryFile, MemoryHit, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
-import { ALLOW, DENY, MAX_ACCOUNTS } from '../shared/types';
+import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 
@@ -25,7 +25,7 @@ let S: AppState | null = null;
 const lang = (): Lang => S?.settings.language ?? 'en';
 const t = (key: Key, vars?: Record<string, string | number>) => tr(lang(), key, vars);
 
-type Pane = 'accounts' | 'general' | 'alerts' | 'memory' | 'models';
+type Pane = 'accounts' | 'general' | 'display' | 'alerts' | 'memory' | 'models';
 const ui = {
   view: 'chat' as 'chat' | 'worker' | 'repo' | 'memory',
   wSel: null as string | null,
@@ -538,7 +538,7 @@ function renderWorkerInspector() {
       ${cur?.branch ? `<span>${t('kv.branch')}</span><span>${esc(cur.branch)}</span>` : ''}
       ${cur?.status === 'blocked' ? `<span>${t('kv.startsAfter')}</span><span>${esc(cur.afterTaskId ?? '')} ${t('pr.merged')}</span>` : ''}
       <span>${t('kv.folder')}</span><span><a data-action="reveal" data-path="${esc(w.cwd)}" title="${esc(w.cwd)}">${esc(base(w.cwd))}</a></span>
-      <span>${t('kv.model')}</span><span>${modelLabel(w.model)}</span>
+      <span>${t('kv.model')}</span><span>${modelLabel(w.model)} · ${t(`effort.${(S!.settings.effortPerTask && cur?.effort) || S!.settings.workerEffort}` as Key)}</span>
       <span>${t('kv.account')}</span><span>${esc(acctLabel(w.accountId))}</span>
       <span>${t('kv.context')}</span><span>${k(w.contextTokens)} / 250K</span>
       ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(w.statusText, 140))}</span>` : ''}
@@ -615,6 +615,156 @@ function renderMemory() {
     <div class="ins-act">${ui.memSel.startsWith('repos/') ? `<button class="btn" data-action="mem-promote" data-id="${esc(ui.memSel.slice(6, -3))}" title="${t('mem.promoteHint')}">${t('mem.promote')}</button>` : ''}<button class="btn def" data-action="mem-save">${t('save')}</button></div>`;
 }
 
+/* ---------- controls: dropdown, font picker, stepper, slider ---------- */
+
+type Opt = { value: string; label: string; font?: string };
+/** Options of each dropdown by its hidden input id, for the popover. */
+const ddOpts = new Map<string, Opt[]>();
+
+function dropdown(id: string, value: string, opts: Opt[], label: string, extra = '') {
+  ddOpts.set(id, opts);
+  const cur = opts.find((o) => o.value === value) ?? opts[0];
+  return `<span class="dd"><input type="hidden" id="${id}" value="${esc(cur.value)}" ${extra}><button type="button" class="dd-btn" data-dd="${id}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(label)}"><span class="dd-v">${esc(cur.label)}</span>${sym('s-updown', 'dd-chev')}</button></span>`;
+}
+
+/** After restoring kept values, make each dropdown button show its hidden input's value. */
+function syncDropdowns(root: ParentNode = document) {
+  root.querySelectorAll<HTMLButtonElement>('.dd-btn').forEach((btn) => {
+    const inp = document.getElementById(btn.dataset.dd!) as HTMLInputElement | null;
+    const o = ddOpts.get(btn.dataset.dd!)?.find((x) => x.value === inp?.value);
+    if (o) btn.querySelector('.dd-v')!.textContent = o.label;
+  });
+}
+
+function stepper(id: string, value: number, min: number, max: number, label: string) {
+  return `<span class="step" role="group" aria-label="${esc(label)}"><button type="button" data-step="-1" data-for="${id}" aria-label="-">${sym('s-minus')}</button><input id="${id}" class="step-v" inputmode="numeric" value="${value}" data-min="${min}" data-max="${max}" aria-label="${esc(label)}"><button type="button" data-step="1" data-for="${id}" aria-label="+">${sym('s-plus')}</button></span>`;
+}
+
+function slider(id: string, value: number, label: string) {
+  return `<span class="slider-wrap"><input id="${id}" class="slider" type="range" min="0" max="100" step="5" value="${value}" style="--val:${value}%" aria-label="${esc(label)}"><output class="slider-out" for="${id}">${value}</output></span>`;
+}
+
+const pop = { el: null as HTMLElement | null, owner: null as HTMLElement | null };
+
+function closePop(focusOwner = false) {
+  pop.el?.remove();
+  pop.owner?.setAttribute('aria-expanded', 'false');
+  if (focusOwner) pop.owner?.focus();
+  pop.el = null;
+  pop.owner = null;
+}
+
+function placePop(el: HTMLElement, anchor: HTMLElement, minWidth: number) {
+  const r = anchor.getBoundingClientRect();
+  el.style.minWidth = `${Math.max(minWidth, r.width)}px`;
+  const below = innerHeight - r.bottom - 12;
+  const want = Math.min(el.scrollHeight, 320);
+  if (below < want && r.top > below) {
+    const h = Math.min(want, r.top - 12);
+    el.style.maxHeight = `${h}px`;
+    el.style.top = `${r.top - h - 4}px`;
+  } else {
+    el.style.maxHeight = `${Math.min(320, below)}px`;
+    el.style.top = `${r.bottom + 4}px`;
+  }
+  el.style.left = `${Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8))}px`;
+}
+
+function openPop(owner: HTMLElement, items: Opt[], selected: string, onPick: (v: string) => void, minWidth = 160, focusList = true) {
+  closePop();
+  const el = document.createElement('div');
+  el.className = 'pop';
+  el.setAttribute('role', 'listbox');
+  el.innerHTML = items.map((o) => `<button type="button" role="option" class="pop-i${o.value === selected ? ' on' : ''}" aria-selected="${o.value === selected}" data-v="${esc(o.value)}"${o.font ? ` style="font-family:&quot;${esc(o.font)}&quot;, var(--font)"` : ''}>${sym('s-tick', 'pop-tick')}<span>${esc(o.label)}</span></button>`).join('');
+  document.body.appendChild(el);
+  placePop(el, owner, minWidth);
+  pop.el = el;
+  pop.owner = owner;
+  owner.setAttribute('aria-expanded', 'true');
+  el.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in a combobox input
+  el.addEventListener('click', (e) => {
+    const it = (e.target as HTMLElement).closest<HTMLElement>('.pop-i');
+    if (!it) return;
+    onPick(it.dataset.v!);
+    closePop(owner.classList.contains('dd-btn'));
+  });
+  const on = el.querySelector<HTMLElement>('.pop-i.on') ?? el.querySelector<HTMLElement>('.pop-i');
+  on?.scrollIntoView({ block: 'nearest' });
+  if (focusList) on?.focus();
+}
+
+function openDropdown(btn: HTMLButtonElement) {
+  if (pop.owner === btn) { closePop(true); return; }
+  const id = btn.dataset.dd!;
+  const inp = document.getElementById(id) as HTMLInputElement;
+  openPop(btn, ddOpts.get(id) ?? [], inp.value, (v) => {
+    inp.value = v;
+    syncDropdowns(btn.parentElement!);
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+/** Installed font families, read once from the OS. */
+let fontList: string[] | null = null;
+async function installedFonts(): Promise<string[]> {
+  if (fontList) return fontList;
+  try {
+    const fonts: { family: string }[] = await (window as any).queryLocalFonts();
+    fontList = [...new Set(fonts.map((f) => f.family))].sort((x, y) => x.localeCompare(y));
+  } catch {
+    fontList = FONT_SUGGESTIONS.filter((f) => document.fonts.check(`12px "${f}"`));
+  }
+  return fontList;
+}
+
+async function openFontPicker(input: HTMLInputElement, focusList: boolean) {
+  const all = await installedFonts();
+  if (!input.isConnected) return;
+  const q = input.value.split(',').pop()!.trim().toLowerCase();
+  const exact = all.some((f) => f.toLowerCase() === q);
+  const list = (q && !exact ? all.filter((f) => f.toLowerCase().includes(q)) : all).slice(0, 300);
+  const items: Opt[] = [{ value: '', label: t('set.fontSystem') }, ...list.map((f) => ({ value: f, label: f, font: f }))];
+  openPop(input, items, normalizeFontFamily(input.value), (v) => {
+    input.value = v;
+    markFont(input);
+    previewFont();
+  }, 260, focusList);
+}
+
+/** Outline the font field when a typed name is not installed. */
+function markFont(input: HTMLInputElement) {
+  const names = input.value.split(',').map((x) => x.trim()).filter(Boolean);
+  const bad = !!fontList && names.some((n) => !fontList!.some((f) => f.toLowerCase() === n.toLowerCase()));
+  input.classList.toggle('bad', bad);
+  input.title = bad ? t('set.fontMissing') : '';
+}
+
+/** Arrow keys, Enter and Escape inside an open popover. Returns true when handled. */
+function popKeys(e: KeyboardEvent) {
+  if (!pop.el) return false;
+  const items = [...pop.el.querySelectorAll<HTMLElement>('.pop-i')];
+  const i = items.indexOf(document.activeElement as HTMLElement);
+  if (e.key === 'Escape') { e.preventDefault(); closePop(true); return true; }
+  if (e.key === 'Tab') { closePop(); return false; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const n = i < 0 ? (e.key === 'ArrowDown' ? 0 : items.length - 1) : Math.max(0, Math.min(items.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
+    items[n]?.focus();
+    items[n]?.scrollIntoView({ block: 'nearest' });
+    return true;
+  }
+  if ((e.key === 'Enter' || e.key === ' ') && i >= 0) { e.preventDefault(); items[i].click(); return true; }
+  return false;
+}
+
+function stepValue(id: string, delta: number) {
+  const el = document.getElementById(id) as HTMLInputElement | null;
+  if (!el) return;
+  const min = Number(el.dataset.min), max = Number(el.dataset.max);
+  el.value = String(Math.max(min, Math.min(max, (Number(el.value) || min) + delta)));
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 /* ---------- settings ---------- */
 
 /** Apply the UI font and text size as CSS variables. Also used for the live preview in Settings. */
@@ -631,17 +781,20 @@ function previewFont() {
 const PANES: { id: Pane; key: Key; glyph: string }[] = [
   { id: 'accounts', key: 'set.accounts', glyph: 's-person' },
   { id: 'general', key: 'set.general', glyph: 's-gear' },
+  { id: 'display', key: 'set.display', glyph: 's-textsize' },
   { id: 'alerts', key: 'set.alerts', glyph: 's-bell' },
   { id: 'memory', key: 'set.memory', glyph: 's-sparkle' },
   { id: 'models', key: 'set.models', glyph: 's-cpu' },
 ];
 
+const PLAN_OPTS: Opt[] = [{ value: 'team', label: 'Team' }, { value: 'enterprise', label: 'Enterprise' }];
+const effortOpts = (): Opt[] => EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}` as Key) }));
+
 function accountRow(a: AccountView) {
   const kind = a.kind === 'login' ? t('acc.kindLogin') : t('acc.kindToken');
   const usage = `5h ${pct(a.fiveHour.utilization)} · 7d ${pct(a.sevenDay.utilization)}`;
-  const note = a.lastError ? `<span class="warn">${esc(a.lastError)}</span>` : a.sevenDay.utilization === null && a.usageUpdatedAt ? `<span>${t('usage.no7d')}</span>` : '';
-  return `<div class="acc-row"><span class="m"><b>${esc(a.label)}</b><span>${kind} · ${usage}</span>${note}</span>
-    <span class="btns"><select class="inp sel-sm" data-change="acc-plan" data-id="${a.id}" aria-label="${t('acc.plan')}"><option value="team"${a.plan === 'team' ? ' selected' : ''}>Team</option><option value="enterprise"${a.plan === 'enterprise' ? ' selected' : ''}>Enterprise</option></select>
+  return `<div class="acc-row"><span class="m"><b>${esc(a.label)}</b><span>${kind} · ${usage}</span>${a.lastError ? `<span class="warn">${esc(a.lastError)}</span>` : ''}</span>
+    <span class="btns">${dropdown(`plan-${a.id}`, a.plan, PLAN_OPTS, t('acc.plan'), `data-change="acc-plan" data-id="${a.id}"`)}
     <button class="btn" data-action="acc-rename" data-id="${a.id}">${t('acc.rename')}</button><button class="btn danger" data-action="acc-remove" data-id="${a.id}">${t('remove')}</button></span></div>`;
 }
 
@@ -651,52 +804,47 @@ function settingsHtml() {
   const full = s.accounts.length >= MAX_ACCOUNTS;
   const hasLogin = s.accounts.some((a) => a.kind === 'login');
   const pane = (id: Pane, body: string) => `<section class="pane" data-pane="${id}"${ui.pane === id ? '' : ' hidden'}><h3>${t(PANES.find((p) => p.id === id)!.key)}</h3>${body}</section>`;
+  const row = (label: string, forId: string, control: string, cls = '') => `<label for="${forId}"${cls ? ` class="${cls}"` : ''}>${label}</label><div class="val${cls ? ` ${cls}` : ''}">${control}</div>`;
   const sounds: SoundName[] = ['chime', 'bell', 'ping', 'custom', 'none'];
 
-  const accounts = `${s.setupNeeded ? `<p class="note">${t('set.setupNote')}</p>` : ''}
-    <div class="group">${s.accounts.map(accountRow).join('') || `<div class="acc-row"><span class="m"><span>${t('acc.none')}</span></span></div>`}</div>
-    <h4>${t('acc.add')} <small>${s.accounts.length}/${MAX_ACCOUNTS}</small></h4>
-    ${full ? `<p class="note">${t('acc.full', { n: MAX_ACCOUNTS })}</p>` : `<div class="group form">
-      <label for="acc-label">${t('acc.name')}</label><div class="val"><input class="inp" id="acc-label" data-keep="acc-label" placeholder="${t('acc.namePh')}"></div>
-      <label for="acc-plan">${t('acc.plan')}</label><div class="val"><select class="inp" id="acc-plan" data-keep="acc-plan"><option value="team">Team</option><option value="enterprise">Enterprise</option></select></div>
-      <label for="acc-token">${t('acc.token')}</label><div class="val"><input class="inp" id="acc-token" type="password" data-keep="acc-token" placeholder="${t('acc.tokenPh')}"></div>
+  const accounts = `<div class="group">${s.accounts.map(accountRow).join('') || `<div class="acc-row"><span class="m"><span>${t('acc.none')}</span></span></div>`}</div>
+    ${full ? '' : `<h4>${t('acc.add')} <small>${s.accounts.length}/${MAX_ACCOUNTS}</small></h4>
+    <div class="group form">
+      ${row(t('acc.name'), 'acc-label', `<input class="inp" id="acc-label" placeholder="${t('acc.namePh')}">`)}
+      ${row(t('acc.plan'), 'acc-plan', dropdown('acc-plan', 'team', PLAN_OPTS, t('acc.plan')))}
+      ${row(t('acc.token'), 'acc-token', `<input class="inp" id="acc-token" type="password" placeholder="sk-ant-…">`)}
       <span class="lbl"></span><div class="val end"><button class="btn" data-action="acc-add-login" ${hasLogin ? 'disabled' : ''}>${t('acc.useLogin')}</button><button class="btn def" data-action="acc-add">${t('acc.addToken')}</button></div>
-    </div>`}
-    <p class="note">${t('acc.note')}</p>`;
+    </div>`}`;
 
   const general = `<div class="group form">
-      <label for="set-lang">${t('set.language')}</label><div class="val"><select class="inp" id="set-lang"><option value="en"${st.language === 'en' ? ' selected' : ''}>English</option><option value="ko"${st.language === 'ko' ? ' selected' : ''}>한국어</option></select></div>
-      <label for="set-home">${t('set.home')}</label><div class="val"><input class="inp" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button></div>
-      <label for="set-gh">${t('set.ghHost')}</label><div class="val"><input class="inp" id="set-gh" value="${esc(st.githubHost)}" placeholder="${t('set.ghHostPh')}"></div>
-      <label for="set-arch">${t('set.archive')}</label><div class="val"><input class="inp num" id="set-arch" type="number" min="1" max="90" value="${st.archiveDays}"></div>
-    </div>
-    <p class="note">${t('set.homeNote')}</p>
-    <h4>${t('set.display')}</h4>
-    <div class="group form">
-      <label for="set-font">${t('set.font')}</label><div class="val"><input class="inp" id="set-font" list="font-list" value="${esc(st.fontFamily)}" placeholder="${t('set.fontPh')}"><datalist id="font-list">${FONT_SUGGESTIONS.map((f) => `<option value="${esc(f)}">`).join('')}</datalist></div>
-      <label for="set-fsize">${t('set.fontSize')}</label><div class="val"><input class="inp num" id="set-fsize" type="number" min="${FONT_SIZE_MIN}" max="${FONT_SIZE_MAX}" step="1" value="${st.fontSize}"><button class="btn" data-action="font-reset">${t('set.fontReset')}</button></div>
-    </div>
-    <p class="note">${t('set.fontNote')}</p>`;
+      ${row(t('set.language'), 'set-lang', dropdown('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
+      ${row(t('set.home'), 'set-home', `<input class="inp" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
+      ${row(t('set.ghHost'), 'set-gh', `<input class="inp" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
+      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 1, 90, t('set.archive')))}
+    </div>`;
+
+  const display = `<div class="group form">
+      ${row(t('set.font'), 'set-font', `<span class="combo"><input class="inp" id="set-font" value="${esc(st.fontFamily)}" placeholder="${t('set.fontSystem')}" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"><button type="button" class="combo-btn" data-combo="set-font" tabindex="-1" aria-label="${t('set.font')}">${sym('s-updown')}</button></span>`)}
+      ${row(t('set.fontSize'), 'set-fsize', `${stepper('set-fsize', st.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, t('set.fontSize'))}<button class="btn" data-action="font-reset">${t('set.fontReset')}</button>`)}
+    </div>`;
 
   const alerts = `<div class="group form">
-      <label for="set-noti">${t('set.osNoti')}</label><div class="val"><input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}></div>
-      <label for="set-sound">${t('set.sound')}</label><div class="val"><select class="inp" id="set-sound" data-change="sound-kind">${sounds.map((x) => `<option value="${x}"${st.sound === x ? ' selected' : ''}>${t(`sound.${x}` as Key)}</option>`).join('')}</select><button class="btn" data-action="sound-test">${t('set.soundTest')}</button></div>
-      <label for="set-sfile" class="custom-row"${st.sound === 'custom' ? '' : ' hidden'}>${t('set.soundFile')}</label><div class="val custom-row"${st.sound === 'custom' ? '' : ' hidden'}><input class="inp" id="set-sfile" value="${esc(st.customSound)}" placeholder="${t('set.soundFilePh')}"><button class="btn" data-action="pick-sound">${t('choose')}</button></div>
-      <label for="set-vol">${t('set.volume')}</label><div class="val"><input id="set-vol" type="range" min="0" max="100" step="5" value="${st.soundVolume}"><span class="vol" id="vol-out">${st.soundVolume}</span></div>
-    </div>
-    <p class="note">${t('set.alertNote')}</p>`;
+      ${row(t('set.osNoti'), 'set-noti', `<input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}>`)}
+      ${row(t('set.sound'), 'set-sound', `${dropdown('set-sound', st.sound, sounds.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}<button class="btn icon" data-action="sound-test" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>`)}
+      ${row(t('set.soundFile'), 'set-sfile', `<input class="inp" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
+      ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')))}
+    </div>`;
 
   const memory = `<div class="group form">
-      <label for="set-mem">${t('set.memRemote')}</label><div class="val"><input class="inp" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git"></div>
-    </div>
-    <p class="note">${t('set.memNote')}</p>`;
+      ${row(t('set.memRemote'), 'set-mem', `<input class="inp" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}
+    </div>`;
 
   const models = `<div class="group form">
-      <label for="set-dm">Dispatcher</label><div class="val"><input class="inp" id="set-dm" value="${esc(st.dispatcherModel)}"></div>
-      <label for="set-wm">Worker</label><div class="val"><input class="inp" id="set-wm" value="${esc(st.workerModel)}"></div>
-      <label for="set-fm">${t('set.design')}</label><div class="val"><input class="inp" id="set-fm" value="${esc(st.designModel)}"></div>
-    </div>
-    <p class="note">${t('set.modelNote')}</p>`;
+      ${row('Dispatcher', 'set-dm', `<input class="inp" id="set-dm" value="${esc(st.dispatcherModel)}">${dropdown('set-de', st.dispatcherEffort, effortOpts(), t('set.effort'))}`)}
+      ${row('Worker', 'set-wm', `<input class="inp" id="set-wm" value="${esc(st.workerModel)}">${dropdown('set-we', st.workerEffort, effortOpts(), t('set.effort'))}`)}
+      ${row(t('set.design'), 'set-fm', `<input class="inp" id="set-fm" value="${esc(st.designModel)}">`)}
+      ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}
+    </div>`;
 
   return `<div class="sheet settings" role="dialog" aria-modal="true" aria-label="${t('set.title')}">
     <nav class="snav" aria-label="${t('set.title')}">
@@ -704,7 +852,7 @@ function settingsHtml() {
       ${PANES.map((p) => `<button class="snav-i${ui.pane === p.id ? ' on' : ''}" data-action="pane" data-id="${p.id}"${ui.pane === p.id ? ' aria-current="page"' : ''}>${sym(p.glyph)}<span>${t(p.key)}</span>${p.id === 'accounts' && s.setupNeeded ? '<i class="dot"></i>' : ''}</button>`).join('')}
     </nav>
     <div class="sbody">
-      <div class="spanes">${pane('accounts', accounts)}${pane('general', general)}${pane('alerts', alerts)}${pane('memory', memory)}${pane('models', models)}</div>
+      <div class="spanes">${pane('accounts', accounts)}${pane('general', general)}${pane('display', display)}${pane('alerts', alerts)}${pane('memory', memory)}${pane('models', models)}</div>
       <div class="foot"><button class="btn" data-action="close-settings">${t('close')}</button><button class="btn def" data-action="save-settings">${t('save')}</button></div>
     </div>
   </div>`;
@@ -713,9 +861,10 @@ function settingsHtml() {
 /** Re-render the settings sheet, keeping unsaved field values. */
 function openSettings(pane?: Pane) {
   if (pane) ui.pane = pane;
+  closePop();
   const root = $('#sheet');
   const keep = new Map<string, string | boolean>();
-  if (ui.settingsShown) root.querySelectorAll<HTMLInputElement>('.spanes input, .spanes select').forEach((el) => { if (el.id) keep.set(el.id, el.type === 'checkbox' ? el.checked : el.value); });
+  if (ui.settingsShown) root.querySelectorAll<HTMLInputElement>('.spanes input').forEach((el) => { if (el.id) keep.set(el.id, el.type === 'checkbox' ? el.checked : el.value); });
   const focusId = ui.settingsShown && root.contains(document.activeElement) ? (document.activeElement as HTMLElement).id : '';
   const scroll = root.querySelector('.spanes')?.scrollTop ?? 0;
   ui.settingsShown = true;
@@ -725,19 +874,30 @@ function openSettings(pane?: Pane) {
     if (!el) return;
     if (el.type === 'checkbox') el.checked = v as boolean; else el.value = v as string;
   });
+  syncDropdowns(root);
+  const vol = document.getElementById('set-vol') as HTMLInputElement | null;
+  if (vol) syncSlider(vol);
   if (focusId) document.getElementById(focusId)?.focus();
   if (!pane) root.querySelector('.spanes')!.scrollTop = scroll;
   syncSoundRows();
   root.hidden = false;
   document.body.classList.add('modal');
+  void installedFonts().then(() => { const f = document.getElementById('set-font') as HTMLInputElement | null; if (f) markFont(f); });
+}
+
+function syncSlider(el: HTMLInputElement) {
+  el.style.setProperty('--val', `${el.value}%`);
+  const out = el.parentElement?.querySelector('output');
+  if (out) out.textContent = el.value;
 }
 
 function syncSoundRows() {
-  const kind = ($('#set-sound') as HTMLSelectElement | null)?.value;
+  const kind = ($('#set-sound') as HTMLInputElement | null)?.value;
   document.querySelectorAll<HTMLElement>('.custom-row').forEach((el) => { el.hidden = kind !== 'custom'; });
 }
 
 function closeSettings() {
+  closePop();
   ui.settingsShown = false;
   $('#sheet').hidden = true;
   $('#sheet').innerHTML = '';
@@ -761,6 +921,9 @@ function readSettingsForm() {
     dispatcherModel: v('set-dm'),
     workerModel: v('set-wm'),
     designModel: v('set-fm'),
+    dispatcherEffort: v('set-de') as Effort,
+    workerEffort: v('set-we') as Effort,
+    effortPerTask: ($('#set-ept') as HTMLInputElement).checked,
     fontFamily: normalizeFontFamily(v('set-font')),
     fontSize: clampFontSize(v('set-fsize')),
   };
@@ -915,12 +1078,12 @@ async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'acc-add': {
-      const r = await call('account:add', $<HTMLInputElement>('#acc-label').value, 'token', $<HTMLInputElement>('#acc-token').value, $<HTMLSelectElement>('#acc-plan').value);
+      const r = await call('account:add', $<HTMLInputElement>('#acc-label').value, 'token', $<HTMLInputElement>('#acc-token').value, $<HTMLInputElement>('#acc-plan').value);
       if (r) { $<HTMLInputElement>('#acc-token').value = ''; $<HTMLInputElement>('#acc-label').value = ''; toast(t('toast.accAdded')); }
       break;
     }
     case 'acc-add-login': {
-      const r = await call('account:add', $<HTMLInputElement>('#acc-label').value || t('acc.loginName'), 'login', '', $<HTMLSelectElement>('#acc-plan').value);
+      const r = await call('account:add', $<HTMLInputElement>('#acc-label').value || t('acc.loginName'), 'login', '', $<HTMLInputElement>('#acc-plan').value);
       if (r) { $<HTMLInputElement>('#acc-label').value = ''; toast(t('toast.loginAdded')); }
       break;
     }
@@ -1029,7 +1192,20 @@ function bindDrop() {
 function init() {
   document.body.classList.add(`platform-${ide.platform}`);
   document.addEventListener('click', (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
+    const tgt = e.target as HTMLElement;
+    const ddBtn = tgt.closest<HTMLButtonElement>('.dd-btn');
+    if (ddBtn) { openDropdown(ddBtn); return; }
+    const combo = tgt.closest<HTMLElement>('[data-combo]');
+    if (combo) {
+      const inp = document.getElementById(combo.dataset.combo!) as HTMLInputElement;
+      if (pop.owner === inp) closePop(); else { inp.focus(); void openFontPicker(inp, false); }
+      return;
+    }
+    if (tgt.id === 'set-font' && pop.owner !== tgt) { void openFontPicker(tgt as HTMLInputElement, false); return; }
+    const step = tgt.closest<HTMLElement>('[data-step]');
+    if (step) { stepValue(step.dataset.for!, Number(step.dataset.step)); return; }
+    if (pop.el && !pop.el.contains(tgt) && tgt !== pop.owner) closePop();
+    const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
     if (!(e.target as HTMLElement).closest('#ctxmenu')) $('#ctxmenu').hidden = true;
   });
@@ -1040,15 +1216,21 @@ function init() {
   });
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
-    if (el.id === 'set-vol') $('#vol-out').textContent = el.value;
-    if (el.id === 'set-font' || el.id === 'set-fsize') previewFont();
+    if (el.id === 'set-vol') syncSlider(el);
+    if (el.id === 'set-fsize') previewFont();
+    if (el.id === 'set-font') { markFont(el); previewFont(); void openFontPicker(el, false); }
   });
   document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.v as any)));
   $('#sheet').addEventListener('click', (e) => { if (e.target === $('#sheet')) closeSettings(); });
+  $('#sheet').addEventListener('scroll', () => closePop(), true);
+  window.addEventListener('resize', () => closePop());
 
   // Enter in an input runs the action named in data-enter.
   document.addEventListener('keydown', (e) => {
     const el = e.target as HTMLElement;
+    if (popKeys(e)) return;
+    if (el.id === 'set-font' && e.key === 'ArrowDown') { e.preventDefault(); void openFontPicker(el as HTMLInputElement, true); return; }
+    if (el.classList.contains('step-v') && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); stepValue(el.id, e.key === 'ArrowUp' ? 1 : -1); return; }
     if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && el.dataset?.enter) {
       e.preventDefault();
       if (el.dataset.enter === 'answer-custom') {
@@ -1060,6 +1242,7 @@ function init() {
       return;
     }
     if (e.key === 'Escape') {
+      if (pop.el) { closePop(true); return; }
       if (ui.settingsShown) closeSettings();
       $('#ctxmenu').hidden = true;
       if (ui.aaEdit) { ui.aaEdit = null; renderChatInspector(); }

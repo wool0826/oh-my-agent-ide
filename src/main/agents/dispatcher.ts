@@ -12,7 +12,7 @@ import { loadSettings } from '../settings';
 import { attachmentBlock, registerAttachments } from '../attachments';
 import { t, langName } from '../i18n';
 import { nowIso, oneLine, today } from '../util';
-import type { Task } from '../../shared/types';
+import { EFFORTS, type Effort, type Task } from '../../shared/types';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
@@ -32,7 +32,7 @@ function workerLine(id: string) {
 }
 
 /** Create a task and hand it to a Worker. Used by the Dispatcher tool and by UI buttons. */
-export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; model?: 'opus' | 'fable'; after_task_id?: string }) {
+export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; model?: 'opus' | 'fable'; after_task_id?: string; effort?: Effort }) {
   if (a.kind === 'code' && !a.repo) throw new Error('Code tasks need a repo. Check list_repos.');
   if (a.repo && !store.repo(a.repo)) throw new Error(`Repository is not registered: ${a.repo}`);
   let after: string | null = null;
@@ -52,6 +52,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     workerId: null, status: 'queued', branch: null, prUrl: null, prState: null, summary: null, files: [],
     createdAt: nowIso(), updatedAt: nowIso(), finishedAt: null, reviewSyncedAt: null, seenCommentIds: [],
     afterTaskId: after, mergedAt: null,
+    effort: s.effortPerTask && a.effort ? a.effort : null,
   };
   store.data.tasks.push(task);
   store.changed();
@@ -100,6 +101,7 @@ function boardServer() {
         worker_id: z.string().optional(),
         model: z.enum(['opus', 'fable']).optional().describe('Default opus. fable only for deep design work'),
         after_task_id: z.string().optional().describe('Start only after this task\'s PR is merged (e.g. a follow-up that needs the merged change)'),
+        effort: z.enum(EFFORTS as [Effort, ...Effort[]]).optional().describe('Reasoning effort for this task. Omit for the default. low for trivial edits or lookups, xhigh or max for hard debugging, tricky concurrency, or design.'),
       }, async (a) => {
         try {
           const { task, worker: w } = await createTask(a);
@@ -167,9 +169,10 @@ function systemPrompt() {
     '4. Model: opus by default; fable only for deep design work such as architecture or large structural changes.',
     '5. Put anything the user must decide into the decision inbox with request_decision. Ask back in chat only when you cannot understand the request.',
     '6. Save preferences, principles and repository traits the user states with remember. Use recall when you need a basis for a judgment.',
-    '7. When work depends on a change that is still in an open PR, create it with after_task_id so it starts automatically after the merge.',
-    '8. If the message ends with "[Attached files]", pass those absolute paths to the Worker in the task prompt. You may Read them to decide routing.',
-    '9. Keep replies short: one or two sentences on what you gave to whom. Avoid lists and headings.',
+    `7. ${loadSettings().effortPerTask ? `Set effort on create_task only when a task clearly needs more or less than the default (${loadSettings().workerEffort}).` : 'Do not set effort on create_task; the user fixed it in settings.'}`,
+    '8. When work depends on a change that is still in an open PR, create it with after_task_id so it starts automatically after the merge.',
+    '9. If the message ends with "[Attached files]", pass those absolute paths to the Worker in the task prompt. You may Read them to decide routing.',
+    '10. Keep replies short: one or two sentences on what you gave to whom. Avoid lists and headings.',
     '',
     'A message prefixed with "[Worker updates]" lists what happened to Workers since your last turn. Use what is relevant to the user\'s request; no need to report it separately.',
     '"[Decision answer]" is the user\'s answer from the decision inbox. Follow up accordingly.',
@@ -213,7 +216,7 @@ class Dispatcher {
       mcpServers: { board: boardServer() },
       tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
       additionalDirectories: [paths().repos],
-      effort: 'medium',
+      effort: loadSettings().dispatcherEffort,
       // The Dispatcher only has read-only tools, including for attached files.
       canUseTool: async (_name, input) => ({ behavior: 'allow', updatedInput: input }),
     }, {

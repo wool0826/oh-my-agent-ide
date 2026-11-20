@@ -2,6 +2,9 @@
 
 export type Lang = 'en' | 'ko';
 
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
 export type UsageWindow = { utilization: number | null; resetsAt: string | null };
 
 export type AccountPlan = 'team' | 'enterprise';
@@ -74,6 +77,8 @@ export interface Task {
   seenCommentIds: string[];
   /** Start this task only after that task's PR is merged. */
   afterTaskId?: string | null;
+  /** Effort the Dispatcher chose for this task; null = the Worker default. */
+  effort?: Effort | null;
   mergedAt?: string | null;
 }
 
@@ -145,6 +150,10 @@ export interface SettingsView {
   dispatcherModel: string;
   workerModel: string;
   designModel: string;
+  dispatcherEffort: Effort;
+  workerEffort: Effort;
+  /** Let the Dispatcher pick a different effort per task. */
+  effortPerTask: boolean;
   /** UI font. Empty = system font. Several can be listed, separated by commas. */
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */

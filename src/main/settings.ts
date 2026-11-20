@@ -43,6 +43,9 @@ export const DEFAULTS: SettingsView = {
   dispatcherModel: 'claude-sonnet-5-5',
   workerModel: 'claude-opus-5-5',
   designModel: 'claude-fable-5-2',
+  dispatcherEffort: 'medium',
+  workerEffort: 'high',
+  effortPerTask: true,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
 };

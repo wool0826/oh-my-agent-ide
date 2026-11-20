@@ -174,7 +174,9 @@ function registerIpc() {
   handle('settings:save', (patch: Partial<SettingsView>) => {
     const before = loadSettings();
     const homeChanged = !!patch.home && patch.home !== before.home;
-    const langChanged = !!patch.language && patch.language !== before.language;
+    const langChanged = (!!patch.language && patch.language !== before.language)
+      || (!!patch.dispatcherEffort && patch.dispatcherEffort !== before.dispatcherEffort)
+      || (patch.effortPerTask !== undefined && patch.effortPerTask !== before.effortPerTask);
     updateSettings(patch);
     if (langChanged) dispatcher.refreshContext();
     pushState(); // apply changed settings (language, font) right away

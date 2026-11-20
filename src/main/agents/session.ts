@@ -110,6 +110,15 @@ export class AgentSession {
     this.input!.push(userMsg(text));
   }
 
+  /** Change the effort level, live if the session is running, otherwise for its next start. */
+  setEffort(effort: Options['effort']) {
+    if (!effort || effort === this.cfg.effort) return;
+    this.cfg.effort = effort;
+    if (this.q && typeof effort === 'string') {
+      this.q.applyFlagSettings({ effortLevel: effort }).catch((e) => log.warn(`[${this.cfg.label}] effort`, (e as Error).message));
+    }
+  }
+
   async interrupt() {
     try { await this.q?.interrupt(); } catch { /* already finished */ }
   }
