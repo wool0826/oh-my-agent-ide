@@ -177,7 +177,7 @@ function registerIpc() {
     const langChanged = !!patch.language && patch.language !== before.language;
     updateSettings(patch);
     if (langChanged) dispatcher.refreshContext();
-    pushState();
+    pushState(); // apply changed settings (language, font) right away
     return { restart: homeChanged };
   });
   handle('settings:pickHome', async () => {

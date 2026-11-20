@@ -145,6 +145,10 @@ export interface SettingsView {
   dispatcherModel: string;
   workerModel: string;
   designModel: string;
+  /** UI font. Empty = system font. Several can be listed, separated by commas. */
+  fontFamily: string;
+  /** Base text size (px). Other sizes scale with it. */
+  fontSize: number;
 }
 
 export interface AppState {

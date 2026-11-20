@@ -1,6 +1,7 @@
 import type { AppState, AutoAnswer, ChatItem, Decision, MemoryFile, MemoryHit, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, MAX_ACCOUNTS } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
+import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 
 declare global {
   interface Window {
@@ -616,6 +617,17 @@ function renderMemory() {
 
 /* ---------- settings ---------- */
 
+/** Apply the UI font and text size as CSS variables. Also used for the live preview in Settings. */
+function applyFont(family: string, size: number) {
+  const root = document.documentElement.style;
+  root.setProperty('--font', fontStack(family));
+  root.setProperty('--ui-font-size', `${clampFontSize(size)}px`);
+}
+
+function previewFont() {
+  applyFont($<HTMLInputElement>('#set-font').value, Number($<HTMLInputElement>('#set-fsize').value));
+}
+
 const PANES: { id: Pane; key: Key; glyph: string }[] = [
   { id: 'accounts', key: 'set.accounts', glyph: 's-person' },
   { id: 'general', key: 'set.general', glyph: 's-gear' },
@@ -658,7 +670,13 @@ function settingsHtml() {
       <label for="set-gh">${t('set.ghHost')}</label><div class="val"><input class="inp" id="set-gh" value="${esc(st.githubHost)}" placeholder="${t('set.ghHostPh')}"></div>
       <label for="set-arch">${t('set.archive')}</label><div class="val"><input class="inp num" id="set-arch" type="number" min="1" max="90" value="${st.archiveDays}"></div>
     </div>
-    <p class="note">${t('set.homeNote')}</p>`;
+    <p class="note">${t('set.homeNote')}</p>
+    <h4>${t('set.display')}</h4>
+    <div class="group form">
+      <label for="set-font">${t('set.font')}</label><div class="val"><input class="inp" id="set-font" list="font-list" value="${esc(st.fontFamily)}" placeholder="${t('set.fontPh')}"><datalist id="font-list">${FONT_SUGGESTIONS.map((f) => `<option value="${esc(f)}">`).join('')}</datalist></div>
+      <label for="set-fsize">${t('set.fontSize')}</label><div class="val"><input class="inp num" id="set-fsize" type="number" min="${FONT_SIZE_MIN}" max="${FONT_SIZE_MAX}" step="1" value="${st.fontSize}"><button class="btn" data-action="font-reset">${t('set.fontReset')}</button></div>
+    </div>
+    <p class="note">${t('set.fontNote')}</p>`;
 
   const alerts = `<div class="group form">
       <label for="set-noti">${t('set.osNoti')}</label><div class="val"><input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}></div>
@@ -724,6 +742,8 @@ function closeSettings() {
   $('#sheet').hidden = true;
   $('#sheet').innerHTML = '';
   document.body.classList.remove('modal');
+  // Drop an unsaved preview (after a save, S.settings already holds the new values).
+  if (S) applyFont(S.settings.fontFamily, S.settings.fontSize);
 }
 
 function readSettingsForm() {
@@ -741,6 +761,8 @@ function readSettingsForm() {
     dispatcherModel: v('set-dm'),
     workerModel: v('set-wm'),
     designModel: v('set-fm'),
+    fontFamily: normalizeFontFamily(v('set-font')),
+    fontSize: clampFontSize(v('set-fsize')),
   };
 }
 
@@ -779,6 +801,8 @@ function renderAll(force = false) {
   if (!S) return;
   const langChanged = ui.langApplied !== lang();
   applyStaticText();
+  // Don't overwrite the preview while Settings is open.
+  if (!ui.settingsShown) applyFont(S.settings.fontFamily, S.settings.fontSize);
   if (langChanged) force = true;
   renderSidebar();
   renderUsage();
@@ -921,6 +945,12 @@ async function act(el: HTMLElement, e: Event) {
       if (p) $<HTMLInputElement>('#set-sfile').value = p;
       break;
     }
+    case 'font-reset': {
+      $<HTMLInputElement>('#set-font').value = '';
+      $<HTMLInputElement>('#set-fsize').value = String(FONT_SIZE_DEFAULT);
+      previewFont();
+      break;
+    }
     case 'sound-test': {
       const f = readSettingsForm();
       await playSound(f.sound, f.soundVolume, f.customSound);
@@ -931,6 +961,7 @@ async function act(el: HTMLElement, e: Event) {
       const r = await call<{ restart: boolean }>('settings:save', patch);
       if (!r) return;
       customCache = null;
+      Object.assign(S!.settings, patch); // keep the new font even if closing before the new state arrives
       closeSettings();
       if (r.restart) {
         if (confirm(t('confirm.restart'))) await call('app:relaunch');
@@ -1010,6 +1041,7 @@ function init() {
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
     if (el.id === 'set-vol') $('#vol-out').textContent = el.value;
+    if (el.id === 'set-font' || el.id === 'set-fsize') previewFont();
   });
   document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.v as any)));
   $('#sheet').addEventListener('click', (e) => { if (e.target === $('#sheet')) closeSettings(); });
