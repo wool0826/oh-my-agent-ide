@@ -73,7 +73,7 @@
     <div class="thread" id="chat-thread" aria-live="polite"></div>
     <form class="composer" id="chat-form" autocomplete="off">
       <div class="fchips" id="chat-files" hidden></div>
-      <textarea class="field input" id="chat-input" rows="1" data-i18n-ph="chat.placeholder" aria-label="Message"></textarea>
+      <textarea class="field input" id="chat-input" rows="1" aria-label="Message"></textarea>
       <span class="ctx" id="chat-ctx" data-i18n-title="chat.ctxHint"></span>
       <button class="send" type="submit" id="chat-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
     </form>
@@ -87,8 +87,10 @@
       <div class="shead">
         <button class="back" data-action="close-session" data-i18n-title="ws.back"><svg aria-hidden="true"><use href="#s-back"/></svg></button>
         <span class="st"><b id="ws-title"></b><small id="ws-sub"></small></span>
+        <div class="segc ws-tabs" id="ws-tabs" role="tablist"></div>
       </div>
       <div class="thread" id="ws-thread"></div>
+      <div class="diffv" id="ws-diff" hidden></div>
       <form class="composer" id="ws-form" autocomplete="off">
         <div class="fchips" id="ws-files" hidden></div>
         <textarea class="field input" id="ws-input" rows="1" aria-label="Message to the Worker"></textarea>

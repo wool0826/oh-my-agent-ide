@@ -118,7 +118,7 @@ function registerIpc() {
   handle('decision:answer', (id: string, ans: string) => {
     const d = answerDecision(id, ans);
     if (!d) return;
-    const shown = ans === ALLOW ? t('allow') : ans === DENY ? t('deny') : ans;
+    const shown = ans === ALLOW ? t(d.source === 'plan' ? 'plan.approve' : 'allow') : ans === DENY ? t('deny') : ans;
     const who = d.workerId ? `${d.workerId}: ` : '';
     store.chat('decision', `${who}${oneLine(d.title, 80)} → ${shown}`);
     if (d.source === 'dispatcher') dispatcher.decisionAnswered(d.title, ans);
@@ -140,11 +140,12 @@ function registerIpc() {
   handle('worker:log', (id: string) => store.readLog(id));
   handle('worker:send', (id: string, text: string, files?: string[]) => workers.send(id, 'user', text + attachmentBlock(registerAttachments(files ?? []))));
   handle('worker:stop', (id: string) => workers.stop(id));
+  handle('worker:diff', (id: string) => workers.diff(id));
   handle('worker:archive', (id: string) => workers.archive(id));
   handle('worker:unarchive', async (id: string) => { const w = store.worker(id); if (w) await workers.unarchive(w); });
   handle('repo:add', (url: string, name?: string, description?: string) => registerRepo({ url, name, description }).then((r) => { dispatcher.refreshContext(); return r; }));
   handle('repo:remove', (name: string) => { removeRepo(name); dispatcher.refreshContext(); });
-  handle('repo:update', (name: string, description: string) => { updateRepo(name, { description }); dispatcher.refreshContext(); });
+  handle('repo:update', (name: string, description: string, setup?: string) => { updateRepo(name, setup === undefined ? { description } : { description, setup: setup.trim() }); dispatcher.refreshContext(); });
   handle('memory:list', () => listMemory());
   handle('memory:read', (p: string) => readMemory(p));
   handle('memory:write', (p: string, c: string) => { writeMemory(p, c); dispatcher.refreshContext(); });

@@ -33,6 +33,8 @@ export interface Repo {
   description: string;
   defaultBranch: string;
   addedAt: string;
+  /** Shell command run in each new worktree (install dependencies, copy .env, ...). */
+  setup?: string;
 }
 
 export type WorkerStatus = 'starting' | 'running' | 'waiting' | 'idle' | 'error' | 'archived';
@@ -80,13 +82,16 @@ export interface Task {
   /** Effort the Dispatcher chose for this task; null = the Worker default. */
   effort?: Effort | null;
   mergedAt?: string | null;
+  /** The Worker plans in read-only mode first; the user approves the plan in the decision inbox. */
+  planFirst?: boolean;
+  planApproved?: boolean;
 }
 
 export interface DecisionOption { label: string; description?: string }
 
 export interface Decision {
   id: string;
-  source: 'permission' | 'question' | 'dispatcher';
+  source: 'permission' | 'question' | 'dispatcher' | 'plan';
   workerId: string | null;
   taskId: string | null;
   title: string;
@@ -173,6 +178,9 @@ export interface AppState {
   chat: ChatItem[];
   dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string };
 }
+
+export interface DiffFile { path: string; added: number; removed: number; status: 'A' | 'M' | 'D' | 'R' | '?'; patch: string }
+export interface DiffView { base: string; branch: string; files: DiffFile[]; truncated: boolean; error?: string }
 
 export interface MemoryFile { path: string; title: string; kind: 'preference' | 'repo' | 'decision' | 'task' | 'other'; size: number; updatedAt: string }
 export interface MemoryHit { path: string; line: number; text: string; score: number }

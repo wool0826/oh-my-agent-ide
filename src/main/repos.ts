@@ -1,10 +1,12 @@
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { paths } from './paths';
 import { loadSettings } from './settings';
 import { store } from './store';
 import { nowIso, run, runOk, slug, ensureDir } from './util';
 import { t } from './i18n';
+import { log } from './log';
 import type { Repo } from '../shared/types';
 
 /** Point gh at the company GitHub host via GH_HOST. */
@@ -62,7 +64,7 @@ export function removeRepo(name: string) {
   store.changed();
 }
 
-export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description'>>) {
+export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description' | 'setup'>>) {
   const r = store.repo(name);
   if (!r) return;
   Object.assign(r, patch);
@@ -76,7 +78,39 @@ export async function ensureWorktree(repo: Repo, workerId: string): Promise<stri
   ensureDir(path.dirname(dir));
   await run('git', ['fetch', '-q', 'origin'], { cwd: repo.path, timeoutMs: 5 * 60_000 });
   await runOk('git', ['worktree', 'add', '--detach', dir, `origin/${repo.defaultBranch}`], { cwd: repo.path });
+  if (repo.setup?.trim()) {
+    const r = await runSetup(repo.setup, dir, repo.path);
+    if (r.code !== 0) store.chat('error', t('ev.setupFailed', { repo: repo.name, msg: r.tail || String(r.code) }));
+  }
   return dir;
+}
+
+/**
+ * Run a repository's setup command in a new worktree through the platform shell.
+ * ROOT_PATH is the main checkout, so `cp "$ROOT_PATH/.env" .` works.
+ */
+export function runSetup(cmd: string, cwd: string, root: string): Promise<{ code: number; tail: string }> {
+  return new Promise((resolve) => {
+    const win = process.platform === 'win32';
+    const p = spawn(win ? 'powershell.exe' : (process.env.SHELL || '/bin/sh'), win ? ['-NoProfile', '-NonInteractive', '-Command', cmd] : ['-lc', cmd], {
+      cwd, env: { ...ghEnv(), ROOT_PATH: root, OMA_ROOT_PATH: root }, windowsHide: true,
+    });
+    let out = '';
+    const keep = (d: Buffer) => { out = (out + d.toString()).slice(-4000); };
+    p.stdout.on('data', keep);
+    p.stderr.on('data', keep);
+    const timer = setTimeout(() => p.kill(), 20 * 60_000);
+    let finished = false;
+    const done = (code: number) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      log[code === 0 ? 'info' : 'warn'](`setup in ${cwd} exited ${code}`, out.slice(-800));
+      resolve({ code, tail: out.trim().split('\n').slice(-3).join(' ').slice(0, 300) });
+    };
+    p.on('error', (e) => { out += e.message; done(1); });
+    p.on('close', (c) => done(c ?? 1));
+  });
 }
 
 export async function removeWorktree(repo: Repo, dir: string) {

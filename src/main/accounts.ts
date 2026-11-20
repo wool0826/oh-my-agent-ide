@@ -3,6 +3,7 @@ import { loadSettings, saveSettings, encryptToken, decryptToken, type StoredAcco
 import { log } from './log';
 import { nowIso, uid } from './util';
 import { t } from './i18n';
+import { liveWindow } from '../shared/usage';
 import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type UsageWindow } from '../shared/types';
 
 /** Above this usage (%) an account gets no new sessions, and running work moves to another account. */
@@ -22,7 +23,7 @@ class Accounts extends EventEmitter {
   views(): AccountView[] {
     return this.list().map((a) => ({
       id: a.id, label: a.label, kind: a.kind, plan: a.plan,
-      fiveHour: a.fiveHour, sevenDay: a.sevenDay,
+      fiveHour: liveWindow(a.fiveHour), sevenDay: liveWindow(a.sevenDay),
       usageUpdatedAt: a.usageUpdatedAt, usageSource: a.usageSource,
       limited: this.isLimited(a), lastError: a.lastError,
     }));
@@ -86,7 +87,7 @@ class Accounts extends EventEmitter {
   }
 
   private score(a: StoredAccount) {
-    return Math.max(a.fiveHour.utilization ?? 0, a.sevenDay.utilization ?? 0);
+    return Math.max(liveWindow(a.fiveHour).utilization ?? 0, liveWindow(a.sevenDay).utilization ?? 0);
   }
 
   isLimited(a: StoredAccount) {

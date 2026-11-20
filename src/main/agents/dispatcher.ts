@@ -32,7 +32,7 @@ function workerLine(id: string) {
 }
 
 /** Create a task and hand it to a Worker. Used by the Dispatcher tool and by UI buttons. */
-export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; model?: 'opus' | 'fable'; after_task_id?: string; effort?: Effort }) {
+export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; model?: 'opus' | 'fable'; after_task_id?: string; effort?: Effort; plan_first?: boolean }) {
   if (a.kind === 'code' && !a.repo) throw new Error('Code tasks need a repo. Check list_repos.');
   if (a.repo && !store.repo(a.repo)) throw new Error(`Repository is not registered: ${a.repo}`);
   let after: string | null = null;
@@ -53,6 +53,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     createdAt: nowIso(), updatedAt: nowIso(), finishedAt: null, reviewSyncedAt: null, seenCommentIds: [],
     afterTaskId: after, mergedAt: null,
     effort: s.effortPerTask && a.effort ? a.effort : null,
+    planFirst: !!a.plan_first,
   };
   store.data.tasks.push(task);
   store.changed();
@@ -102,6 +103,7 @@ function boardServer() {
         model: z.enum(['opus', 'fable']).optional().describe('Default opus. fable only for deep design work'),
         after_task_id: z.string().optional().describe('Start only after this task\'s PR is merged (e.g. a follow-up that needs the merged change)'),
         effort: z.enum(EFFORTS as [Effort, ...Effort[]]).optional().describe('Reasoning effort for this task. Omit for the default. low for trivial edits or lookups, xhigh or max for hard debugging, tricky concurrency, or design.'),
+        plan_first: z.boolean().optional().describe('The Worker investigates read-only and proposes a plan; the user approves it in the decision inbox before any change. Use when the user asks to see a plan first, or the change is large, risky, or ambiguous.'),
       }, async (a) => {
         try {
           const { task, worker: w } = await createTask(a);
@@ -170,7 +172,7 @@ function systemPrompt() {
     '5. Put anything the user must decide into the decision inbox with request_decision. Ask back in chat only when you cannot understand the request.',
     '6. Save preferences, principles and repository traits the user states with remember. Use recall when you need a basis for a judgment.',
     `7. ${loadSettings().effortPerTask ? `Set effort on create_task only when a task clearly needs more or less than the default (${loadSettings().workerEffort}).` : 'Do not set effort on create_task; the user fixed it in settings.'}`,
-    '8. When work depends on a change that is still in an open PR, create it with after_task_id so it starts automatically after the merge.',
+    '8. When work depends on a change that is still in an open PR, create it with after_task_id so it starts automatically after the merge. Use plan_first when the user wants to review the approach first (for example plan first or show me the plan) or a code change is large, risky or open to several designs; small, clear changes do not need it.',
     '9. If the message ends with "[Attached files]", pass those absolute paths to the Worker in the task prompt. You may Read them to decide routing.',
     '10. Keep replies short: one or two sentences on what you gave to whom. Avoid lists and headings.',
     '',

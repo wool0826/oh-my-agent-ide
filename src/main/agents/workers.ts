@@ -11,6 +11,7 @@ import { remember } from '../memory';
 import { paths } from '../paths';
 import { loadSettings } from '../settings';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
+import { worktreeDiff } from '../gitdiff';
 import { notifyInfo } from '../notify';
 import { isAttached, readPath } from '../attachments';
 import { t, langName } from '../i18n';
@@ -134,6 +135,7 @@ class WorkerManager {
       resume: w.sessionId,
       settingSources: w.repo ? ['project', 'local'] : [],
       effort: loadSettings().workerEffort,
+      permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto',
       canUseTool: this.permissionHandler(w),
       hooks: { PreToolUse: [alwaysAskHook(() => roots, () => {})] },
     }, {
@@ -177,6 +179,7 @@ class WorkerManager {
   private permissionHandler(w: Worker): CanUseTool {
     return async (toolName, input, opts) => {
       if (toolName === 'AskUserQuestion') return this.answerQuestions(w, input, opts.signal);
+      if (toolName === 'ExitPlanMode') return this.reviewPlan(w, input, opts.signal);
       // Files the user attached may be read without asking.
       const rp = readPath(toolName, input);
       if (rp && isAttached(rp)) return { behavior: 'allow', updatedInput: input };
@@ -206,6 +209,51 @@ class WorkerManager {
         store.changed();
       }
     };
+  }
+
+  /** The Worker finished planning: the user approves the plan or says what to change. */
+  private async reviewPlan(w: Worker, input: Record<string, unknown>, signal: AbortSignal) {
+    const task = this.currentTask(w);
+    const plan = String(input.plan ?? '').trim();
+    store.log(w.id, 'worker', plan ? `${t('log.plan')}\n\n${plan}` : t('log.plan'));
+    const prev = w.status;
+    w.status = 'waiting';
+    if (task) task.status = 'waiting';
+    store.changed();
+    try {
+      const ans = await ask({
+        source: 'plan', workerId: w.id, taskId: task?.id ?? null,
+        title: t('plan.title'), detail: task?.title ?? w.title, code: plan || null,
+        options: [{ label: ALLOW }], questionKey: null,
+      }, signal);
+      if (ans === ALLOW) {
+        if (task) task.planApproved = true;
+        const s = this.sessions.get(w.id);
+        if (s) s.cfg.permissionMode = 'auto';
+        store.log(w.id, 'user', t('log.planApproved'));
+        return { behavior: 'allow' as const, updatedInput: input, updatedPermissions: [{ type: 'setMode' as const, mode: 'auto' as const, destination: 'session' as const }] };
+      }
+      store.log(w.id, 'user', `${t('log.planRevise')}: ${ans === DENY ? t('deny') : ans}`);
+      return {
+        behavior: 'deny' as const,
+        message: ans === DENY
+          ? 'The user rejected this plan. Stay in plan mode and propose a different approach with ExitPlanMode, or ask what they want with AskUserQuestion.'
+          : `The user wants the plan changed: ${ans}\nStay in plan mode, revise the plan, and present it again with ExitPlanMode.`,
+      };
+    } catch {
+      return { behavior: 'deny' as const, message: 'The plan review was cancelled. Stay in plan mode and present the plan again with ExitPlanMode.' };
+    } finally {
+      if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
+      if (task && task.status === 'waiting') task.status = 'running';
+      store.changed();
+    }
+  }
+
+  async diff(workerId: string) {
+    const w = store.worker(workerId);
+    const repo = w?.repo ? store.repo(w.repo) : null;
+    if (!w || !repo) return null;
+    return worktreeDiff(repo.defaultBranch, w.cwd);
   }
 
   private async answerQuestions(w: Worker, input: Record<string, unknown>, signal: AbortSignal) {
@@ -335,6 +383,7 @@ class WorkerManager {
     } else {
       head.push(`Output folder: ${path.join(w.cwd, task.id)}`);
     }
+    if (needsPlan(task)) head.push('Plan first: you are in plan mode (read-only). Investigate, then present your plan with ExitPlanMode. The user approves it before you change anything; if they ask for changes, revise and present it again.');
     if (task.afterTaskId) {
       const dep = store.task(task.afterTaskId);
       if (dep?.prUrl) head.push(`This task builds on ${dep.prUrl}, which has been merged into the default branch.`);
@@ -351,7 +400,8 @@ class WorkerManager {
       return;
     }
     s.setEffort(this.effortFor(task));
-    s.send(this.taskMessage(w, task));
+    // Plan mode must be in place before the task message arrives.
+    void s.setMode(needsPlan(task) ? 'plan' : 'auto').then(() => s.send(this.taskMessage(w, task)));
   }
 
   /** The task's own effort when per-task effort is on, otherwise the Worker default. */
@@ -465,6 +515,10 @@ class WorkerManager {
   }
 
   ghEnv() { return ghEnv(); }
+}
+
+function needsPlan(task: Task | null) {
+  return !!task?.planFirst && !task.planApproved;
 }
 
 export function modelLabel(m: string) {

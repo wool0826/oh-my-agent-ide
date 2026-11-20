@@ -1,4 +1,4 @@
-import type { AppState, AutoAnswer, ChatItem, Decision, MemoryFile, MemoryHit, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
+import type { AppState, AutoAnswer, ChatItem, Decision, DiffView, MemoryFile, MemoryHit, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
@@ -51,6 +51,9 @@ const ui = {
   accRemove: null as string | null,
   setQ: '',
   version: '',
+  wTab: 'chat' as 'chat' | 'changes',
+  diffs: new Map<string, DiffView | 'loading' | null>(),
+  diffOpen: new Set<string>(),
 };
 
 /* ---------- helpers ---------- */
@@ -63,13 +66,14 @@ function linkify(html: string) {
   return html.replace(/(https?:\/\/[^\s<>"')\]]+)/g, (u) => `<a data-action="open-url" data-href="${u}">${u}</a>`);
 }
 
-/** Tiny markdown: code blocks, inline code, bold, links, line breaks */
+/** Tiny markdown: code blocks, inline code, headings, bold, links, line breaks */
 function md(src: string) {
   const parts = String(src ?? '').split(/```[\w-]*\n?/);
   return parts.map((p, i) => {
     if (i % 2 === 1) return `<pre>${esc(p.replace(/\n$/, ''))}</pre>`;
     let h = esc(p);
     h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    h = h.replace(/^#{1,6} +(.+)$\n?/gm, '<b class="mh">$1</b>');
     h = h.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
     h = linkify(h);
     return h.split(/\n{2,}/).map((para) => para.trim() ? `<p>${para.trim().replace(/\n/g, '<br>')}</p>` : '').join('');
@@ -279,9 +283,10 @@ function renderSidebar() {
 }
 
 function usageTip(a: AccountView) {
-  if (a.lastError) return a.lastError;
-  if (!a.usageUpdatedAt) return t('usage.unknown');
-  const parts = [t('usage.asOf', { t: hhmm(a.usageUpdatedAt) })];
+  const head = `${a.label}\n5h ${pct(a.fiveHour.utilization)} · 7d ${pct(a.sevenDay.utilization)}`;
+  if (a.lastError) return `${head}\n${a.lastError}`;
+  if (!a.usageUpdatedAt) return `${head}\n${t('usage.unknown')}`;
+  const parts = [head, t('usage.asOf', { t: hhmm(a.usageUpdatedAt) })];
   if (a.sevenDay.utilization === null) parts.push(t('usage.no7d'));
   return parts.join('\n');
 }
@@ -294,10 +299,13 @@ function renderUsage() {
     el.innerHTML = `<a data-action="open-settings">${t('usage.addAccount')}</a>`;
     return;
   }
-  el.className = 'usage nodrag';
+  // Up to two accounts: one row each with 5h/7d labels. Three or more: two accounts per row, bars in the same order, numbers in the tooltip.
+  const compact = accs.length > 2;
+  el.className = `usage nodrag${compact ? ' compact' : ''}`;
+  const lbl = (s: string) => (compact ? '' : `<span>${s}</span>`);
   el.innerHTML = accs.map((a: AccountView) => `<span class="acct${a.limited ? ' limited' : ''}" title="${esc(usageTip(a))}"><span class="nm">${esc(a.label)}</span>` +
-    `<span>5h</span><span class="cap"><i class="${lv(a.fiveHour.utilization)}" style="width:${a.fiveHour.utilization ?? 0}%"></i></span><span class="pc">${pct(a.fiveHour.utilization)}</span>` +
-    `<span>7d</span><span class="cap"><i class="${lv(a.sevenDay.utilization)}" style="width:${a.sevenDay.utilization ?? 0}%"></i></span><span class="pc">${pct(a.sevenDay.utilization)}</span></span>`).join('');
+    `${lbl('5h')}<span class="cap"><i class="${lv(a.fiveHour.utilization)}" style="width:${a.fiveHour.utilization ?? 0}%"></i></span><span class="pc">${pct(a.fiveHour.utilization)}</span>` +
+    `${lbl('7d')}<span class="cap"><i class="${lv(a.sevenDay.utilization)}" style="width:${a.sevenDay.utilization ?? 0}%"></i></span><span class="pc">${pct(a.sevenDay.utilization)}</span></span>`).join('');
 }
 
 /* ---------- chat ---------- */
@@ -375,20 +383,22 @@ function updateSendButton() {
 function decisionHtml(d: Decision) {
   const x = task(d.taskId);
   const src = [d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', ');
-  const icon = d.source === 'permission' ? sym('s-alert', 'c-red') : sym('s-chat', 'c-orange');
+  const icon = d.source === 'permission' ? sym('s-alert', 'c-red') : d.source === 'plan' ? sym('s-doc', 'c-blue') : sym('s-chat', 'c-orange');
   let buttons: string;
-  if (d.source === 'permission') {
+  if (d.source === 'plan') {
+    buttons = `<div class="btns"><button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}</button></div>`;
+  } else if (d.source === 'permission') {
     buttons = `<div class="btns"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}</button><button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}</button></div>`;
   } else {
     const col = d.options.length > 2 || d.options.some((o) => o.description);
     buttons = `<div class="btns${col ? ' col' : ''}">${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${esc(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
   }
-  const custom = `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${d.source === 'permission' ? t('dec.denyWhy') : t('dec.other')}">`;
+  const custom = `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${d.source === 'permission' ? t('dec.denyWhy') : d.source === 'plan' ? t('plan.revise') : t('dec.other')}">`;
   return `<div class="dec" id="dec-${d.id}">
     <div class="src">${icon}<span>${esc(src)}</span></div>
     <div class="q">${esc(d.title)}</div>
     ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
-    ${d.code ? `<code>${esc(d.code)}</code>` : ''}
+    ${d.code ? (d.source === 'plan' ? `<div class="plan-md">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
     ${buttons}${custom}
   </div>`;
 }
@@ -497,7 +507,13 @@ function renderSession(force = false) {
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
   $('#ws-title').textContent = `${w.id} ${x?.title ?? w.title}`;
   $('#ws-sub').textContent = `${t('ws.sub')}${w.repo ? `, ${w.repo}` : ''}`;
-  $<HTMLTextAreaElement>('#ws-input').placeholder = t('ws.placeholder', { id: w.id });
+  const tabs = w.repo ? (['chat', 'changes'] as const) : (['chat'] as const);
+  if (!w.repo) ui.wTab = 'chat';
+  $('#ws-tabs').hidden = !w.repo;
+  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" aria-selected="${ui.wTab === v}" class="${ui.wTab === v ? 'on' : ''}" data-action="ws-tab" data-v="${v}">${t(v === 'chat' ? 'ws.tabChat' : 'ws.tabChanges')}</button>`).join('');
+  $('#ws-thread').hidden = ui.wTab !== 'chat';
+  $('#ws-diff').hidden = ui.wTab !== 'changes';
+  if (ui.wTab === 'changes') { if (force || !ui.diffs.has(w.id)) renderDiff(w); return; }
   const log = ui.logs.get(w.id) ?? [];
   const key = `${lang()}:${w.id}:${log.length}:${w.status}:${w.statusText}`;
   if (!force && key === ui.lastLogKey) return;
@@ -517,6 +533,46 @@ function renderSession(force = false) {
   if (w.status === 'running' || w.status === 'starting') html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(oneLine(w.statusText, 90))}</div>`;
   th.innerHTML = html;
   if (nearBottom || force) th.scrollTop = th.scrollHeight;
+}
+
+function diffLines(patch: string) {
+  return patch.replace(/\n+$/, '').split('\n').map((l) => {
+    const c = l.startsWith('@@') ? 'h' : l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : l.startsWith('\\') ? 'h' : '';
+    return `<span class="dl ${c}">${esc(l) || ' '}</span>`;
+  }).join('');
+}
+
+function renderDiff(w: Worker) {
+  const root = $('#ws-diff');
+  const v = ui.diffs.get(w.id);
+  if (v === undefined) { void loadDiff(w.id); }
+  if (v === undefined || v === 'loading') { root.innerHTML = `<div class="empty-view"><span>${t('diff.loading')}</span></div>`; return; }
+  if (v === null) { root.innerHTML = `<div class="empty-view"><span>${t('diff.noRepo')}</span></div>`; return; }
+  if (v.error) { root.innerHTML = `<div class="empty-view"><span>${t('diff.missing')}</span></div>`; return; }
+  const add = v.files.reduce((n, f) => n + f.added, 0), del = v.files.reduce((n, f) => n + f.removed, 0);
+  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
+  if (!v.files.length) { root.innerHTML = `${head}<div class="empty-view"><span>${t('diff.none', { base: v.base })}</span></div>`; return; }
+  const files = v.files.map((f) => {
+    const key = `${w.id}:${f.path}`;
+    const open = ui.diffOpen.has(key);
+    const st = f.status === '?' ? 'A' : f.status;
+    return `<div class="df${open ? ' open' : ''}">
+      <button class="df-h" data-action="diff-file" data-id="${esc(key)}" aria-expanded="${open}"><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg><span class="st st-${st}">${st}</span><span class="p" title="${esc(f.path)}">${esc(f.path)}</span>${f.status === '?' ? `<small>${t('diff.untracked')}</small>` : ''}<span class="n"><b class="plus">+${f.added}</b> <b class="minus">−${f.removed}</b></span></button>
+      ${open ? `<pre class="df-b">${f.patch ? diffLines(f.patch) : `<span class="dl h">${t('diff.binary')}</span>`}</pre>` : ''}
+    </div>`;
+  }).join('');
+  const st = root.scrollTop;
+  root.innerHTML = `${head}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}<div class="dfs">${files}</div>`;
+  root.scrollTop = st;
+}
+
+async function loadDiff(id: string) {
+  if (ui.diffs.get(id) === 'loading') return;
+  ui.diffs.set(id, 'loading');
+  const v = await call<DiffView | null>('worker:diff', id);
+  ui.diffs.set(id, v ?? null);
+  const w = worker(id);
+  if (w && ui.wSel === id && ui.wTab === 'changes') renderDiff(w);
 }
 
 async function loadLog(id: string) {
@@ -550,7 +606,7 @@ function renderWorkerInspector() {
       ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(w.statusText, 140))}</span>` : ''}
     </div>
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
-    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskStatus(x.status)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a>` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
+    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskStatus(x.status)}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a>` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${w.status === 'running' || w.status === 'waiting' ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
@@ -585,7 +641,9 @@ function renderRepos() {
       <div class="group kv"><span>${t('kv.path')}</span><span><a data-action="reveal" data-path="${esc(r.path)}">${esc(r.path)}</a></span><span>${t('kv.url')}</span><span>${esc(r.url)}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
       <div class="ins-h"><b>${t('repo.desc')}</b><small>${t('repo.descHint')}</small></div>
       <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
-      <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.saveDesc')}</button></div>
+      <div class="ins-h"><b>${t('repo.setup')}</b></div>
+      <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
+      <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
       <div class="ins-h"><b>${t('wk.tasks')}</b><small>${ts.length}</small></div>
       <div class="group">${ts.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskStatus(x.status)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
       <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
@@ -893,7 +951,7 @@ function settingsHtml() {
       ${row(t('set.defaultEffort'), 'set-we', segc('set-we', st.workerEffort, effortOpts(), t('set.effort')), 'wrap')}
       ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}`, t('set.workers'))}`;
 
-  return `<header class="stop drag">
+  return `<header class="stopbar drag">
       <button class="btn sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
       <h1>${t('set.title')}</h1>
       <span class="stop-r"><span class="dirty" id="set-dirty" hidden>${t('set.unsaved')}</span><button class="btn" data-action="revert-settings" id="set-revert" disabled>${t('set.revert')}</button><button class="btn def" data-action="save-settings">${t('save')}</button></span>
@@ -1102,6 +1160,20 @@ async function act(el: HTMLElement, e: Event) {
     case 'open-worker': openWorker(id); break;
     case 'select-worker': openWorker(id); break;
     case 'close-session': ui.wOpen = false; renderAll(true); break;
+    case 'ws-tab': {
+      ui.wTab = el.dataset.v as typeof ui.wTab;
+      if (ui.wTab === 'changes' && ui.wSel) ui.diffs.delete(ui.wSel);
+      ui.lastLogKey = '';
+      renderSession(true);
+      break;
+    }
+    case 'diff-refresh': ui.diffs.delete(id); renderSession(true); break;
+    case 'diff-file': {
+      if (ui.diffOpen.has(id)) ui.diffOpen.delete(id); else ui.diffOpen.add(id);
+      const w = worker(ui.wSel);
+      if (w) renderDiff(w);
+      break;
+    }
     case 'answer': {
       el.closest('.dec')?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
       await call('decision:answer', id, el.dataset.val);
@@ -1147,7 +1219,7 @@ async function act(el: HTMLElement, e: Event) {
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
     case 'repo-select': ui.repoSel = id; renderRepos(); break;
-    case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value); toast(t('toast.descSaved')); break;
+    case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value); toast(t('toast.descSaved')); break;
     case 'repo-remove': {
       if (!confirm(t('confirm.repoRemove', { name: id }))) return;
       await call('repo:remove', id);
@@ -1244,9 +1316,10 @@ async function act(el: HTMLElement, e: Event) {
   }
 }
 
+/** The composer grows with its text up to half the window; past that it scrolls with no visible bar. */
 function autosize(el: HTMLTextAreaElement) {
   el.style.height = 'auto';
-  el.style.height = Math.min(180, el.scrollHeight) + 'px';
+  el.style.height = Math.min(Math.round(window.innerHeight * 0.5), el.scrollHeight) + 'px';
 }
 
 function bindComposer(box: Box, formSel: string, inputSel: string, send: (text: string, files: string[]) => Promise<void> | void) {

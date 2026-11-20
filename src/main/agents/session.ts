@@ -1,4 +1,4 @@
-import { query, type CanUseTool, type McpServerConfig, type Options, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { query, type CanUseTool, type McpServerConfig, type Options, type PermissionMode, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { accounts } from '../accounts';
 import { claudeExecutable, pluginPath } from '../runtime';
 import { log } from '../log';
@@ -24,6 +24,8 @@ export interface SessionConfig {
   additionalDirectories?: string[];
   hooks?: Options['hooks'];
   tools?: Options['tools'];
+  /** Default auto. plan = read-only until ExitPlanMode is approved. */
+  permissionMode?: PermissionMode;
 }
 
 export interface SessionEvents {
@@ -76,7 +78,7 @@ export class AgentSession {
       cwd: this.cfg.cwd,
       env: accounts.env(this.cfg.accountId),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: this.cfg.systemAppend },
-      permissionMode: 'auto',
+      permissionMode: this.cfg.permissionMode ?? 'auto',
       canUseTool: this.cfg.canUseTool,
       mcpServers: this.cfg.mcpServers,
       disallowedTools: this.cfg.disallowedTools,
@@ -117,6 +119,13 @@ export class AgentSession {
     if (this.q && typeof effort === 'string') {
       this.q.applyFlagSettings({ effortLevel: effort }).catch((e) => log.warn(`[${this.cfg.label}] effort`, (e as Error).message));
     }
+  }
+
+  /** Switch permission mode, live if the session is running, otherwise for its next start. */
+  async setMode(mode: PermissionMode) {
+    if ((this.cfg.permissionMode ?? 'auto') === mode) return;
+    this.cfg.permissionMode = mode;
+    if (this.q) await this.q.setPermissionMode(mode).catch((e) => log.warn(`[${this.cfg.label}] mode`, (e as Error).message));
   }
 
   async interrupt() {
