@@ -134,6 +134,12 @@ function modelLabel(m: string) {
 }
 function acctLabel(id: string | null) { return S?.accounts.find((a) => a.id === id)?.label ?? '–'; }
 function prNum(url: string | null) { return url?.match(/\/pull\/(\d+)/)?.[1] ?? ''; }
+/** Long paths and URLs keep their last segments, e.g. …/worktrees/demo/W-02. */
+function shortPath(p: string, keep = 3) {
+  const sep = p.includes('\\') && !p.includes('/') ? '\\' : '/';
+  const parts = p.split(/[\\/]/).filter(Boolean);
+  return parts.length > keep + 1 ? `…${sep}${parts.slice(-keep).join(sep)}` : p;
+}
 function base(p: string) { return p.split(/[\\/]/).filter(Boolean).pop() ?? p; }
 const task = (id: string | null | undefined) => (id ? S?.tasks.find((x) => x.id === id) ?? null : null);
 const worker = (id: string | null | undefined) => (id ? S?.workers.find((w) => w.id === id) ?? null : null);
@@ -274,7 +280,7 @@ function renderSidebar() {
     return `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span></div>`;
   }).join('');
   const any = decRows || runRows || prRows || qRows;
-  const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<b>${t('side.emptyTitle')}</b><span>${t('side.emptyBody')}</span></div>`;
+  const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<span>${t('side.emptyTitle')}</span></div>`;
   const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
     <div class="row${doneToday ? '' : ' zero'}" data-action="view" data-v="worker">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></div>
     <div class="row${archived ? '' : ' zero'}" data-action="view" data-v="worker">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
@@ -445,7 +451,7 @@ function renderChatInspector() {
     if (autos.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.map(aaHtml).join('')}</div></div>`;
     if (!html) {
       const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
-      html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b><span>${t('ins.clearBody')}</span>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
+      html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
     }
     root.innerHTML = html;
   });
@@ -482,17 +488,37 @@ function renderWorkerList() {
       <span class="r">${w.status !== 'archived' ? ring(w.contextTokens / COMPACT_AT) + k(w.contextTokens) : ''}${statusPill(w)}</span></div>`;
   };
   if (!s.workers.length) {
-    root.innerHTML = `<div class="vhead"><b>Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b><span>${t('wk.emptyBody')}</span></div>`;
+    root.innerHTML = `<div class="vhead"><b>Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b></div>`;
     return;
   }
   root.innerHTML = `<div class="vhead"><b>Worker</b><small>${t('wk.counts', { a: active.length, b: arch.length })}</small></div>
     <div class="lst">${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${arch.map(li).join('')}` : ''}</div>`;
 }
 
+/** A Worker's final report starts with RESULT:/PR:/FILE: lines; show them as a result header instead of raw protocol. */
+function workerReport(text: string) {
+  const lines = text.split('\n');
+  const head: string[] = [];
+  let i = 0;
+  while (i < lines.length && (/^(RESULT|PR|FILE):/i.test(lines[i].trim()) || (head.length && !lines[i].trim()))) { if (lines[i].trim()) head.push(lines[i].trim()); i++; }
+  if (!head.some((l) => /^RESULT:/i.test(l))) return md(text);
+  const val = (l: string) => l.slice(l.indexOf(':') + 1).trim().replace(/^`|`$/g, '');
+  const summary = val(head.find((l) => /^RESULT:/i.test(l))!);
+  const pr = head.filter((l) => /^PR:/i.test(l)).map(val).map((v) => v.match(/https?:\/\/\S+\/pull\/\d+/)?.[0]).find(Boolean);
+  const files = head.filter((l) => /^FILE:/i.test(l)).map(val).filter(Boolean);
+  const links = [
+    pr ? `<a data-action="open-url" data-href="${esc(pr)}">${sym('s-pr')}PR #${prNum(pr)}</a>` : '',
+    ...files.map((f) => `<a data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${sym('s-doc')}${esc(base(f))}</a>`),
+  ].filter(Boolean).join('');
+  const rest = lines.slice(i).join('\n').trim();
+  const title = esc(summary).replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  return `<div class="rep-h"><b>${title}</b>${links ? `<span class="rep-l">${links}</span>` : ''}</div>${rest ? md(rest) : ''}`;
+}
+
 function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem | null) {
   switch (it.from) {
     case 'dispatcher': return `${prev?.from === 'dispatcher' ? '' : '<span class="who">Dispatcher</span>'}<div class="bub ai">${md(it.text)}</div>`;
-    case 'worker': return `${prev?.from === 'worker' ? '' : `<span class="who">${esc(wid)}</span>`}<div class="bub wk">${md(it.text)}</div>`;
+    case 'worker': return `${prev?.from === 'worker' ? '' : `<span class="who">${esc(wid)}</span>`}<div class="bub wk">${workerReport(it.text)}</div>`;
     case 'user': return `<div class="bub me">${userText(it.text)}</div>`;
     case 'auto': return `<span class="event self">${sym('s-check', 'c-green')}<span>${esc(it.text)}</span></span>`;
     default: return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${esc(it.text)}</span></span>`;
@@ -506,7 +532,7 @@ function renderSession(force = false) {
   if (!ui.wOpen || !w) return;
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
   $('#ws-title').textContent = `${w.id} ${x?.title ?? w.title}`;
-  $('#ws-sub').textContent = `${t('ws.sub')}${w.repo ? `, ${w.repo}` : ''}`;
+  $('#ws-sub').textContent = [w.repo ?? t('general'), x?.branch, modelLabel(w.model)].filter(Boolean).join(' · ');
   const tabs = w.repo ? (['chat', 'changes'] as const) : (['chat'] as const);
   if (!w.repo) ui.wTab = 'chat';
   $('#ws-tabs').hidden = !w.repo;
@@ -585,7 +611,7 @@ function renderWorkerInspector() {
   const root = $('#wk-ins');
   const w = worker(ui.wSel);
   if (!w) {
-    root.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-cpu"/></svg><b>${t('wk.pickTitle')}</b><span>${t('wk.pickBody')}</span></div>`;
+    root.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-cpu"/></svg><b>${t('wk.pickTitle')}</b></div>`;
     return;
   }
   const tasks = w.taskIds.map((id) => task(id)).filter(Boolean).reverse() as Task[];
@@ -638,8 +664,8 @@ function renderRepos() {
   keepInputs(ins, () => {
     const ts = s.tasks.filter((x) => x.repo === r.name).slice(-15).reverse();
     ins.innerHTML = `<div class="ins-h"><b>${esc(r.name)}</b></div>
-      <div class="group kv"><span>${t('kv.path')}</span><span><a data-action="reveal" data-path="${esc(r.path)}">${esc(r.path)}</a></span><span>${t('kv.url')}</span><span>${esc(r.url)}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
-      <div class="ins-h"><b>${t('repo.desc')}</b><small>${t('repo.descHint')}</small></div>
+      <div class="group kv"><span>${t('kv.path')}</span><span><a data-action="reveal" data-path="${esc(r.path)}" title="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span title="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
+      <div class="ins-h"><b>${t('repo.desc')}</b></div>
       <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
       <div class="ins-h"><b>${t('repo.setup')}</b></div>
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
@@ -667,11 +693,11 @@ function renderMemory() {
     list.innerHTML = ui.memHits.length ? ui.memHits.map((h) => `<div class="hit" data-action="mem-select" data-id="${esc(h.path)}"><small>${esc(h.path)}:${h.line}</small><span>${esc(h.text)}</span></div>`).join('') : `<div class="empty-view"><span>${t('mem.noHits')}</span></div>`;
   } else {
     list.innerHTML = ui.memFiles.map((f) => `<div class="li${ui.memSel === f.path ? ' sel' : ''}" data-action="mem-select" data-id="${esc(f.path)}">${memIcon(f.kind)}<span class="m"><b>${esc(f.title)}</b><span>${esc(f.path)}</span></span><span class="r">${hhmm(f.updatedAt)}</span></div>`).join('')
-      || `<div class="empty-view">${sym('s-sparkle')}<b>${t('mem.emptyTitle')}</b><span>${t('mem.emptyBody')}</span></div>`;
+      || `<div class="empty-view">${sym('s-sparkle')}<b>${t('mem.emptyTitle')}</b></div>`;
   }
   const ins = $('#mem-ins');
   if (!ui.memSel) {
-    ins.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-sparkle"/></svg><b>${t('mem.pickTitle')}</b><span>${t('mem.pickBody')}</span></div>`;
+    ins.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-sparkle"/></svg><b>${t('mem.pickTitle')}</b></div>`;
     return;
   }
   ins.innerHTML = `<div class="ins-h"><b>${esc(ui.memSel)}</b></div>
@@ -874,7 +900,7 @@ function accountCard(a: AccountView, i: number) {
   const renaming = ui.accRename === a.id;
   const name = renaming
     ? `<span class="acc-edit"><input class="inp" id="acc-rename" value="${esc(a.label)}" aria-label="${t('acc.name')}" data-id="${a.id}"><button class="btn def" data-action="acc-rename-save" data-id="${a.id}">${t('save')}</button><button class="btn" data-action="acc-rename-cancel">${t('cancel')}</button></span>`
-    : `<span class="acc-name"><b>${esc(a.label)}</b><span class="pill ${a.plan}">${plan}</span></span>`;
+    : `<span class="acc-name"><b>${esc(a.label)}</b><span class="plan-badge ${a.plan}">${plan}</span></span>`;
   const menu = ui.accMenu === a.id ? `<div class="amenu" role="menu" aria-label="${t('acc.options')}">
       <button role="menuitem" data-action="acc-rename" data-id="${a.id}">${t('acc.rename')}</button>
       <button role="menuitem" data-action="acc-refresh">${t('acc.refresh')}</button>
@@ -985,6 +1011,7 @@ function openSettings(pane?: Pane) {
     if (el.type === 'checkbox') el.checked = v as boolean; else el.value = v as string;
   });
   syncSegs(root);
+  requestAnimationFrame(pathEnds);
   const vol = document.getElementById('set-vol') as HTMLInputElement | null;
   if (vol) syncSlider(vol);
   const ren = document.getElementById('acc-rename') as HTMLInputElement | null;
@@ -1047,6 +1074,13 @@ function showPane(id: Pane) {
   });
   const sp = document.querySelector('.spanes');
   if (sp) sp.scrollTop = 0;
+  pathEnds();
+}
+
+/** Long folder paths in Settings show their end, which is the part that differs. Runs once the pane is visible. */
+function pathEnds() {
+  const home = document.querySelector<HTMLInputElement>('#set-home');
+  if (home && document.activeElement !== home) home.scrollLeft = home.scrollWidth;
 }
 
 function closeSettings() {

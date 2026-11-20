@@ -147,3 +147,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 54. **Usage in the toolbar with 3 or 4 accounts.** One row per account no longer fits the 52 px toolbar, so from three accounts on they sit two per row and the "5h"/"7d" labels are dropped (the bars stay in that order). Hovering an account shows its name, both percentages and when they were read.
 55. **Usage past its reset time is ignored.** A 5h or 7d value whose `resetsAt` has passed counts as unknown (0 for picking accounts, "–" on screen). Before this, an account stored above 80% stayed "limited" after the window reset. A PC-login account learns usage only from running sessions, and none start while every account looks limited, so the app could stay stuck.
 56. **Composer.** No placeholder text. The box grows with its text up to half the window, then scrolls with the scrollbar hidden. The stop button had picked up the settings top bar's `.stop` layout and stretched into an ellipse; that bar's class is now `.stopbar`.
+57. **UI polish pass.**
+    - Selection prompts and "nothing here" states show a title only. The sidebar's "nothing in progress" is one quiet row instead of a large block. The first-run chat and empty Repositories views keep their one line of guidance, since adding a repository only works through the chat.
+    - The settings account badge used the global `.pill` class and turned every status pill blue (idle Workers looked busy). It is now `.plan-badge`.
+    - The Worker conversation subtitle shows repository · branch · model.
+    - Long paths: the Repositories inspector shows the last three segments with the full path on hover; the IDE home field in Settings scrolls to the end.
+    - A Worker's final report shows its `RESULT:` line as a bold summary with PR and file chips, instead of the raw `RESULT:`/`PR:`/`FILE:` lines.
