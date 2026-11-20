@@ -1,113 +1,124 @@
-# 구현하면서 정한 것
+# Decisions made during implementation
 
-설계 단계에서 사용자와 합의한 내용은 그대로 따랐다. 아래는 구현 중에 따로 정한 것들이다. 바꾸고 싶은 항목이 있으면 이 문서의 번호로 말하면 된다.
+What was agreed with the user during design was followed as is. Below are the choices made while implementing. To change one, refer to it by number.
 
-## 저장과 구조
+## Storage and layout
 
-1. **상태 저장은 JSON 파일 하나, SQLite는 쓰지 않음.**
-   - 작업, Worker, 결정, 대화는 `<홈>/data/state.json`에 저장한다. 원자적으로 쓰고, 300ms 묶어서 저장한다.
-   - Worker 대화 기록은 `<홈>/data/workers/W-xx.jsonl`에 쓴다.
-   - 이유: 네이티브 모듈이 없으면 Windows와 macOS 패키징이 단순해진다. 개인용이라 데이터 양도 작다.
-2. **메모리 검색도 SQLite FTS 대신 마크다운을 직접 훑는 단어 일치.**
-   - 원본은 합의대로 마크다운과 git이다. 파일이 수백 개를 넘어 느려지면 FTS를 붙인다.
-3. **Worker 하나가 저장소 하나에 worktree 하나** (`<홈>/worktrees/<저장소>/<W-id>`).
-   - 작업마다 Worker가 그 worktree 안에서 `agent/t-xxxx` 브랜치를 새로 판다.
-   - 이유: 같은 Worker에게 이어 맡길 때 세션의 작업 폴더가 바뀌면 안 된다(resume이 폴더 경로에 묶여 있다).
-4. **PR이 머지되거나 닫혔을 때.** 로컬 브랜치와 원격 브랜치를 지우고, worktree는 기본 브랜치로 되돌려 둔다.
-   - worktree 폴더 자체는 Worker가 보관될 때 지운다.
-   - 합의안("머지 시 worktree 삭제")과 다른 점은 이것뿐이다. 맥락을 가진 Worker가 다음 작업을 이어 받으려면 폴더가 남아 있어야 한다.
-5. **코드가 아닌 작업의 결과물 폴더**는 `<홈>/workspaces/<W-id>/<T-id>/`.
-6. **저장소 등록은 git 주소, `org/name`(사내 GitHub 호스트로 변환), 이미 받아 둔 로컬 폴더 경로를 모두 받는다.**
+1. **State is a single JSON file, not SQLite.**
+   - Tasks, Workers, decisions and chat live in `<home>/data/state.json`, written atomically and batched every 300 ms.
+   - Worker conversations go to `<home>/data/workers/W-xx.jsonl`.
+   - Why: without native modules, Windows and macOS packaging stays simple. A personal tool has little data.
+2. **Memory search scans the markdown for word matches instead of SQLite FTS.**
+   - As agreed, markdown plus git is the source of truth. Add FTS if it slows down past a few hundred files.
+3. **One worktree per Worker per repository** (`<home>/worktrees/<repo>/<W-id>`).
+   - For each task the Worker creates a new `agent/t-xxxx` branch inside that worktree.
+   - Why: when the same Worker continues, the session's folder must not change (resume is tied to the folder path).
+4. **When a PR is merged or closed** the local and remote branches are deleted and the worktree goes back to the default branch.
+   - The worktree folder itself is removed when the Worker is archived.
+   - This is the only difference from the agreed plan ("delete the worktree on merge"): a Worker that keeps its context needs its folder to take the next task.
+5. **Output of non-code tasks** goes to `<home>/workspaces/<W-id>/<T-id>/`.
+6. **Repository registration accepts a git URL, `org/name` (turned into a company GitHub URL), or the path of a folder already cloned.**
 
-## 에이전트
+## Agents
 
-7. **Dispatcher가 쓰는 도구.**
-   - 읽기 도구만 쓴다: Read, Glob, Grep, WebSearch, WebFetch.
-   - 여기에 IDE 작업판 MCP 도구를 더한다: `list_repos`, `register_repo`, `list_workers`, `create_task`, `send_to_worker`, `stop_worker`, `request_decision`, `remember`, `recall`, `task_detail`.
-   - 코드를 직접 고치지 못하게 했다.
-8. **MCP 서버 이름은 `board`.** `ide`는 Claude Code가 IDE 연동용으로 예약한 이름이라 도구가 걸러진다. 실제로 겪은 문제다.
-9. **effort.** Dispatcher는 medium, Worker는 high, 대신 답하기 판단은 low.
-10. **Dispatcher는 날짜가 바뀌면 새 세션으로 시작한다.**
-    - 시스템 프롬프트에 메모리 요약과 저장소 목록을 넣는다.
-    - Worker 소식은 Dispatcher를 따로 깨우지 않고, 다음 사용자 메시지 앞에 붙여 전한다. 불필요한 턴과 비용을 줄이려는 것이다.
-11. **Worker 결과 형식.** 마지막 메시지 맨 앞에 `RESULT:`, `PR:`, `FILE:` 줄을 쓰게 하고 앱이 읽는다. 결과 카드의 요약, PR 링크, 파일 링크가 여기서 나온다.
-12. **끝난 지 3일 안 된 작업에 추가 지시(사용자, Dispatcher, 정정)가 오면** 그 작업을 다시 열고, 결과 카드에 "추가 지시를 반영했어요"로 올린다.
-13. **앱을 다시 켜면** 실행 중이던 Worker는 같은 세션을 이어 열고 "하던 작업을 이어서" 메시지를 보낸다. 기다리던 질문과 권한 요청은 거두고, Worker가 이어 가면서 다시 묻는다.
+7. **Dispatcher tools.**
+   - Read-only tools only: Read, Glob, Grep, WebSearch, WebFetch.
+   - Plus the IDE task-board MCP tools: `list_repos`, `register_repo`, `list_workers`, `create_task`, `send_to_worker`, `stop_worker`, `request_decision`, `remember`, `recall`, `task_detail`.
+   - It cannot edit code.
+8. **The MCP server is named `board`.** Claude Code reserves `ide` for IDE integration and filters its tools. This actually happened.
+9. **Effort.** Dispatcher medium, Workers high, the answer-on-your-behalf check low.
+10. **The Dispatcher starts a new session each day.**
+    - Its system prompt carries a memory digest and the repository list.
+    - Worker news does not wake the Dispatcher; it is prefixed to the next user message. This avoids extra turns and cost.
+11. **Worker result format.** The final message starts with `RESULT:`, `PR:` and `FILE:` lines that the app parses. Result cards take their summary, PR link and file links from these.
+12. **A follow-up (from the user, the Dispatcher, or a correction) on a task finished less than 3 days ago** reopens that task, and its result card says "Applied the follow-up".
+13. **On restart** running Workers reopen their sessions and get a "continue where you left off" message. Pending questions and permission requests are withdrawn; Workers ask again as they continue.
 
-## 질문, 권한, 대신 답하기
+## Questions, permissions, answering on the user's behalf
 
-14. **Worker의 AskUserQuestion은 앱이 가로챈다.**
-    - 먼저 Dispatcher 모델이 메모리를 보고, 분명한 근거가 있을 때만 대신 답한다(구조화 출력).
-    - 근거가 없으면 결정 대기함에 올린다. Worker는 답을 받을 때까지 기다린다.
-    - 비용, 보안, 데이터 삭제, 외부 공개처럼 되돌리기 어려운 질문은 대신 답하지 않는다.
-15. **권한.** auto mode를 쓰고, auto mode가 판단을 못 해 묻는 것만 결정 대기함으로 보낸다.
-16. **auto mode와 별개로 항상 묻는 목록** (PreToolUse 훅):
-    - 강제 push
-    - main, master, develop, release/*로 직접 push
-    - DROP/TRUNCATE, WHERE 없는 DELETE
-    - 운영 DB 클라이언트 접속
-    - kubectl, terraform, helm 변경
-    - `gh pr merge`, 저장소나 릴리스 삭제
-    - 루트나 홈 폴더 `rm -rf`
-    - Worker 폴더 밖 파일 수정
-17. **결정 대기함에서 답한 내용**은 메모리 `decisions/YYYY-MM.md`에 남는다. 끝난 작업은 `tasks/YYYY-MM.md`에 남는다.
-18. **정정.**
-    - "이번만 예외"를 고르면 해당 Worker에게 `[정정]` 메시지만 보낸다.
-    - "선호도 고치기"를 고르면 `preferences.md`에서 근거가 된 줄도 고친다.
+14. **The app intercepts Workers' AskUserQuestion.**
+    - First the Dispatcher model checks memory and answers only with clear support (structured output).
+    - Without support, the question goes to the decision inbox and the Worker waits.
+    - It never answers questions that are hard to undo: cost, security, deleting data, making something public.
+15. **Permissions.** Auto mode is used; only what auto mode cannot decide goes to the decision inbox.
+16. **Always ask, regardless of auto mode** (PreToolUse hook):
+    - force push
+    - direct push to main, master, develop, release/*
+    - DROP/TRUNCATE, DELETE without WHERE
+    - production database clients
+    - kubectl, terraform, helm changes
+    - `gh pr merge`, deleting a repository or release
+    - `rm -rf` of the root or home folder
+    - editing files outside the Worker folder
+17. **Answers given in the decision inbox** are kept in memory under `decisions/YYYY-MM.md`. Finished tasks go to `tasks/YYYY-MM.md`.
+18. **Corrections.**
+    - "Just this once" sends only a `[Correction]` message to that Worker.
+    - "Fix the preference" also rewrites the line in `preferences.md` the answer was based on.
 
-## 계정과 사용량
+## Accounts and usage
 
-19. **계정 종류는 둘.**
-    - `claude setup-token`으로 받은 토큰. OS 보안 저장소로 암호화한다.
-    - 이 PC의 Claude Code 로그인을 그대로 쓰는 계정. 하나만 등록할 수 있다.
-20. **배정 규칙.**
-    - 5시간과 7일 사용량 중 큰 값이 가장 낮은 계정을 고른다.
-    - 5%p 이내로 비슷하면 가장 오래전에 배정한 계정을 고른다.
-    - 80%를 넘은 계정은 새 세션에 쓰지 않는다.
-21. **한도에 걸렸을 때.**
-    - 작업 중 한도 오류가 나면 같은 세션을 다른 계정 토큰으로 이어 연다.
-    - 모든 계정이 80%를 넘으면 새 작업은 대기열에 둔다. 2분마다 다시 시도한다.
-22. **사용량을 읽는 곳은 셋.**
-    - 토큰 계정은 5분마다 Claude Code의 사용량 엔드포인트를 읽는다.
-    - 모든 세션의 rate limit 이벤트를 반영한다.
-    - 세션 사용량 API를 턴이 끝날 때마다(최소 1분 간격) 읽는다. 엔드포인트 권한이 없는 토큰과 로그인 계정도 이것으로 채워진다.
-23. **자식 프로세스 환경 정리.** Claude Code 터미널에서 앱을 띄우면 `CLAUDECODE`, `CLAUDE_CODE_*` 같은 변수가 따라온다. 자식 세션이 이상하게 동작하므로 걷어 낸다.
+19. **Two kinds of account.**
+    - A token from `claude setup-token`, encrypted with the OS secure store.
+    - This PC's Claude Code login as is. Only one can be registered.
+20. **Assignment.**
+    - Pick the account whose larger of 5-hour and 7-day usage is lowest.
+    - Within 5 points, pick the one assigned longest ago.
+    - Accounts above 80% get no new sessions.
+21. **Hitting a limit.**
+    - A limit error mid-task resumes the same session with another account's token.
+    - When every account is above 80%, new work is queued and retried every 2 minutes.
+22. **Usage comes from three places.**
+    - Token accounts: Claude Code's usage endpoint every 5 minutes.
+    - Rate-limit events from every session.
+    - The session usage API after each turn (at most once a minute). This also fills tokens without endpoint access and the login account.
+23. **Child process environment.** Started from a Claude Code terminal, the app inherits variables such as `CLAUDECODE` and `CLAUDE_CODE_*`, which confuse child sessions. They are stripped.
 
-## 압축, 보관, 알림, PR
+## Compaction, archiving, notifications, PRs
 
-24. **압축.** 턴이 끝났을 때 컨텍스트가 250K를 넘으면 `/compact`를 보낸다. 이 턴은 화면에 보이지 않는다.
-25. **자동 보관.**
-    - 설정의 보관 기간(기본 7일) 동안 쉬고 있는 Worker를 보관한다. 열린 PR이 있는 Worker는 보관하지 않는다.
-    - Dispatcher가 보관된 Worker에게 다시 맡기면 자동으로 복원한다.
-26. **알림.**
-    - 결정이 필요할 때는 소리 있는 OS 알림, Windows 작업 표시줄 깜빡임(macOS는 Dock 튀기기), 사이드바 깜빡임을 쓴다.
-    - 작업 완료는 창이 뒤에 있을 때만 조용한 알림으로 알린다.
-27. **PR 확인.**
-    - 3분마다 `gh`로 열린 PR을 본다.
-    - 대화, 리뷰, 인라인 코멘트 중 새 것(봇 제외)이 있으면 그 PR을 만든 Worker에게 반영과 push를 맡긴다.
-28. **CLAUDE.md 반영 PR**은 메모리 화면에서 `repos/<저장소>.md`를 열었을 때만 나오는 버튼으로 만든다. 그 저장소를 맡아 온 Worker가 있으면 그 Worker에게 맡긴다.
+24. **Compaction.** When a turn ends above 250K context, `/compact` is sent. That turn is hidden.
+25. **Auto-archive.**
+    - Workers idle for the configured period (default 7 days) are archived. Workers with an open PR or a task waiting for a merge are not.
+    - If the Dispatcher gives an archived Worker new work, it is restored automatically.
+26. **Notifications.**
+    - Decisions: the app's own sound, an OS notification, taskbar flash on Windows (Dock bounce on macOS), and a blinking sidebar.
+    - Finished tasks: a silent notification, only while the window is in the background.
+27. **PR checks.**
+    - Every 3 minutes, `gh` checks open PRs.
+    - New conversation, review or inline comments (bots excluded) are handed to the Worker that opened the PR to address and push.
+28. **The CLAUDE.md PR** is created only from the button shown when `repos/<repo>.md` is open in the Memory view. The Worker that has been working on that repository takes it if there is one.
 
-## 화면
+## UI
 
-29. **Windows 창.** 제목 표시줄을 숨기고 OS 창 버튼을 오른쪽 위에 겹쳐 쓴다. macOS는 신호등 버튼을 사이드바 위에 둔다.
-30. **글꼴.** 시스템 글꼴만 쓴다. 오프라인에서도 같은 모양이 나온다.
-31. **단축키.**
+29. **Windows window.** The title bar is hidden and the OS window buttons overlay the top right. On macOS the traffic lights sit above the sidebar.
+30. **Fonts.** System fonts only, so it looks the same offline.
+31. **Shortcuts.**
 
-    | 키 | 동작 |
+    | Key | Action |
     |---|---|
-    | ⌘/Ctrl+1~4 | 화면 전환 |
-    | ⌘/Ctrl+, | 설정 |
-    | ⌘/Ctrl+Z | 목록 정리 되돌리기 |
-    | Enter | 보내기 |
-    | Shift+Enter | 줄바꿈 |
+    | ⌘/Ctrl+1–4 | Switch view |
+    | ⌘/Ctrl+, | Settings |
+    | ⌘/Ctrl+Z | Undo clearing a list |
+    | Enter | Send |
+    | Shift+Enter | New line |
 
-    Dispatcher가 일하는 중이고 입력이 비어 있으면 보내기 버튼이 멈추기 버튼으로 바뀐다.
-32. **저장소 추가 버튼은 두지 않는다.** 시안 논의 때 "추가는 대화로" 하기로 했다. 설명 수정과 등록 해제는 저장소 화면에서 할 수 있다.
-33. **모델 이름은 설정에서 바꿀 수 있다.** 기본값은 Dispatcher Sonnet 5.5, Worker Opus 5.5, 설계 작업 Fable 5.2.
+    While the Dispatcher is working and the input is empty, the send button becomes a stop button.
+32. **No "add repository" button.** During the mock review we agreed that adding happens through the chat. The Repositories view can edit descriptions and unregister.
+33. **Model IDs are editable in Settings.** Defaults: Dispatcher Sonnet 5.5, Worker Opus 5.5, design work Fable 5.2.
 
-## 패키징
+## Packaging
 
-34. **Windows는 NSIS 설치 파일, macOS는 dmg.**
-    - SDK의 Claude 실행 파일은 asar 밖으로 풀어 둔다.
-    - 코드 서명은 하지 않았다. 개인용이라 첫 실행 때 OS 경고가 한 번 뜬다.
-35. **`OMA_DATA_DIR` 환경 변수**로 설정과 데이터를 다른 폴더에 둘 수 있다. 테스트용이고, 두 번째 프로필로도 쓸 수 있다.
+34. **NSIS installer on Windows, dmg on macOS.**
+    - The SDK's Claude binary is unpacked outside the asar.
+    - No code signing. It is a personal tool, so the OS warns once on first run.
+35. **`OMA_DATA_DIR`** puts settings and data in another folder. Meant for testing; also works as a second profile.
+
+## Round 3 (0.2.0)
+
+36. **Usage endpoint 429 is not an account limit.** It is the usage endpoint's own request limit (Claude Code on the same PC calls it too). The app keeps the last known values, shows no error, and waits for Retry-After or 15 minutes before asking again. The 7-day number appears only when the endpoint or the session usage API reports it; rate-limit events during work only carry the 5-hour window. Unknown values show as "–" in both the toolbar and Settings, with a tooltip saying why.
+37. **Language.** English is the default; Korean can be chosen in Settings → General. All UI text lives in `src/shared/i18n.ts`. Agent prompts are written in English and tell agents to write to the user in the chosen language. Chat lines already written stay in the language they were written in. Code, comments, docs and commit messages in this repository are in English.
+38. **PR language for Workers.** Workers follow the language of the repository's recent PRs; without a clear convention they use the UI language.
+39. **Settings layout.** Sections on the left (Accounts, General, Notifications, Memory, Models), the chosen section on the right, one Save button for everything. Switching sections keeps unsaved values.
+40. **Accounts: at most 4, each marked Team or Enterprise.** The plan is a label the user picks; it does not change assignment. Accounts that report no usage window are scored as 0% and rely on rate-limit events, as before.
+41. **Decision sound.** Built-in sounds are synthesized with Web Audio (chime, bell, ping), so no audio files ship with the app. A custom file (mp3, wav, ogg, m4a, aac, flac, up to 8 MB) can be chosen. OS notifications are silent so the sound plays only once. Windows needs an AppUserModelID for toast notifications, so the app sets `dev.ohmyagent.ide` (same as `build.appId`).
+42. **Dropped files are passed as paths, not copied or uploaded.** The message gets an `[Attached files]` list of absolute paths. The Dispatcher puts those paths in the task prompt, and Workers may Read, Glob and Grep at or under them without a permission prompt. Other writes still follow the normal rules. Files dropped anywhere else in the window are ignored instead of opening in the window.
+43. **Tasks that wait for a merge.** `create_task` takes `after_task_id`. Such a task is assigned right away (the Worker shows "After merge") but starts only when the PR monitor sees that PR merged. If the PR is closed without merging, the waiting task is cancelled and the chat says so; the Dispatcher hears it with the next message. A merge also posts a silent notification, marks the result card "merged", and is checked again whenever the window comes to the front (at most once a minute) in addition to every 3 minutes.

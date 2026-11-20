@@ -1,12 +1,12 @@
 ---
 name: targeted-tests
-description: 테스트나 빌드를 돌릴 때 쓴다. 바꾼 부분의 테스트부터 돌리고 전체 테스트는 마지막에 한 번만 돌린다.
+description: Use when running tests or builds. Run the tests for what you changed first, and the full suite only once at the end.
 ---
 
-# 테스트는 좁게 먼저, 넓게 한 번
+# Narrow tests first, the full suite once
 
-1. 바꾼 파일과 가까운 테스트만 먼저 돌린다(파일, 클래스, 테스트 이름 지정).
-2. 실패하면 그 실패만 다시 돌리면서 고친다. 매번 전체를 돌리지 않는다.
-3. PR을 만들기 직전에 저장소가 정한 전체 검사(테스트, 린트, 타입 체크)를 한 번 돌린다.
-4. 출력은 실패 요약 위주로 본다: `--quiet`, `-q`, `--reporter=dot`, `| tail -50`.
-5. 오래 걸리는 통합 테스트는 작업과 관련 있을 때만 돌리고, 돌리지 않았다면 PR 본문에 적는다.
+1. First run only the tests closest to the files you changed (name the file, class, or test).
+2. On failure, rerun just that failure while fixing it. Don't run everything each time.
+3. Right before opening the PR, run the repository's full checks (tests, lint, type check) once.
+4. Read mostly the failure summary: `--quiet`, `-q`, `--reporter=dot`, `| tail -50`.
+5. Run slow integration tests only when they relate to the task; if you skipped them, say so in the PR body.

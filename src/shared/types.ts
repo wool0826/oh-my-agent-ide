@@ -1,12 +1,20 @@
-// 메인 프로세스와 화면이 함께 쓰는 데이터 모양
+// Data shapes shared by the main process and the renderer.
+
+export type Lang = 'en' | 'ko';
 
 export type UsageWindow = { utilization: number | null; resetsAt: string | null };
+
+export type AccountPlan = 'team' | 'enterprise';
+
+/** At most this many accounts can be registered. */
+export const MAX_ACCOUNTS = 4;
 
 export interface AccountView {
   id: string;
   label: string;
-  /** token: 저장된 OAuth 토큰, login: 이 PC의 Claude Code 로그인 그대로 */
+  /** token: stored OAuth token, login: this PC's existing Claude Code login */
   kind: 'token' | 'login';
+  plan: AccountPlan;
   fiveHour: UsageWindow;
   sevenDay: UsageWindow;
   usageUpdatedAt: string | null;
@@ -43,7 +51,8 @@ export interface Worker {
   knowledge: string;
 }
 
-export type TaskStatus = 'queued' | 'running' | 'waiting' | 'pr_open' | 'done' | 'failed' | 'cancelled';
+/** blocked: waiting for another task's PR to merge (afterTaskId). */
+export type TaskStatus = 'blocked' | 'queued' | 'running' | 'waiting' | 'pr_open' | 'done' | 'failed' | 'cancelled';
 
 export interface Task {
   id: string;
@@ -63,6 +72,9 @@ export interface Task {
   finishedAt: string | null;
   reviewSyncedAt: string | null;
   seenCommentIds: string[];
+  /** Start this task only after that task's PR is merged. */
+  afterTaskId?: string | null;
+  mergedAt?: string | null;
 }
 
 export interface DecisionOption { label: string; description?: string }
@@ -76,13 +88,17 @@ export interface Decision {
   detail: string;
   code: string | null;
   options: DecisionOption[];
-  /** question: AskUserQuestion의 질문 원문(답을 돌려줄 때 키로 씀) */
+  /** question: the AskUserQuestion text, used as the key when answering */
   questionKey: string | null;
   status: 'pending' | 'answered';
   answer: string | null;
   createdAt: string;
   answeredAt: string | null;
 }
+
+/** Answer values for permission decisions. The renderer shows localized labels. */
+export const ALLOW = 'allow';
+export const DENY = 'deny';
 
 export interface AutoAnswer {
   id: string;
@@ -102,7 +118,7 @@ export interface ChatItem {
   ts: string;
   kind: ChatKind;
   text: string;
-  /** result 카드: 작업 id, auto: 대신 답한 것 id */
+  /** result card: task id, auto: auto-answer id */
   ref?: string;
   cleared?: boolean;
 }
@@ -113,10 +129,17 @@ export interface WorkerLogItem {
   text: string;
 }
 
+export type SoundName = 'chime' | 'bell' | 'ping' | 'none' | 'custom';
+
 export interface SettingsView {
+  language: Lang;
   home: string;
   githubHost: string;
+  /** OS notification when a decision is needed */
   notifications: boolean;
+  sound: SoundName;
+  soundVolume: number;
+  customSound: string;
   archiveDays: number;
   memoryRemote: string;
   dispatcherModel: string;

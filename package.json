@@ -1,7 +1,7 @@
 {
   "name": "oh-my-agent-ide",
-  "version": "0.1.0",
-  "description": "Dispatcher와 Worker 에이전트에게 일을 맡기고 결정과 결과만 보는 데스크톱 IDE",
+  "version": "0.2.0",
+  "description": "Desktop IDE where a Dispatcher hands work to Worker agents and you see only decisions and results",
   "main": "dist/main.mjs",
   "scripts": {
     "build": "node build.mjs",

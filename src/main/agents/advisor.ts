@@ -5,12 +5,13 @@ import { memoryDigest, searchMemory } from '../memory';
 import { claudeExecutable } from '../runtime';
 import { paths } from '../paths';
 import { log } from '../log';
+import { langName } from '../i18n';
 
 export interface AdvisorVerdict { canAnswer: boolean; answer: string; basis: string }
 
 /**
- * Worker가 사용자에게 물은 질문을 Dispatcher가 대신 답할 수 있는지 판단한다.
- * 메모리에 분명한 근거가 있을 때만 답하고, 아니면 결정 대기함으로 넘긴다.
+ * Decide whether the Dispatcher can answer a Worker's question on the user's behalf.
+ * Answer only with clear support in memory; otherwise it goes to the decision inbox.
  */
 export async function adviseOnQuestion(input: { workerId: string; taskTitle: string; question: string; options: string[] }): Promise<AdvisorVerdict | null> {
   const acc = accounts.pick();
@@ -18,19 +19,19 @@ export async function adviseOnQuestion(input: { workerId: string; taskTitle: str
   const hits = searchMemory(`${input.question} ${input.options.join(' ')} ${input.taskTitle}`, 10)
     .map((h) => `- (${h.path}:${h.line}) ${h.text}`).join('\n');
   const prompt = [
-    `Worker ${input.workerId}가 "${input.taskTitle}" 작업 중 사용자에게 아래 질문을 했습니다.`,
-    `질문: ${input.question}`,
-    input.options.length ? `선택지: ${input.options.map((o) => `"${o}"`).join(', ')}` : '',
+    `While working on "${input.taskTitle}", Worker ${input.workerId} asked the user this question.`,
+    `Question: ${input.question}`,
+    input.options.length ? `Options: ${input.options.map((o) => `"${o}"`).join(', ')}` : '',
     '',
-    '사용자의 메모리(선호, 저장소 메모, 지난 결정)는 다음과 같습니다.',
-    memoryDigest(4000) || '(비어 있음)',
+    "The user's memory (preferences, repo notes, past decisions):",
+    memoryDigest(4000) || '(empty)',
     '',
-    '질문과 관련 있어 보이는 메모리 줄:',
-    hits || '(없음)',
+    'Memory lines that look related to the question:',
+    hits || '(none)',
     '',
-    '메모리에 이 질문에 대한 분명한 근거(같은 주제의 선호나 지난 결정)가 있을 때만 canAnswer=true로 답하세요.',
-    '추측이 필요하거나, 비용, 보안, 데이터 삭제, 외부 공개처럼 되돌리기 어려운 일이면 canAnswer=false입니다.',
-    'answer는 선택지가 있으면 선택지 문구 그대로, basis는 근거가 된 메모리 내용을 한 문장으로 적습니다.',
+    'Set canAnswer=true only if memory clearly supports an answer (a preference or past decision on the same topic).',
+    'If it needs guessing, or concerns cost, security, deleting data, or making something public, set canAnswer=false.',
+    `If there are options, answer with an option's exact wording. basis is one sentence, in ${langName()}, quoting the memory it relies on.`,
   ].filter(Boolean).join('\n');
 
   try {

@@ -2,13 +2,14 @@ import { app, safeStorage } from 'electron';
 import os from 'node:os';
 import path from 'node:path';
 import { readJson, writeJsonAtomic, uid } from './util';
-import type { SettingsView, UsageWindow } from '../shared/types';
+import type { AccountPlan, SettingsView, UsageWindow } from '../shared/types';
 
 export interface StoredAccount {
   id: string;
   label: string;
   kind: 'token' | 'login';
-  /** safeStorage로 암호화한 토큰(base64). login 계정은 비어 있음 */
+  plan: AccountPlan;
+  /** Token encrypted with safeStorage (base64). Empty for login accounts. */
   tokenEnc: string;
   fiveHour: UsageWindow;
   sevenDay: UsageWindow;
@@ -17,6 +18,8 @@ export interface StoredAccount {
   limitedUntil: string | null;
   lastAssignedAt: string | null;
   lastError: string | null;
+  /** The usage endpoint rate-limited us (429); don't ask again before this time. */
+  usageBackoffUntil?: string | null;
 }
 
 export interface Settings extends SettingsView {
@@ -27,9 +30,13 @@ const dataDir = () => (process.env.OMA_DATA_DIR ? path.resolve(process.env.OMA_D
 const file = () => path.join(dataDir(), 'settings.json');
 
 export const DEFAULTS: SettingsView = {
+  language: 'en',
   home: path.join(os.homedir(), 'OhMyAgentIDE'),
   githubHost: '',
   notifications: true,
+  sound: 'chime',
+  soundVolume: 70,
+  customSound: '',
   archiveDays: 7,
   memoryRemote: '',
   dispatcherModel: 'claude-sonnet-5-5',
@@ -49,8 +56,9 @@ export function loadSettings(): Settings {
 function fixAccount(a: Partial<StoredAccount>): StoredAccount {
   return {
     id: a.id ?? uid(),
-    label: a.label ?? '계정',
+    label: a.label ?? 'Account',
     kind: a.kind ?? 'token',
+    plan: a.plan ?? 'team',
     tokenEnc: a.tokenEnc ?? '',
     fiveHour: a.fiveHour ?? { utilization: null, resetsAt: null },
     sevenDay: a.sevenDay ?? { utilization: null, resetsAt: null },
@@ -59,6 +67,7 @@ function fixAccount(a: Partial<StoredAccount>): StoredAccount {
     limitedUntil: a.limitedUntil ?? null,
     lastAssignedAt: a.lastAssignedAt ?? null,
     lastError: a.lastError ?? null,
+    usageBackoffUntil: a.usageBackoffUntil ?? null,
   };
 }
 
@@ -74,7 +83,7 @@ export function updateSettings(patch: Partial<SettingsView>) {
 
 export function encryptToken(token: string): string {
   if (safeStorage.isEncryptionAvailable()) return 'enc:' + safeStorage.encryptString(token).toString('base64');
-  // 암호화를 못 쓰는 환경(일부 Linux)에서는 평문 대신 표시만 해 둔다.
+  // Where encryption is unavailable (some Linux setups), at least mark it as raw.
   return 'raw:' + Buffer.from(token, 'utf8').toString('base64');
 }
 

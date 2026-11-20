@@ -3,8 +3,9 @@ import { accounts } from '../accounts';
 import { claudeExecutable, pluginPath } from '../runtime';
 import { log } from '../log';
 import { PushQueue } from '../util';
+import { t } from '../i18n';
 
-/** 이 크기를 넘은 채로 턴이 끝나면 /compact를 보낸다. */
+/** When a turn ends above this size, send /compact. */
 export const COMPACT_AT = 250_000;
 
 export interface SessionConfig {
@@ -17,7 +18,7 @@ export interface SessionConfig {
   mcpServers?: Record<string, McpServerConfig>;
   canUseTool?: CanUseTool;
   disallowedTools?: string[];
-  /** Worker는 저장소의 CLAUDE.md를 읽도록 project 설정을 불러온다. */
+  /** Workers load project settings so the repo's CLAUDE.md applies. */
   settingSources?: Options['settingSources'];
   effort?: Options['effort'];
   additionalDirectories?: string[];
@@ -43,8 +44,8 @@ function userMsg(text: string): SDKUserMessage {
 const LIMIT_RE = /rate.?limit|usage limit|limit reached|429|5-hour|weekly limit|out of extra usage/i;
 
 /**
- * Claude Code 세션 하나. 입력을 큐로 받아 계속 이어지는 대화를 유지하고,
- * 계정 한도에 걸리면 다른 계정 토큰으로 같은 세션을 이어서 연다.
+ * One Claude Code session. Input comes through a queue so the conversation stays open;
+ * when the account hits its limit, the same session is resumed with another account's token.
  */
 export class AgentSession {
   cfg: SessionConfig;
@@ -96,7 +97,7 @@ export class AgentSession {
   }
 
   send(text: string) {
-    if (this.closed) throw new Error('닫힌 세션이에요.');
+    if (this.closed) throw new Error('Session is closed.');
     if (!this.q) this.start();
     this.busy = true;
     this.ev.onStatus?.('busy', '');
@@ -110,13 +111,13 @@ export class AgentSession {
   }
 
   async interrupt() {
-    try { await this.q?.interrupt(); } catch { /* 이미 끝남 */ }
+    try { await this.q?.interrupt(); } catch { /* already finished */ }
   }
 
   close() {
     this.closed = true;
     this.input?.close();
-    try { this.q?.close(); } catch { /* 무시 */ }
+    try { this.q?.close(); } catch { /* ignore */ }
     this.q = null;
   }
 
@@ -127,7 +128,7 @@ export class AgentSession {
         this.handle(m);
       }
       if (q === this.q && !this.closed && !this.failingOver) {
-        // 입력 큐가 닫히지 않았는데 끝났다면 프로세스가 죽은 것. 다음 send 때 resume으로 다시 연다.
+        // Ended while the input queue is open: the process died. The next send resumes it.
         this.q = null;
         this.busy = false;
         this.ev.onStatus?.('idle', '');
@@ -210,7 +211,7 @@ export class AgentSession {
     }
   }
 
-  /** 턴이 끝날 때마다 이 세션 계정의 요금제 사용량을 읽어 둔다(실험 API라 실패해도 조용히 넘어간다). */
+  /** After each turn, read this account's plan usage (experimental API; failures are ignored). */
   private lastUsageRead = 0;
   private async readPlanUsage() {
     if (!this.q || Date.now() - this.lastUsageRead < 60_000) return;
@@ -223,7 +224,7 @@ export class AgentSession {
     }
   }
 
-  /** 지금 계정이 한도에 걸렸을 때: 다른 계정으로 같은 세션을 이어 연다. */
+  /** The current account hit its limit: resume the same session on another account. */
   private async failover() {
     if (this.failingOver || this.closed) return;
     this.failingOver = true;
@@ -231,26 +232,26 @@ export class AgentSession {
       const old = this.cfg.accountId;
       const next = accounts.pick(old);
       this.input?.close();
-      try { this.q?.close(); } catch { /* 무시 */ }
+      try { this.q?.close(); } catch { /* ignore */ }
       this.q = null;
       if (!next) {
         this.busy = false;
         this.ev.onLimited?.();
-        this.ev.onStatus?.('error', '모든 계정이 사용량 한도에 걸렸어요. 한도가 풀리면 이어서 진행합니다.');
+        this.ev.onStatus?.('error', t('acc.allLimitedResume'));
         return;
       }
       log.info(`[${this.cfg.label}] failover ${old} -> ${next.id}`);
       this.cfg.accountId = next.id;
       this.start();
-      // 이어서 하는 작업은 사용자에게 보여야 하므로 내부 턴으로 표시하지 않는다.
+      // The continued work should be visible, so this is not an internal turn.
       this.busy = true;
-      this.input!.push(userMsg('사용량 한도 때문에 다른 계정으로 세션을 이어서 열었습니다. 하던 작업을 그대로 이어서 진행해 주세요.'));
+      this.input!.push(userMsg('This session was resumed on another account because of a usage limit. Continue the work where you left off.'));
     } finally {
       this.failingOver = false;
     }
   }
 
-  /** 한도가 풀린 뒤 다시 시작할 때 쓴다. */
+  /** Used to restart after a limit clears. */
   resumeAfterLimit(text: string) {
     const next = accounts.pick();
     if (!next) return false;

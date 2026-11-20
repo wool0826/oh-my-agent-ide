@@ -11,17 +11,23 @@ import { installPlugin } from './runtime';
 import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisions, withdraw } from './decisions';
 import { dispatcher, createTask } from './agents/dispatcher';
 import { workers } from './agents/workers';
-import { startPrMonitor, checkPrs } from './prmonitor';
-import { notifyDecision, setWindow } from './notify';
+import { startPrMonitor, checkPrs, checkPrsSoon } from './prmonitor';
+import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
+import { attachmentBlock, registerAttachments } from './attachments';
+import { t } from './i18n';
 import { log } from './log';
 import { nowIso, oneLine } from './util';
-import type { AppState, SettingsView } from '../shared/types';
+import { ALLOW, DENY, type AccountPlan, type AppState, type SettingsView } from '../shared/types';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
 
-// 테스트나 두 번째 프로필용: 설정과 데이터를 다른 폴더에 둔다.
+// Tests or a second profile: keep settings and data in another folder.
 if (process.env.OMA_DATA_DIR) app.setPath('userData', path.resolve(process.env.OMA_DATA_DIR));
+// Windows shows toast notifications only for an app with an AppUserModelID (same as build.appId).
+if (process.platform === 'win32') app.setAppUserModelId('dev.ohmyagent.ide');
+// The decision sound must play even before the user has clicked anything.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 function snapshot(): AppState {
   const d = store.data;
@@ -66,20 +72,20 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
   setWindow(win);
   win.loadFile(path.join(here, 'renderer', 'index.html'));
-  win.on('focus', () => win?.flashFrame(false));
+  win.on('focus', () => { win?.flashFrame(false); checkPrsSoon(); });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+  // Never navigate away from the app (a file dropped outside the composer would open it in the window).
   win.webContents.on('will-navigate', (e, url) => {
-    if (!url.startsWith('file:')) {
-      e.preventDefault();
-      if (/^https?:/.test(url)) void shell.openExternal(url);
-    }
+    e.preventDefault();
+    if (/^https?:/.test(url)) void shell.openExternal(url);
   });
 }
 
@@ -96,7 +102,7 @@ function handle(channel: string, fn: (...args: any[]) => any) {
 
 function registerIpc() {
   handle('state', () => snapshot());
-  handle('chat:send', (text: string) => dispatcher.send(text));
+  handle('chat:send', (text: string, files?: string[]) => dispatcher.send(text, files ?? []));
   handle('chat:stop', () => dispatcher.stop());
   handle('chat:clear', (kind: 'result' | 'auto') => {
     if (kind === 'auto') store.data.autoAnswers.forEach((a) => { a.cleared = true; });
@@ -112,26 +118,27 @@ function registerIpc() {
   handle('decision:answer', (id: string, ans: string) => {
     const d = answerDecision(id, ans);
     if (!d) return;
-    const who = d.workerId ? `${d.workerId}의 ` : '';
-    store.chat('decision', `${who}${oneLine(d.title, 80)} → ${ans}`);
+    const shown = ans === ALLOW ? t('allow') : ans === DENY ? t('deny') : ans;
+    const who = d.workerId ? `${d.workerId}: ` : '';
+    store.chat('decision', `${who}${oneLine(d.title, 80)} → ${shown}`);
     if (d.source === 'dispatcher') dispatcher.decisionAnswered(d.title, ans);
-    remember('decision', `${d.workerId ?? 'Dispatcher'}: ${oneLine(d.title, 160)} → ${ans}`);
+    remember('decision', `${d.workerId ?? 'Dispatcher'}: ${oneLine(d.title, 160)} → ${shown}`);
   });
   handle('auto:correct', (id: string, newAnswer: string, scope: 'once' | 'preference') => {
     const a = store.data.autoAnswers.find((x) => x.id === id);
-    if (!a) throw new Error('없는 항목이에요.');
+    if (!a) throw new Error(t('err.noItem'));
     a.corrected = { answer: newAnswer, scope, at: nowIso() };
-    store.chat('event', `대신 답한 것을 정정했어요: "${oneLine(a.question, 60)}" → ${newAnswer}${scope === 'preference' ? ' (선호도 고침)' : ''}`);
+    store.chat('event', t(scope === 'preference' ? 'ev.correctedPref' : 'ev.corrected', { q: oneLine(a.question, 60), a: newAnswer }));
     if (scope === 'preference') revisePreference(a.basis, `${oneLine(a.question, 120)} → ${newAnswer}`);
     try {
-      workers.send(a.workerId, 'user', `[정정] 앞서 "${a.question}" 질문에 Dispatcher가 "${a.answer}"라고 대신 답했지만, 사용자가 "${newAnswer}"로 정정했습니다. 이미 진행한 부분이 있으면 맞게 고쳐 주세요.`);
+      workers.send(a.workerId, 'user', `[Correction] For "${a.question}" the Dispatcher answered "${a.answer}" on the user's behalf, but the user corrected it to "${newAnswer}". Adjust anything you already did accordingly.`);
     } catch (e) {
-      store.chat('error', `${a.workerId}에게 정정을 전하지 못했어요: ${(e as Error).message}`);
+      store.chat('error', t('err.correction', { id: a.workerId, msg: (e as Error).message }));
     }
     store.changed();
   });
   handle('worker:log', (id: string) => store.readLog(id));
-  handle('worker:send', (id: string, text: string) => workers.send(id, 'user', text));
+  handle('worker:send', (id: string, text: string, files?: string[]) => workers.send(id, 'user', text + attachmentBlock(registerAttachments(files ?? []))));
   handle('worker:stop', (id: string) => workers.stop(id));
   handle('worker:archive', (id: string) => workers.archive(id));
   handle('worker:unarchive', async (id: string) => { const w = store.worker(id); if (w) await workers.unarchive(w); });
@@ -144,39 +151,48 @@ function registerIpc() {
   handle('memory:search', (q: string) => searchMemory(q, 30));
   handle('memory:promote', async (repoName: string) => {
     const repo = store.repo(repoName);
-    if (!repo) throw new Error(`등록되지 않은 저장소예요: ${repoName}`);
+    if (!repo) throw new Error(t('err.noRepo', { name: repoName }));
     const notes = readMemory(`repos/${repo.name}.md`);
     const owner = store.data.workers
       .filter((w) => w.repo === repo.name && w.status !== 'archived')
       .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt))[0];
     const { task, worker } = await createTask({
-      title: `${repo.name} CLAUDE.md에 IDE 메모리 반영`,
+      title: t('task.promote', { name: repo.name }),
       kind: 'code',
       repo: repo.name,
       worker_id: owner?.id,
       prompt: [
-        `아래는 IDE 메모리에 쌓인 ${repo.name} 저장소 메모입니다. 이 중 저장소에서 일하는 누구에게나 도움이 되는 규칙과 관례만 골라 저장소의 CLAUDE.md에 반영하는 PR을 만들어 주세요.`,
-        '개인 선호나 일회성 기록, 이미 CLAUDE.md에 있는 내용은 빼고, 기존 CLAUDE.md의 구성과 말투를 따르세요. CLAUDE.md가 없으면 새로 만듭니다.',
+        `Below are notes about the ${repo.name} repository collected in IDE memory. Pick only the rules and conventions useful to anyone working in this repository and open a PR adding them to its CLAUDE.md.`,
+        'Leave out personal preferences, one-off records, and anything already in CLAUDE.md. Follow the structure and tone of the existing CLAUDE.md; create one if it does not exist.',
         '',
         notes,
       ].join('\n'),
     });
-    store.chat('event', `${worker.id}에게 "${task.title}"을 맡겼어요`);
+    store.chat('event', t('ev.assigned', { id: worker.id, title: task.title }));
     return task.id;
   });
   handle('settings:save', (patch: Partial<SettingsView>) => {
-    const homeChanged = patch.home && patch.home !== loadSettings().home;
+    const before = loadSettings();
+    const homeChanged = !!patch.home && patch.home !== before.home;
+    const langChanged = !!patch.language && patch.language !== before.language;
     updateSettings(patch);
-    if (homeChanged) return { restart: true };
-    return { restart: false };
+    if (langChanged) dispatcher.refreshContext();
+    pushState();
+    return { restart: homeChanged };
   });
   handle('settings:pickHome', async () => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] });
     return r.canceled ? null : r.filePaths[0];
   });
-  handle('account:add', (label: string, kind: 'token' | 'login', token: string) => accounts.add(label, kind, token));
+  handle('sound:pick', async () => {
+    const r = await dialog.showOpenDialog(win!, { properties: ['openFile'], filters: [{ name: 'Audio', extensions: SOUND_EXTS }] });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  handle('sound:data', (file: string) => soundData(file));
+  handle('account:add', (label: string, kind: 'token' | 'login', token: string, plan?: AccountPlan) => accounts.add(label, kind, token, plan));
   handle('account:remove', (id: string) => accounts.remove(id));
   handle('account:rename', (id: string, label: string) => accounts.rename(id, label));
+  handle('account:plan', (id: string, plan: AccountPlan) => accounts.setPlan(id, plan));
   handle('account:refresh', () => accounts.refresh());
   handle('open:external', (url: string) => { if (/^https?:\/\//.test(url)) return shell.openExternal(url); });
   handle('open:path', async (p: string) => {
@@ -194,7 +210,7 @@ async function boot() {
   log.info('boot', paths().home);
   store.load();
   pruneDecisions();
-  // 지난 실행에서 Worker가 기다리던 질문과 권한 요청은 Worker가 이어서 진행하며 다시 묻는다.
+  // Questions and permission requests from the last run are withdrawn; Workers ask again as they continue.
   for (const d of [...store.data.decisions]) if (d.status === 'pending' && d.source !== 'dispatcher') withdraw(d.id);
   await initMemory();
   installPlugin();
@@ -202,11 +218,11 @@ async function boot() {
   accounts.on('changed', pushState);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
   onDecisionCreated((d) => {
-    notifyDecision(d.workerId ? `${d.workerId}가 결정을 기다려요` : '결정이 필요해요', d.title);
+    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), d.title);
   });
   onLateAnswer((d) => {
     if (d.workerId) {
-      try { workers.send(d.workerId, 'user', `[사용자 답변] 질문: ${d.title}\n답: ${d.answer}`); } catch (e) { log.warn('late answer', e); }
+      try { workers.send(d.workerId, 'user', `[User answer] Question: ${d.title}\nAnswer: ${d.answer}`); } catch (e) { log.warn('late answer', e); }
     }
   });
   accounts.startPolling();
@@ -227,7 +243,7 @@ else {
       await boot();
     } catch (e) {
       log.error('boot failed', e);
-      dialog.showErrorBox('Oh My Agent IDE를 시작하지 못했어요', String((e as Error).message));
+      dialog.showErrorBox(t('err.bootTitle'), String((e as Error).message));
     }
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

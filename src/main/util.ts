@@ -13,7 +13,7 @@ export const month = () => today().slice(0, 7);
 
 export interface RunResult { code: number; stdout: string; stderr: string }
 
-/** 셸 없이 프로그램 실행. 실패해도 throw하지 않고 code로 알려준다. */
+/** Run a program without a shell. Never throws; reports failure through `code`. */
 export function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}): Promise<RunResult> {
   return new Promise((resolve) => {
     execFile(cmd, args, {
@@ -31,7 +31,7 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Nod
 
 export async function runOk(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}): Promise<string> {
   const r = await run(cmd, args, opts);
-  if (r.code !== 0) throw new Error(`${cmd} ${args.join(' ')} 실패: ${(r.stderr || r.stdout).trim().slice(0, 800)}`);
+  if (r.code !== 0) throw new Error(`${cmd} ${args.join(' ')} failed: ${(r.stderr || r.stdout).trim().slice(0, 800)}`);
   return r.stdout;
 }
 
@@ -47,7 +47,7 @@ export function readJson<T>(file: string, fallback: T): T {
   }
 }
 
-/** 임시 파일에 쓰고 rename해서, 쓰다가 죽어도 파일이 깨지지 않게 한다. */
+/** Write to a temp file and rename, so a crash mid-write never corrupts the file. */
 export function writeJsonAtomic(file: string, data: unknown) {
   ensureDir(path.dirname(file));
   const tmp = `${file}.${process.pid}.tmp`;
@@ -72,7 +72,7 @@ export function oneLine(s: string, max = 160) {
   return t.length > max ? t.slice(0, max - 1) + '…' : t;
 }
 
-/** 단순 비동기 큐: 밀어 넣은 값을 for await로 꺼낸다. */
+/** Simple async queue: values pushed in come out through for-await. */
 export class PushQueue<T> implements AsyncIterable<T> {
   private items: T[] = [];
   private waiters: ((r: IteratorResult<T>) => void)[] = [];

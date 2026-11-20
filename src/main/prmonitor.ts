@@ -1,15 +1,17 @@
 import { store } from './store';
 import { workers } from './agents/workers';
 import { cleanupBranch, ghEnv } from './repos';
-import { run } from './util';
+import { notifyInfo } from './notify';
+import { t } from './i18n';
+import { run, nowIso } from './util';
 import { log } from './log';
-import { nowIso } from './util';
 import type { Task } from '../shared/types';
 
 /**
- * 열린 PR을 주기적으로 본다.
- * - 머지되거나 닫히면 브랜치(로컬, 원격)를 지우고 작업을 끝낸다.
- * - 새 리뷰 코멘트가 달리면 PR을 만든 Worker에게 반영을 맡긴다.
+ * Watch open PRs.
+ * - Merged or closed: delete the branch (local and remote), finish the task,
+ *   notify, and start tasks that were waiting for this merge.
+ * - New review comments: hand them to the Worker that opened the PR.
  */
 
 function parsePr(url: string) {
@@ -19,73 +21,88 @@ function parsePr(url: string) {
 
 interface Comment { id: string; author: string; body: string; where: string }
 
-async function fetchComments(t: Task): Promise<Comment[] | null> {
-  const p = parsePr(t.prUrl!);
+async function fetchComments(task: Task): Promise<Comment[] | null> {
+  const p = parsePr(task.prUrl!);
   if (!p) return null;
   const env = { ...ghEnv(), GH_HOST: p.host };
   const out: Comment[] = [];
-  const view = await run('gh', ['pr', 'view', t.prUrl!, '--json', 'comments,reviews'], { env, timeoutMs: 60_000 });
+  const view = await run('gh', ['pr', 'view', task.prUrl!, '--json', 'comments,reviews'], { env, timeoutMs: 60_000 });
   if (view.code !== 0) return null;
   const j = JSON.parse(view.stdout);
-  for (const c of j.comments ?? []) out.push({ id: `c:${c.id}`, author: c.author?.login ?? '?', body: c.body ?? '', where: '대화' });
-  for (const r of j.reviews ?? []) if (r.body?.trim()) out.push({ id: `r:${r.id}`, author: r.author?.login ?? '?', body: r.body, where: `리뷰(${r.state})` });
+  for (const c of j.comments ?? []) out.push({ id: `c:${c.id}`, author: c.author?.login ?? '?', body: c.body ?? '', where: 'conversation' });
+  for (const r of j.reviews ?? []) if (r.body?.trim()) out.push({ id: `r:${r.id}`, author: r.author?.login ?? '?', body: r.body, where: `review (${r.state})` });
   const inline = await run('gh', ['api', `repos/${p.owner}/${p.repo}/pulls/${p.num}/comments`, '--paginate'], { env, timeoutMs: 60_000 });
   if (inline.code === 0) {
     try {
       for (const c of JSON.parse(inline.stdout)) out.push({ id: `i:${c.id}`, author: c.user?.login ?? '?', body: c.body ?? '', where: `${c.path}:${c.line ?? c.original_line ?? ''}` });
-    } catch { /* 페이지가 여러 개면 JSON 배열이 이어 붙어 올 수 있음. 첫 페이지만 쓴다. */ }
+    } catch { /* several pages arrive as concatenated JSON arrays; use what parsed */ }
   }
   return out.filter((c) => !/\[bot\]$/.test(c.author));
 }
 
-async function checkOne(t: Task) {
-  const p = parsePr(t.prUrl!);
+async function settle(task: Task, state: 'MERGED' | 'CLOSED', headRef: string) {
+  const merged = state === 'MERGED';
+  task.prState = state;
+  task.status = 'done';
+  task.updatedAt = nowIso();
+  if (merged) task.mergedAt = nowIso();
+  const repo = task.repo ? store.repo(task.repo) : null;
+  const w = task.workerId ? store.worker(task.workerId) : null;
+  const branch = task.branch ?? headRef;
+  if (repo && branch) await cleanupBranch(repo, w?.repo === repo.name ? w.cwd : null, branch).catch((e) => log.warn('cleanup', e));
+  const text = merged ? t('ev.prMerged', { title: task.title }) : t('ev.prClosed', { title: task.title });
+  store.chat('event', text);
+  if (w) store.log(w.id, 'event', text);
+  store.pushUpdate(`${task.id} "${task.title}" PR ${merged ? 'merged' : 'closed without merging'}; branch cleaned up`);
+  notifyInfo(merged ? t('noti.merged') : t('noti.closed'), task.title);
+  workers.onPrSettled(task, merged);
+  store.changed();
+}
+
+async function checkOne(task: Task) {
+  const p = parsePr(task.prUrl!);
   if (!p) return;
   const env = { ...ghEnv(), GH_HOST: p.host };
-  const r = await run('gh', ['pr', 'view', t.prUrl!, '--json', 'state,headRefName'], { env, timeoutMs: 60_000 });
+  const r = await run('gh', ['pr', 'view', task.prUrl!, '--json', 'state,headRefName'], { env, timeoutMs: 60_000 });
   if (r.code !== 0) {
-    log.warn('pr view failed', t.prUrl, r.stderr.trim().slice(0, 200));
+    log.warn('pr view failed', task.prUrl, r.stderr.trim().slice(0, 200));
     return;
   }
   const j = JSON.parse(r.stdout) as { state: 'OPEN' | 'MERGED' | 'CLOSED'; headRefName: string };
-  if (j.state !== 'OPEN') {
-    t.prState = j.state;
-    t.status = 'done';
-    t.updatedAt = nowIso();
-    const repo = t.repo ? store.repo(t.repo) : null;
-    const w = t.workerId ? store.worker(t.workerId) : null;
-    const branch = t.branch ?? j.headRefName;
-    if (repo && branch) await cleanupBranch(repo, w?.repo === repo.name ? w.cwd : null, branch).catch((e) => log.warn('cleanup', e));
-    store.chat('event', `${t.title} PR이 ${j.state === 'MERGED' ? '머지돼' : '닫혀'} 브랜치를 정리했어요`);
-    store.pushUpdate(`${t.id} "${t.title}" PR ${j.state === 'MERGED' ? '머지됨' : '닫힘'}, 브랜치 정리`);
-    store.changed();
-    return;
-  }
-  if (t.status !== 'pr_open') return; // 이미 반영 중
-  const comments = await fetchComments(t);
+  if (j.state !== 'OPEN') return settle(task, j.state, j.headRefName);
+  if (task.status !== 'pr_open') return; // already addressing comments
+  const comments = await fetchComments(task);
   if (!comments) return;
-  const fresh = comments.filter((c) => !t.seenCommentIds.includes(c.id));
+  const fresh = comments.filter((c) => !task.seenCommentIds.includes(c.id));
   if (!fresh.length) return;
-  t.seenCommentIds.push(...fresh.map((c) => c.id));
-  t.reviewSyncedAt = nowIso();
+  task.seenCommentIds.push(...fresh.map((c) => c.id));
+  task.reviewSyncedAt = nowIso();
   const body = fresh.map((c) => `- @${c.author} (${c.where}): ${c.body.trim()}`).join('\n');
-  store.chat('event', `${t.workerId}이 ${t.title} PR 리뷰 코멘트 ${fresh.length}개를 반영하는 중이에요`);
-  workers.sendReview(t, body);
+  store.chat('event', t('ev.reviewing', { id: task.workerId ?? '', title: task.title, n: fresh.length }));
+  workers.sendReview(task, body);
 }
 
 let running = false;
+let lastRun = 0;
 export async function checkPrs() {
   if (running) return;
   running = true;
+  lastRun = Date.now();
   try {
-    for (const t of store.data.tasks) {
-      if (!t.prUrl || t.prState === 'MERGED' || t.prState === 'CLOSED') continue;
-      if (t.status !== 'pr_open') continue;
-      try { await checkOne(t); } catch (e) { log.warn('pr check', t.prUrl, (e as Error).message); }
+    for (const task of store.data.tasks) {
+      if (!task.prUrl || task.prState === 'MERGED' || task.prState === 'CLOSED') continue;
+      // While a Worker is fixing review comments the task is "running"; still notice a merge.
+      if (task.status !== 'pr_open' && task.status !== 'running') continue;
+      try { await checkOne(task); } catch (e) { log.warn('pr check', task.prUrl, (e as Error).message); }
     }
   } finally {
     running = false;
   }
+}
+
+/** Check soon when the window comes back to the front, at most once a minute. */
+export function checkPrsSoon() {
+  if (Date.now() - lastRun > 60_000) void checkPrs();
 }
 
 export function startPrMonitor() {

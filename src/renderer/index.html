@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data:">
 <title>Oh My Agent IDE</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -26,6 +26,9 @@
     <symbol id="s-x" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></symbol>
     <symbol id="s-back" viewBox="0 0 8 12"><path d="M6 2L2 6l4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="s-chev" viewBox="0 0 8 12"><path d="M2 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="s-person" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="7" r="3.4"/><path d="M3.8 17c.8-3.2 3.3-4.9 6.2-4.9s5.4 1.7 6.2 4.9"/></symbol>
+    <symbol id="s-bell" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5.2 13.8V9a4.8 4.8 0 0 1 9.6 0v4.8l1.5 1.7H3.7z"/><path d="M8.3 17.2a1.9 1.9 0 0 0 3.4 0" stroke-linecap="round"/></symbol>
+    <symbol id="s-merge" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="6" cy="4.5" r="2"/><circle cx="6" cy="15.5" r="2"/><circle cx="14.5" cy="10" r="2"/><path d="M6 6.5v7M6 6.5c0 2.6 2.4 3.5 6.5 3.5"/></symbol>
     <symbol id="s-search" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.6 12.6l4.4 4.4"/></symbol>
 
     <symbol id="g-ask" viewBox="0 0 16 16"><path d="M8 3.4v5.4"/><circle cx="8" cy="12" r="1.1" fill="currentColor" stroke="none"/></symbol>
@@ -43,26 +46,27 @@
 </svg>
 
 <div class="win" id="win" data-icons="line">
-  <nav class="sidebar" aria-label="작업 현황">
+  <nav class="sidebar" aria-label="Status">
     <div class="lights drag"></div>
     <div class="side-scroll" id="side"></div>
-    <div class="side-foot"><button class="foot-btn" data-action="open-settings" title="설정" aria-label="설정"><svg aria-hidden="true"><use href="#s-gear"/></svg></button></div>
+    <div class="side-foot"><button class="foot-btn" data-action="open-settings" data-i18n-title="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button></div>
   </nav>
 
   <header class="toolbar drag">
-    <span class="seg nodrag" role="group" aria-label="화면 전환">
-      <button data-v="chat" aria-pressed="true">대화</button><button data-v="worker" aria-pressed="false">Worker</button><button data-v="repo" aria-pressed="false">저장소</button><button data-v="memory" aria-pressed="false">메모리</button>
+    <span class="seg nodrag" role="group" aria-label="Views">
+      <button data-v="chat" aria-pressed="true" data-i18n="nav.chat">Chat</button><button data-v="worker" aria-pressed="false">Worker</button><button data-v="repo" aria-pressed="false" data-i18n="nav.repo">Repositories</button><button data-v="memory" aria-pressed="false" data-i18n="nav.memory">Memory</button>
     </span>
-    <div class="usage nodrag" id="usage" aria-label="계정별 사용량"></div>
+    <div class="usage nodrag" id="usage" aria-label="Usage per account"></div>
   </header>
 
-  <!-- 대화 -->
+  <!-- chat -->
   <main class="content view" data-view="chat">
     <div class="thread" id="chat-thread" aria-live="polite"></div>
     <form class="composer" id="chat-form" autocomplete="off">
-      <textarea class="field input" id="chat-input" rows="1" placeholder="일을 말해 주세요. @저장소로 대상을 정할 수 있어요." aria-label="Dispatcher에게 보낼 메시지"></textarea>
-      <span class="ctx" id="chat-ctx" title="Dispatcher 컨텍스트. 250K에 닿으면 압축합니다."></span>
-      <button class="send" type="submit" id="chat-send" aria-label="보내기"><svg class="sym"><use href="#s-up"/></svg></button>
+      <div class="fchips" id="chat-files" hidden></div>
+      <textarea class="field input" id="chat-input" rows="1" data-i18n-ph="chat.placeholder" aria-label="Message"></textarea>
+      <span class="ctx" id="chat-ctx" data-i18n-title="chat.ctxHint"></span>
+      <button class="send" type="submit" id="chat-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
     </form>
   </main>
   <aside class="inspector view" data-view="chat" id="chat-ins"></aside>
@@ -72,26 +76,27 @@
     <div class="wk-list" id="wk-list"></div>
     <div class="wk-session" id="wk-session" hidden>
       <div class="shead">
-        <button class="back" data-action="close-session" title="Worker 목록" aria-label="Worker 목록"><svg aria-hidden="true"><use href="#s-back"/></svg></button>
-        <span class="st"><b id="ws-title"></b><small id="ws-sub">Dispatcher와 주고받은 대화</small></span>
+        <button class="back" data-action="close-session" data-i18n-title="ws.back"><svg aria-hidden="true"><use href="#s-back"/></svg></button>
+        <span class="st"><b id="ws-title"></b><small id="ws-sub"></small></span>
       </div>
       <div class="thread" id="ws-thread"></div>
       <form class="composer" id="ws-form" autocomplete="off">
-        <textarea class="field input" id="ws-input" rows="1" placeholder="Worker에게 보내기" aria-label="Worker에게 보낼 메시지"></textarea>
-        <button class="send" type="submit" aria-label="보내기"><svg class="sym"><use href="#s-up"/></svg></button>
+        <div class="fchips" id="ws-files" hidden></div>
+        <textarea class="field input" id="ws-input" rows="1" aria-label="Message to the Worker"></textarea>
+        <button class="send" type="submit" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
       </form>
     </div>
   </main>
   <aside class="inspector view" data-view="worker" id="wk-ins" hidden></aside>
 
-  <!-- 저장소 -->
+  <!-- repositories -->
   <main class="content view" data-view="repo" id="repo-main" hidden></main>
   <aside class="inspector view" data-view="repo" id="repo-ins" hidden></aside>
 
-  <!-- 메모리 -->
+  <!-- memory -->
   <main class="content view" data-view="memory" hidden>
-    <div class="vhead"><b>메모리</b></div>
-    <div class="searchbar"><svg class="sym"><use href="#s-search"/></svg><input id="mem-q" type="search" placeholder="메모리 검색" aria-label="메모리 검색"></div>
+    <div class="vhead"><b data-i18n="nav.memory">Memory</b></div>
+    <div class="searchbar"><svg class="sym"><use href="#s-search"/></svg><input id="mem-q" type="search" data-i18n-ph="mem.search" aria-label="Search memory"></div>
     <div class="lst scroll" id="mem-list"></div>
   </main>
   <aside class="inspector view" data-view="memory" id="mem-ins" hidden></aside>

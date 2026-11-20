@@ -1,12 +1,12 @@
 ---
 name: lean-context
-description: 큰 저장소에서 파일을 읽거나 탐색하기 전에 쓴다. 필요한 부분만 읽어 컨텍스트와 토큰을 아낀다.
+description: Use before reading or exploring files in a large repository. Read only what you need to save context and tokens.
 ---
 
-# 필요한 만큼만 읽기
+# Read only what you need
 
-- 파일 전체를 열기 전에 Grep이나 `rg -n`으로 위치를 찾고, 그 주변 범위만 Read의 offset/limit로 읽는다.
-- 이미 읽은 파일은 다시 읽지 않는다. 수정 직후 확인하려고 다시 읽지 않는다(Edit이 실패하면 알려 준다).
-- 생성 파일, lock 파일, 빌드 산출물, minified 파일, 큰 픽스처는 열지 않는다.
-- 명령 출력은 `| head`, `--quiet`, `-q`로 줄인다. 로그 전체를 보지 말고 실패한 부분만 본다.
-- 디렉터리 구조는 `git ls-files | head -200`이나 Glob으로 한 번 보고 기억한다.
+- Before opening a whole file, find the spot with Grep or `rg -n` and read just that range with Read's offset/limit.
+- Don't reread files you have already read. Don't reread right after an edit to check it (Edit reports failures).
+- Don't open generated files, lock files, build output, minified files, or large fixtures.
+- Trim command output with `| head`, `--quiet`, `-q`. Look at the failing part, not the whole log.
+- Look at the directory layout once with `git ls-files | head -200` or Glob, and remember it.

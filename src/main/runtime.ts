@@ -10,8 +10,8 @@ const require_ = createRequire(import.meta.url);
 let exe: string | undefined | null = null;
 
 /**
- * SDK가 쓰는 Claude Code 실행 파일. 개발 중에는 SDK가 알아서 찾게 두고,
- * 패키징된 앱에서는 asar 밖으로 풀린 경로를 직접 알려 준다.
+ * The Claude Code binary used by the SDK. In development the SDK finds it;
+ * in the packaged app we point to the copy unpacked outside the asar.
  */
 export function claudeExecutable(): string | undefined {
   if (exe !== null) return exe;
@@ -28,7 +28,7 @@ export function claudeExecutable(): string | undefined {
   return exe;
 }
 
-/** 앱에 들어 있는 기본 스킬 플러그인을 IDE 홈으로 복사해 두고 그 경로를 쓴다. */
+/** Copy the bundled skill plugin into the IDE home and use it from there. */
 export function installPlugin() {
   const src = app.isPackaged
     ? path.join(process.resourcesPath, 'plugin')

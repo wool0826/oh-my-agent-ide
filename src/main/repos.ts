@@ -4,9 +4,10 @@ import { paths } from './paths';
 import { loadSettings } from './settings';
 import { store } from './store';
 import { nowIso, run, runOk, slug, ensureDir } from './util';
+import { t } from './i18n';
 import type { Repo } from '../shared/types';
 
-/** gh가 사내 GitHub을 보도록 GH_HOST를 넣는다. */
+/** Point gh at the company GitHub host via GH_HOST. */
 export function ghEnv(): NodeJS.ProcessEnv {
   const host = loadSettings().githubHost.trim();
   return host ? { ...process.env, GH_HOST: host } : { ...process.env };
@@ -23,8 +24,8 @@ async function defaultBranch(dir: string) {
 }
 
 /**
- * 저장소 등록. url은 git이 받는 형식 그대로(https, ssh) 또는 "org/name"이면 사내 GitHub 주소로 만든다.
- * 이미 있는 로컬 폴더 경로를 주면 클론하지 않고 그 폴더를 등록한다.
+ * Register a repository. `url` is any git URL (https, ssh); "org/name" becomes a URL on the company GitHub host.
+ * An existing local folder is registered without cloning.
  */
 export async function registerRepo(input: { url: string; name?: string; description?: string }): Promise<Repo> {
   let url = input.url.trim();
@@ -32,7 +33,7 @@ export async function registerRepo(input: { url: string; name?: string; descript
   if (/^[\w.-]+\/[\w.-]+$/.test(url)) url = `https://${host || 'github.com'}/${url}.git`;
   const isLocal = fs.existsSync(url) && fs.statSync(url).isDirectory();
   const name = slug(input.name || path.basename(url).replace(/\.git$/, ''));
-  if (store.repo(name)) throw new Error(`${name} 이름의 저장소가 이미 있어요.`);
+  if (store.repo(name)) throw new Error(t('repo.err.exists', { name }));
   let dir: string;
   if (isLocal) {
     dir = path.resolve(url);
@@ -68,7 +69,7 @@ export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description'
   store.changed();
 }
 
-/** Worker 하나가 저장소 하나에 쓰는 worktree. 작업마다 Worker가 새 브랜치를 판다. */
+/** One worktree per Worker per repo. The Worker creates a new branch for each task. */
 export async function ensureWorktree(repo: Repo, workerId: string): Promise<string> {
   const dir = path.join(paths().worktrees, repo.name, workerId);
   if (fs.existsSync(path.join(dir, '.git'))) return dir;
@@ -83,7 +84,7 @@ export async function removeWorktree(repo: Repo, dir: string) {
   await run('git', ['worktree', 'prune'], { cwd: repo.path });
 }
 
-/** PR이 머지되거나 닫힌 뒤: worktree를 기본 브랜치로 되돌리고 로컬, 원격 브랜치를 지운다. */
+/** After a PR is merged or closed: move the worktree back to the default branch and delete the local and remote branch. */
 export async function cleanupBranch(repo: Repo, worktree: string | null, branch: string) {
   if (worktree && fs.existsSync(worktree)) {
     await run('git', ['fetch', '-q', 'origin'], { cwd: worktree });

@@ -2,7 +2,7 @@ import path from 'node:path';
 import { loadSettings } from './settings';
 import { ensureDir } from './util';
 
-/** IDE 홈 폴더 아래 구조. 설정에서 홈을 바꾸면 다음 실행부터 새 위치를 쓴다. */
+/** Layout under the IDE home. A new home in settings takes effect on the next launch. */
 export function paths() {
   const home = loadSettings().home;
   return {

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 async function call(channel: string, ...args: unknown[]) {
   const r = await ipcRenderer.invoke(channel, ...args);
@@ -11,5 +11,7 @@ contextBridge.exposeInMainWorld('ide', {
   call,
   onState: (fn: (s: unknown) => void) => ipcRenderer.on('state', (_e, s) => fn(s)),
   onWorkerLog: (fn: (id: string, item: unknown) => void) => ipcRenderer.on('workerLog', (_e, id, item) => fn(id, item)),
-  onBlink: (fn: () => void) => ipcRenderer.on('blink', () => fn()),
+  onDecisionAlert: (fn: () => void) => ipcRenderer.on('decision-alert', () => fn()),
+  /** Absolute path of a dropped file or folder. */
+  pathForFile: (f: File) => webUtils.getPathForFile(f),
 });

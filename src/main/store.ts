@@ -17,8 +17,10 @@ export interface Data {
   autoAnswers: AutoAnswer[];
   chat: ChatItem[];
   dispatcher: DispatcherState;
-  /** Dispatcher가 다음 턴에 알아야 할 Worker 소식 */
+  /** Worker news the Dispatcher should hear on its next turn */
   pendingUpdates: string[];
+  /** Paths the user attached to messages (see attachments.ts) */
+  attachments?: string[];
 }
 
 const empty = (): Data => ({

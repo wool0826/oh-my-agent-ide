@@ -2,9 +2,10 @@ import { EventEmitter } from 'node:events';
 import { loadSettings, saveSettings, encryptToken, decryptToken, type StoredAccount } from './settings';
 import { log } from './log';
 import { nowIso, uid } from './util';
-import type { AccountView, UsageWindow } from '../shared/types';
+import { t } from './i18n';
+import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type UsageWindow } from '../shared/types';
 
-/** 사용량이 이 값(%)을 넘으면 새 작업을 배정하지 않고, 진행 중 작업은 다른 계정으로 넘긴다. */
+/** Above this usage (%) an account gets no new sessions, and running work moves to another account. */
 export const RED = 80;
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
@@ -20,23 +21,24 @@ class Accounts extends EventEmitter {
 
   views(): AccountView[] {
     return this.list().map((a) => ({
-      id: a.id, label: a.label, kind: a.kind,
+      id: a.id, label: a.label, kind: a.kind, plan: a.plan,
       fiveHour: a.fiveHour, sevenDay: a.sevenDay,
       usageUpdatedAt: a.usageUpdatedAt, usageSource: a.usageSource,
       limited: this.isLimited(a), lastError: a.lastError,
     }));
   }
 
-  add(label: string, kind: 'token' | 'login', token: string) {
+  add(label: string, kind: 'token' | 'login', token: string, plan: AccountPlan = 'team') {
     const s = loadSettings();
-    if (kind === 'login' && s.accounts.some((a) => a.kind === 'login')) throw new Error('이 PC 로그인 계정은 하나만 등록할 수 있어요.');
-    const t = token.trim();
-    if (kind === 'token' && !/^sk-ant-/.test(t)) throw new Error('claude setup-token으로 받은 sk-ant-로 시작하는 토큰을 붙여 넣어 주세요.');
+    if (s.accounts.length >= MAX_ACCOUNTS) throw new Error(t('acc.err.max', { n: MAX_ACCOUNTS }));
+    if (kind === 'login' && s.accounts.some((a) => a.kind === 'login')) throw new Error(t('acc.err.oneLogin'));
+    const tok = token.trim();
+    if (kind === 'token' && !/^sk-ant-/.test(tok)) throw new Error(t('acc.err.token'));
     const acc: StoredAccount = {
-      id: uid(), label: label.trim() || `계정 ${s.accounts.length + 1}`, kind,
-      tokenEnc: kind === 'token' ? encryptToken(t) : '',
+      id: uid(), label: label.trim() || t('acc.defaultName', { n: s.accounts.length + 1 }), kind, plan,
+      tokenEnc: kind === 'token' ? encryptToken(tok) : '',
       fiveHour: { utilization: null, resetsAt: null }, sevenDay: { utilization: null, resetsAt: null },
-      usageUpdatedAt: null, usageSource: null, limitedUntil: null, lastAssignedAt: null, lastError: null,
+      usageUpdatedAt: null, usageSource: null, limitedUntil: null, lastAssignedAt: null, lastError: null, usageBackoffUntil: null,
     };
     s.accounts.push(acc);
     saveSettings();
@@ -60,16 +62,24 @@ class Accounts extends EventEmitter {
     this.emit('changed');
   }
 
-  /** Claude Code 프로세스에 줄 환경 변수. login 계정은 기존 로그인을 그대로 쓴다. */
+  setPlan(id: string, plan: AccountPlan) {
+    const a = this.get(id);
+    if (!a) return;
+    a.plan = plan;
+    saveSettings();
+    this.emit('changed');
+  }
+
+  /** Environment for a Claude Code process. Login accounts use the existing login as is. */
   env(id: string | null): NodeJS.ProcessEnv {
-    // Claude Code 터미널에서 앱을 띄우면 그 세션의 환경 변수가 따라온다. 자식 세션이 부모로 착각하지 않게 걷어 낸다.
+    // Launched from a Claude Code terminal, that session's variables leak in. Strip them so child sessions don't think they are nested.
     const env: NodeJS.ProcessEnv = {};
     for (const [k, v] of Object.entries(process.env)) {
       if (k === 'CLAUDE_CONFIG_DIR' || k === 'ANTHROPIC_BASE_URL') { env[k] = v; continue; }
       if (/^(CLAUDECODE|CLAUDE_|AI_AGENT$|MCP_CONNECTION|MCP_SERVER_CONNECTION|BAGGAGE$|ANTHROPIC_API_KEY$|ANTHROPIC_AUTH_TOKEN$)/.test(k)) continue;
       env[k] = v;
     }
-    env.CLAUDE_AGENT_SDK_CLIENT_APP = 'oh-my-agent-ide/0.1.0';
+    env.CLAUDE_AGENT_SDK_CLIENT_APP = 'oh-my-agent-ide/0.2.0';
     const a = this.get(id);
     if (a?.kind === 'token') env.CLAUDE_CODE_OAUTH_TOKEN = decryptToken(a.tokenEnc);
     return env;
@@ -85,8 +95,8 @@ class Accounts extends EventEmitter {
   }
 
   /**
-   * 새 세션에 쓸 계정을 고른다. 한도에 걸리지 않은 계정 중 사용량이 가장 낮은 곳,
-   * 비슷하면(5%p 이내) 가장 오래전에 배정한 곳. exclude는 방금 한도에 걸린 계정.
+   * Pick an account for a new session: the lowest usage among accounts that are not limited;
+   * within 5 points, the one assigned longest ago. `exclude` is the account that just hit its limit.
    */
   pick(exclude?: string | null): StoredAccount | null {
     const all = this.list().filter((a) => a.id !== exclude);
@@ -110,7 +120,7 @@ class Accounts extends EventEmitter {
     return l.length > 0 && l.every((a) => this.isLimited(a));
   }
 
-  /** 세션이 한도 오류를 냈을 때. resetsAt을 모르면 30분 뒤 다시 시도한다. */
+  /** A session reported a limit error. Without resetsAt, retry in 30 minutes. */
   markLimited(id: string | null, resetsAtMs?: number) {
     const a = this.get(id);
     if (!a) return;
@@ -119,7 +129,7 @@ class Accounts extends EventEmitter {
     this.emit('changed');
   }
 
-  /** SDK의 rate_limit_event로 들어온 값을 반영한다. */
+  /** Apply a rate_limit_event from the SDK. */
   applyEvent(id: string | null, info: { status?: string; rateLimitType?: string; utilization?: number; resetsAt?: number }) {
     const a = this.get(id);
     if (!a) return;
@@ -137,7 +147,7 @@ class Accounts extends EventEmitter {
     this.emit('changed');
   }
 
-  /** 세션이 알려 준 요금제 사용량(5시간, 7일)을 반영한다. 엔드포인트를 못 쓰는 계정도 이걸로 채워진다. */
+  /** Apply plan usage (5h, 7d) reported by a session. Fills accounts that can't use the endpoint. */
   applyUsage(id: string | null, rl: { five_hour?: { utilization: number | null; resets_at: string | null } | null; seven_day?: { utilization: number | null; resets_at: string | null } | null }) {
     const a = this.get(id);
     if (!a) return;
@@ -154,11 +164,12 @@ class Accounts extends EventEmitter {
     this.emit('changed');
   }
 
-  /** 토큰 계정의 5시간/7일 사용량을 Claude Code가 쓰는 사용량 엔드포인트에서 읽는다. */
+  /** Read 5h/7d usage for token accounts from the usage endpoint Claude Code uses. */
   async refresh(id?: string) {
     for (const a of this.list()) {
       if (id && a.id !== id) continue;
       if (a.kind !== 'token') continue;
+      if (a.usageBackoffUntil && Date.parse(a.usageBackoffUntil) > Date.now()) continue;
       try {
         const res = await fetch(USAGE_URL, {
           headers: {
@@ -167,10 +178,20 @@ class Accounts extends EventEmitter {
             'Content-Type': 'application/json',
           },
         });
+        if (res.status === 429) {
+          // The usage endpoint's own request limit, not the account's usage limit.
+          // Keep the last values and back off (Retry-After, else 15 minutes).
+          const ra = Number(res.headers.get('retry-after'));
+          const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : 15 * 60_000;
+          a.usageBackoffUntil = new Date(Date.now() + wait).toISOString();
+          a.lastError = null;
+          log.info('usage endpoint 429', a.label, `retry in ${Math.round(wait / 60000)} min`);
+          continue;
+        }
         if (!res.ok) {
           a.lastError = res.status === 401 || res.status === 403
-            ? '사용량 조회 권한이 없는 토큰이에요. 작업 중 들어오는 한도 정보로 대신 표시합니다.'
-            : `사용량 조회 실패 (${res.status})`;
+            ? t('acc.err.usageScope')
+            : t('acc.err.usage', { msg: String(res.status) });
           continue;
         }
         const j: any = await res.json();
@@ -182,7 +203,7 @@ class Accounts extends EventEmitter {
         a.lastError = null;
         if (a.limitedUntil && Date.parse(a.limitedUntil) > Date.now() && this.score(a) < RED) a.limitedUntil = null;
       } catch (e) {
-        a.lastError = `사용량 조회 실패: ${(e as Error).message}`;
+        a.lastError = t('acc.err.usage', { msg: (e as Error).message });
         log.warn('usage refresh', a.label, (e as Error).message);
       }
     }

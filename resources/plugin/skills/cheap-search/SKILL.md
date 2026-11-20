@@ -1,11 +1,11 @@
 ---
 name: cheap-search
-description: 코드베이스 여러 곳을 넓게 찾아야 할 때 쓴다. 결론만 필요하면 가벼운 모델의 하위 에이전트에게 맡긴다.
+description: Use when you need to search widely across a codebase. If you only need the conclusion, hand it to a subagent on a lighter model.
 ---
 
-# 넓은 탐색은 하위 에이전트에게
+# Delegate wide searches
 
-- 여러 디렉터리를 훑어 "어디서 X를 하는지" 같은 결론만 필요하면 Agent 도구로 하위 에이전트를 띄우고 model을 haiku로 지정한다.
-- 하위 에이전트에게는 찾을 것, 범위, 돌려받을 형식(파일:줄 목록)을 분명히 준다.
-- 한두 번의 Grep으로 끝날 탐색은 직접 한다. 하위 에이전트를 띄우는 비용이 더 크다.
-- 하위 에이전트의 결과를 다시 확인하려고 같은 파일을 전부 읽지 않는다. 필요한 줄만 읽는다.
+- When sweeping many directories only to learn something like "where does X happen", start a subagent with the Agent tool and set its model to haiku.
+- Tell the subagent exactly what to find, where to look, and what to return (a list of file:line).
+- Do searches that one or two Greps would finish yourself; a subagent costs more.
+- Don't reread whole files to double-check a subagent's result. Read only the lines you need.

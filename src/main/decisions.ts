@@ -8,7 +8,7 @@ let onNew: (d: Decision) => void = () => {};
 let onLate: (d: Decision) => void = () => {};
 
 export function onDecisionCreated(fn: (d: Decision) => void) { onNew = fn; }
-/** 앱이 재시작돼 기다리는 쪽이 없어진 결정에 답이 왔을 때 */
+/** An answer arrived for a decision whose waiter is gone (the app restarted). */
 export function onLateAnswer(fn: (d: Decision) => void) { onLate = fn; }
 
 export function createDecision(d: Omit<Decision, 'id' | 'status' | 'answer' | 'createdAt' | 'answeredAt'>): Decision {
@@ -19,7 +19,7 @@ export function createDecision(d: Omit<Decision, 'id' | 'status' | 'answer' | 'c
   return dec;
 }
 
-/** 결정을 만들고 사용자가 답할 때까지 기다린다. signal이 끊기면 결정을 거둔다. */
+/** Create a decision and wait for the answer. If the signal aborts, withdraw it. */
 export function ask(d: Omit<Decision, 'id' | 'status' | 'answer' | 'createdAt' | 'answeredAt'>, signal?: AbortSignal): Promise<string> {
   const dec = createDecision(d);
   return new Promise((resolve, reject) => {
@@ -54,7 +54,7 @@ export function withdraw(id: string) {
   }
 }
 
-/** 답이 끝난 결정은 하루 지나면 목록에서 정리한다(기록은 대화와 메모리에 남는다). */
+/** Drop answered decisions after a day (the chat and memory keep the record). */
 export function pruneDecisions() {
   const cutoff = Date.now() - 24 * 3600_000;
   const before = store.data.decisions.length;
