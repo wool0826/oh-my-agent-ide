@@ -1,0 +1,95 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { paths } from './paths';
+import { loadSettings } from './settings';
+import { store } from './store';
+import { nowIso, run, runOk, slug, ensureDir } from './util';
+import type { Repo } from '../shared/types';
+
+/** gh가 사내 GitHub을 보도록 GH_HOST를 넣는다. */
+export function ghEnv(): NodeJS.ProcessEnv {
+  const host = loadSettings().githubHost.trim();
+  return host ? { ...process.env, GH_HOST: host } : { ...process.env };
+}
+
+async function defaultBranch(dir: string) {
+  const r = await run('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: dir });
+  if (r.code === 0 && r.stdout.trim()) return r.stdout.trim().replace(/^origin\//, '');
+  for (const b of ['main', 'master', 'develop']) {
+    const x = await run('git', ['rev-parse', '--verify', '-q', `refs/remotes/origin/${b}`], { cwd: dir });
+    if (x.code === 0) return b;
+  }
+  return 'main';
+}
+
+/**
+ * 저장소 등록. url은 git이 받는 형식 그대로(https, ssh) 또는 "org/name"이면 사내 GitHub 주소로 만든다.
+ * 이미 있는 로컬 폴더 경로를 주면 클론하지 않고 그 폴더를 등록한다.
+ */
+export async function registerRepo(input: { url: string; name?: string; description?: string }): Promise<Repo> {
+  let url = input.url.trim();
+  const host = loadSettings().githubHost.trim();
+  if (/^[\w.-]+\/[\w.-]+$/.test(url)) url = `https://${host || 'github.com'}/${url}.git`;
+  const isLocal = fs.existsSync(url) && fs.statSync(url).isDirectory();
+  const name = slug(input.name || path.basename(url).replace(/\.git$/, ''));
+  if (store.repo(name)) throw new Error(`${name} 이름의 저장소가 이미 있어요.`);
+  let dir: string;
+  if (isLocal) {
+    dir = path.resolve(url);
+    await runOk('git', ['rev-parse', '--git-dir'], { cwd: dir });
+    const origin = await run('git', ['remote', 'get-url', 'origin'], { cwd: dir });
+    if (origin.code === 0) url = origin.stdout.trim();
+  } else {
+    ensureDir(paths().repos);
+    dir = path.join(paths().repos, name);
+    if (!fs.existsSync(dir)) await runOk('git', ['clone', url, dir], { env: ghEnv(), timeoutMs: 30 * 60_000 });
+  }
+  await run('git', ['fetch', '-q', 'origin'], { cwd: dir, timeoutMs: 5 * 60_000 });
+  const repo: Repo = {
+    name, url, path: dir,
+    description: input.description?.trim() || '',
+    defaultBranch: await defaultBranch(dir),
+    addedAt: nowIso(),
+  };
+  store.data.repos.push(repo);
+  store.changed();
+  return repo;
+}
+
+export function removeRepo(name: string) {
+  store.data.repos = store.data.repos.filter((r) => r.name !== name);
+  store.changed();
+}
+
+export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description'>>) {
+  const r = store.repo(name);
+  if (!r) return;
+  Object.assign(r, patch);
+  store.changed();
+}
+
+/** Worker 하나가 저장소 하나에 쓰는 worktree. 작업마다 Worker가 새 브랜치를 판다. */
+export async function ensureWorktree(repo: Repo, workerId: string): Promise<string> {
+  const dir = path.join(paths().worktrees, repo.name, workerId);
+  if (fs.existsSync(path.join(dir, '.git'))) return dir;
+  ensureDir(path.dirname(dir));
+  await run('git', ['fetch', '-q', 'origin'], { cwd: repo.path, timeoutMs: 5 * 60_000 });
+  await runOk('git', ['worktree', 'add', '--detach', dir, `origin/${repo.defaultBranch}`], { cwd: repo.path });
+  return dir;
+}
+
+export async function removeWorktree(repo: Repo, dir: string) {
+  await run('git', ['worktree', 'remove', '--force', dir], { cwd: repo.path });
+  await run('git', ['worktree', 'prune'], { cwd: repo.path });
+}
+
+/** PR이 머지되거나 닫힌 뒤: worktree를 기본 브랜치로 되돌리고 로컬, 원격 브랜치를 지운다. */
+export async function cleanupBranch(repo: Repo, worktree: string | null, branch: string) {
+  if (worktree && fs.existsSync(worktree)) {
+    await run('git', ['fetch', '-q', 'origin'], { cwd: worktree });
+    const cur = await run('git', ['branch', '--show-current'], { cwd: worktree });
+    if (cur.stdout.trim() === branch) await run('git', ['switch', '--detach', `origin/${repo.defaultBranch}`], { cwd: worktree });
+  }
+  await run('git', ['branch', '-D', branch], { cwd: repo.path });
+  await run('git', ['push', 'origin', '--delete', branch], { cwd: repo.path, env: ghEnv(), timeoutMs: 120_000 });
+}

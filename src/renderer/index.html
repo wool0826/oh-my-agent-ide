@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Oh My Agent IDE</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="s-alert" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="7.6"/><path d="M10 6v4.6"/><circle cx="10" cy="13.7" r=".9" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="s-pr" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="6" cy="4.5" r="2"/><circle cx="6" cy="15.5" r="2"/><circle cx="14.5" cy="15.5" r="2"/><path d="M6 6.5v7M14.5 13.5V9a3 3 0 0 0-3-3H9.5"/><path d="M11 4l-1.8 2 1.8 2"/></symbol>
+    <symbol id="s-check" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.6"/><path d="M6.6 10.3l2.3 2.3 4.5-5"/></symbol>
+    <symbol id="s-doc" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 2.8h6.5L15 6.3v10.9H5z"/><path d="M11.5 2.8v3.5H15M7.5 10h5M7.5 13h5"/></symbol>
+    <symbol id="s-box" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 2.5l6.5 3.5v8L10 17.5 3.5 14V6z"/><path d="M3.5 6L10 9.5 16.5 6M10 9.5v8"/></symbol>
+    <symbol id="s-cpu" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="10" height="10" rx="2"/><path d="M8 2.5v2.5M12 2.5v2.5M8 15v2.5M12 15v2.5M2.5 8h2.5M2.5 12h2.5M15 8h2.5M15 12h2.5"/></symbol>
+    <symbol id="s-chat" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 3c4.4 0 7.5 2.8 7.5 6.3s-3.1 6.2-7.5 6.2c-.8 0-1.5-.1-2.2-.3L4 17l.9-3.1C3.4 12.8 2.5 11.2 2.5 9.3 2.5 5.8 5.6 3 10 3z"/></symbol>
+    <symbol id="s-arch" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.8" y="3.5" width="14.4" height="4" rx="1"/><path d="M4 7.5v8.5h12V7.5M8 11h4"/></symbol>
+    <symbol id="s-folder" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 5.5c0-.8.7-1.5 1.5-1.5h3.6l1.6 1.8H16c.8 0 1.5.7 1.5 1.5v7.7c0 .8-.7 1.5-1.5 1.5H4c-.8 0-1.5-.7-1.5-1.5z"/></symbol>
+    <symbol id="s-sparkle" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10 1.8l1.7 5 5 1.7-5 1.7-1.7 5-1.7-5-5-1.7 5-1.7z"/><path d="M15.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></symbol>
+    <symbol id="s-up" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15.5V4.5M5.5 9L10 4.5 14.5 9"/></symbol>
+    <symbol id="s-stop" viewBox="0 0 20 20"><rect x="5.5" y="5.5" width="9" height="9" rx="1.6" fill="currentColor"/></symbol>
+    <symbol id="s-gear" viewBox="0 0 20 20" fill="none" stroke="currentColor"><circle cx="10" cy="10" r="5.2" stroke-width="1.6"/><circle cx="10" cy="10" r="2" stroke-width="1.6"/><path stroke-width="2.4" d="M10 2.2v2.6M10 15.2v2.6M2.2 10h2.6M15.2 10h2.6M4.5 4.5l1.8 1.8M13.7 13.7l1.8 1.8M4.5 15.5l1.8-1.8M13.7 6.3l1.8-1.8"/></symbol>
+    <symbol id="s-pencil" viewBox="0 0 16 16"><path d="M10.8 2.6l2.6 2.6-7.6 7.6-3.2.6.6-3.2z"/></symbol>
+    <symbol id="s-x" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></symbol>
+    <symbol id="s-back" viewBox="0 0 8 12"><path d="M6 2L2 6l4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="s-chev" viewBox="0 0 8 12"><path d="M2 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="s-search" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.6 12.6l4.4 4.4"/></symbol>
+
+    <symbol id="g-ask" viewBox="0 0 16 16"><path d="M8 3.4v5.4"/><circle cx="8" cy="12" r="1.1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="g-run" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" opacity=".25"/><path d="M8 2.4a5.6 5.6 0 0 1 5.6 5.6"/></symbol>
+    <symbol id="g-pr" viewBox="0 0 16 16"><circle cx="4.6" cy="3.9" r="1.5"/><circle cx="4.6" cy="12.1" r="1.5"/><circle cx="11.4" cy="12.1" r="1.5"/><path d="M4.6 5.4v5.2M11.4 10.6V8.1a2.4 2.4 0 0 0-2.4-2.4H7.3"/></symbol>
+    <symbol id="g-wait" viewBox="0 0 16 16"><path d="M4.4 2.8h7.2M4.4 13.2h7.2M5.3 2.8c0 2.7 5.4 2.9 5.4 5.2s-5.4 2.5-5.4 5.2M10.7 2.8c0 2.7-5.4 2.9-5.4 5.2s5.4 2.5 5.4 5.2"/></symbol>
+    <symbol id="g-done" viewBox="0 0 16 16"><path d="M3.6 8.4l2.8 2.8 6-6.3"/></symbol>
+    <symbol id="g-arch" viewBox="0 0 16 16"><rect x="2.6" y="3.2" width="10.8" height="3.2" rx=".8"/><path d="M3.6 6.4v6.4h8.8V6.4M6.6 9.4h2.8"/></symbol>
+    <symbol id="g-box" viewBox="0 0 16 16"><path d="M8 2.2l5.2 2.8v6L8 13.8 2.8 11V5z"/><path d="M2.8 5L8 7.8 13.2 5M8 7.8v6"/></symbol>
+    <symbol id="g-star" viewBox="0 0 16 16"><path d="M8 2.4l1.7 3.5 3.8.5-2.8 2.6.7 3.8L8 11l-3.4 1.8.7-3.8-2.8-2.6 3.8-.5z"/></symbol>
+    <symbol id="g-doc" viewBox="0 0 16 16"><path d="M4.2 2.4h5l2.6 2.6v8.6H4.2z"/><path d="M6.2 8h3.6M6.2 10.6h3.6"/></symbol>
+    <symbol id="g-err" viewBox="0 0 16 16"><path d="M5 5l6 6M11 5l-6 6"/></symbol>
+    <symbol id="g-idle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/></symbol>
+  </defs>
+</svg>
+
+<div class="win" id="win" data-icons="line">
+  <nav class="sidebar" aria-label="작업 현황">
+    <div class="lights drag"></div>
+    <div class="side-scroll" id="side"></div>
+    <div class="side-foot"><button class="foot-btn" data-action="open-settings" title="설정" aria-label="설정"><svg aria-hidden="true"><use href="#s-gear"/></svg></button></div>
+  </nav>
+
+  <header class="toolbar drag">
+    <span class="seg nodrag" role="group" aria-label="화면 전환">
+      <button data-v="chat" aria-pressed="true">대화</button><button data-v="worker" aria-pressed="false">Worker</button><button data-v="repo" aria-pressed="false">저장소</button><button data-v="memory" aria-pressed="false">메모리</button>
+    </span>
+    <div class="usage nodrag" id="usage" aria-label="계정별 사용량"></div>
+  </header>
+
+  <!-- 대화 -->
+  <main class="content view" data-view="chat">
+    <div class="thread" id="chat-thread" aria-live="polite"></div>
+    <form class="composer" id="chat-form" autocomplete="off">
+      <textarea class="field input" id="chat-input" rows="1" placeholder="일을 말해 주세요. @저장소로 대상을 정할 수 있어요." aria-label="Dispatcher에게 보낼 메시지"></textarea>
+      <span class="ctx" id="chat-ctx" title="Dispatcher 컨텍스트. 250K에 닿으면 압축합니다."></span>
+      <button class="send" type="submit" id="chat-send" aria-label="보내기"><svg class="sym"><use href="#s-up"/></svg></button>
+    </form>
+  </main>
+  <aside class="inspector view" data-view="chat" id="chat-ins"></aside>
+
+  <!-- Worker -->
+  <main class="content view" data-view="worker" hidden>
+    <div class="wk-list" id="wk-list"></div>
+    <div class="wk-session" id="wk-session" hidden>
+      <div class="shead">
+        <button class="back" data-action="close-session" title="Worker 목록" aria-label="Worker 목록"><svg aria-hidden="true"><use href="#s-back"/></svg></button>
+        <span class="st"><b id="ws-title"></b><small id="ws-sub">Dispatcher와 주고받은 대화</small></span>
+      </div>
+      <div class="thread" id="ws-thread"></div>
+      <form class="composer" id="ws-form" autocomplete="off">
+        <textarea class="field input" id="ws-input" rows="1" placeholder="Worker에게 보내기" aria-label="Worker에게 보낼 메시지"></textarea>
+        <button class="send" type="submit" aria-label="보내기"><svg class="sym"><use href="#s-up"/></svg></button>
+      </form>
+    </div>
+  </main>
+  <aside class="inspector view" data-view="worker" id="wk-ins" hidden></aside>
+
+  <!-- 저장소 -->
+  <main class="content view" data-view="repo" id="repo-main" hidden></main>
+  <aside class="inspector view" data-view="repo" id="repo-ins" hidden></aside>
+
+  <!-- 메모리 -->
+  <main class="content view" data-view="memory" hidden>
+    <div class="vhead"><b>메모리</b></div>
+    <div class="searchbar"><svg class="sym"><use href="#s-search"/></svg><input id="mem-q" type="search" placeholder="메모리 검색" aria-label="메모리 검색"></div>
+    <div class="lst scroll" id="mem-list"></div>
+  </main>
+  <aside class="inspector view" data-view="memory" id="mem-ins" hidden></aside>
+</div>
+
+<div class="sheet-back" id="sheet" hidden></div>
+<div class="ctxmenu" id="ctxmenu" role="menu" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

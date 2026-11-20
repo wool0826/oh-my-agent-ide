@@ -1,0 +1,67 @@
+{
+  "name": "oh-my-agent-ide",
+  "version": "0.1.0",
+  "description": "Dispatcher와 Worker 에이전트에게 일을 맡기고 결정과 결과만 보는 데스크톱 IDE",
+  "main": "dist/main.mjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p .",
+    "start": "node build.mjs && electron .",
+    "dev": "node build.mjs && electron .",
+    "dist": "node build.mjs && electron-builder",
+    "dist:win": "node build.mjs && electron-builder --win",
+    "dist:mac": "node build.mjs && electron-builder --mac"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.329",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "productName": "Oh My Agent IDE",
+  "private": true,
+  "build": {
+    "appId": "dev.ohmyagent.ide",
+    "productName": "Oh My Agent IDE",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/plugin",
+        "to": "plugin"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "OhMyAgentIDE-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    }
+  }
+}
