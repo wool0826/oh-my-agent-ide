@@ -203,6 +203,7 @@ function registerIpc() {
   });
   handle('reveal:path', (p: string) => shell.showItemInFolder(p));
   handle('pr:check', () => checkPrs());
+  handle('app:version', () => app.getVersion());
   handle('app:relaunch', () => { app.relaunch(); app.quit(); });
 }
 

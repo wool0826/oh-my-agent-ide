@@ -46,6 +46,11 @@ const ui = {
   attach: { chat: [] as string[], ws: [] as string[] },
   langApplied: '' as string,
   accKey: '' as string,
+  accMenu: null as string | null,
+  accRename: null as string | null,
+  accRemove: null as string | null,
+  setQ: '',
+  version: '',
 };
 
 /* ---------- helpers ---------- */
@@ -120,7 +125,8 @@ function lv(v: number | null) {
 }
 const pct = (v: number | null) => (v === null ? '–' : `${v}%`);
 function modelLabel(m: string) {
-  return m.includes('fable') ? 'Fable 5.2' : m.includes('opus') ? 'Opus 5.5' : m.includes('sonnet') ? 'Sonnet 5.5' : m;
+  const x = m.match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:$|-\d{8}$)/);
+  return x ? `${x[1][0].toUpperCase()}${x[1].slice(1)} ${x[2]}${x[3] ? `.${x[3]}` : ''}` : m;
 }
 function acctLabel(id: string | null) { return S?.accounts.find((a) => a.id === id)?.label ?? '–'; }
 function prNum(url: string | null) { return url?.match(/\/pull\/(\d+)/)?.[1] ?? ''; }
@@ -615,35 +621,9 @@ function renderMemory() {
     <div class="ins-act">${ui.memSel.startsWith('repos/') ? `<button class="btn" data-action="mem-promote" data-id="${esc(ui.memSel.slice(6, -3))}" title="${t('mem.promoteHint')}">${t('mem.promote')}</button>` : ''}<button class="btn def" data-action="mem-save">${t('save')}</button></div>`;
 }
 
-/* ---------- controls: dropdown, font picker, stepper, slider ---------- */
+/* ---------- controls: popover list, font picker ---------- */
 
 type Opt = { value: string; label: string; font?: string };
-/** Options of each dropdown by its hidden input id, for the popover. */
-const ddOpts = new Map<string, Opt[]>();
-
-function dropdown(id: string, value: string, opts: Opt[], label: string, extra = '') {
-  ddOpts.set(id, opts);
-  const cur = opts.find((o) => o.value === value) ?? opts[0];
-  return `<span class="dd"><input type="hidden" id="${id}" value="${esc(cur.value)}" ${extra}><button type="button" class="dd-btn" data-dd="${id}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(label)}"><span class="dd-v">${esc(cur.label)}</span>${sym('s-updown', 'dd-chev')}</button></span>`;
-}
-
-/** After restoring kept values, make each dropdown button show its hidden input's value. */
-function syncDropdowns(root: ParentNode = document) {
-  root.querySelectorAll<HTMLButtonElement>('.dd-btn').forEach((btn) => {
-    const inp = document.getElementById(btn.dataset.dd!) as HTMLInputElement | null;
-    const o = ddOpts.get(btn.dataset.dd!)?.find((x) => x.value === inp?.value);
-    if (o) btn.querySelector('.dd-v')!.textContent = o.label;
-  });
-}
-
-function stepper(id: string, value: number, min: number, max: number, label: string) {
-  return `<span class="step" role="group" aria-label="${esc(label)}"><button type="button" data-step="-1" data-for="${id}" aria-label="-">${sym('s-minus')}</button><input id="${id}" class="step-v" inputmode="numeric" value="${value}" data-min="${min}" data-max="${max}" aria-label="${esc(label)}"><button type="button" data-step="1" data-for="${id}" aria-label="+">${sym('s-plus')}</button></span>`;
-}
-
-function slider(id: string, value: number, label: string) {
-  return `<span class="slider-wrap"><input id="${id}" class="slider" type="range" min="0" max="100" step="5" value="${value}" style="--val:${value}%" aria-label="${esc(label)}"><output class="slider-out" for="${id}">${value}</output></span>`;
-}
-
 const pop = { el: null as HTMLElement | null, owner: null as HTMLElement | null };
 
 function closePop(focusOwner = false) {
@@ -691,17 +671,6 @@ function openPop(owner: HTMLElement, items: Opt[], selected: string, onPick: (v:
   const on = el.querySelector<HTMLElement>('.pop-i.on') ?? el.querySelector<HTMLElement>('.pop-i');
   on?.scrollIntoView({ block: 'nearest' });
   if (focusList) on?.focus();
-}
-
-function openDropdown(btn: HTMLButtonElement) {
-  if (pop.owner === btn) { closePop(true); return; }
-  const id = btn.dataset.dd!;
-  const inp = document.getElementById(id) as HTMLInputElement;
-  openPop(btn, ddOpts.get(id) ?? [], inp.value, (v) => {
-    inp.value = v;
-    syncDropdowns(btn.parentElement!);
-    inp.dispatchEvent(new Event('change', { bubbles: true }));
-  });
 }
 
 /** Installed font families, read once from the OS. */
@@ -789,13 +758,92 @@ const PANES: { id: Pane; key: Key; glyph: string }[] = [
 
 const PLAN_OPTS: Opt[] = [{ value: 'team', label: 'Team' }, { value: 'enterprise', label: 'Enterprise' }];
 const effortOpts = (): Opt[] => EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}` as Key) }));
+const AVATAR = ['var(--blue)', 'var(--green)', 'var(--purple)', 'var(--orange)'];
+const MODEL_IDS = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5', fable: 'claude-fable-5-2' };
 
-function accountRow(a: AccountView) {
+/** Model choices; a configured model that is not in the list stays selectable. */
+function modelOpts(ids: string[], cur: string): Opt[] {
+  const list = cur && !ids.includes(cur) ? [...ids, cur] : ids;
+  return list.map((id) => ({ value: id, label: modelLabel(id) }));
+}
+
+/** Segmented control backed by a hidden input, so the form reads it like any field. */
+function segc(id: string, value: string, opts: Opt[], label: string, extra = '') {
+  const cur = opts.some((o) => o.value === value) ? value : opts[0].value;
+  return `<span class="segc" role="radiogroup" aria-label="${esc(label)}"><input type="hidden" id="${id}" value="${esc(cur)}" ${extra}>${opts.map((o) => `<button type="button" role="radio" data-segc="${id}" data-v="${esc(o.value)}" aria-checked="${o.value === cur}"${o.value === cur ? ' class="on"' : ''}>${esc(o.label)}</button>`).join('')}</span>`;
+}
+
+function pickSeg(btn: HTMLButtonElement) {
+  const inp = document.getElementById(btn.dataset.segc!) as HTMLInputElement | null;
+  if (!inp || inp.value === btn.dataset.v) return;
+  inp.value = btn.dataset.v!;
+  syncSegs(btn.parentElement!);
+  inp.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** Make each segmented control show its hidden input's value (after restoring kept values). */
+function syncSegs(root: ParentNode = document) {
+  root.querySelectorAll<HTMLButtonElement>('[data-segc]').forEach((b) => {
+    const on = (document.getElementById(b.dataset.segc!) as HTMLInputElement | null)?.value === b.dataset.v;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  });
+}
+
+function stepper(id: string, value: number, min: number, max: number, label: string) {
+  return `<span class="step" role="group" aria-label="${esc(label)}"><button type="button" data-step="-1" data-for="${id}" aria-label="-">${sym('s-minus')}</button><input id="${id}" class="step-v" inputmode="numeric" value="${value}" data-min="${min}" data-max="${max}" aria-label="${esc(label)}"><button type="button" data-step="1" data-for="${id}" aria-label="+">${sym('s-plus')}</button></span>`;
+}
+
+function slider(id: string, value: number, label: string) {
+  return `<span class="slider-wrap">${sym('s-speaker', 'slider-ic')}<input id="${id}" class="slider" type="range" min="0" max="100" step="5" value="${value}" style="--val:${value}%" aria-label="${esc(label)}"><output class="slider-out" for="${id}">${value}</output></span>`;
+}
+
+function meter(label: string, v: number | null) {
+  const w = v ?? 0;
+  return `<span>${label}</span><span class="meter"><i style="width:${w}%"${w >= 80 ? ' class="hot"' : ''}></i></span><span class="mv${w >= 80 ? ' hot' : ''}">${pct(v)}</span>`;
+}
+
+function initials(label: string) {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '?';
+  if (!/^[A-Za-z0-9]/.test(words[0])) return [...words[0]][0]; // Hangul and other scripts: one character
+  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase();
+}
+
+function accountCard(a: AccountView, i: number) {
   const kind = a.kind === 'login' ? t('acc.kindLogin') : t('acc.kindToken');
-  const usage = `5h ${pct(a.fiveHour.utilization)} · 7d ${pct(a.sevenDay.utilization)}`;
-  return `<div class="acc-row"><span class="m"><b>${esc(a.label)}</b><span>${kind} · ${usage}</span>${a.lastError ? `<span class="warn">${esc(a.lastError)}</span>` : ''}</span>
-    <span class="btns">${dropdown(`plan-${a.id}`, a.plan, PLAN_OPTS, t('acc.plan'), `data-change="acc-plan" data-id="${a.id}"`)}
-    <button class="btn" data-action="acc-rename" data-id="${a.id}">${t('acc.rename')}</button><button class="btn danger" data-action="acc-remove" data-id="${a.id}">${t('remove')}</button></span></div>`;
+  const plan = a.plan === 'enterprise' ? 'Enterprise' : 'Team';
+  const renaming = ui.accRename === a.id;
+  const name = renaming
+    ? `<span class="acc-edit"><input class="inp" id="acc-rename" value="${esc(a.label)}" aria-label="${t('acc.name')}" data-id="${a.id}"><button class="btn def" data-action="acc-rename-save" data-id="${a.id}">${t('save')}</button><button class="btn" data-action="acc-rename-cancel">${t('cancel')}</button></span>`
+    : `<span class="acc-name"><b>${esc(a.label)}</b><span class="pill ${a.plan}">${plan}</span></span>`;
+  const menu = ui.accMenu === a.id ? `<div class="amenu" role="menu" aria-label="${t('acc.options')}">
+      <button role="menuitem" data-action="acc-rename" data-id="${a.id}">${t('acc.rename')}</button>
+      <button role="menuitem" data-action="acc-refresh">${t('acc.refresh')}</button>
+      <div class="amenu-sep"></div><span class="amenu-h">${t('acc.plan')}</span>
+      ${PLAN_OPTS.map((o) => `<button role="menuitemradio" aria-checked="${a.plan === o.value}" data-action="acc-plan" data-id="${a.id}" data-v="${o.value}">${sym('s-tick', 'amenu-tick')}${o.label}</button>`).join('')}
+      <div class="amenu-sep"></div>
+      <button role="menuitem" class="danger" data-action="acc-remove" data-id="${a.id}">${t('acc.removeMenu')}</button>
+    </div>` : '';
+  return `<div class="acc-card${renaming ? ' editing' : ''}">
+    <span class="avatar" style="background:${AVATAR[i % AVATAR.length]}">${esc(initials(a.label))}</span>
+    <span class="acc-main">${name}<span class="acc-kind">${kind}</span>${a.lastError ? `<span class="warn">${esc(a.lastError)}</span>` : ''}</span>
+    <span class="acc-meters">${meter('5h', a.fiveHour.utilization)}${meter('7d', a.sevenDay.utilization)}</span>
+    <span class="acc-more"><button class="btn icon" data-action="acc-menu" data-id="${a.id}" aria-haspopup="menu" aria-expanded="${ui.accMenu === a.id}" aria-label="${t('acc.options')}">${sym('s-more')}</button>${menu}</span>
+  </div>`;
+}
+
+function removeDialog() {
+  const a = S!.accounts.find((x) => x.id === ui.accRemove);
+  if (!a) return '';
+  const i = S!.accounts.indexOf(a);
+  return `<div class="dlg-back" data-action="acc-remove-cancel"></div>
+  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t">
+    <span class="avatar big" style="background:${AVATAR[i % AVATAR.length]}">${esc(initials(a.label))}</span>
+    <h2 id="dlg-t">${esc(t('acc.removeTitle', { name: a.label }))}</h2>
+    <p>${a.kind === 'login' ? t('acc.removeLogin') : t('acc.removeToken')}</p>
+    <div class="dlg-btns"><button class="btn" data-action="acc-remove-cancel">${t('cancel')}</button><button class="btn danger-fill" data-action="acc-remove-ok" data-id="${a.id}">${t('remove')}</button></div>
+  </div>`;
 }
 
 function settingsHtml() {
@@ -803,68 +851,72 @@ function settingsHtml() {
   const st = s.settings;
   const full = s.accounts.length >= MAX_ACCOUNTS;
   const hasLogin = s.accounts.some((a) => a.kind === 'login');
-  const pane = (id: Pane, body: string) => `<section class="pane" data-pane="${id}"${ui.pane === id ? '' : ' hidden'}><h3>${t(PANES.find((p) => p.id === id)!.key)}</h3>${body}</section>`;
-  const row = (label: string, forId: string, control: string, cls = '') => `<label for="${forId}"${cls ? ` class="${cls}"` : ''}>${label}</label><div class="val${cls ? ` ${cls}` : ''}">${control}</div>`;
+  const pane = (id: Pane, body: string) => `<section class="pane" data-pane="${id}"${ui.pane === id ? '' : ' hidden'}><h2>${t(PANES.find((p) => p.id === id)!.key)}</h2>${body}</section>`;
+  const row = (label: string, forId: string, control: string, cls = '') => `<div class="srow${cls ? ` ${cls}` : ''}"><label class="lbl" for="${forId}">${label}</label>${control}</div>`;
+  const grp = (rows: string, cap = '') => `<div class="sgrp-wrap">${cap ? `<h3 class="scap">${cap}</h3>` : ''}<div class="sgrp">${rows}</div></div>`;
   const sounds: SoundName[] = ['chime', 'bell', 'ping', 'custom', 'none'];
 
-  const accounts = `<div class="group">${s.accounts.map(accountRow).join('') || `<div class="acc-row"><span class="m"><span>${t('acc.none')}</span></span></div>`}</div>
-    ${full ? '' : `<h4>${t('acc.add')} <small>${s.accounts.length}/${MAX_ACCOUNTS}</small></h4>
-    <div class="group form">
-      ${row(t('acc.name'), 'acc-label', `<input class="inp" id="acc-label" placeholder="${t('acc.namePh')}">`)}
-      ${row(t('acc.plan'), 'acc-plan', dropdown('acc-plan', 'team', PLAN_OPTS, t('acc.plan')))}
-      ${row(t('acc.token'), 'acc-token', `<input class="inp" id="acc-token" type="password" placeholder="sk-ant-…">`)}
-      <span class="lbl"></span><div class="val end"><button class="btn" data-action="acc-add-login" ${hasLogin ? 'disabled' : ''}>${t('acc.useLogin')}</button><button class="btn def" data-action="acc-add">${t('acc.addToken')}</button></div>
-    </div>`}`;
+  const accounts = `${grp(s.accounts.map(accountCard).join('') || `<div class="srow"><span class="lbl muted">${t('acc.none')}</span></div>`, `${t('acc.registered')} <small>${s.accounts.length} / ${MAX_ACCOUNTS}</small>`)}
+    ${full ? '' : grp(`
+      ${row(t('acc.name'), 'acc-label', `<input class="inp w" id="acc-label" placeholder="${t('acc.namePh')}">`)}
+      ${row(t('acc.plan'), 'acc-plan', segc('acc-plan', 'team', PLAN_OPTS, t('acc.plan')))}
+      ${row(t('acc.token'), 'acc-token', `<input class="inp w" id="acc-token" type="password" placeholder="sk-ant-…">`)}
+      <div class="srow end"><button class="btn" data-action="acc-add-login" ${hasLogin ? 'disabled' : ''}>${t('acc.useLogin')}</button><button class="btn def" data-action="acc-add">${t('acc.addToken')}</button></div>`, t('acc.add'))}`;
 
-  const general = `<div class="group form">
-      ${row(t('set.language'), 'set-lang', dropdown('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
-      ${row(t('set.home'), 'set-home', `<input class="inp" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
-      ${row(t('set.ghHost'), 'set-gh', `<input class="inp" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
-      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 1, 90, t('set.archive')))}
-    </div>`;
+  const general = grp(`
+      ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
+      ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
+      ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
+      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 1, 90, t('set.archive')))}`);
 
-  const display = `<div class="group form">
+  const display = `${grp(`
       ${row(t('set.font'), 'set-font', `<span class="combo"><input class="inp" id="set-font" value="${esc(st.fontFamily)}" placeholder="${t('set.fontSystem')}" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"><button type="button" class="combo-btn" data-combo="set-font" tabindex="-1" aria-label="${t('set.font')}">${sym('s-updown')}</button></span>`)}
-      ${row(t('set.fontSize'), 'set-fsize', `${stepper('set-fsize', st.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, t('set.fontSize'))}<button class="btn" data-action="font-reset">${t('set.fontReset')}</button>`)}
-    </div>`;
+      ${row(t('set.fontSize'), 'set-fsize', `<button class="btn" data-action="font-reset">${t('set.fontReset')}</button>${stepper('set-fsize', st.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, t('set.fontSize'))}`)}`)}
+    <div class="fprev" aria-hidden="true"><span class="me">${t('set.preview1')}</span><span class="ai">${t('set.preview2')}</span></div>`;
 
-  const alerts = `<div class="group form">
+  const alerts = grp(`
       ${row(t('set.osNoti'), 'set-noti', `<input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}>`)}
-      ${row(t('set.sound'), 'set-sound', `${dropdown('set-sound', st.sound, sounds.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}<button class="btn icon" data-action="sound-test" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>`)}
-      ${row(t('set.soundFile'), 'set-sfile', `<input class="inp" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
-      ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')))}
-    </div>`;
+      ${row(t('set.sound'), 'set-sound', `<button class="segico" data-action="sound-test" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, sounds.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
+      ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
+      ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`);
 
-  const memory = `<div class="group form">
-      ${row(t('set.memRemote'), 'set-mem', `<input class="inp" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}
-    </div>`;
+  const memory = grp(`
+      ${row(t('set.memRemote'), 'set-mem', `<input class="inp w" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}`);
 
-  const models = `<div class="group form">
-      ${row('Dispatcher', 'set-dm', `<input class="inp" id="set-dm" value="${esc(st.dispatcherModel)}">${dropdown('set-de', st.dispatcherEffort, effortOpts(), t('set.effort'))}`)}
-      ${row('Worker', 'set-wm', `<input class="inp" id="set-wm" value="${esc(st.workerModel)}">${dropdown('set-we', st.workerEffort, effortOpts(), t('set.effort'))}`)}
-      ${row(t('set.design'), 'set-fm', `<input class="inp" id="set-fm" value="${esc(st.designModel)}">`)}
-      ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}
-    </div>`;
+  const m = MODEL_IDS;
+  const models = `${grp(`
+      ${row(t('set.model'), 'set-dm', segc('set-dm', st.dispatcherModel, modelOpts([m.haiku, m.sonnet, m.opus], st.dispatcherModel), 'Dispatcher'), 'wrap')}
+      ${row(t('set.effort'), 'set-de', segc('set-de', st.dispatcherEffort, effortOpts(), t('set.effort')), 'wrap')}`, 'Dispatcher')}
+    ${grp(`
+      ${row(t('set.model'), 'set-wm', segc('set-wm', st.workerModel, modelOpts([m.sonnet, m.opus, m.fable], st.workerModel), 'Worker'), 'wrap')}
+      ${row(t('set.design'), 'set-fm', segc('set-fm', st.designModel, modelOpts([m.opus, m.fable], st.designModel), t('set.design')), 'wrap')}
+      ${row(t('set.defaultEffort'), 'set-we', segc('set-we', st.workerEffort, effortOpts(), t('set.effort')), 'wrap')}
+      ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}`, t('set.workers'))}`;
 
-  return `<div class="sheet settings" role="dialog" aria-modal="true" aria-label="${t('set.title')}">
-    <nav class="snav" aria-label="${t('set.title')}">
-      <h2>${t('set.title')}</h2>
-      ${PANES.map((p) => `<button class="snav-i${ui.pane === p.id ? ' on' : ''}" data-action="pane" data-id="${p.id}"${ui.pane === p.id ? ' aria-current="page"' : ''}>${sym(p.glyph)}<span>${t(p.key)}</span>${p.id === 'accounts' && s.setupNeeded ? '<i class="dot"></i>' : ''}</button>`).join('')}
-    </nav>
+  return `<header class="stop drag">
+      <button class="btn sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
+      <h1>${t('set.title')}</h1>
+      <span class="stop-r"><span class="dirty" id="set-dirty" hidden>${t('set.unsaved')}</span><button class="btn" data-action="revert-settings" id="set-revert" disabled>${t('set.revert')}</button><button class="btn def" data-action="save-settings">${t('save')}</button></span>
+    </header>
     <div class="sbody">
-      <div class="spanes">${pane('accounts', accounts)}${pane('general', general)}${pane('display', display)}${pane('alerts', alerts)}${pane('memory', memory)}${pane('models', models)}</div>
-      <div class="foot"><button class="btn" data-action="close-settings">${t('close')}</button><button class="btn def" data-action="save-settings">${t('save')}</button></div>
+      <nav class="snav" aria-label="${t('set.title')}">
+        <label class="ssearch">${sym('s-search')}<input id="set-q" type="search" placeholder="${t('set.search')}" aria-label="${t('set.search')}" value="${esc(ui.setQ)}"></label>
+        ${PANES.map((p) => `<button class="snav-i${ui.pane === p.id ? ' on' : ''}" data-action="pane" data-id="${p.id}"${ui.pane === p.id ? ' aria-current="page"' : ''}>${sym(p.glyph)}<span>${t(p.key)}</span>${p.id === 'accounts' && s.setupNeeded ? '<i class="dot"></i>' : ''}</button>`).join('')}
+        <span class="ver">${ui.version ? `v${esc(ui.version)}` : ''}</span>
+      </nav>
+      <main class="spanes"><div class="sinner">${pane('accounts', accounts)}${pane('general', general)}${pane('display', display)}${pane('alerts', alerts)}${pane('memory', memory)}${pane('models', models)}</div></main>
     </div>
-  </div>`;
+    ${ui.accMenu || ui.accRename ? '<div class="click-catch" data-action="acc-dismiss"></div>' : ''}
+    ${removeDialog()}`;
 }
 
-/** Re-render the settings sheet, keeping unsaved field values. */
+/** Re-render the settings window, keeping unsaved field values. */
 function openSettings(pane?: Pane) {
   if (pane) ui.pane = pane;
   closePop();
   const root = $('#sheet');
   const keep = new Map<string, string | boolean>();
-  if (ui.settingsShown) root.querySelectorAll<HTMLInputElement>('.spanes input').forEach((el) => { if (el.id) keep.set(el.id, el.type === 'checkbox' ? el.checked : el.value); });
+  if (ui.settingsShown) root.querySelectorAll<HTMLInputElement>('.spanes input').forEach((el) => { if (el.id && el.id !== 'acc-rename') keep.set(el.id, el.type === 'checkbox' ? el.checked : el.value); });
   const focusId = ui.settingsShown && root.contains(document.activeElement) ? (document.activeElement as HTMLElement).id : '';
   const scroll = root.querySelector('.spanes')?.scrollTop ?? 0;
   ui.settingsShown = true;
@@ -874,14 +926,18 @@ function openSettings(pane?: Pane) {
     if (!el) return;
     if (el.type === 'checkbox') el.checked = v as boolean; else el.value = v as string;
   });
-  syncDropdowns(root);
+  syncSegs(root);
   const vol = document.getElementById('set-vol') as HTMLInputElement | null;
   if (vol) syncSlider(vol);
-  if (focusId) document.getElementById(focusId)?.focus();
+  const ren = document.getElementById('acc-rename') as HTMLInputElement | null;
+  if (ren) { ren.focus(); ren.select(); } else if (focusId) document.getElementById(focusId)?.focus();
   if (!pane) root.querySelector('.spanes')!.scrollTop = scroll;
   syncSoundRows();
+  filterPanes();
+  syncDirty();
   root.hidden = false;
   document.body.classList.add('modal');
+  if (!ui.version) void call<string>('app:version').then((v) => { if (v) { ui.version = v; const el = root.querySelector('.ver'); if (el) el.textContent = `v${v}`; } });
   void installedFonts().then(() => { const f = document.getElementById('set-font') as HTMLInputElement | null; if (f) markFont(f); });
 }
 
@@ -896,9 +952,50 @@ function syncSoundRows() {
   document.querySelectorAll<HTMLElement>('.custom-row').forEach((el) => { el.hidden = kind !== 'custom'; });
 }
 
+/** Show "Unsaved changes" and enable Revert while the form differs from the saved settings. */
+function syncDirty() {
+  if (!ui.settingsShown || !S || !document.getElementById('set-lang')) return;
+  const f = readSettingsForm() as Record<string, unknown>;
+  const cur = S.settings as unknown as Record<string, unknown>;
+  const dirty = Object.keys(f).some((k) => f[k] !== cur[k]);
+  const label = document.getElementById('set-dirty');
+  if (label) label.hidden = !dirty;
+  const rv = document.getElementById('set-revert') as HTMLButtonElement | null;
+  if (rv) rv.disabled = !dirty;
+}
+
+/** Search box: keep only the sections whose labels match, and show the first match. */
+function filterPanes() {
+  const q = ui.setQ.trim().toLowerCase();
+  const hits: Pane[] = [];
+  document.querySelectorAll<HTMLButtonElement>('.snav-i').forEach((b) => {
+    const id = b.dataset.id as Pane;
+    const sec = document.querySelector(`.pane[data-pane="${id}"]`);
+    const words = [b.textContent ?? '', ...[...(sec?.querySelectorAll('.lbl, .scap, h2') ?? [])].map((x) => x.textContent ?? '')].join(' ').toLowerCase();
+    const hit = !q || words.includes(q);
+    b.hidden = !hit;
+    if (hit) hits.push(id);
+  });
+  if (q && hits.length && !hits.includes(ui.pane)) showPane(hits[0]);
+}
+
+function showPane(id: Pane) {
+  ui.pane = id;
+  document.querySelectorAll<HTMLElement>('.pane').forEach((p) => { p.hidden = p.dataset.pane !== id; });
+  document.querySelectorAll<HTMLButtonElement>('.snav-i').forEach((b) => {
+    const on = b.dataset.id === id;
+    b.classList.toggle('on', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  const sp = document.querySelector('.spanes');
+  if (sp) sp.scrollTop = 0;
+}
+
 function closeSettings() {
   closePop();
   ui.settingsShown = false;
+  ui.accMenu = ui.accRename = ui.accRemove = null;
+  ui.setQ = '';
   $('#sheet').hidden = true;
   $('#sheet').innerHTML = '';
   document.body.classList.remove('modal');
@@ -994,7 +1091,7 @@ async function act(el: HTMLElement, e: Event) {
     case 'view': setView(el.dataset.v as any); break;
     case 'open-settings': openSettings(); break;
     case 'close-settings': closeSettings(); break;
-    case 'pane': openSettings(id as Pane); break;
+    case 'pane': showPane(id as Pane); break;
     case 'goto-decision': {
       setView('chat');
       const card = document.getElementById(`dec-${id}`);
@@ -1087,15 +1184,26 @@ async function act(el: HTMLElement, e: Event) {
       if (r) { $<HTMLInputElement>('#acc-label').value = ''; toast(t('toast.loginAdded')); }
       break;
     }
-    case 'acc-remove': {
-      if (!confirm(t('confirm.accRemove'))) return;
-      await call('account:remove', id);
+    case 'acc-menu': ui.accMenu = ui.accMenu === id ? null : id; ui.accRename = null; openSettings(); break;
+    case 'acc-dismiss': ui.accMenu = null; ui.accRename = null; openSettings(); break;
+    case 'acc-rename': ui.accMenu = null; ui.accRename = id; openSettings(); break;
+    case 'acc-rename-cancel': ui.accRename = null; openSettings(); break;
+    case 'acc-rename-save': {
+      const nv = ($('#acc-rename') as HTMLInputElement | null)?.value.trim();
+      ui.accRename = null;
+      if (nv) await call('account:rename', id, nv);
+      openSettings();
       break;
     }
-    case 'acc-rename': {
-      const cur = S!.accounts.find((x) => x.id === id)?.label ?? '';
-      const nv = prompt(t('acc.name'), cur);
-      if (nv && nv.trim()) await call('account:rename', id, nv);
+    case 'acc-refresh': ui.accMenu = null; openSettings(); await call('account:refresh'); break;
+    case 'acc-plan': ui.accMenu = null; openSettings(); await call('account:plan', id, el.dataset.v); break;
+    case 'acc-remove': ui.accMenu = null; ui.accRemove = id; openSettings(); break;
+    case 'acc-remove-cancel': ui.accRemove = null; openSettings(); break;
+    case 'acc-remove-ok': ui.accRemove = null; openSettings(); await call('account:remove', id); break;
+    case 'revert-settings': {
+      ui.settingsShown = false; // re-render from the saved values, not the form
+      openSettings();
+      if (S) applyFont(S.settings.fontFamily, S.settings.fontSize);
       break;
     }
     case 'pick-home': {
@@ -1112,6 +1220,7 @@ async function act(el: HTMLElement, e: Event) {
       $<HTMLInputElement>('#set-font').value = '';
       $<HTMLInputElement>('#set-fsize').value = String(FONT_SIZE_DEFAULT);
       previewFont();
+      syncDirty();
       break;
     }
     case 'sound-test': {
@@ -1124,8 +1233,9 @@ async function act(el: HTMLElement, e: Event) {
       const r = await call<{ restart: boolean }>('settings:save', patch);
       if (!r) return;
       customCache = null;
-      Object.assign(S!.settings, patch); // keep the new font even if closing before the new state arrives
-      closeSettings();
+      const langChanged = patch.language !== S!.settings.language;
+      Object.assign(S!.settings, patch); // keep the new font even before the new state arrives
+      if (langChanged) { ui.settingsShown = false; applyStaticText(); openSettings(); } else syncDirty();
       if (r.restart) {
         if (confirm(t('confirm.restart'))) await call('app:relaunch');
       } else toast(tr(patch.language, 'toast.settingsSaved'));
@@ -1193,8 +1303,8 @@ function init() {
   document.body.classList.add(`platform-${ide.platform}`);
   document.addEventListener('click', (e) => {
     const tgt = e.target as HTMLElement;
-    const ddBtn = tgt.closest<HTMLButtonElement>('.dd-btn');
-    if (ddBtn) { openDropdown(ddBtn); return; }
+    const segBtn = tgt.closest<HTMLButtonElement>('[data-segc]');
+    if (segBtn) { pickSeg(segBtn); return; }
     const combo = tgt.closest<HTMLElement>('[data-combo]');
     if (combo) {
       const inp = document.getElementById(combo.dataset.combo!) as HTMLInputElement;
@@ -1211,17 +1321,18 @@ function init() {
   });
   document.addEventListener('change', async (e) => {
     const el = e.target as HTMLSelectElement;
-    if (el.dataset.change === 'acc-plan') await call('account:plan', el.dataset.id, el.value);
     if (el.dataset.change === 'sound-kind') syncSoundRows();
+    if (el.closest?.('#sheet')) syncDirty();
   });
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
     if (el.id === 'set-vol') syncSlider(el);
     if (el.id === 'set-fsize') previewFont();
     if (el.id === 'set-font') { markFont(el); previewFont(); void openFontPicker(el, false); }
+    if (el.id === 'set-q') { ui.setQ = el.value; filterPanes(); return; }
+    if (el.closest('#sheet')) syncDirty();
   });
   document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.v as any)));
-  $('#sheet').addEventListener('click', (e) => { if (e.target === $('#sheet')) closeSettings(); });
   $('#sheet').addEventListener('scroll', () => closePop(), true);
   window.addEventListener('resize', () => closePop());
 
@@ -1241,8 +1352,14 @@ function init() {
       }
       return;
     }
+    if (el.id === 'acc-rename' && e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      void act(Object.assign(document.createElement('button'), { dataset: { action: 'acc-rename-save', id: el.dataset.id } }) as HTMLElement, e);
+      return;
+    }
     if (e.key === 'Escape') {
       if (pop.el) { closePop(true); return; }
+      if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
       if (ui.settingsShown) closeSettings();
       $('#ctxmenu').hidden = true;
       if (ui.aaEdit) { ui.aaEdit = null; renderChatInspector(); }
