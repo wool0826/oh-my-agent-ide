@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { readJson, writeJsonAtomic, uid } from './util';
 import type { SettingsView, UsageWindow } from '../shared/types';
+import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
 
 export interface StoredAccount {
   id: string;
@@ -35,6 +36,8 @@ export const DEFAULTS: SettingsView = {
   dispatcherModel: 'claude-sonnet-5-5',
   workerModel: 'claude-opus-5-5',
   designModel: 'claude-fable-5-2',
+  fontFamily: '',
+  fontSize: FONT_SIZE_DEFAULT,
 };
 
 let cache: Settings | null = null;
@@ -43,7 +46,14 @@ export function loadSettings(): Settings {
   if (cache) return cache;
   const raw = readJson<Partial<Settings>>(file(), {});
   cache = { ...DEFAULTS, ...raw, accounts: (raw.accounts ?? []).map(fixAccount) };
+  fixFont(cache);
   return cache;
+}
+
+/** 손으로 고친 settings.json이나 잘못된 입력이 와도 화면이 깨지지 않게 글꼴 값을 정리한다. */
+function fixFont(s: SettingsView) {
+  s.fontFamily = normalizeFontFamily(s.fontFamily);
+  s.fontSize = clampFontSize(s.fontSize);
 }
 
 function fixAccount(a: Partial<StoredAccount>): StoredAccount {
@@ -69,6 +79,7 @@ export function saveSettings() {
 export function updateSettings(patch: Partial<SettingsView>) {
   const s = loadSettings();
   Object.assign(s, patch);
+  fixFont(s);
   saveSettings();
 }
 
