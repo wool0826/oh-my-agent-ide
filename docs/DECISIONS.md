@@ -49,7 +49,7 @@ What was agreed with the user during design was followed as is. Below are the ch
     - kubectl, terraform, helm changes
     - `gh pr merge`, deleting a repository or release
     - `rm -rf` of the root or home folder
-    - editing files outside the Worker folder
+    - (Editing files outside the Worker folder was on this list until decision 58.)
 17. **Answers given in the decision inbox** are kept in memory under `decisions/YYYY-MM.md`. Finished tasks go to `tasks/YYYY-MM.md`.
 18. **Corrections.**
     - "Just this once" sends only a `[Correction]` message to that Worker.
@@ -153,3 +153,4 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - The Worker conversation subtitle shows repository · branch · model.
     - Long paths: the Repositories inspector shows the last three segments with the full path on hover; the IDE home field in Settings scrolls to the end.
     - A Worker's final report shows its `RESULT:` line as a bold summary with PR and file chips, instead of the raw `RESULT:`/`PR:`/`FILE:` lines.
+58. **File edits are left to auto mode.** The always-ask list no longer includes edits outside the Worker folder. Claude Code itself writes outside the worktree all the time (auto-memory under `~/.claude/projects`, plan files under `~/.claude/plans`, its temp scratchpad), so the rule filled the decision inbox with harmless requests. Auto mode still asks through the inbox when it cannot decide. The always-ask list keeps only destructive or shared-state shell commands (decision 16).

@@ -1,4 +1,3 @@
-import path from 'node:path';
 import type { HookCallbackMatcher } from '@anthropic-ai/claude-agent-sdk';
 import { t } from '../i18n';
 import type { Key } from '../../shared/i18n';
@@ -26,34 +25,23 @@ const BASH_RULES: { re: RegExp; why: Key }[] = [
 /** Prefix of the hook's reason; the permission handler strips it. */
 export const ALWAYS_ASK_PREFIX = 'Always ask: ';
 
-const WRITE_TOOLS = new Set(['Write', 'Edit', 'NotebookEdit']);
-
-export function alwaysAskReason(tool: string, input: any, roots: string[]): string | null {
-  if (tool === 'Bash') {
-    const cmd = String(input?.command ?? '');
-    for (const r of BASH_RULES) if (r.re.test(cmd)) return t(r.why);
-    return null;
-  }
-  if (WRITE_TOOLS.has(tool)) {
-    const p = String(input?.file_path ?? input?.notebook_path ?? '');
-    if (!p) return null;
-    const abs = path.resolve(p);
-    const inside = roots.some((r) => {
-      const rel = path.relative(path.resolve(r), abs);
-      return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-    });
-    return inside ? null : t('ask.outside');
-  }
+/**
+ * Why a tool call must be asked about, or null to leave it to auto mode.
+ * Only destructive or shared-state shell commands are listed; file edits are auto mode's call, wherever they are.
+ */
+export function alwaysAskReason(tool: string, input: any): string | null {
+  if (tool !== 'Bash') return null;
+  const cmd = String(input?.command ?? '');
+  for (const r of BASH_RULES) if (r.re.test(cmd)) return t(r.why);
   return null;
 }
 
-export function alwaysAskHook(roots: () => string[], onFlag: (toolUseId: string, why: string) => void): HookCallbackMatcher {
+export function alwaysAskHook(): HookCallbackMatcher {
   return {
     hooks: [async (input) => {
       if (input.hook_event_name !== 'PreToolUse') return {};
-      const why = alwaysAskReason(input.tool_name, input.tool_input, roots());
+      const why = alwaysAskReason(input.tool_name, input.tool_input);
       if (!why) return {};
-      onFlag(input.tool_use_id, why);
       return {
         hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: `${ALWAYS_ASK_PREFIX}${why}` },
       };

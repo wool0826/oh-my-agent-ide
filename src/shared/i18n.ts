@@ -269,7 +269,6 @@ const en = {
   'ask.merge': 'merges a PR',
   'ask.repoDelete': 'deletes a repository or release',
   'ask.rmHome': 'deletes the root or home folder',
-  'ask.outside': 'edits a file outside the Worker folder',
 
   // chat events
   'ev.workerCreated': 'Created {id}: {repo}, {model}',
@@ -592,7 +591,6 @@ const ko: Record<Key, string> = {
   'ask.merge': 'PR 머지',
   'ask.repoDelete': '저장소나 릴리스 삭제',
   'ask.rmHome': '루트나 홈 폴더 삭제',
-  'ask.outside': 'Worker 폴더 밖 파일 수정',
 
   'ev.workerCreated': '{id}을 만들었어요. {repo}, {model}',
   'ev.assigned': '{id}에게 "{title}"을 맡겼어요',

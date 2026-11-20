@@ -125,7 +125,6 @@ class WorkerManager {
     const cur = accounts.get(w.accountId);
     const acc = cur && !accounts.isLimited(cur) ? cur : accounts.pick();
     if (!acc) return null;
-    const roots = [w.cwd, paths().workspaces];
     const s = new AgentSession({
       label: w.id,
       model: w.model,
@@ -137,7 +136,7 @@ class WorkerManager {
       effort: loadSettings().workerEffort,
       permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto',
       canUseTool: this.permissionHandler(w),
-      hooks: { PreToolUse: [alwaysAskHook(() => roots, () => {})] },
+      hooks: { PreToolUse: [alwaysAskHook()] },
     }, {
       onInit: (sid) => { w.sessionId = sid; store.changed(); },
       onAccount: (id) => { w.accountId = id; store.changed(); },
