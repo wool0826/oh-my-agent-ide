@@ -122,6 +122,10 @@ export interface SettingsView {
   dispatcherModel: string;
   workerModel: string;
   designModel: string;
+  /** 화면 글꼴. 비우면 시스템 글꼴. 쉼표로 여러 개를 적을 수 있다. */
+  fontFamily: string;
+  /** 기본 글자 크기(px). 다른 글자 크기는 이 값에 비례한다. */
+  fontSize: number;
 }
 
 export interface AppState {

@@ -167,6 +167,7 @@ function registerIpc() {
   handle('settings:save', (patch: Partial<SettingsView>) => {
     const homeChanged = patch.home && patch.home !== loadSettings().home;
     updateSettings(patch);
+    pushState(); // 바뀐 설정(글꼴 등)을 화면에 바로 반영
     if (homeChanged) return { restart: true };
     return { restart: false };
   });

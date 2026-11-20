@@ -1,4 +1,5 @@
 import type { AppState, AutoAnswer, ChatItem, Decision, MemoryFile, MemoryHit, Task, Worker, WorkerLogItem, AccountView } from '../shared/types';
+import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 
 declare global {
   interface Window {
@@ -530,6 +531,17 @@ function renderMemory() {
 
 /* ---------- 설정 ---------- */
 
+/** 화면 글꼴과 글자 크기를 CSS 변수로 적용한다. 설정 시트에서 고치는 동안에는 미리보기로도 쓴다. */
+function applyFont(family: string, size: number) {
+  const root = document.documentElement.style;
+  root.setProperty('--font', fontStack(family));
+  root.setProperty('--ui-font-size', `${clampFontSize(size)}px`);
+}
+
+function previewFont() {
+  applyFont($<HTMLInputElement>('#set-font').value, Number($<HTMLInputElement>('#set-fsize').value));
+}
+
 function openSettings() {
   const s = S!;
   ui.settingsShown = true;
@@ -553,6 +565,10 @@ function openSettings() {
       <label for="set-arch">보관 기간(일)</label><div class="val"><input class="inp" id="set-arch" type="number" min="1" max="90" value="${st.archiveDays}" style="width:80px"></div>
       <label for="set-noti">알림</label><div class="val"><input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}></div>
     </div></div>
+    <div><h3>화면</h3><div class="group form">
+      <label for="set-font">글꼴</label><div class="val"><input class="inp" id="set-font" list="font-list" value="${esc(st.fontFamily)}" placeholder="비우면 시스템 글꼴 (쉼표로 여러 개, 예: Pretendard, Malgun Gothic)"><datalist id="font-list">${FONT_SUGGESTIONS.map((f) => `<option value="${esc(f)}">`).join('')}</datalist></div>
+      <label for="set-fsize">글자 크기(px)</label><div class="val"><input class="inp" id="set-fsize" type="number" min="${FONT_SIZE_MIN}" max="${FONT_SIZE_MAX}" step="1" value="${st.fontSize}" style="width:80px"><button class="btn" data-action="font-reset">기본값</button></div>
+    </div><p class="note" style="margin-top:6px">고치는 대로 바로 미리 볼 수 있어요. 저장하지 않고 닫으면 원래대로 돌아가요. 코드와 로그는 고정폭 글꼴을 그대로 쓰고, 크기만 같이 바뀌어요.</p></div>
     <div><h3>모델</h3><div class="group form">
       <label for="set-dm">Dispatcher</label><div class="val"><input class="inp" id="set-dm" value="${esc(st.dispatcherModel)}"></div>
       <label for="set-wm">Worker</label><div class="val"><input class="inp" id="set-wm" value="${esc(st.workerModel)}"></div>
@@ -561,12 +577,15 @@ function openSettings() {
     <div class="foot"><button class="btn" data-action="close-settings">닫기</button><button class="btn def" data-action="save-settings">저장</button></div>
   </div>`;
   $('#sheet').hidden = false;
+  for (const id of ['#set-font', '#set-fsize']) $(id).addEventListener('input', previewFont);
 }
 
 function closeSettings() {
   ui.settingsShown = false;
   $('#sheet').hidden = true;
   $('#sheet').innerHTML = '';
+  // 저장하지 않은 미리보기는 되돌린다(저장했으면 S.settings가 이미 새 값이다).
+  if (S) applyFont(S.settings.fontFamily, S.settings.fontSize);
 }
 
 /* ---------- 전체 그리기 ---------- */
@@ -582,6 +601,8 @@ function setView(v: typeof ui.view) {
 function renderAll(force = false) {
   if (!S) return;
   document.body.classList.toggle('modal', ui.settingsShown);
+  // 설정 시트가 열려 있으면 미리보기를 덮어쓰지 않는다.
+  if (!ui.settingsShown) applyFont(S.settings.fontFamily, S.settings.fontSize);
   renderSidebar();
   renderUsage();
   if (ui.view === 'chat') { renderChat(force); renderChatInspector(); }
@@ -715,6 +736,12 @@ async function act(el: HTMLElement, e: Event) {
       if (p) $<HTMLInputElement>('#set-home').value = p;
       break;
     }
+    case 'font-reset': {
+      $<HTMLInputElement>('#set-font').value = '';
+      $<HTMLInputElement>('#set-fsize').value = String(FONT_SIZE_DEFAULT);
+      previewFont();
+      break;
+    }
     case 'save-settings': {
       const patch = {
         home: $<HTMLInputElement>('#set-home').value.trim(),
@@ -725,9 +752,12 @@ async function act(el: HTMLElement, e: Event) {
         dispatcherModel: $<HTMLInputElement>('#set-dm').value.trim(),
         workerModel: $<HTMLInputElement>('#set-wm').value.trim(),
         designModel: $<HTMLInputElement>('#set-fm').value.trim(),
+        fontFamily: normalizeFontFamily($<HTMLInputElement>('#set-font').value),
+        fontSize: clampFontSize($<HTMLInputElement>('#set-fsize').value),
       };
       const r = await call<{ restart: boolean }>('settings:save', patch);
       if (!r) return;
+      Object.assign(S!.settings, patch); // 새 상태가 오기 전에 닫아도 새 글꼴이 유지되게
       closeSettings();
       if (r.restart) {
         if (confirm('IDE 홈 폴더가 바뀌었어요. 지금 다시 시작할까요? 기존 폴더의 데이터는 옮기지 않아요.')) await call('app:relaunch');
