@@ -570,6 +570,7 @@ class WorkerManager {
     for (const task of queueOrder(store.data.tasks, 'slot')) {
       const w = task.workerId ? store.worker(task.workerId) : null;
       if (!w || !waitsForSlot(task) || !this.hasSlot(w)) continue;
+      if (w.status === 'archived') void this.unarchive(w);
       const s = this.ensureSession(w);
       // A usage limit holds every account now: it waits for that instead.
       if (!s) { this.pause(w, task); continue; }
@@ -627,6 +628,8 @@ class WorkerManager {
       store.log(w.id, 'event', t('log.slotHeld'));
       return store.changed();
     }
+    // Paused for a usage limit: going on needs a slot like any other resume.
+    if (cur?.status === 'queued' && !this.hasSlot(w)) return this.waitForSlot(w, cur, msg);
     const s = this.ensureSession(w);
     if (!s) return this.hold(w, msg);
     this.deliver(w, s, [msg]);
@@ -710,6 +713,7 @@ class WorkerManager {
   private markCancelled(task: Task, followerOf: string | null): CancelReport {
     const wasQueued = task.status === 'queued';
     task.status = statusAfterCancel(task);
+    task.queueReason = null;
     task.updatedAt = nowIso();
     this.reviewing.delete(task.id);
     this.ciFixing.delete(task.id);
@@ -793,7 +797,7 @@ class WorkerManager {
     this.sessions.delete(w.id);
     w.status = 'archived';
     w.statusText = '';
-    const keep = w.taskIds.some((id) => { const x = store.task(id); return x?.status === 'pr_open' || x?.status === 'blocked'; });
+    const keep = w.taskIds.some((id) => { const x = store.task(id); return x?.status === 'pr_open' || x?.status === 'blocked' || x?.status === 'queued'; });
     const repo = w.repo ? store.repo(w.repo) : null;
     if (repo && !keep && fs.existsSync(w.cwd)) await removeWorktree(repo, w.cwd).catch(() => {});
     store.changed();

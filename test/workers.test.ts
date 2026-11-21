@@ -472,7 +472,7 @@ test('a task waiting for a slot can be cancelled, and nothing starts it afterwar
   await workers.assign(x1, a.id, a.model);
   await workers.assign(x2, b.id, b.model);
   await workers.cancelTask(x2.id, 'user');
-  assert.equal(x2.status, 'cancelled');
+  assert.deepEqual([x2.status, x2.queueReason], ['cancelled', null]);
   report(a);
   await tick();
   assert.equal(x2.status, 'cancelled');
@@ -521,4 +521,36 @@ test('when a usage limit resets, paused work takes the free slot before a task t
   assert.match(sent.get(w.id)![0], /usage limit has reset/);
   assert.deepEqual([y.status, y.queueReason], ['queued', 'slot']);
   assert.equal(sent.get(b.id), undefined);
+});
+
+test('a message to a Worker paused by a usage limit waits for a slot when every slot is taken', () => {
+  loadSettings().maxWorkers = 1;
+  const { w, x } = pausedWorker();
+  limit(false);
+  const a = addWorker({ sessionId: 'sa' });
+  addTask(a);
+  workers.ensureSession(a);
+  const before = sent.get(w.id)?.length ?? 0;
+  workers.send(w.id, 'user', 'Go on with this.');
+  assert.deepEqual([x.status, x.queueReason], ['queued', 'slot']);
+  assert.equal(sent.get(w.id)?.length ?? 0, before);
+  report(a);
+  assert.equal(x.status, 'running');
+  assert.deepEqual(sent.get(w.id)!.slice(before), ['[User message] Go on with this.']);
+});
+
+test('a Worker archived while its task waits for a slot comes back when the task starts', async () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker();
+  const b = addWorker();
+  const x1 = fresh();
+  const x2 = fresh();
+  await workers.assign(x1, a.id, a.model);
+  await workers.assign(x2, b.id, b.model);
+  await workers.archive(b.id);
+  assert.equal(b.status, 'archived');
+  report(a);
+  await tick();
+  assert.equal(x2.status, 'running');
+  assert.notEqual(b.status, 'archived');
 });
