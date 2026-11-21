@@ -583,4 +583,3 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 
 /* Reduce transparency (macOS accessibility, Windows transparency effects off): tokens.css swaps every surface for
    its solid twin, drops the sheen and the wash, and sets the blur tokens to none, so nothing is needed here. */
-
