@@ -228,7 +228,7 @@ function boardServer(d: Dispatcher) {
         return view ? ok(view) : fail(t('err.noWorker', { id: a.worker_id }));
       }),
       tool('stop_worker', 'Stop what a Worker is doing (the session stays, so it can continue later).', { worker_id: z.string() }, async (a) => {
-        await workers.stop(a.worker_id);
+        await workers.stop(a.worker_id, 'dispatcher');
         return ok('Stopped.');
       }),
       tool('cancel_task', 'Cancel a task that is waiting to start: queued (waiting for a free Worker slot, or paused until a usage limit resets) or blocked (waiting for another task\'s PR to merge). It will not start. Tasks waiting on it with after_task_id are cancelled too. Its branch is deleted (and its Worker archived if it has nothing else) unless the branch holds commits or uncommitted changes. If it has an open PR, only the queued review, CI or follow-up work is dropped and the PR stays. Running work is not affected; use stop_worker for that.', {

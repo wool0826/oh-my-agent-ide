@@ -186,6 +186,9 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .clear-x svg { width: 8px; height: 8px; }
 .clear-x:hover { background: var(--text-secondary); color: var(--bg-canvas); }
 .sect:hover .clear-x, .row:hover .clear-x, .clear-x:focus-visible { opacity: 1; }
+/* Stop / Open on a sidebar Worker row: they take room only while the row is hovered, so titles keep their width. */
+.row-acts { display: none; gap: var(--space-4); flex: none; }
+.row:hover .row-acts, .row:focus-within .row-acts { display: flex; }
 /* "Clear" on the sidebar's Queue heading, and "Cancel task" in a Worker's task list */
 .side-sec h4 .h-act { margin-left: auto; padding: 0 var(--space-2); border: 0; background: none; color: var(--text-tertiary); font: inherit; cursor: pointer; }
 .side-sec h4 .h-act:hover, .side-sec h4 .h-act:focus-visible { color: var(--danger-text); outline: none; }

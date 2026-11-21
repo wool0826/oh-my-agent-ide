@@ -842,3 +842,49 @@ test('a Worker waiting on a permission goes on once that decision is answered wi
   assert.deepEqual([w.status, x.status], ['running', 'running']);
   assert.deepEqual(workerDecisions(store.data.decisions, w.id), []);
 });
+
+test('a Worker the user stops is idle, not in error, and its task shows as stopped by user instead of failed', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  s.send('Working.');
+  await workers.stop(w.id, 'user');
+  s.ev.onTurnEnd!({ text: 'Interrupted', isError: true, internal: false });
+  s.ev.onStatus!('error', 'Interrupted');
+  assert.deepEqual([x.status, x.stopped, x.summary], ['failed', true, 'Stopped by user']);
+  assert.deepEqual([w.status, w.statusText], ['idle', '']);
+  assert.equal(store.data.chat.filter((c) => c.kind === 'error').length, 0);
+  assert.ok(store.data.chat.some((c) => c.kind === 'result' && c.ref === x.id && c.text === `Stopped by user (${w.id})`));
+  assert.ok(store.data.pendingUpdates.some((u) => u.startsWith(`The user stopped ${w.id} on ${x.id}`)));
+  // Told to go on, it picks the task up again and it is no longer marked stopped.
+  workers.send(w.id, 'user', 'Go on.');
+  assert.deepEqual([x.status, x.stopped], ['running', false]);
+});
+
+test('a session that dies after a stop without ending its turn still leaves its task stopped, not running', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  s.send('Working.');
+  await workers.stop(w.id, 'user');
+  s.ev.onStatus!('error', 'Process exited with code 1');
+  assert.deepEqual([x.status, x.stopped, w.status], ['failed', true, 'idle']);
+  assert.equal(store.data.chat.filter((c) => c.kind === 'error').length, 0);
+});
+
+test('a stop by the Dispatcher is marked as its own, and an error after a stop that came too late is still an error', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  s.send('Working.');
+  await workers.stop(w.id, 'dispatcher');
+  s.ev.onTurnEnd!({ text: 'Interrupted', isError: true, internal: false });
+  s.ev.onStatus!('error', 'Interrupted');
+  assert.deepEqual([x.status, x.summary], ['failed', 'Stopped by the Dispatcher']);
+  assert.ok(store.data.chat.some((c) => c.kind === 'result' && c.text === `Stopped by the Dispatcher (${w.id})`));
+  const y = addTask(w);
+  s.send('Working on the next one.');
+  s.ev.onTurnEnd!({ text: 'It broke.', isError: true, internal: false });
+  s.ev.onStatus!('error', 'It broke.');
+  assert.deepEqual([y.status, y.stopped, w.status], ['failed', false, 'error']);
+});

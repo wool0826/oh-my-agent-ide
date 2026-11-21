@@ -195,7 +195,7 @@ function registerIpc() {
     userAnswer(open.id, body);
     return 'answered';
   });
-  handle('worker:stop', (id: string) => workers.stop(id));
+  handle('worker:stop', (id: string) => workers.stop(id, 'user'));
   handle('task:cancel', (id: string) => workers.cancelTask(id, 'user'));
   handle('queue:clear', () => workers.clearQueue('user'));
   handle('worker:diff', (id: string) => workers.diff(id));

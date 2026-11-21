@@ -43,6 +43,9 @@ const en = {
   'task.pr_open': 'PR in review',
   'task.done': 'Done',
   'task.failed': 'Failed',
+  'task.stopped': 'Stopped',
+  'task.stoppedUser': 'Stopped by user',
+  'task.stoppedDispatcher': 'Stopped by the Dispatcher',
   'task.cancelled': 'Cancelled',
   'task.promote': 'Add IDE memory to {name} CLAUDE.md',
 
@@ -167,6 +170,7 @@ const en = {
   'wk.pickTitle': 'Pick a Worker',
   'wk.tasks': 'Tasks',
   'wk.stop': 'Stop',
+  'wk.open': 'Open',
   'wk.restore': 'Restore',
   'wk.archive': 'Archive',
   'wk.message': 'Send message',
@@ -436,6 +440,10 @@ const en = {
   'res.ciFixLabel': 'CI fixed',
   'res.followupLabel': 'follow-up done',
   'res.doneLabel': 'done',
+  'ev.stopped': 'Stopped by user ({id})',
+  'ev.stoppedDispatcher': 'Stopped by the Dispatcher ({id})',
+  'log.stopped': 'Stopped by user.',
+  'log.stoppedDispatcher': 'Stopped by the Dispatcher.',
 
   // spend (Claude Code's estimate at API list prices; subscription accounts are not billed it)
   'spend.cost': 'API-equivalent estimate {cost}',
@@ -547,6 +555,9 @@ const ko: Record<Key, string> = {
   'task.pr_open': 'PR 리뷰 대기',
   'task.done': '끝남',
   'task.failed': '실패',
+  'task.stopped': '중지됨',
+  'task.stoppedUser': '사용자가 중지함',
+  'task.stoppedDispatcher': 'Dispatcher가 중지함',
   'task.cancelled': '취소',
   'task.promote': '{name} CLAUDE.md에 IDE 메모리 반영',
 
@@ -663,6 +674,7 @@ const ko: Record<Key, string> = {
   'wk.pickTitle': 'Worker를 고르세요',
   'wk.tasks': '맡았던 작업',
   'wk.stop': '멈추기',
+  'wk.open': '열기',
   'wk.restore': '복원',
   'wk.archive': '보관',
   'wk.message': '메시지 보내기',
@@ -926,6 +938,10 @@ const ko: Record<Key, string> = {
   'res.ciFixLabel': 'CI 수정',
   'res.followupLabel': '추가 지시 반영',
   'res.doneLabel': '완료',
+  'ev.stopped': '사용자가 중지함 ({id})',
+  'ev.stoppedDispatcher': 'Dispatcher가 중지함 ({id})',
+  'log.stopped': '사용자가 중지했어요.',
+  'log.stoppedDispatcher': 'Dispatcher가 중지했어요.',
 
   'spend.cost': 'API 환산 추정 {cost}',
   'spend.tokens': '입력 {in} · 출력 {out} · 캐시 {cache}',

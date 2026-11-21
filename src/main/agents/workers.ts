@@ -164,6 +164,8 @@ class WorkerManager {
   private questioned = new Set<string>();
   /** Requests that started a Dispatcher turn, per task (or Worker, with no task open). */
   private requestWakes = new Map<string, number>();
+  /** Workers the user stopped whose turn has not ended yet: that turn's error is the Stop, not a failure. */
+  private stopping = new Map<string, 'user' | 'dispatcher'>();
 
   /**
    * A follow-up for a task that finished (or failed) less than 3 days ago reopens that task,
@@ -180,6 +182,7 @@ class WorkerManager {
     // A task that failed before finishing just continues; its report is not a follow-up.
     if (last.finishedAt) this.followups.add(last.id);
     last.status = 'running';
+    last.stopped = false;
     last.updatedAt = nowIso();
   }
 
@@ -268,9 +271,19 @@ class WorkerManager {
         store.changed();
       },
       onStatus: (st, text) => {
+        // The turn the user stopped ends in an error: the Worker is idle, not in error.
+        const stopped = st !== 'busy' && this.stopping.has(w.id);
         if (st === 'busy') { if (w.status !== 'waiting') w.status = 'running'; }
-        else if (st === 'idle') { w.status = 'idle'; }
-        else {
+        else if (st === 'idle' || stopped) {
+          w.status = 'idle';
+          if (stopped) {
+            w.statusText = '';
+            // A session that died after the stop never ended its turn: its task is stopped all the same.
+            const task = this.currentTask(w);
+            if (st !== 'idle' && task && task.status !== 'queued') this.fail(w, task, text);
+            this.stopping.delete(w.id);
+          }
+        } else {
           w.status = 'error';
           w.statusText = text;
           store.log(w.id, 'event', t('log.error', { msg: text }));
@@ -550,13 +563,23 @@ class WorkerManager {
   }
 
   private fail(w: Worker, task: Task, text: string) {
+    const by = this.stopping.get(w.id);
+    const stopped = !!by;
     task.status = 'failed';
+    task.stopped = stopped;
     task.updatedAt = nowIso();
-    task.summary = oneLine(text || t('err.stopped'), 200);
+    task.summary = stopped ? t(by === 'user' ? 'task.stoppedUser' : 'task.stoppedDispatcher') : oneLine(text || t('err.stopped'), 200);
     w.request = null;
     this.requestWakes.delete(task.id);
-    store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
-    store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true);
+    if (stopped) {
+      // A result, not an error: the user meant it. The Dispatcher hears it without a turn of its own.
+      store.chat('result', t(by === 'user' ? 'ev.stopped' : 'ev.stoppedDispatcher', { id: w.id }), task.id);
+      store.log(w.id, 'event', t(by === 'user' ? 'log.stopped' : 'log.stoppedDispatcher'));
+      if (by === 'user') store.pushUpdate(`The user stopped ${w.id} on ${task.id} "${task.title}". The task is left unfinished; a message to ${w.id} continues it.`);
+    } else {
+      store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
+      store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true);
+    }
     this.followUp(task);
     this.fillSlots();
   }
@@ -596,6 +619,7 @@ class WorkerManager {
     task.prUrl = prUrl ?? task.prUrl;
     task.files = files.length ? files : task.files;
     task.status = task.prUrl ? 'pr_open' : 'done';
+    task.stopped = false;
     task.prState = task.prUrl ? (task.prState ?? 'OPEN') : null;
     task.finishedAt = nowIso();
     if (task.prUrl && !task.reviewSyncedAt) task.reviewSyncedAt = nowIso();
@@ -916,8 +940,12 @@ class WorkerManager {
     this.deliver(w, s, [msg], task);
   }
 
-  async stop(workerId: string) {
-    await this.sessions.get(workerId)?.interrupt();
+  /** The user's (or the Dispatcher's) Stop: the turn is interrupted, and its task shows as stopped, not failed. */
+  async stop(workerId: string, by: 'user' | 'dispatcher') {
+    const s = this.sessions.get(workerId);
+    if (!s) return;
+    if (s.busy) this.stopping.set(workerId, by);
+    await s.interrupt();
   }
 
   /** The task's turn is under way in its session: that is running work, which only Stop interrupts. */

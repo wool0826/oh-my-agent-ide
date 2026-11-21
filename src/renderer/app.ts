@@ -207,7 +207,9 @@ const awaitsDispatcher = (x: Task | null | undefined) => {
   const w = x?.status === 'waiting' ? worker(x.workerId) : null;
   return !!w && w.status === 'idle' && !!w.request;
 };
-const taskLabel = (x: Task) => (x.status === 'queued' ? queuedLabel(x) : awaitsDispatcher(x) ? t('st.awaitDispatcher') : taskStatus(x.status));
+/** Failed because the user (or the Dispatcher) pressed Stop: shown apart from failures, never in red. */
+const stoppedTask = (x: Task | null | undefined) => x?.status === 'failed' && !!x.stopped;
+const taskLabel = (x: Task) => (x.status === 'queued' ? queuedLabel(x) : awaitsDispatcher(x) ? t('st.awaitDispatcher') : stoppedTask(x) ? t('task.stopped') : taskStatus(x.status));
 
 let toastTimer: number | undefined;
 function toast(text: string, err = false) {
@@ -464,7 +466,7 @@ function renderSidebar() {
     const x = lastTask(w);
     const what = x?.title ?? w.title;
     const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : `${w.repo ?? t('general')}, ${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
-    return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span></div>`;
+    return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}" data-ctx="worker"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span>${workerActs(w)}</div>`;
   };
   const runRows = running.map(workerRow).join('');
   const errRows = failed.map(workerRow).join('');
@@ -483,6 +485,15 @@ function renderSidebar() {
     <div class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
+}
+
+/** A Worker can be stopped while it is at work. */
+const stoppable = (w: Worker) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting';
+
+/** Stop and Open on a sidebar Worker row, shown on hover (the row's context menu has them too). */
+function workerActs(w: Worker) {
+  const btn = (action: string, icon: string, label: string) => `<button class="clear-x" data-action="${action}" data-id="${esc(w.id)}" title="${label}" aria-label="${esc(`${label}: ${w.id}`)}"><svg><use href="#${icon}"/></svg></button>`;
+  return `<span class="row-acts">${stoppable(w) ? btn('worker-stop', 's-stop', t('wk.stop')) : ''}${btn('open-worker', 's-chev', t('wk.open'))}</span>`;
 }
 
 /** The × on a queued task's row: asks before cancelling it. */
@@ -559,6 +570,7 @@ function spendHtml(s: Spend | null | undefined, short = false) {
 
 function resultGlyph(x: Task | null, err = false) {
   if (err) return sym('s-alert', 'c-red');
+  if (stoppedTask(x)) return sym('s-stop', 'c-gray');
   if (x?.prState === 'MERGED') return sym('s-merge', 'c-pr-merged');
   return x?.prUrl ? sym('s-pr', x.prState === 'CLOSED' ? 'c-pr-closed' : 'c-pr-open') : x?.files.length ? sym('s-doc', 'c-teal') : sym('s-check', 'c-green');
 }
@@ -2190,7 +2202,7 @@ function init() {
     if (pop.el && !pop.el.contains(tgt) && tgt !== pop.owner) closePop();
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx')) $('#ctxmenu').hidden = true;
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
   });
   document.addEventListener('change', async (e) => {
     const el = e.target as HTMLSelectElement;
@@ -2272,13 +2284,22 @@ function init() {
     if (dir) { e.preventDefault(); navStep(dir, 'key'); }
   });
 
-  // Context menu on auto-answers
+  // Context menu on auto-answers and sidebar Worker rows
   document.addEventListener('contextmenu', (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ctx="aa"]');
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ctx="aa"], [data-ctx="worker"]');
     const menu = $('#ctxmenu');
     if (!el) { menu.hidden = true; return; }
     e.preventDefault();
     const id = el.dataset.id!;
+    if (el.dataset.ctx === 'worker') {
+      const w = worker(id);
+      menu.dataset.for = 'worker';
+      menu.innerHTML = `<button data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && stoppable(w) ? `<button data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
+      menu.style.left = `${Math.min(e.clientX, innerWidth - 200)}px`;
+      menu.style.top = `${Math.min(e.clientY, innerHeight - 70)}px`;
+      menu.hidden = false;
+      return;
+    }
     menu.dataset.for = 'aa';
     menu.innerHTML = `<button data-action="aa-edit" data-id="${id}">${t('aa.correct')}…</button><button data-action="view" data-v="memory">${t('aa.viewMemory')}</button>`;
     menu.style.left = `${Math.min(e.clientX, innerWidth - 200)}px`;
