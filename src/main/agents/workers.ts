@@ -153,6 +153,7 @@ class WorkerManager {
       canUseTool: this.permissionHandler(w),
       hooks: { PreToolUse: [alwaysAskHook()] },
       // Registered even with self-review off, so turning it on reaches sessions that are already open.
+      // Its model is read when the session starts, like the Worker's own.
       agents: { [REVIEWER]: reviewerAgent(loadSettings().dispatcherModel) },
     }, {
       onInit: (sid) => { w.sessionId = sid; store.changed(); },
