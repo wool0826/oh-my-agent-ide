@@ -10,6 +10,7 @@ import { loadSettings } from '../src/main/settings';
 import { answer } from '../src/main/decisions';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { ALLOW, type Task, type Worker } from '../src/shared/types';
+import { workerDecisions } from '../src/shared/inbox';
 
 // Settings and the IDE home live in a temp folder. Nothing here reads them until a test runs.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-workers-'));
@@ -823,4 +824,21 @@ test('on restart, a task left waiting for one that already ended without a PR st
   const next = addTask(b, { status: 'blocked', afterTaskId: dep.id, startedAt: null });
   workers.resumeAfterRestart();
   assert.equal(next.status, 'running');
+});
+
+test('a Worker waiting on a permission goes on once that decision is answered with text: the tool is denied with what the user said', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  s.ev.onStatus!('busy', '');
+  const opts = { signal: new AbortController().signal, suggestions: [], toolUseID: 'tu' } as unknown as Parameters<CanUseTool>[2];
+  const result = s.cfg.canUseTool!('Bash', { command: 'rm -rf build' }, opts);
+  await tick();
+  assert.deepEqual([w.status, x.status], ['waiting', 'waiting']);
+  const open = workerDecisions(store.data.decisions, w.id);
+  assert.equal(open.length, 1);
+  answer(open[0].id, 'Use npm run clean instead');
+  assert.deepEqual(await result, { behavior: 'deny', message: 'The user denied this and said: Use npm run clean instead' });
+  assert.deepEqual([w.status, x.status], ['running', 'running']);
+  assert.deepEqual(workerDecisions(store.data.decisions, w.id), []);
 });

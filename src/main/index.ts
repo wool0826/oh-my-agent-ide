@@ -23,6 +23,7 @@ import { month, nowIso, oneLine } from './util';
 import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
 import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
 import { notifyText } from '../shared/askWhy';
+import { workerDecisions } from '../shared/inbox';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -156,7 +157,7 @@ function registerIpc() {
     else store.data.chat.forEach((c) => { if (set.has(c.id)) c.cleared = false; });
     store.changed();
   });
-  handle('decision:answer', (id: string, ans: string) => {
+  const userAnswer = (id: string, ans: string) => {
     const d = answerDecision(id, ans);
     if (!d) return;
     const shown = ans === ALLOW ? t(d.source === 'plan' ? 'plan.approve' : 'allow') : ans === DENY ? t('deny') : ans;
@@ -165,7 +166,8 @@ function registerIpc() {
     if (d.source === 'dispatcher') dispatcher.decisionAnswered(d.title, ans);
     remember('decision', `${d.workerId ?? 'Dispatcher'}: ${oneLine(d.title, 160)} → ${shown}`);
     suggestFromDecision(d);
-  });
+  };
+  handle('decision:answer', userAnswer);
   handle('auto:correct', (id: string, newAnswer: string, scope: 'once' | 'preference') => {
     const a = store.data.autoAnswers.find((x) => x.id === id);
     if (!a) throw new Error(t('err.noItem'));
@@ -185,7 +187,14 @@ function registerIpc() {
   // A page of a Worker's conversation: the latest, or the one before line `before` (decision 85).
   handle('worker:log', (id: string, opts?: { before?: number; limit?: number }) => store.readLog(id, opts?.before, Math.min(opts?.limit ?? PAGE.log, 1000)));
   handle('chat:page', (before: string, limit?: number) => store.chatPage(before, Math.min(limit ?? PAGE.chat, 1000)));
-  handle('worker:send', (id: string, text: string, files?: string[]) => workers.send(id, 'user', text + attachmentBlock(registerAttachments(files ?? []))));
+  handle('worker:send', (id: string, text: string, files?: string[]) => {
+    const body = text + attachmentBlock(registerAttachments(files ?? []));
+    // While the Worker waits on the user, what is typed to it answers that decision, as the inbox's text field does (decision 93).
+    const open = workerDecisions(store.data.decisions, id)[0];
+    if (!open) return workers.send(id, 'user', body);
+    userAnswer(open.id, body);
+    return 'answered';
+  });
   handle('worker:stop', (id: string) => workers.stop(id));
   handle('task:cancel', (id: string) => workers.cancelTask(id, 'user'));
   handle('queue:clear', () => workers.clearQueue('user'));
