@@ -11,6 +11,7 @@ import { installPlugin } from './runtime';
 import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisions, withdraw } from './decisions';
 import { dispatcher, createTask } from './agents/dispatcher';
 import { workers } from './agents/workers';
+import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
 import { startPrMonitor, checkPrs, checkPrsSoon } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { attachmentBlock, registerAttachments } from './attachments';
@@ -43,6 +44,7 @@ function snapshot(): AppState {
     tasks: d.tasks,
     decisions: d.decisions,
     autoAnswers: d.autoAnswers,
+    memorySuggestions: loadSettings().memorySuggest ? d.memorySuggestions.filter((x) => x.status === 'pending') : [],
     chat: d.chat.slice(-400),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText },
   };
@@ -153,6 +155,7 @@ function registerIpc() {
     store.chat('decision', `${who}${oneLine(d.title, 80)} → ${shown}`);
     if (d.source === 'dispatcher') dispatcher.decisionAnswered(d.title, ans);
     remember('decision', `${d.workerId ?? 'Dispatcher'}: ${oneLine(d.title, 160)} → ${shown}`);
+    suggestFromDecision(d);
   });
   handle('auto:correct', (id: string, newAnswer: string, scope: 'once' | 'preference') => {
     const a = store.data.autoAnswers.find((x) => x.id === id);
@@ -166,7 +169,10 @@ function registerIpc() {
       store.chat('error', t('err.correction', { id: a.workerId, msg: (e as Error).message }));
     }
     store.changed();
+    suggestFromCorrection(a);
   });
+  handle('suggest:save', (id: string, text?: string) => { const file = saveSuggestion(id, text); dispatcher.refreshContext(); return file; });
+  handle('suggest:dismiss', (id: string) => dismissSuggestion(id));
   handle('worker:log', (id: string) => store.readLog(id));
   handle('worker:send', (id: string, text: string, files?: string[]) => workers.send(id, 'user', text + attachmentBlock(registerAttachments(files ?? []))));
   handle('worker:stop', (id: string) => workers.stop(id));

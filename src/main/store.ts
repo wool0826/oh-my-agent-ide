@@ -3,7 +3,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { readJson, writeJsonAtomic, debounce, nowIso, ensureDir, uid } from './util';
 import { paths } from './paths';
-import type { AutoAnswer, ChatItem, ChatKind, Decision, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
+import type { AutoAnswer, ChatItem, ChatKind, Decision, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
 
 export interface DispatcherState { sessionId: string | null; date: string | null; contextTokens: number; accountId: string | null }
 
@@ -15,6 +15,8 @@ export interface Data {
   tasks: Task[];
   decisions: Decision[];
   autoAnswers: AutoAnswer[];
+  /** "Remember this?" cards, answered ones too (see agents/memorySuggest.ts) */
+  memorySuggestions: MemorySuggestion[];
   chat: ChatItem[];
   dispatcher: DispatcherState;
   /** Worker news the Dispatcher should hear on its next turn */
@@ -26,7 +28,7 @@ export interface Data {
 const empty = (): Data => ({
   version: 1,
   counters: { worker: 0, task: 0 },
-  repos: [], workers: [], tasks: [], decisions: [], autoAnswers: [], chat: [],
+  repos: [], workers: [], tasks: [], decisions: [], autoAnswers: [], memorySuggestions: [], chat: [],
   dispatcher: { sessionId: null, date: null, contextTokens: 0, accountId: null },
   pendingUpdates: [],
 });

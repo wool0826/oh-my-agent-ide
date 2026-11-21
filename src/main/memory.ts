@@ -55,7 +55,8 @@ function fileFor(scope: string, repo?: string | null) {
   }
 }
 
-export function remember(scope: 'preference' | 'repo' | 'decision' | 'task' | 'note', text: string, repo?: string | null) {
+/** source: where the fact came from (task, Worker, decision ids), kept after the date. */
+export function remember(scope: 'preference' | 'repo' | 'decision' | 'task' | 'note', text: string, repo?: string | null, source?: string) {
   const f = fileFor(scope, repo);
   ensureDir(path.dirname(f));
   if (!fs.existsSync(f)) {
@@ -66,7 +67,7 @@ export function remember(scope: 'preference' | 'repo' | 'decision' | 'task' | 'n
     fs.writeFileSync(f, `# ${title}\n\n`, 'utf8');
   }
   const body = text.trim().replace(/\n/g, '\n  ');
-  fs.appendFileSync(f, `- ${body} _(${today()})_\n`, 'utf8');
+  fs.appendFileSync(f, `- ${body} _(${today()}${source ? `, source: ${source}` : ''})_\n`, 'utf8');
   commitSoon(`${scope}: ${text.slice(0, 60)}`);
   return path.relative(root(), f).replace(/\\/g, '/');
 }
