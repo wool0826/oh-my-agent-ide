@@ -22,6 +22,7 @@ import { log } from './log';
 import { month, nowIso, oneLine } from './util';
 import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
 import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
+import { notifyText } from '../shared/askWhy';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -202,14 +203,11 @@ function registerIpc() {
     const repo = store.repo(repoName);
     if (!repo) throw new Error(t('err.noRepo', { name: repoName }));
     const notes = readMemory(`repos/${repo.name}.md`);
-    const owner = store.data.workers
-      .filter((w) => w.repo === repo.name && w.status !== 'archived')
-      .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt))[0];
-    const { task, worker } = await createTask({
+    // Goes to an idle Worker that knows the repository (src/shared/routing.ts), or a new one.
+    const { task, worker, reused } = await createTask({
       title: t('task.promote', { name: repo.name }),
       kind: 'code',
       repo: repo.name,
-      worker_id: owner?.id,
       prompt: [
         `Below are notes about the ${repo.name} repository collected in IDE memory. Pick only the rules and conventions useful to anyone working in this repository and open a PR adding them to its CLAUDE.md.`,
         'Leave out personal preferences, one-off records, and anything already in CLAUDE.md. Follow the structure and tone of the existing CLAUDE.md; create one if it does not exist.',
@@ -217,7 +215,7 @@ function registerIpc() {
         notes,
       ].join('\n'),
     });
-    store.chat('event', assignedEvent(task, worker, false));
+    store.chat('event', assignedEvent(task, worker, !!reused));
     return task.id;
   });
   handle('settings:save', (patch: Partial<SettingsView>) => {
@@ -281,7 +279,7 @@ async function boot() {
   accounts.on('changed', scheduleLimitRetry);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
   onDecisionCreated((d) => {
-    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), d.summary?.what || d.title);
+    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d));
   });
   onLateAnswer((d) => {
     if (d.workerId) {

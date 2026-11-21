@@ -18,6 +18,8 @@ import { hasSpend } from '../../shared/spend';
 import { describeCancel } from '../../shared/queue';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { kTokens } from '../../shared/context';
+import { dispatcherReason } from '../../shared/askWhy';
+import { describePick, pickWorker, reuseBlock } from '../../shared/routing';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
@@ -42,7 +44,8 @@ function workerLine(id: string) {
   const idleDays = Math.floor((Date.now() - Date.parse(w.lastActiveAt)) / 86400_000);
   return `- ${w.id} [${w.status}] ${w.repo ?? 'general'}, ${modelLabel(w.model)}, context ${Math.round(w.contextTokens / 1000)}K` +
     `${idleDays ? `, last active ${idleDays} day(s) ago` : ''}\n  Tasks: ${tasks.map((x) => `${x.id} ${x.title} (${statusLine(x)}${x.prUrl ? ` ${x.prUrl}` : ''}${x.prState === 'MERGED' ? ' merged' : ''})`).join('; ') || 'none'}` +
-    `${last?.summary ? `\n  Latest result: ${oneLine(last.summary, 160)}` : ''}`;
+    `${last?.summary ? `\n  Latest result: ${oneLine(last.summary, 160)}` : ''}` +
+    `\n  New work: ${reuseBlock(w, store.data.tasks) ?? 'can take it'}`;
 }
 
 /** The chat line for a task just handed to a Worker: started, waiting for a merge, or waiting for a free slot. */
@@ -53,7 +56,7 @@ export function assignedEvent(task: Task, w: Worker, continuing: boolean) {
 }
 
 /** Create a task and hand it to a Worker. Used by the Dispatcher tool and by UI buttons. */
-export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; model?: 'opus' | 'fable'; after_task_id?: string; effort?: Effort; plan_first?: boolean }) {
+export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; new_worker?: boolean; model?: 'opus' | 'fable'; after_task_id?: string; effort?: Effort; plan_first?: boolean }) {
   if (a.kind === 'code' && !a.repo) throw new Error('Code tasks need a repo. Check list_repos.');
   if (a.repo && !store.repo(a.repo)) throw new Error(`Repository is not registered: ${a.repo}`);
   let after: string | null = null;
@@ -78,8 +81,10 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
   };
   store.data.tasks.push(task);
   store.changed();
-  const worker = await workers.assign(task, a.worker_id ?? null, model);
-  return { task, worker };
+  // No Worker named: reuse the idle one that best knows this code; a new Worker only when none fits.
+  const reuse = a.worker_id || a.new_worker ? null : pickWorker(store.data.workers, store.data.tasks, task, model);
+  const worker = await workers.assign(task, a.worker_id ?? reuse?.worker.id ?? null, model);
+  return { task, worker, reused: reuse ? describePick(reuse, task.repo) : null };
 }
 
 function boardServer() {
@@ -115,25 +120,27 @@ function boardServer() {
         const ws = store.data.workers.filter((w) => a.include_archived || w.status !== 'archived');
         return ok(ws.length ? ws.map((w) => workerLine(w.id)).join('\n') : 'No Workers.');
       }),
-      tool('create_task', 'Create a task and hand it to a Worker. With worker_id that Worker continues (reusing context); otherwise a new Worker is created. With after_task_id the task waits until that task\'s PR is merged, then starts automatically.', {
+      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context. With after_task_id the task waits until that task\'s PR is merged, then starts automatically.', {
         title: z.string().describe('Short task name'),
         prompt: z.string().describe('Instructions for the Worker: background, desired result, definition of done. Include any attached file paths.'),
         kind: z.enum(['code', 'other']).describe('code: change a repository and open a PR. other: research, documents, reports'),
         repo: z.string().optional().describe('Repository name for code tasks'),
         worker_id: z.string().optional(),
+        new_worker: z.boolean().optional().describe('Always start a new Worker, even if an idle one knows the code. Only when the user asks for a fresh Worker.'),
         model: z.enum(['opus', 'fable']).optional().describe('Default opus. fable only for deep design work'),
         after_task_id: z.string().optional().describe('Start only after this task\'s PR is merged (e.g. a follow-up that needs the merged change)'),
         effort: z.enum(EFFORTS as [Effort, ...Effort[]]).optional().describe('Reasoning effort for this task. Omit for the default. low for trivial edits or lookups, xhigh or max for hard debugging, tricky concurrency, or design.'),
         plan_first: z.boolean().optional().describe('The Worker investigates read-only and proposes a plan; the user approves it in the decision inbox before any change, and the same Worker then carries it out. Use when the user asks to see a plan first, or the change is large, risky, or ambiguous. Write the prompt for the whole job, not "plan only".'),
       }, async (a) => {
         try {
-          const { task, worker: w } = await createTask(a);
-          store.chat('event', assignedEvent(task, w, !!a.worker_id));
+          const { task, worker: w, reused } = await createTask(a);
+          store.chat('event', assignedEvent(task, w, !!a.worker_id || !!reused));
           const wait = waitsForSlot(task)
             ? ` All ${loadSettings().maxWorkers} Worker slots are in use; it waits in the queue and starts by itself when one frees up.`
             : task.status === 'queued' ? ' Every account is held by a usage limit; it starts when the first one resets.'
             : task.status === 'blocked' ? ` It starts when ${task.afterTaskId}'s PR is merged.` : '';
-          return ok(`${task.id} assigned to ${w.id}.${wait}`);
+          const how = reused ? ` Reused ${w.id}: ${reused}.` : a.worker_id ? '' : ` ${w.id} is a new Worker: no idle Worker${task.repo ? ` on ${task.repo}` : ''} fit (busy, near compaction, or none yet).`;
+          return ok(`${task.id} assigned to ${w.id}.${how}${wait}`);
         } catch (e) {
           return fail(`Could not create the task: ${(e as Error).message}`);
         }
@@ -173,10 +180,11 @@ function boardServer() {
         question: z.string(),
         options: z.array(z.string()).min(2).max(4),
         context: z.string().optional(),
+        why: z.string().optional().describe(`One short sentence in ${langName()} on why the user must decide this: what depends on it and what each choice risks or changes. Shown on the card and in the notification.`),
       }, async (a) => {
         createDecision({
           source: 'dispatcher', workerId: null, taskId: null, title: a.question, detail: a.context ?? '', code: null,
-          options: a.options.map((o) => ({ label: o })), questionKey: null,
+          options: a.options.map((o) => ({ label: o })), questionKey: null, reason: dispatcherReason(t, a.why),
         });
         return ok('Posted to the decision inbox. Do not ask the user the same question again.');
       }),
@@ -209,7 +217,7 @@ function systemPrompt() {
     '',
     'Role',
     '1. Split requests into tasks and hand them to Workers with create_task. Do not edit code or do long research yourself; a quick look at a repository to route work is fine.',
-    '2. If a Worker already has the relevant context (same repo, continuing work, same PR), use it instead of creating a new one: send_to_worker for more instructions on work in progress, create_task with worker_id for a new task. Check list_workers first.',
+    '2. Prefer Workers that already know the code. More instructions on work in progress go to its Worker with send_to_worker. For a new task, create_task without worker_id hands it to the idle Worker that best knows the repository (related past tasks, room left in its context) and creates a new Worker only when none fits. Give worker_id yourself to continue a specific thread of work (same PR, a follow-up); list_workers says under "New work" whether a Worker can take it, and do not pick one marked near compaction or busy. Use new_worker only when the user asks for a fresh Worker. Several independent tasks at once go to different Workers by themselves.',
     '3. If the user names a repo with @name, use it; otherwise pick by description. If unclear, ask with request_decision. Requests like "register this" use register_repo.',
     '4. Model: opus by default; fable only for deep design work such as architecture or large structural changes.',
     '5. Put anything the user must decide into the decision inbox with request_decision. Ask back in chat only when you cannot understand the request.',

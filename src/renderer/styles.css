@@ -202,6 +202,8 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .dec .src .sym { font-size: var(--fs-body); }
 .dec .q { font-size: var(--fs-body); font-weight: 600; line-height: var(--lh-ui); user-select: text; overflow-wrap: anywhere; }
 .dec .d { font-size: var(--fs-caption); color: var(--text-secondary); user-select: text; }
+.dec .reason { font-size: var(--fs-caption); line-height: var(--lh-ui); color: var(--text-secondary); user-select: text; overflow-wrap: anywhere; word-break: keep-all; }
+.dec .reason span { color: var(--text-primary); }
 .dec code { display: block; font-size: var(--fs-caption2); padding: var(--space-6) var(--space-8); word-break: break-all; user-select: text; }
 .dec .opt-d { font-size: var(--fs-caption2); color: var(--text-secondary); }
 .btns { display: flex; gap: var(--space-6); justify-content: flex-end; flex-wrap: wrap; }

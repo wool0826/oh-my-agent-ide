@@ -42,6 +42,7 @@ export async function adviseOnQuestion(input: { workerId: string; taskTitle: str
     'Set canAnswer=true only if memory or the user\'s rules clearly support an answer (a preference, rule or past decision on the same topic).',
     'If it needs guessing, or concerns cost, security, deleting data, or making something public, set canAnswer=false.',
     `If there are options, answer with an option's exact wording. basis is one sentence, in ${langName()}, quoting the memory it relies on.`,
+    `When canAnswer is false, basis is one short sentence, in ${langName()}, on why the user must decide (memory has nothing on it, or what it risks). The user sees it on the question card.`,
   ].filter(Boolean).join('\n');
 
   try {

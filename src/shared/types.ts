@@ -136,6 +136,16 @@ export interface Decision {
   answeredAt: string | null;
   /** plan: the plan's WHAT / HOW / OUTPUT lines, shown on the card above the collapsed plan. */
   summary?: PlanSummary | null;
+  /** Why the user is asked (src/shared/askWhy.ts). The card, the sidebar row and the OS notification all show it. Unset on older decisions. */
+  reason?: DecisionReason | null;
+}
+
+/** Why a decision needs the user, in one or two short sentences. */
+export interface DecisionReason {
+  /** What is asked: who, which task, which action. */
+  what: string;
+  /** Why it is not decided without the user, and what it risks or affects. */
+  why: string;
 }
 
 /** Three one-sentence lines at the top of a plan-first plan (src/shared/plan.ts). */

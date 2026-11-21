@@ -8,6 +8,7 @@ import { log } from './log';
 import { ask } from './decisions';
 import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readiness, runsOf, type Check, type RollupItem } from './prchecks';
 import { adoptSeen, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
+import { ciReason } from '../shared/askWhy';
 import type { Task } from '../shared/types';
 
 /**
@@ -137,6 +138,7 @@ function askAboutCi(task: Task, body: string, names: string) {
     title: t('ci.capTitle', { n: MAX_CI_FIXES }), detail: names, code: null,
     options: [{ label: retry, description: t('ci.retryDesc', { n: MAX_CI_FIXES }) }, { label: leave, description: t('ci.leaveDesc') }],
     questionKey: null,
+    reason: ciReason(t, { who: task.workerId ?? 'Worker', task, prNum: task.prUrl?.match(/\/pull\/(\d+)/)?.[1] ?? '?', fixes: MAX_CI_FIXES, names }),
   }, entry.abort.signal).then((ans) => {
     asking.delete(task.id);
     if (ans === leave || task.prState !== 'OPEN') return;

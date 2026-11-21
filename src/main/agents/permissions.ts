@@ -30,9 +30,15 @@ export const ALWAYS_ASK_PREFIX = 'Always ask: ';
  * Only destructive or shared-state shell commands are listed; file edits are auto mode's call, wherever they are.
  */
 export function alwaysAskReason(tool: string, input: any): string | null {
+  const rule = alwaysAskRule(tool, input);
+  return rule ? t(rule) : null;
+}
+
+/** The always-ask rule a tool call matches (its label key), or null. */
+export function alwaysAskRule(tool: string, input: any): Key | null {
   if (tool !== 'Bash') return null;
   const cmd = String(input?.command ?? '');
-  for (const r of BASH_RULES) if (r.re.test(cmd)) return t(r.why);
+  for (const r of BASH_RULES) if (r.re.test(cmd)) return r.why;
   return null;
 }
 

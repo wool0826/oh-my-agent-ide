@@ -34,6 +34,8 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 - At most 3 Workers run at once; change it with "Workers at once" (1 to 8) in Settings → Models. More tasks wait in the sidebar's Queue as "Waiting for a slot 3/3" and start by themselves, the longest waiting first, when one finishes. A Worker waiting for your answer keeps its slot, and messages to Workers already at work go out right away.
 - To cancel a task that is still waiting (for a free Worker slot, for a usage limit to reset, or for a merge), use the × on its row in the sidebar's Queue or "Cancel task" in the Worker view; "Clear" on the Queue heading cancels them all. You can also ask in the chat ("clear the queue"). Tasks waiting on it are cancelled too. Its branch is cleaned up unless it holds commits or uncommitted changes, and an open PR is left open.
 - The right side collects decisions waiting for you, results (PR links and result files), and answers the Dispatcher gave on your behalf. Correct an auto-answer with the pencil button or by right-clicking it.
+- Every decision says why it needs you: which Worker asks to do what for which task, and why it is not decided without you (the always-ask rule and its risk, a path outside the Worker's folders, or what memory could not answer). The sidebar row and the OS notification show the same reason.
+- A new task goes to an idle Worker that already worked on the same repository, preferring one that worked on the same area of the code. A Worker that is busy, has other open work, or whose context is at 60% of the window or more is passed over. A new Worker is created only when none fits, or when you ask for a fresh one.
 - Each result shows what its task cost as an "API-equivalent estimate" (Claude Code's figure at API list prices) with its input, output and cache tokens. Subscription accounts are not billed this amount, and nothing is held back because of it. The Dispatcher's own cost this month is in the menu of the context indicator next to the send button.
 - When an answer or a correction holds a fact worth reusing, a "Remember this?" card offers to save it to memory (save, edit, or dismiss). It appears only when the check is confident, at most once per task; turn it off in Settings > Memory.
 - In the Worker view, select a Worker to see its conversation with the Dispatcher and message it directly. "Done today" and "Archived Workers" in the sidebar filter the Worker list; "All" shows every Worker again.
@@ -87,6 +89,8 @@ Build output goes to `dist/`, installers to `release/`.
 | `src/main/attachments.ts` | Paths of files dropped into messages |
 | `src/main/memory.ts` | Markdown memory with git history |
 | `src/shared/i18n.ts` | English and Korean UI text |
+| `src/shared/askWhy.ts` | Why each decision needs the user, for its card, sidebar row and notification |
+| `src/shared/routing.ts` | Which idle Worker takes a new task, or whether to create one |
 | `src/renderer/` | The UI |
 | `src/main/agents/selfReview.ts` | Self-review before a PR: the task-message rule, skip limits, reviewer subagent |
 | `resources/plugin/` | Skills every Worker gets: token-saving habits and the self-review step |
