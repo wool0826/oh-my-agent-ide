@@ -6,6 +6,7 @@ import { hasSpend, spendVars, type Spend } from '../shared/spend';
 import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
 import { CONTEXT_WINDOW } from '../shared/context';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
+import { History, NavInput, sameScreen, type NavDir, type NavSource, type Screen, type View, type WorkerFilter } from '../shared/history';
 
 declare global {
   interface Window {
@@ -15,6 +16,8 @@ declare global {
       onState(fn: (s: AppState) => void): void;
       onWorkerLog(fn: (id: string, item: WorkerLogItem) => void): void;
       onDecisionAlert(fn: () => void): void;
+      /** Back or Forward from the OS (mouse side buttons and Back keys arrive as app commands on Windows and Linux). */
+      onNav(fn: (dir: NavDir) => void): void;
       pathForFile(f: File): string;
     };
   }
@@ -30,9 +33,12 @@ const t = (key: Key, vars?: Record<string, string | number>) => tr(lang(), key, 
 
 type Pane = 'accounts' | 'general' | 'display' | 'alerts' | 'memory' | 'models';
 const ui = {
-  view: 'chat' as 'chat' | 'worker' | 'repo' | 'memory',
+  // The screen fields (Screen in shared/history: view, wSel, wOpen, wTab, repoSel, memSel, wFilter):
+  // a user navigation changes them through go(), so Back and Forward can retrace it.
+  view: 'chat' as View,
   wSel: null as string | null,
   wOpen: false,
+  wFilter: null as WorkerFilter | null,
   repoSel: null as string | null,
   memSel: null as string | null,
   memFiles: [] as MemoryFile[],
@@ -169,6 +175,8 @@ function base(p: string) { return p.split(/[\\/]/).filter(Boolean).pop() ?? p; }
 const task = (id: string | null | undefined) => (id ? S?.tasks.find((x) => x.id === id) ?? null : null);
 const worker = (id: string | null | undefined) => (id ? S?.workers.find((w) => w.id === id) ?? null : null);
 const taskStatus = (st: string) => t(`task.${st}` as Key);
+/** What the sidebar's "Done today" counts, and what its Worker list filter looks for. */
+const finishedToday = (x: Task) => (x.status === 'done' || x.status === 'pr_open') && !!x.finishedAt && new Date(x.finishedAt).toDateString() === new Date().toDateString();
 
 let toastTimer: number | undefined;
 function toast(text: string, err = false) {
@@ -280,8 +288,7 @@ function renderSidebar() {
   const failed = s.workers.filter((w) => w.status === 'error');
   const prs = s.tasks.filter((x) => x.status === 'pr_open');
   const queued = s.tasks.filter(isQueued);
-  const todayStr = new Date().toDateString();
-  const doneToday = s.tasks.filter((x) => (x.status === 'done' || x.status === 'pr_open') && x.finishedAt && new Date(x.finishedAt).toDateString() === todayStr).length;
+  const doneToday = s.tasks.filter(finishedToday).length;
   const archived = s.workers.filter((w) => w.status === 'archived').length;
   const selW = ui.view === 'worker' && ui.wOpen ? ui.wSel : null;
   let selUsed = false;
@@ -311,9 +318,11 @@ function renderSidebar() {
   const qTitle = `${t('side.queue')}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
   const any = decRows || runRows || prRows || qRows || errRows;
   const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<span>${t('side.emptyTitle')}</span></div>`;
+  // A filter's row is selected while the Worker list it filters is on screen.
+  const filterCls = (f: WorkerFilter, n: number) => `${n ? '' : ' zero'}${ui.view === 'worker' && !ui.wOpen && ui.wFilter === f ? ' sel' : ''}`;
   const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
-    <div class="row${doneToday ? '' : ' zero'}" data-action="view" data-v="worker">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></div>
-    <div class="row${archived ? '' : ' zero'}" data-action="view" data-v="worker">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
+    <div class="row${filterCls('today', doneToday)}" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></div>
+    <div class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
 }
@@ -591,11 +600,23 @@ function statusPill(w: Worker) {
   return `<span class="pill">${t('time.ago', { d: ago(w.lastActiveAt) })}</span>`;
 }
 
+/** The Workers a list filter keeps: ones with a task finished today, or archived ones. */
+function filterWorkers(ws: Worker[], f: WorkerFilter | null) {
+  if (f === 'archived') return ws.filter((w) => w.status === 'archived');
+  if (f === 'today') {
+    const ids = new Set(S!.tasks.filter(finishedToday).map((x) => x.workerId));
+    return ws.filter((w) => ids.has(w.id));
+  }
+  return ws;
+}
+
 function renderWorkerList() {
   const s = S!;
   const root = $('#wk-list');
-  const active = s.workers.filter((w) => w.status !== 'archived');
-  const arch = s.workers.filter((w) => w.status === 'archived');
+  const f = ui.wFilter;
+  const shown = filterWorkers(s.workers, f);
+  const active = shown.filter((w) => w.status !== 'archived');
+  const arch = shown.filter((w) => w.status === 'archived');
   const order = (w: Worker) => (w.status === 'waiting' ? 0 : w.status === 'running' || w.status === 'starting' ? 1 : w.status === 'error' ? 2 : 3);
   active.sort((a, b) => order(a) - order(b) || b.lastActiveAt.localeCompare(a.lastActiveAt));
   arch.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
@@ -607,6 +628,15 @@ function renderWorkerList() {
   };
   if (!s.workers.length) {
     root.innerHTML = `<div class="vhead"><b>Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b></div>`;
+    return;
+  }
+  if (f) {
+    // The filter as a chip, with "All" to go back to every Worker.
+    const label = t(f === 'today' ? 'side.doneToday' : 'side.archived');
+    const head = `<div class="vhead"><b>Worker</b><span class="wf"><span class="wf-chip">${ic(f === 'today' ? 'done' : 'arch')}${label}<small>${shown.length}</small></span><button type="button" class="linkbtn wf-all" data-action="worker-filter" data-v="">${t('wk.filterAll')}</button></span></div>`;
+    root.innerHTML = shown.length
+      ? `${head}<div class="lst">${active.map(li).join('')}${arch.length && active.length ? `<div class="lst-h">${t('st.archived')}</div>` : ''}${arch.map(li).join('')}</div>`
+      : `${head}<div class="empty-view">${sym(f === 'today' ? 's-check' : 's-arch')}<b>${t(f === 'today' ? 'wk.noneToday' : 'wk.noneArchived')}</b></div>`;
     return;
   }
   root.innerHTML = `<div class="vhead"><b>Worker</b><small>${t('wk.counts', { a: active.length, b: arch.length })}</small></div>
@@ -1487,7 +1517,8 @@ function addFiles(box: Box, list: FileList | null) {
 
 /* ---------- render all ---------- */
 
-function setView(v: typeof ui.view) {
+/** Shows a view tab. Navigation goes through go(), which calls this. */
+function setView(v: View) {
   ui.view = v;
   document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
   document.querySelectorAll<HTMLElement>('.view').forEach((el) => { el.hidden = el.dataset.view !== v; });
@@ -1513,12 +1544,80 @@ function renderAll(force = false) {
 
 function openWorker(id: string) {
   if (!id) return;
-  ui.wSel = id;
-  ui.wOpen = true;
-  ui.lastLogKey = '';
-  if (ui.view !== 'worker') setView('worker');
-  void loadLog(id);
-  renderAll(true);
+  go({ view: 'worker', wSel: id, wOpen: true });
+}
+
+/* ---------- screen history: Back and Forward (decision 81) ---------- */
+
+const nav = new History<Screen>(sameScreen);
+const navInput = new NavInput();
+
+function screen(): Screen {
+  return { view: ui.view, wSel: ui.wSel, wOpen: ui.wOpen, wTab: ui.wTab, repoSel: ui.repoSel, memSel: ui.memSel, wFilter: ui.wFilter };
+}
+
+/**
+ * Every user navigation goes through here: a view tab, a Worker's conversation opened or closed, its
+ * Chat/Changes tab, a repository or memory file picked, a Worker list filter. The screen it leaves goes
+ * on the Back stack. A new view (a tab, a list filter) adds its field to Screen and navigates with go().
+ */
+function go(next: Partial<Screen>) {
+  const from = screen();
+  const to = { ...from, ...next };
+  nav.push(from, to);
+  show(to, from);
+}
+
+/** Puts a screen on the window, loading what it needs that `from` did not show. */
+function show(to: Screen, from: Screen) {
+  const conv = (s: Screen) => (s.view === 'worker' && s.wOpen ? s.wSel : null);
+  Object.assign(ui, to);
+  const opened = conv(to);
+  if (opened && opened !== conv(from)) { ui.lastLogKey = ''; void loadLog(opened); }
+  if (to.wTab !== from.wTab) ui.lastLogKey = '';
+  // Fresh changes each time a Worker's Changes tab comes on screen.
+  if (to.wTab === 'changes' && to.wSel && (from.wTab !== 'changes' || from.wSel !== to.wSel)) ui.diffs.delete(to.wSel);
+  if (to.memSel !== from.memSel) {
+    ui.memText = '';
+    if (to.memSel) void readMemFile(to.memSel);
+  }
+  setView(to.view);
+}
+
+async function readMemFile(id: string) {
+  const text = await call<string>('memory:read', id);
+  if (ui.memSel === id) { ui.memText = text ?? ''; renderMemory(); }
+}
+
+/** What a saved screen looks like now: a removed repository is deselected; a Worker that is gone too, and its conversation dropped. */
+function stillThere(s: Screen): Screen | null {
+  if (s.repoSel && !S?.repos.some((r) => r.name === s.repoSel)) s = { ...s, repoSel: null };
+  if (!s.wSel || worker(s.wSel)) return s;
+  return s.view === 'worker' && s.wOpen ? null : { ...s, wSel: null, wOpen: false };
+}
+
+/** Back or Forward, from a mouse side button, the OS, or a shortcut. */
+function navStep(dir: NavDir, src: NavSource) {
+  if (!navInput.accept(src, dir, performance.now())) return;
+  closePop();
+  $('#ctxmenu').hidden = true;
+  // A sheet or dialog on top: Back closes it first, Forward waits until it is gone. Neither is a history entry.
+  if (ui.settingsShown || ui.cancelAsk) {
+    if (dir === 'forward') return;
+    if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); } else closeSettings();
+    return;
+  }
+  const cur = screen();
+  const to = dir === 'back' ? nav.goBack(cur, stillThere) : nav.goForward(cur, stillThere);
+  if (to) show(to, cur);
+}
+
+/** The Back/Forward shortcut: ⌘[ and ⌘] on macOS; Alt+← and Alt+→ elsewhere, but not while typing in a field. */
+function navKey(e: KeyboardEvent): NavDir | null {
+  if (e.isComposing || e.shiftKey || e.ctrlKey) return null;
+  if (isMac) return e.metaKey && !e.altKey ? (e.code === 'BracketLeft' ? 'back' : e.code === 'BracketRight' ? 'forward' : null) : null;
+  if (!e.altKey || e.metaKey || (e.target as HTMLElement).matches?.('input, textarea, select, [contenteditable]')) return null;
+  return e.key === 'ArrowLeft' ? 'back' : e.key === 'ArrowRight' ? 'forward' : null;
 }
 
 /* ---------- actions ---------- */
@@ -1527,7 +1626,8 @@ async function act(el: HTMLElement, e: Event) {
   const a = el.dataset.action!;
   const id = el.dataset.id ?? '';
   switch (a) {
-    case 'view': setView(el.dataset.v as any); break;
+    case 'view': go({ view: el.dataset.v as View }); break;
+    case 'worker-filter': go({ view: 'worker', wOpen: false, wFilter: (el.dataset.v || null) as WorkerFilter | null }); break;
     case 'open-settings': openSettings(); break;
     case 'reveal-memory': await call('open:path', `${S!.settings.home}/memory`); break;
     case 'reveal-claude': if (ui.claude) await call('open:path', ui.claude.home); break;
@@ -1550,7 +1650,7 @@ async function act(el: HTMLElement, e: Event) {
     case 'close-settings': closeSettings(); break;
     case 'pane': showPane(id as Pane); break;
     case 'goto-decision': {
-      setView('chat');
+      go({ view: 'chat' });
       const card = document.getElementById(`dec-${id}`);
       card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       card?.classList.remove('flash'); void card?.offsetWidth; card?.classList.add('flash');
@@ -1558,14 +1658,8 @@ async function act(el: HTMLElement, e: Event) {
     }
     case 'open-worker': openWorker(id); break;
     case 'select-worker': openWorker(id); break;
-    case 'close-session': ui.wOpen = false; renderAll(true); break;
-    case 'ws-tab': {
-      ui.wTab = el.dataset.v as typeof ui.wTab;
-      if (ui.wTab === 'changes' && ui.wSel) ui.diffs.delete(ui.wSel);
-      ui.lastLogKey = '';
-      renderSession(true);
-      break;
-    }
+    case 'close-session': go({ wOpen: false }); break;
+    case 'ws-tab': go({ wTab: el.dataset.v as Screen['wTab'] }); break;
     case 'diff-refresh': ui.diffs.delete(id); renderSession(true); break;
     case 'diff-file': {
       if (ui.diffOpen.has(id)) ui.diffOpen.delete(id); else ui.diffOpen.add(id);
@@ -1602,7 +1696,7 @@ async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'aa-select': {
-      if (ui.view !== 'chat') setView('chat');
+      if (ui.view !== 'chat') go({ view: 'chat' });
       ui.aaSel = id;
       renderChatInspector();
       document.getElementById(`aa-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -1631,7 +1725,7 @@ async function act(el: HTMLElement, e: Event) {
     case 'worker-archive': await call('worker:archive', id); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
-    case 'repo-select': ui.repoSel = id; renderRepos(); break;
+    case 'repo-select': go({ repoSel: id }); break;
     case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value); toast(t('toast.descSaved')); break;
     case 'repo-remove': {
       if (!confirm(t('confirm.repoRemove', { name: id }))) return;
@@ -1639,12 +1733,8 @@ async function act(el: HTMLElement, e: Event) {
       ui.repoSel = null;
       break;
     }
-    case 'mem-select': {
-      ui.memSel = id;
-      ui.memText = (await call<string>('memory:read', id)) ?? '';
-      renderMemory();
-      break;
-    }
+    // Picking the open file again reads it again (a Worker may have changed it).
+    case 'mem-select': if (ui.memSel === id) void readMemFile(id); else go({ memSel: id }); break;
     case 'mem-save': {
       if (!ui.memSel) return;
       ui.memText = $<HTMLTextAreaElement>('#mem-edit').value;
@@ -1816,7 +1906,17 @@ function init() {
     if (el.id === 'set-q') { ui.setQ = el.value; filterPanes(); return; }
     if (el.closest('#sheet') && el.id !== 'set-home') saveSoon(el.matches('.step-v, .slider') ? 300 : 600);
   });
-  document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.v as any)));
+  document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => go({ view: b.dataset.v as View })));
+  // Mouse side buttons step through the screen history. Their default (the page's own history) is blocked.
+  const sideButton = (e: MouseEvent) => e.button === 3 || e.button === 4;
+  document.addEventListener('mousedown', (e) => { if (sideButton(e)) e.preventDefault(); });
+  document.addEventListener('auxclick', (e) => { if (sideButton(e)) e.preventDefault(); });
+  document.addEventListener('mouseup', (e) => {
+    if (!sideButton(e)) return;
+    e.preventDefault();
+    navStep(e.button === 3 ? 'back' : 'forward', 'mouse');
+  });
+  ide.onNav((dir) => navStep(dir, 'os'));
   // Liquid Glass pills follow every change of selection, however the control was updated.
   new MutationObserver(() => glideSoon(true)).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-checked', 'aria-selected', 'hidden'] });
   window.addEventListener('resize', () => glideAll(false));
@@ -1864,7 +1964,9 @@ function init() {
       if (u) { e.preventDefault(); void call('chat:unclear', u.kind, u.ids); toast(t('toast.undone')); }
     }
     if (mod && e.key === ',') { e.preventDefault(); openSettings(); }
-    if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); setView((['chat', 'worker', 'repo', 'memory'] as const)[Number(e.key) - 1]); }
+    if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); go({ view: (['chat', 'worker', 'repo', 'memory'] as const)[Number(e.key) - 1] }); }
+    const dir = navKey(e);
+    if (dir) { e.preventDefault(); navStep(dir, 'key'); }
   });
 
   // Context menu on auto-answers

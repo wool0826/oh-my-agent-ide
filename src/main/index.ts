@@ -108,6 +108,11 @@ function createWindow() {
   setWindow(win);
   win.loadFile(path.join(here, 'renderer', 'index.html'));
   win.on('focus', () => { win?.flashFrame(false); checkPrsSoon(); });
+  // Windows (and Linux) report Back/Forward keys, and the side buttons of some mice, as app commands.
+  // The page steps through its screen history; a press it also gets as a mouse event counts once (decision 81).
+  win.on('app-command', (_e, cmd) => {
+    if (cmd === 'browser-backward' || cmd === 'browser-forward') win?.webContents.send('nav', cmd === 'browser-backward' ? 'back' : 'forward');
+  });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };

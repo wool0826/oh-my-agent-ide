@@ -35,7 +35,7 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 - The right side collects decisions waiting for you, results (PR links and result files), and answers the Dispatcher gave on your behalf. Correct an auto-answer with the pencil button or by right-clicking it.
 - Each result shows what its task cost as an "API-equivalent estimate" (Claude Code's figure at API list prices) with its input, output and cache tokens. Subscription accounts are not billed this amount, and nothing is held back because of it. The Dispatcher's own cost this month is in the menu of the context indicator next to the send button.
 - When an answer or a correction holds a fact worth reusing, a "Remember this?" card offers to save it to memory (save, edit, or dismiss). It appears only when the check is confident, at most once per task; turn it off in Settings > Memory.
-- In the Worker view, select a Worker to see its conversation with the Dispatcher and message it directly.
+- In the Worker view, select a Worker to see its conversation with the Dispatcher and message it directly. "Done today" and "Archived Workers" in the sidebar filter the Worker list; "All" shows every Worker again.
 - Say "plan first" (or ask for a large change) and the Worker plans before touching code. The plan arrives in the decision inbox: approve it, or type what to change.
 - In a Worker's conversation, the Changes tab shows what it changed on its branch, committed or not, before a PR exists.
 - Before opening a PR, a Worker has a reviewer on the Dispatcher's (lighter) model check its diff, fixes what holds up, and notes the result in one line of the PR body. Small changes (up to 30 lines in up to 3 files, or docs only) skip it. Turn it off with "Self-review before PR" in Settings → Models.
@@ -48,6 +48,8 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 | Key | Action |
 |---|---|
 | ⌘/Ctrl+1–4 | Switch view |
+| Mouse back button, Alt+← (⌘[ on macOS) | Back to the previous screen |
+| Mouse forward button, Alt+→ (⌘] on macOS) | Forward again |
 | ⌘/Ctrl+, | Settings |
 | ⌘/Ctrl+Z | Undo clearing a list |
 | Enter | Send |
