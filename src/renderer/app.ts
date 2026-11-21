@@ -6,6 +6,7 @@ import { hasSpend, spendVars, type Spend } from '../shared/spend';
 import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
 import { prsInReview } from '../shared/prs';
 import { reasonText } from '../shared/askWhy';
+import { workerDecisions } from '../shared/inbox';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
 import { restoreScroll, saveScroll } from '../shared/scroll';
@@ -45,6 +46,9 @@ const ui = {
   wOpen: false,
   wFilter: null as WorkerFilter | null,
   repoSel: null as string | null,
+  /** The Repositories view's add form is open in its right panel, and whether an add is under way (a clone can take minutes). */
+  repoAdd: false,
+  repoAdding: false,
   memSel: null as string | null,
   memFiles: [] as MemoryFile[],
   memHits: null as MemoryHit[] | null,
@@ -206,7 +210,9 @@ const awaitsDispatcher = (x: Task | null | undefined) => {
   const w = x?.status === 'waiting' ? worker(x.workerId) : null;
   return !!w && w.status === 'idle' && !!w.request;
 };
-const taskLabel = (x: Task) => (x.status === 'queued' ? queuedLabel(x) : awaitsDispatcher(x) ? t('st.awaitDispatcher') : taskStatus(x.status));
+/** Failed because the user (or the Dispatcher) pressed Stop: shown apart from failures, never in red. */
+const stoppedTask = (x: Task | null | undefined) => x?.status === 'failed' && !!x.stopped;
+const taskLabel = (x: Task) => (x.status === 'queued' ? queuedLabel(x) : awaitsDispatcher(x) ? t('st.awaitDispatcher') : stoppedTask(x) ? t('task.stopped') : taskStatus(x.status));
 
 let toastTimer: number | undefined;
 function toast(text: string, err = false) {
@@ -463,7 +469,7 @@ function renderSidebar() {
     const x = lastTask(w);
     const what = x?.title ?? w.title;
     const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : `${w.repo ?? t('general')}, ${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
-    return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span></div>`;
+    return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}" data-ctx="worker"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span>${workerActs(w)}</div>`;
   };
   const runRows = running.map(workerRow).join('');
   const errRows = failed.map(workerRow).join('');
@@ -482,6 +488,15 @@ function renderSidebar() {
     <div class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
+}
+
+/** A Worker can be stopped while it is at work. */
+const stoppable = (w: Worker) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting';
+
+/** Stop and Open on a sidebar Worker row, shown on hover (the row's context menu has them too). */
+function workerActs(w: Worker) {
+  const btn = (action: string, icon: string, label: string) => `<button class="clear-x" data-action="${action}" data-id="${esc(w.id)}" title="${label}" aria-label="${esc(`${label}: ${w.id}`)}"><svg><use href="#${icon}"/></svg></button>`;
+  return `<span class="row-acts">${stoppable(w) ? btn('worker-stop', 's-stop', t('wk.stop')) : ''}${btn('open-worker', 's-chev', t('wk.open'))}</span>`;
 }
 
 /** The × on a queued task's row: asks before cancelling it. */
@@ -558,6 +573,7 @@ function spendHtml(s: Spend | null | undefined, short = false) {
 
 function resultGlyph(x: Task | null, err = false) {
   if (err) return sym('s-alert', 'c-red');
+  if (stoppedTask(x)) return sym('s-stop', 'c-gray');
   if (x?.prState === 'MERGED') return sym('s-merge', 'c-pr-merged');
   return x?.prUrl ? sym('s-pr', x.prState === 'CLOSED' ? 'c-pr-closed' : 'c-pr-open') : x?.files.length ? sym('s-doc', 'c-teal') : sym('s-check', 'c-green');
 }
@@ -675,7 +691,13 @@ function updateSendButton() {
   btn.title = stop ? t('chat.stop') : '';
 }
 
-function decisionHtml(d: Decision) {
+/** The free-text hint of a decision: it denies with a reason, asks for plan changes, or gives another answer. */
+function decisionHint(d: Decision) {
+  return t(d.source === 'permission' ? 'dec.denyWhy' : d.source === 'plan' ? 'plan.revise' : 'dec.other');
+}
+
+/** inWorker: in its Worker's panel, where the Worker's composer is the text field (decision 93). */
+function decisionHtml(d: Decision, inWorker = false) {
   const x = task(d.taskId);
   const src = [d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', ');
   const icon = d.source === 'permission' ? sym('s-alert', 'c-red') : d.source === 'plan' ? sym('s-doc', 'c-blue') : sym('s-chat', 'c-orange');
@@ -688,25 +710,25 @@ function decisionHtml(d: Decision) {
     const col = d.options.length > 2 || d.options.some((o) => o.description);
     buttons = `<div class="btns${col ? ' col' : ''}">${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${esc(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
   }
-  const custom = `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${d.source === 'permission' ? t('dec.denyWhy') : d.source === 'plan' ? t('plan.revise') : t('dec.other')}">`;
+  const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${decisionHint(d)}">`;
   const sum = d.source === 'plan' ? d.summary : null;
-  return `<div class="dec" id="dec-${d.id}">
+  return `<div class="dec" id="${inWorker ? 'wdec' : 'dec'}-${d.id}">
     <div class="src">${icon}<span>${esc(src)}</span></div>
     <div class="q">${esc(d.title)}</div>
     ${d.reason ? `<div class="reason"><span>${esc(d.reason.what)}</span> ${esc(d.reason.why)}</div>` : ''}
     ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
-    ${sum ? planSummaryHtml(d, sum) : d.code ? (d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
+    ${sum ? planSummaryHtml(d, sum, inWorker) : d.code ? (d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
     ${buttons}${custom}
   </div>`;
 }
 
 /** A plan card's WHAT / HOW / OUTPUT lines, with the full plan folded below them and a way to the Worker's conversation. */
-function planSummaryHtml(d: Decision, sum: PlanSummary) {
+function planSummaryHtml(d: Decision, sum: PlanSummary, inWorker = false) {
   const open = ui.planOpen.has(d.id);
   const row = (key: Key, v: string) => v ? `<dt>${t(key)}</dt><dd>${inline(v)}</dd>` : '';
   const links = [
     d.code ? `<button data-action="plan-toggle" data-id="${d.id}" aria-expanded="${open}">${t(open ? 'plan.hide' : 'plan.details')}<span aria-hidden="true">${open ? '▴' : '▾'}</span></button>` : '',
-    d.workerId ? `<button data-action="open-worker" data-id="${esc(d.workerId)}">${t('plan.open')}<span aria-hidden="true">→</span></button>` : '',
+    d.workerId && !inWorker ? `<button data-action="open-worker" data-id="${esc(d.workerId)}">${t('plan.open')}<span aria-hidden="true">→</span></button>` : '',
   ].join('');
   return `<dl class="plan-sum">${row('plan.what', sum.what)}${row('plan.how', sum.how)}${row('plan.output', sum.output)}</dl>
     ${sum.auto ? `<div class="plan-auto" title="${esc(t('plan.autoHint'))}">${t('plan.auto')}</div>` : ''}
@@ -780,7 +802,7 @@ function renderChatInspector() {
     const results = paged('results', s.results.slice().reverse(), PAGE.results);
     const autos = paged('autos', visibleAutos(), PAGE.autos);
     let html = '';
-    if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map(decisionHtml).join('')}</div></div>`;
+    if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map((d) => decisionHtml(d)).join('')}</div></div>`;
     if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" title="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.items.length) {
       html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
@@ -1010,10 +1032,16 @@ function renderWorkerInspector() {
   }
   const tasks = w.taskIds.map((id) => task(id)).filter(Boolean).reverse() as Task[];
   const cur = tasks[0];
+  const open = workerDecisions(S!.decisions, w.id);
+  // While one is open, the composer answers it (decision 93); its hint says how.
+  const ph = open[0] ? decisionHint(open[0]) : '';
+  const inp = $<HTMLTextAreaElement>('#ws-input');
+  if (inp.placeholder !== ph) inp.placeholder = ph;
   const asked = awaitsDispatcher(cur);
   const pillCls = w.status === 'running' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : asked ? 'orange' : '';
   const stKey: Record<string, Key> = { running: 'st.running', starting: 'st.starting', waiting: 'st.waitingMe', idle: 'st.idle', error: 'st.error', archived: 'st.archived' };
   keepScroll(root, () => { root.innerHTML = `
+    ${open.length ? `<div class="ins-h"><b>${t('ins.decisions')}</b><span class="count">${open.length}</span></div><div class="group">${open.map((d) => decisionHtml(d, true)).join('')}</div>` : ''}
     <div class="ins-h"><b>${esc(w.id)}</b><span class="pill ${pillCls}">${t(asked ? 'st.awaitDispatcher' : stKey[w.status] ?? 'st.idle')}</span></div>
     <div class="group kv">
       <span>${t('kv.task')}</span><span>${esc(cur?.title ?? w.title)}</span>
@@ -1096,10 +1124,11 @@ async function confirmCancel() {
 function renderRepos() {
   const s = S!;
   const main = $('#repo-main');
+  const addBtn = (cls: string) => `<button class="btn ${cls}" data-action="repo-add-open"${ui.repoAdd ? ' disabled' : ''}>${t('repo.add')}</button>`;
   if (!s.repos.length) {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b><span>${t('repo.emptyBody')}</span></div>`;
+    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b><span>${t('repo.emptyBody')}</span>${addBtn('def')}</div>`;
   } else keepScroll(main, () => {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><small>${s.repos.length}</small></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
+    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
@@ -1107,6 +1136,7 @@ function renderRepos() {
     }).join('')}</div>`;
   });
   const ins = $('#repo-ins');
+  if (ui.repoAdd) { keepInputs(ins, () => { ins.innerHTML = repoAddHtml(); }); return; }
   const r = s.repos.find((x) => x.name === ui.repoSel) ?? null;
   if (!r) {
     ins.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-box"/></svg><b>${t('repo.pick')}</b></div>`;
@@ -1126,6 +1156,32 @@ function renderRepos() {
       <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
       <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
+}
+
+/** The add form: what to register (cloned unless it is a local folder) and its description, sent to repo:add. */
+function repoAddHtml() {
+  const off = ui.repoAdding ? ' disabled' : '';
+  return `<div class="ins-h"><b>${t('repo.add')}</b></div>
+    <div class="repo-add-row"><input class="inp" id="repo-add-url" data-keep="repo-add-url" data-enter="repo-add" placeholder="${esc(t('repo.addUrl'))}" aria-label="${esc(t('repo.addUrl'))}" spellcheck="false"${off}><button class="btn" data-action="repo-add-pick"${off}>${t('repo.pickFolder')}</button></div>
+    <div class="ins-h"><b>${t('repo.desc')}</b></div>
+    <textarea class="inp" id="repo-add-desc" data-keep="repo-add-desc" placeholder="${esc(t('repo.addDescPh'))}"${off}></textarea>
+    <div class="ins-act"><button class="btn" data-action="repo-add-cancel"${off}>${t('cancel')}</button><button class="btn def" data-action="repo-add"${off}>${t(ui.repoAdding ? 'repo.adding' : 'repo.addGo')}</button></div>`;
+}
+
+async function addRepo() {
+  const inp = $<HTMLInputElement>('#repo-add-url');
+  const url = inp.value.trim();
+  if (!url) { inp.focus(); return; }
+  if (ui.repoAdding) return;
+  ui.repoAdding = true;
+  renderRepos();
+  const r = await call<{ name: string }>('repo:add', url, undefined, $<HTMLTextAreaElement>('#repo-add-desc').value);
+  ui.repoAdding = false;
+  if (!r) { renderRepos(); return; }
+  ui.repoAdd = false;
+  toast(t('repo.added', { name: r.name }));
+  go({ repoSel: r.name });
+  renderRepos();
 }
 
 /* ---------- memory ---------- */
@@ -1919,8 +1975,10 @@ async function act(el: HTMLElement, e: Event) {
     case 'close-settings': closeSettings(); break;
     case 'pane': showPane(id as Pane); break;
     case 'goto-decision': {
-      go({ view: 'chat' });
-      const card = document.getElementById(`dec-${id}`);
+      // In the view of the Worker that asks, its own panel shows the card.
+      const here = ui.view === 'worker' && ui.wOpen && !!document.getElementById(`wdec-${id}`);
+      if (!here) go({ view: 'chat' });
+      const card = document.getElementById(`${here ? 'wdec' : 'dec'}-${id}`);
       card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       card?.classList.remove('flash'); void card?.offsetWidth; card?.classList.add('flash');
       break;
@@ -2011,7 +2069,15 @@ async function act(el: HTMLElement, e: Event) {
     case 'worker-archive': await call('worker:archive', id); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
-    case 'repo-select': go({ repoSel: id }); break;
+    case 'repo-select': if (!ui.repoAdding) ui.repoAdd = false; go({ repoSel: id }); renderRepos(); break;
+    case 'repo-add-open': ui.repoAdd = true; renderRepos(); $('#repo-add-url').focus(); break;
+    case 'repo-add-cancel': ui.repoAdd = false; renderRepos(); break;
+    case 'repo-add-pick': {
+      const p = await call<string | null>('repo:pickFolder');
+      if (p) { $<HTMLInputElement>('#repo-add-url').value = p; $<HTMLInputElement>('#repo-add-url').focus(); }
+      break;
+    }
+    case 'repo-add': await addRepo(); break;
     case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value); toast(t('toast.descSaved')); break;
     case 'repo-remove': {
       if (!confirm(t('confirm.repoRemove', { name: id }))) return;
@@ -2175,7 +2241,7 @@ function init() {
     if (pop.el && !pop.el.contains(tgt) && tgt !== pop.owner) closePop();
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx')) $('#ctxmenu').hidden = true;
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
   });
   document.addEventListener('change', async (e) => {
     const el = e.target as HTMLSelectElement;
@@ -2224,6 +2290,8 @@ function init() {
       if (el.dataset.enter === 'answer-custom') {
         const v = (el as HTMLInputElement).value.trim();
         if (v) void call('decision:answer', el.dataset.id, v);
+      } else if (el.dataset.enter === 'repo-add') {
+        void addRepo();
       } else if (el.dataset.enter === 'sug-save') {
         void saveSug(el.dataset.id ?? '');
       } else if (el.dataset.enter === 'aa-send') {
@@ -2257,13 +2325,22 @@ function init() {
     if (dir) { e.preventDefault(); navStep(dir, 'key'); }
   });
 
-  // Context menu on auto-answers
+  // Context menu on auto-answers and sidebar Worker rows
   document.addEventListener('contextmenu', (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ctx="aa"]');
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ctx="aa"], [data-ctx="worker"]');
     const menu = $('#ctxmenu');
     if (!el) { menu.hidden = true; return; }
     e.preventDefault();
     const id = el.dataset.id!;
+    if (el.dataset.ctx === 'worker') {
+      const w = worker(id);
+      menu.dataset.for = 'worker';
+      menu.innerHTML = `<button data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && stoppable(w) ? `<button data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
+      menu.style.left = `${Math.min(e.clientX, innerWidth - 200)}px`;
+      menu.style.top = `${Math.min(e.clientY, innerHeight - 70)}px`;
+      menu.hidden = false;
+      return;
+    }
     menu.dataset.for = 'aa';
     menu.innerHTML = `<button data-action="aa-edit" data-id="${id}">${t('aa.correct')}…</button><button data-action="view" data-v="memory">${t('aa.viewMemory')}</button>`;
     menu.style.left = `${Math.min(e.clientX, innerWidth - 200)}px`;

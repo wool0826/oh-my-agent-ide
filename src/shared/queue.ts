@@ -45,6 +45,22 @@ export function followersOf(tasks: Task[], id: string): Task[] {
   return out;
 }
 
+/**
+ * What a task blocked on `dep` (after_task_id) does now.
+ * wait: dep is still in progress, or has an open PR to merge (a failed review fix leaves the PR open too).
+ * start: dep's PR was merged, or dep finished without a PR, so there is nothing more to wait for.
+ * cancel: dep failed, was cancelled, its PR was closed without merging, or it is gone: what the task builds on never comes.
+ */
+export function afterDependency(dep: Pick<Task, 'status' | 'prUrl' | 'prState'> | null | undefined): 'wait' | 'start' | 'cancel' {
+  if (!dep) return 'cancel';
+  if (dep.prState === 'MERGED') return 'start';
+  if (dep.prState === 'CLOSED') return 'cancel';
+  if (hasOpenPr(dep)) return 'wait';
+  if (dep.status === 'done') return 'start';
+  if (dep.status === 'failed' || dep.status === 'cancelled') return 'cancel';
+  return 'wait';
+}
+
 /** What cancelling one task did. */
 export interface CancelReport {
   id: string;

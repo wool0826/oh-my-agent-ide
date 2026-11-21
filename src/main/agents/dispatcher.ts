@@ -162,7 +162,7 @@ function boardServer(d: Dispatcher) {
         const ws = store.data.workers.filter((w) => a.include_archived || w.status !== 'archived');
         return ok(ws.length ? ws.map((w) => workerLine(w.id)).join('\n') : 'No Workers.');
       }),
-      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context. With after_task_id the task waits until that task\'s PR is merged, then starts automatically.', {
+      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context. With after_task_id the task waits until that task\'s PR is merged, then starts automatically; if that task finishes without a PR it starts then, and if it fails or its PR is closed unmerged the waiting task is cancelled and you are told.', {
         title: z.string().describe('Short task name'),
         prompt: z.string().describe('Instructions for the Worker: background, desired result, definition of done. Include any attached file paths.'),
         kind: z.enum(['code', 'other']).describe('code: change a repository and open a PR. other: research, documents, reports'),
@@ -228,7 +228,7 @@ function boardServer(d: Dispatcher) {
         return view ? ok(view) : fail(t('err.noWorker', { id: a.worker_id }));
       }),
       tool('stop_worker', 'Stop what a Worker is doing (the session stays, so it can continue later).', { worker_id: z.string() }, async (a) => {
-        await workers.stop(a.worker_id);
+        await workers.stop(a.worker_id, 'dispatcher');
         return ok('Stopped.');
       }),
       tool('cancel_task', 'Cancel a task that is waiting to start: queued (waiting for a free Worker slot, or paused until a usage limit resets) or blocked (waiting for another task\'s PR to merge). It will not start. Tasks waiting on it with after_task_id are cancelled too. Its branch is deleted (and its Worker archived if it has nothing else) unless the branch holds commits or uncommitted changes. If it has an open PR, only the queued review, CI or follow-up work is dropped and the PR stays. Running work is not affected; use stop_worker for that.', {

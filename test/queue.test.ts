@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cancelSet, describeCancel, followersOf, hasOpenPr, isQueued, statusAfterCancel } from '../src/shared/queue';
+import { afterDependency, cancelSet, describeCancel, followersOf, hasOpenPr, isQueued, statusAfterCancel } from '../src/shared/queue';
 import type { Task } from '../src/shared/types';
 
 function task(id: string, patch: Partial<Task> = {}): Task {
@@ -83,4 +83,18 @@ test('queue: the Dispatcher reads what happened to each task', () => {
     describeCancel({ id: 'T-4', title: 'D', workerId: 'W-01', status: 'cancelled', followerOf: null, kept: { branch: 'agent/t-4', commits: 2, dirty: true, path: '/wt/W-01' } }),
     'T-4 "D" cancelled; branch agent/t-4 kept in /wt/W-01 (2 commit(s), uncommitted changes)',
   );
+});
+
+test('queue: a blocked task waits while its dependency runs or has an open PR, starts once it is merged or done without one, and is cancelled otherwise', () => {
+  const pr = 'https://github.com/o/r/pull/1';
+  for (const status of ['running', 'waiting', 'queued', 'blocked'] as const) assert.equal(afterDependency(task('T-1', { status })), 'wait', status);
+  assert.equal(afterDependency(task('T-1', { status: 'pr_open', prUrl: pr, prState: 'OPEN' })), 'wait');
+  // A review fix that failed leaves its PR open: still worth waiting for.
+  assert.equal(afterDependency(task('T-1', { status: 'failed', prUrl: pr, prState: 'OPEN' })), 'wait');
+  assert.equal(afterDependency(task('T-1', { status: 'done', prUrl: pr, prState: 'MERGED' })), 'start');
+  assert.equal(afterDependency(task('T-1', { status: 'done' })), 'start');
+  assert.equal(afterDependency(task('T-1', { status: 'done', prUrl: pr, prState: 'CLOSED' })), 'cancel');
+  assert.equal(afterDependency(task('T-1', { status: 'failed' })), 'cancel');
+  assert.equal(afterDependency(task('T-1', { status: 'cancelled' })), 'cancel');
+  assert.equal(afterDependency(undefined), 'cancel');
 });

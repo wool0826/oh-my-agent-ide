@@ -114,6 +114,8 @@ export interface Task {
   seenCiRuns?: string[];
   /** Times the Worker was sent failed CI checks to fix. */
   ciFixAttempts?: number;
+  /** It failed because the user pressed Stop, not because of an error. Shown as stopped, not in red. */
+  stopped?: boolean;
 }
 
 /** Is the open PR ready to merge: CI, conflicts and review. */
