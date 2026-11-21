@@ -26,6 +26,7 @@ import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 
 const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
+const LIMIT_RESET_MSG = 'The usage limit has reset. Continue the task where you left off.';
 
 function workerPrompt(w: Worker) {
   const s = loadSettings();
@@ -83,14 +84,20 @@ class WorkerManager {
   private ciFixing = new Set<string>();
   private followups = new Set<string>();
 
-  /** A follow-up for a task that finished less than 3 days ago reopens that task. */
+  /**
+   * A follow-up for a task that finished (or failed) less than 3 days ago reopens that task,
+   * so the Worker shows as running on it and its next report settles it.
+   */
   private reopenLast(w: Worker) {
     if (this.currentTask(w)) return;
     const last = w.taskIds.length ? store.task(w.taskIds[w.taskIds.length - 1]) : null;
-    if (!last || !last.finishedAt || Date.now() - Date.parse(last.finishedAt) > 3 * 86400_000) return;
-    if (last.status !== 'done' && last.status !== 'pr_open' && last.status !== 'failed') return;
+    if (!last || (last.status !== 'done' && last.status !== 'pr_open' && last.status !== 'failed')) return;
+    // A failed task never got finishedAt; it failed when it was last updated.
+    const at = last.finishedAt ?? (last.status === 'failed' ? last.updatedAt : null);
+    if (!at || Date.now() - Date.parse(at) > 3 * 86400_000) return;
     if (last.prState === 'MERGED' || last.prState === 'CLOSED') return;
-    this.followups.add(last.id);
+    // A task that failed before finishing just continues; its report is not a follow-up.
+    if (last.finishedAt) this.followups.add(last.id);
     last.status = 'running';
     last.updatedAt = nowIso();
   }
@@ -182,6 +189,11 @@ class WorkerManager {
           w.status = 'error';
           w.statusText = text;
           store.log(w.id, 'event', t('log.error', { msg: text }));
+          // A failed turn has settled its task already (onTurnEnd). A task still in progress here lost its session
+          // (the process died or never launched), so it failed too: a Worker in error has nothing in progress.
+          // A queued task never ran on this session; it stays for when the limit resets.
+          const task = this.currentTask(w);
+          if (task && task.status !== 'queued') this.fail(w, task, text);
         }
         this.touch(w);
       },
@@ -190,15 +202,7 @@ class WorkerManager {
         const task = this.currentTask(w);
         if (task) this.finalize(w, task, r.text, r.isError);
       },
-      onLimited: () => {
-        const task = this.currentTask(w);
-        if (task) { task.status = 'queued'; task.updatedAt = nowIso(); }
-        const time = limitResetText(accounts.nextFreeAt());
-        w.status = 'idle';
-        w.statusText = t('st.limitUntil', { time });
-        store.log(w.id, 'event', t('log.limitWait', { time }));
-        store.changed();
-      },
+      onLimited: () => this.pause(w, this.currentTask(w)),
     });
     this.sessions.set(w.id, s);
     return s;
@@ -316,7 +320,7 @@ class WorkerManager {
       } catch {
         answers[q.question] = '(The user did not answer. Decide sensibly, proceed, and mention it in your report.)';
       } finally {
-        w.status = prev === 'waiting' ? 'running' : prev;
+        if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
         if (task && task.status === 'waiting') task.status = 'running';
         store.changed();
       }
@@ -324,16 +328,18 @@ class WorkerManager {
     return { behavior: 'allow' as const, updatedInput: { ...input, answers } };
   }
 
+  private fail(w: Worker, task: Task, text: string) {
+    task.status = 'failed';
+    task.updatedAt = nowIso();
+    task.summary = oneLine(text || t('err.stopped'), 200);
+    store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
+    store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`);
+  }
+
   private finalize(w: Worker, task: Task, text: string, isError: boolean) {
+    if (isError) return this.fail(w, task, text);
     const { summary, prUrl, files } = parseResult(text, w.cwd);
     task.updatedAt = nowIso();
-    if (isError) {
-      task.status = 'failed';
-      task.summary = oneLine(text || t('err.stopped'), 200);
-      store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
-      store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`);
-      return;
-    }
     const wasReview = this.reviewing.delete(task.id);
     const wasCi = this.ciFixing.delete(task.id);
     const wasFollowup = this.followups.delete(task.id);
@@ -424,17 +430,57 @@ class WorkerManager {
 
   private dispatch(w: Worker, task: Task) {
     const s = this.ensureSession(w);
-    if (!s) {
-      const time = limitResetText(accounts.nextFreeAt());
-      task.status = 'queued';
-      w.statusText = t('st.limitUntil', { time });
-      store.log(w.id, 'event', t('log.limitWait', { time }));
-      store.changed();
-      return;
-    }
+    if (!s) return this.pause(w, task);
+    this.startTask(w, s, task);
+  }
+
+  /** Send the task message, with the task's effort and plan mode in place first; `after` follows it. */
+  private startTask(w: Worker, s: AgentSession, task: Task, after: string[] = []) {
+    task.startedAt = nowIso();
     s.setEffort(this.effortFor(task));
     // Plan mode must be in place before the task message arrives.
-    void s.setMode(needsPlan(task) ? 'plan' : 'auto').then(() => s.send(this.taskMessage(w, task)));
+    void s.setMode(needsPlan(task) ? 'plan' : 'auto').then(() => {
+      s.send(this.taskMessage(w, task));
+      after.forEach((m) => s.send(m));
+    });
+    store.changed();
+  }
+
+  /** Every account is held by a usage limit: the task waits in the queue until the first one resets. */
+  private pause(w: Worker, task: Task | null) {
+    if (task) { task.status = 'queued'; task.updatedAt = nowIso(); }
+    const time = limitResetText(accounts.nextFreeAt());
+    w.status = 'idle';
+    w.statusText = t('st.limitUntil', { time });
+    store.log(w.id, 'event', t('log.limitWait', { time }));
+    store.changed();
+  }
+
+  /**
+   * Send to a Worker whose session is open. Messages held while a usage limit lasted go first.
+   * A task the limit paused runs again: it starts if the Worker never got it, and is told to continue
+   * when there is nothing else to send. Otherwise a follow-up may reopen the last task (reopenLast).
+   */
+  private deliver(w: Worker, s: AgentSession, msgs: string[], task = this.currentTask(w)) {
+    const out = [...(this.held.get(w.id) ?? []), ...msgs];
+    const paused = task?.status === 'queued';
+    if (paused || this.held.has(w.id)) {
+      this.held.delete(w.id);
+      w.statusText = '';
+      store.log(w.id, 'event', t('log.limitCleared'));
+    }
+    if (task && paused) {
+      task.status = 'running';
+      task.updatedAt = nowIso();
+      if (!taskStarted(w, task)) {
+        this.startTask(w, s, task, out);
+        return this.touch(w);
+      }
+      if (!out.length) out.push(LIMIT_RESET_MSG);
+    }
+    this.reopenLast(w);
+    out.forEach((m) => s.send(m));
+    this.touch(w);
   }
 
   /** The task's own effort when per-task effort is on, otherwise the Worker default. */
@@ -451,13 +497,8 @@ class WorkerManager {
     if (from === 'user') store.pushUpdate(`The user wrote to ${w.id} directly: ${oneLine(text, 200)}`);
     const msg = `${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}`;
     const s = this.ensureSession(w);
-    if (!s) {
-      this.hold(w, msg);
-      return;
-    }
-    this.reopenLast(w);
-    s.send(msg);
-    this.touch(w);
+    if (!s) return this.hold(w, msg);
+    this.deliver(w, s, [msg]);
   }
 
   /** New review comments on a PR, or its failed CI checks. */
@@ -475,11 +516,9 @@ class WorkerManager {
     const s = this.ensureSession(w);
     if (!s) {
       task.status = 'queued';
-      this.hold(w, msg);
-      return;
+      return this.hold(w, msg);
     }
-    s.send(msg);
-    store.changed();
+    this.deliver(w, s, [msg], task);
   }
 
   async stop(workerId: string) {
@@ -524,6 +563,9 @@ class WorkerManager {
 
   private hold(w: Worker, msg: string) {
     this.held.set(w.id, [...(this.held.get(w.id) ?? []), msg]);
+    // Its task cannot go on before the limit resets either (the session is gone), so it waits in the queue.
+    const task = this.currentTask(w);
+    if (task?.status === 'running') { task.status = 'queued'; task.updatedAt = nowIso(); }
     const time = limitResetText(accounts.nextFreeAt());
     w.statusText = t('st.limitUntil', { time });
     store.log(w.id, 'event', t('log.limitHeld', { time }));
@@ -535,50 +577,45 @@ class WorkerManager {
     for (const task of store.data.tasks) {
       if (task.status !== 'queued' || !task.workerId) continue;
       const w = store.worker(task.workerId);
-      if (!w) continue;
-      const s = this.ensureSession(w);
-      if (!s) return;
-      task.status = 'running';
-      task.updatedAt = nowIso();
-      w.statusText = '';
-      store.log(w.id, 'event', t('log.limitCleared'));
-      const held = this.held.get(w.id) ?? [];
-      this.held.delete(w.id);
-      if (!w.sessionId) s.send(this.taskMessage(w, task));
-      if (held.length) held.forEach((m) => s.send(m));
-      else if (w.sessionId) s.send('The usage limit has reset. Continue the task where you left off.');
-      store.changed();
+      const s = w && this.ensureSession(w);
+      if (w && s) this.deliver(w, s, [], task);
     }
-    for (const [id, msgs] of [...this.held]) {
+    for (const id of [...this.held.keys()]) {
       const w = store.worker(id);
       if (!w) { this.held.delete(id); continue; }
       const s = this.ensureSession(w);
-      if (!s) return;
-      this.held.delete(id);
-      w.statusText = '';
-      store.log(w.id, 'event', t('log.limitCleared'));
-      this.reopenLast(w);
-      msgs.forEach((m) => s.send(m));
-      this.touch(w);
+      if (s) this.deliver(w, s, []);
     }
   }
 
-  /** On app start: continue Workers that were running. */
+  /**
+   * On app start no session is left. A Worker that was busy continues its task. A Worker that ended in an error
+   * gets its unfinished task failed, as a session error does now (state saved before that rule could disagree).
+   * Paused tasks start right away when their limit reset while the app was closed.
+   */
   resumeAfterRestart() {
     for (const w of store.data.workers) {
       if (w.status === 'archived') continue;
       const task = this.currentTask(w);
-      if (w.status === 'running' || w.status === 'waiting' || w.status === 'starting' || (task && task.status !== 'queued')) {
-        w.status = 'idle';
-        if (!task) continue;
-        const s = this.ensureSession(w);
-        if (!s) { task.status = 'queued'; continue; }
-        task.status = 'running';
-        store.log(w.id, 'event', t('log.restarted'));
-        s.send(w.sessionId ? RESUME_MSG : this.taskMessage(w, task));
+      const inProgress = task && (task.status === 'running' || task.status === 'waiting');
+      if (w.status === 'error') {
+        if (inProgress) this.fail(w, task, w.statusText);
+        continue;
       }
+      const busy = w.status === 'running' || w.status === 'waiting' || w.status === 'starting';
+      w.status = 'idle';
+      // A Worker saved as busy on a paused task (an older version left them so) was really running it.
+      if (!task || (!inProgress && !busy)) continue;
+      const s = this.ensureSession(w);
+      if (!s) { this.pause(w, task); continue; }
+      task.status = 'running';
+      task.updatedAt = nowIso();
+      store.log(w.id, 'event', t('log.restarted'));
+      if (taskStarted(w, task)) s.send(RESUME_MSG);
+      else this.startTask(w, s, task);
     }
     store.changed();
+    this.retryQueued();
   }
 
   closeAll() {
@@ -614,6 +651,11 @@ function memoryTools(memDir: string | null) {
 
 function needsPlan(task: Task | null) {
   return !!task?.planFirst && !task.planApproved;
+}
+
+/** Whether the task message reached the Worker. Tasks saved before startedAt existed count once the Worker has a session. */
+function taskStarted(w: Worker, task: Task) {
+  return task.startedAt === undefined ? !!w.sessionId : !!task.startedAt;
 }
 
 export function modelLabel(m: string) {

@@ -81,6 +81,8 @@ export interface Task {
   files: string[];
   createdAt: string;
   updatedAt: string;
+  /** When the task message reached the Worker. Null while a usage limit has kept it from starting; unset on tasks saved before this existed. */
+  startedAt?: string | null;
   finishedAt: string | null;
   reviewSyncedAt: string | null;
   seenCommentIds: string[];
