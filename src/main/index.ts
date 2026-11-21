@@ -22,7 +22,7 @@ import { log } from './log';
 import { month, nowIso, oneLine } from './util';
 import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
 import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
-import { reasonText } from '../shared/askWhy';
+import { notifyText } from '../shared/askWhy';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -279,7 +279,7 @@ async function boot() {
   accounts.on('changed', scheduleLimitRetry);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
   onDecisionCreated((d) => {
-    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), d.reason ? reasonText(d.reason) : d.summary?.what || d.title);
+    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d));
   });
   onLateAnswer((d) => {
     if (d.workerId) {

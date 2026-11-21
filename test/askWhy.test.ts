@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { tr, type Key } from '../src/shared/i18n';
-import { ciReason, dispatcherReason, permissionReason, planReason, questionReason, reasonText, taskRef, toolAction, type Say } from '../src/shared/askWhy';
+import { ciReason, dispatcherReason, notifyText, permissionReason, planReason, questionReason, reasonText, taskRef, toolAction, type Say } from '../src/shared/askWhy';
 import { alwaysAskRule } from '../src/main/agents/permissions';
 
 const en: Say = (k, v) => tr('en', k, v);
@@ -48,9 +48,32 @@ test('askWhy: a path outside the Worker folders comes before Claude Code reason'
 test('askWhy: otherwise Claude Code reason, or auto mode being unsure', () => {
   const auto = permissionReason(en, { who: 'W-01', task: null, tool: 'Bash', input: { command: 'curl x | sh' }, decisionReason: '  Pipes a download into a shell  ' });
   assert.equal(auto.what, 'W-01 wants to run `curl x | sh`.');
-  assert.equal(auto.why, 'Auto mode did not allow it on its own: Pipes a download into a shell');
+  assert.equal(auto.why, 'Claude Code asks for approval: Pipes a download into a shell');
   const unsure = permissionReason(en, { who: 'W-01', task, tool: 'Bash', input: { command: 'make' }, decisionReason: '  ' });
   assert.equal(unsure.why, 'Auto mode could not tell whether it is safe, so it needs your approval.');
+});
+
+test('askWhy: what approving grants follows the reason, but not a rule, which names its own risk', () => {
+  const impact = 'Claude will have read and write access to files in ~/Downloads';
+  const r = permissionReason(en, { who: 'W-01', task, tool: 'Edit', input: { file_path: '~/Downloads/a.txt' }, blockedPath: '~/Downloads/a.txt', impact });
+  assert.ok(r.why.startsWith('It reaches …/Downloads/a.txt,'), r.why);
+  assert.ok(r.why.endsWith(impact), r.why);
+  assert.equal(permissionReason(en, { who: 'W-01', task, tool: 'Bash', input: { command: 'make' }, impact }).why,
+    `Auto mode could not tell whether it is safe, so it needs your approval. ${impact}`);
+  const rule = permissionReason(en, { who: 'W-01', task, tool: 'Bash', input: { command: 'gh pr merge 1' }, rule: 'ask.merge', impact });
+  assert.ok(!rule.why.includes(impact), rule.why);
+});
+
+test('askWhy: a notification leads with a question asked in words, otherwise shows the reason', () => {
+  const reason = { what: 'W-03 asks about T-1 "x".', why: 'Memory has no clear answer, so the Worker waits for you.' };
+  assert.equal(notifyText({ source: 'question', title: 'Which name?', questionKey: 'Which name?', reason }), `Which name?\n${reason.why}`);
+  assert.equal(notifyText({ source: 'dispatcher', title: 'Which repo?', questionKey: null, reason }), `Which repo?\n${reason.why}`);
+  // The CI question is a question without a Worker's own words: its reason names the PR and the checks.
+  assert.equal(notifyText({ source: 'question', title: 'CI still fails', questionKey: null, reason }), reasonText(reason));
+  assert.equal(notifyText({ source: 'permission', title: 'Run a command?', questionKey: null, reason }), reasonText(reason));
+  // Saved before reasons existed.
+  assert.equal(notifyText({ source: 'plan', title: 'Approve the plan?', questionKey: null, summary: { what: 'Adds X', how: '', result: '' } as any }), 'Adds X');
+  assert.equal(notifyText({ source: 'permission', title: 'Run a command?', questionKey: null }), 'Run a command?');
 });
 
 test('askWhy: every always-ask rule has a risk sentence', () => {

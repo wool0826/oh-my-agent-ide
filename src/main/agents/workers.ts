@@ -269,7 +269,7 @@ class WorkerManager {
           code: summarizeTool(toolName, input, 1200),
           options: [{ label: ALLOW }, { label: DENY }],
           questionKey: null,
-          reason: permissionReason(t, { who: w.id, task, tool: toolName, input, rule: alwaysAskRule(toolName, input), blockedPath: opts.blockedPath, decisionReason: cc ?? opts.description }),
+          reason: permissionReason(t, { who: w.id, task, tool: toolName, input, rule: alwaysAskRule(toolName, input), blockedPath: opts.blockedPath, decisionReason: cc, impact: opts.description }),
         }, opts.signal);
         store.log(w.id, 'user', `${summarizeTool(toolName, input)} → ${ans === ALLOW ? t('allow') : ans === DENY ? t('deny') : ans}`);
         if (ans === ALLOW) return { behavior: 'allow', updatedInput: input };

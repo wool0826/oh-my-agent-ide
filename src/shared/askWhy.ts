@@ -4,7 +4,7 @@
 // produce: a Bash call's own description, the advisor's reason it did not answer, and the Dispatcher's `why`.
 
 import type { Key } from './i18n';
-import type { DecisionReason, Task } from './types';
+import type { Decision, DecisionReason, Task } from './types';
 
 /** Translate in the UI language: `t` in the main process, `tr` with a fixed language in tests. */
 export type Say = (key: Key, vars?: Record<string, string | number>) => string;
@@ -71,20 +71,22 @@ const RISK: Partial<Record<Key, Key>> = {
 /**
  * A Worker's tool call that needs approval. In order of what explains it best: an always-ask rule (with its risk),
  * a path outside the Worker's folders, Claude Code's own reason, or auto mode being unsure.
+ * Claude Code's subtitle on what approving grants (`impact`) follows, except after a rule, which names its own risk.
  */
 export function permissionReason(say: Say, a: {
   who: string; task: TaskRef | null; tool: string; input: unknown;
-  rule?: Key | null; blockedPath?: string | null; decisionReason?: string | null;
+  rule?: Key | null; blockedPath?: string | null; decisionReason?: string | null; impact?: string | null;
 }): DecisionReason {
   const action = toolAction(say, a.tool, a.input);
   const what = a.task ? say('why.permWhat', { who: a.who, action, task: taskRef(a.task) }) : say('why.permWhatNoTask', { who: a.who, action });
   const risk = a.rule ? RISK[a.rule] : undefined;
+  if (a.rule) return { what, why: say('why.rule', { rule: say(a.rule), risk: risk ? say(risk) : '' }).trim() };
   let why: string;
-  if (a.rule) why = say('why.rule', { rule: say(a.rule), risk: risk ? say(risk) : '' }).trim();
-  else if (a.blockedPath) why = say('why.blocked', { path: shortPath(a.blockedPath) });
-  else if (a.decisionReason?.trim()) why = say('why.auto', { reason: clip(a.decisionReason, 160) });
+  if (a.blockedPath) why = say('why.blocked', { path: shortPath(a.blockedPath) });
+  else if (a.decisionReason?.trim()) why = say('why.cc', { reason: clip(a.decisionReason, 160) });
   else why = say('why.unsure');
-  return { what, why };
+  const impact = a.impact?.trim() ? clip(a.impact, 160) : '';
+  return { what, why: impact ? `${why} ${impact}` : why };
 }
 
 /** A plan-first task's plan, waiting for approval before anything changes. */
@@ -117,4 +119,14 @@ export function ciReason(say: Say, a: { who: string; task: TaskRef; prNum: strin
 /** Both sentences, for a notification or a tooltip. */
 export function reasonText(r: DecisionReason): string {
   return `${r.what} ${r.why}`;
+}
+
+/**
+ * The OS notification's text. A question asked in words (a Worker's or the Dispatcher's) leads with the question itself,
+ * which its reason does not repeat; other decisions show the reason. Decisions saved before reasons keep the old text.
+ */
+export function notifyText(d: Pick<Decision, 'source' | 'title' | 'questionKey' | 'summary' | 'reason'>): string {
+  if (!d.reason) return d.summary?.what || d.title;
+  if (d.source === 'dispatcher' || d.questionKey) return `${clip(d.title, 160)}\n${d.reason.why}`;
+  return reasonText(d.reason);
 }
