@@ -176,6 +176,8 @@ function registerIpc() {
   handle('worker:log', (id: string) => store.readLog(id));
   handle('worker:send', (id: string, text: string, files?: string[]) => workers.send(id, 'user', text + attachmentBlock(registerAttachments(files ?? []))));
   handle('worker:stop', (id: string) => workers.stop(id));
+  handle('task:cancel', (id: string) => workers.cancelTask(id, 'user'));
+  handle('queue:clear', () => workers.clearQueue('user'));
   handle('worker:diff', (id: string) => workers.diff(id));
   handle('worker:archive', (id: string) => workers.archive(id));
   handle('worker:unarchive', async (id: string) => { const w = store.worker(id); if (w) await workers.unarchive(w); });

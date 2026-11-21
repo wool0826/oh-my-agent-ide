@@ -191,3 +191,68 @@ test('on restart while every account is limited, no Worker is left running', () 
   assert.deepEqual([ta.status, tb.status], ['queued', 'queued']);
   assert.equal(sent.size, 0);
 });
+
+test('cancelling a paused task drops its held messages, nothing restarts it, and the Worker hears it once', async () => {
+  const { w, x } = pausedWorker();
+  const held = (workers as unknown as { held: Map<string, string[]> }).held;
+  held.set(w.id, ['[User message] Held.']);
+  await workers.cancelTask(x.id, 'user');
+  assert.equal(x.status, 'cancelled');
+  assert.equal(held.has(w.id), false);
+  assert.equal(w.statusText, '');
+  assert.equal(w.status, 'archived');
+  assert.ok(store.data.chat.some((c) => c.text === `Cancelled "${x.title}". It will not start.`));
+  assert.match(store.data.pendingUpdates.at(-1)!, /The user cancelled queued work/);
+  limit(false);
+  workers.retryQueued();
+  assert.equal(x.status, 'cancelled');
+  assert.equal(sent.get(w.id), undefined);
+  workers.send(w.id, 'dispatcher', 'Next.');
+  workers.send(w.id, 'dispatcher', 'Again.');
+  const msgs = sent.get(w.id)!;
+  assert.equal(msgs.length, 2);
+  assert.ok(msgs[0].startsWith(`[Cancelled] The user cancelled ${x.id} `), msgs[0]);
+  assert.ok(msgs[0].endsWith('\n\n[Dispatcher] Next.'), msgs[0]);
+  assert.equal(msgs[1], '[Dispatcher] Again.');
+  assert.equal(x.status, 'cancelled');
+});
+
+test('a task that never started is cancelled without a note to its Worker', async () => {
+  const w = addWorker({ sessionId: 'from-an-earlier-task' });
+  addTask(w, { status: 'done', finishedAt: now });
+  const x = addTask(w, { status: 'queued', startedAt: null });
+  await workers.cancelTask(x.id, 'dispatcher');
+  assert.equal(x.status, 'cancelled');
+  assert.equal(w.status, 'idle');
+  workers.send(w.id, 'dispatcher', 'Next.');
+  assert.deepEqual(sent.get(w.id), ['[Dispatcher] Next.']);
+  assert.equal(store.data.pendingUpdates.length, 0);
+});
+
+test('cancelling a task waiting for a merge cancels the tasks waiting on it, and running work cannot be cancelled', async () => {
+  const a = addWorker({ sessionId: 'sa' });
+  const run = addTask(a);
+  workers.ensureSession(a)!.send('Working.');
+  const pr = addTask(addWorker(), { status: 'pr_open', prUrl: 'https://github.com/o/r/pull/1', prState: 'OPEN', finishedAt: now });
+  const blocked = addTask(null, { status: 'blocked', afterTaskId: pr.id, startedAt: null });
+  const next = addTask(null, { status: 'blocked', afterTaskId: blocked.id, startedAt: null });
+  await assert.rejects(async () => workers.cancelTask(run.id, 'user'), /is not waiting in the queue \(In progress\)/);
+  await assert.rejects(async () => workers.cancelTask(pr.id, 'user'), /is not waiting in the queue/);
+  const rs = await workers.cancelTask(blocked.id, 'user');
+  assert.deepEqual(rs.map((r) => [r.id, r.followerOf]), [[blocked.id, null], [next.id, blocked.id]]);
+  assert.deepEqual([run.status, pr.status, blocked.status, next.status], ['running', 'pr_open', 'cancelled', 'cancelled']);
+  assert.ok(store.data.chat.some((c) => c.text.startsWith('Also cancelled 1 task(s) waiting for it')));
+});
+
+test('clearing the queue keeps an open PR whose review work was queued, and leaves running work alone', async () => {
+  const { x } = pausedWorker();
+  limit(false);
+  const a = addWorker({ sessionId: 'sa' });
+  const run = addTask(a);
+  const rev = addTask(addWorker({ sessionId: 'sr' }), { status: 'queued', prUrl: 'https://github.com/o/r/pull/2', prState: 'OPEN', finishedAt: now });
+  const rs = await workers.clearQueue('dispatcher');
+  assert.deepEqual(rs.map((r) => [r.id, r.status]).sort(), [[x.id, 'cancelled'], [rev.id, 'pr_open']].sort());
+  assert.deepEqual([x.status, rev.status, run.status], ['cancelled', 'pr_open', 'running']);
+  assert.ok(store.data.chat.some((c) => c.text === 'Cleared the queue: 2 task(s).'));
+  assert.deepEqual(await workers.clearQueue('dispatcher'), []);
+});

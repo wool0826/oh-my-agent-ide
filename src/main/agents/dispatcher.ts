@@ -15,6 +15,7 @@ import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today } from '../util';
 import { EFFORTS, type Effort, type Task } from '../../shared/types';
 import { hasSpend } from '../../shared/spend';
+import { describeCancel } from '../../shared/queue';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
@@ -135,6 +136,20 @@ function boardServer() {
         await workers.stop(a.worker_id);
         return ok('Stopped.');
       }),
+      tool('cancel_task', 'Cancel a task that is waiting to start: queued (paused until a usage limit resets) or blocked (waiting for another task\'s PR to merge). It will not start. Tasks waiting on it with after_task_id are cancelled too. Its branch is deleted (and its Worker archived if it has nothing else) unless the branch holds commits or uncommitted changes. If it has an open PR, only the queued review, CI or follow-up work is dropped and the PR stays. Running work is not affected; use stop_worker for that.', {
+        task_id: z.string(),
+      }, async (a) => {
+        try {
+          const rs = await workers.cancelTask(a.task_id, 'dispatcher');
+          return ok(rs.map(describeCancel).join('\n'));
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+      }),
+      tool('clear_queue', 'Cancel every queued or blocked task, as cancel_task does for each. Use it when the user asks to clear, reset or empty the queue. Running work is not affected.', {}, async () => {
+        const rs = await workers.clearQueue('dispatcher');
+        return ok(rs.length ? rs.map(describeCancel).join('\n') : 'The queue was already empty.');
+      }),
       tool('request_decision', 'Put something the user must decide into the decision inbox. The answer arrives later as a "[Decision answer]" message.', {
         question: z.string(),
         options: z.array(z.string()).min(2).max(4),
@@ -184,6 +199,7 @@ function systemPrompt() {
     '8. When work depends on a change that is still in an open PR, create it with after_task_id so it starts automatically after the merge. Use plan_first when the user wants to review the approach first (for example plan first or show me the plan) or a code change is large, risky or open to several designs; small, clear changes do not need it.',
     '9. If the message ends with "[Attached files]", pass those absolute paths to the Worker in the task prompt. You may Read them to decide routing.',
     '10. Keep replies short: one or two sentences on what you gave to whom. Avoid lists and headings.',
+    '11. To cancel work that has not started or is paused (queued or blocked), use cancel_task; when the user asks to clear or reset the queue, use clear_queue. If a branch was kept because it holds work, tell the user where it is. Running work is stopped with stop_worker instead.',
     '',
     'A message prefixed with "[Worker updates]" lists what happened to Workers since your last turn. Use what is relevant to the user\'s request; no need to report it separately.',
     '"[Decision answer]" is the user\'s answer from the decision inbox. Follow up accordingly.',
