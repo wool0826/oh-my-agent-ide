@@ -312,3 +312,6 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Each Worker row in the sidebar shows Stop (while it works) and Open on hover**, and both in its context menu. They take room only while hovered, so titles keep their width.
     - **A task the user stops stays `failed`** (so a message to the Worker continues it, and tasks waiting on it are cancelled, decision 92), but it is marked `stopped`. It shows as "Stopped by user" with a grey stop glyph in the results and the Worker's task list, not as a red error, and its Worker goes idle instead of into the error list. A stop by the Dispatcher (`stop_worker`) is shown as "Stopped by the Dispatcher".
     - The Dispatcher hears about a user's stop without a turn of its own: the user did it on purpose.
+95. **An "Add repository" button in the Repositories view.** Before, a repository could only be added by asking the Dispatcher or from first-run setup, and the empty view only said there were none.
+    - The button sits in the view header next to the count, and in the empty state.
+    - It opens a short form in the right panel: a URL, `org/repo` or local folder (with Choose folder…) and an optional description. It calls the existing `repo:add`, and the new repository is selected with a toast once it is cloned.

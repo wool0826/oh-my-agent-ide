@@ -46,6 +46,9 @@ const ui = {
   wOpen: false,
   wFilter: null as WorkerFilter | null,
   repoSel: null as string | null,
+  /** The Repositories view's add form is open in its right panel, and whether an add is under way (a clone can take minutes). */
+  repoAdd: false,
+  repoAdding: false,
   memSel: null as string | null,
   memFiles: [] as MemoryFile[],
   memHits: null as MemoryHit[] | null,
@@ -1121,10 +1124,11 @@ async function confirmCancel() {
 function renderRepos() {
   const s = S!;
   const main = $('#repo-main');
+  const addBtn = (cls: string) => `<button class="btn ${cls}" data-action="repo-add-open"${ui.repoAdd ? ' disabled' : ''}>${t('repo.add')}</button>`;
   if (!s.repos.length) {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b><span>${t('repo.emptyBody')}</span></div>`;
+    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b><span>${t('repo.emptyBody')}</span>${addBtn('def')}</div>`;
   } else keepScroll(main, () => {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><small>${s.repos.length}</small></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
+    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
@@ -1132,6 +1136,7 @@ function renderRepos() {
     }).join('')}</div>`;
   });
   const ins = $('#repo-ins');
+  if (ui.repoAdd) { keepInputs(ins, () => { ins.innerHTML = repoAddHtml(); }); return; }
   const r = s.repos.find((x) => x.name === ui.repoSel) ?? null;
   if (!r) {
     ins.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-box"/></svg><b>${t('repo.pick')}</b></div>`;
@@ -1151,6 +1156,32 @@ function renderRepos() {
       <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
       <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
+}
+
+/** The add form: what to register (cloned unless it is a local folder) and its description, sent to repo:add. */
+function repoAddHtml() {
+  const off = ui.repoAdding ? ' disabled' : '';
+  return `<div class="ins-h"><b>${t('repo.add')}</b></div>
+    <div class="repo-add-row"><input class="inp" id="repo-add-url" data-keep="repo-add-url" data-enter="repo-add" placeholder="${esc(t('repo.addUrl'))}" aria-label="${esc(t('repo.addUrl'))}" spellcheck="false"${off}><button class="btn" data-action="repo-add-pick"${off}>${t('repo.pickFolder')}</button></div>
+    <div class="ins-h"><b>${t('repo.desc')}</b></div>
+    <textarea class="inp" id="repo-add-desc" data-keep="repo-add-desc" placeholder="${esc(t('repo.addDescPh'))}"${off}></textarea>
+    <div class="ins-act"><button class="btn" data-action="repo-add-cancel"${off}>${t('cancel')}</button><button class="btn def" data-action="repo-add"${off}>${t(ui.repoAdding ? 'repo.adding' : 'repo.addGo')}</button></div>`;
+}
+
+async function addRepo() {
+  const inp = $<HTMLInputElement>('#repo-add-url');
+  const url = inp.value.trim();
+  if (!url) { inp.focus(); return; }
+  if (ui.repoAdding) return;
+  ui.repoAdding = true;
+  renderRepos();
+  const r = await call<{ name: string }>('repo:add', url, undefined, $<HTMLTextAreaElement>('#repo-add-desc').value);
+  ui.repoAdding = false;
+  if (!r) { renderRepos(); return; }
+  ui.repoAdd = false;
+  toast(t('repo.added', { name: r.name }));
+  go({ repoSel: r.name });
+  renderRepos();
 }
 
 /* ---------- memory ---------- */
@@ -2038,7 +2069,15 @@ async function act(el: HTMLElement, e: Event) {
     case 'worker-archive': await call('worker:archive', id); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
-    case 'repo-select': go({ repoSel: id }); break;
+    case 'repo-select': if (!ui.repoAdding) ui.repoAdd = false; go({ repoSel: id }); renderRepos(); break;
+    case 'repo-add-open': ui.repoAdd = true; renderRepos(); $('#repo-add-url').focus(); break;
+    case 'repo-add-cancel': ui.repoAdd = false; renderRepos(); break;
+    case 'repo-add-pick': {
+      const p = await call<string | null>('repo:pickFolder');
+      if (p) { $<HTMLInputElement>('#repo-add-url').value = p; $<HTMLInputElement>('#repo-add-url').focus(); }
+      break;
+    }
+    case 'repo-add': await addRepo(); break;
     case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value); toast(t('toast.descSaved')); break;
     case 'repo-remove': {
       if (!confirm(t('confirm.repoRemove', { name: id }))) return;
@@ -2251,6 +2290,8 @@ function init() {
       if (el.dataset.enter === 'answer-custom') {
         const v = (el as HTMLInputElement).value.trim();
         if (v) void call('decision:answer', el.dataset.id, v);
+      } else if (el.dataset.enter === 'repo-add') {
+        void addRepo();
       } else if (el.dataset.enter === 'sug-save') {
         void saveSug(el.dataset.id ?? '');
       } else if (el.dataset.enter === 'aa-send') {

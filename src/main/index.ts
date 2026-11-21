@@ -244,6 +244,10 @@ function registerIpc() {
     pushState(); // apply changed settings (language, font) right away
     return { restart: homeChanged };
   });
+  handle('repo:pickFolder', async () => {
+    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'] });
+    return r.canceled ? null : r.filePaths[0];
+  });
   handle('settings:pickHome', async () => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] });
     return r.canceled ? null : r.filePaths[0];
