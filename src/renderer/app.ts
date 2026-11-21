@@ -4,6 +4,7 @@ import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
 import { hasSpend, spendVars, type Spend } from '../shared/spend';
 import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
+import { prsInReview } from '../shared/prs';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
 import { restoreScroll, saveScroll } from '../shared/scroll';
@@ -355,7 +356,8 @@ function renderSidebar() {
   const running = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting');
   // A Worker stopped by an error is not running; it waits for someone to tell it to continue.
   const failed = s.workers.filter((w) => w.status === 'error');
-  const prs = s.tasks.filter((x) => x.status === 'pr_open');
+  // One row per PR, even when a follow-up task recorded the same PR.
+  const prs = prsInReview(s.tasks);
   const queued = s.tasks.filter(isQueued);
   const doneToday = s.tasks.filter(finishedToday).length;
   const archived = s.workers.filter((w) => w.status === 'archived').length;
@@ -925,7 +927,7 @@ function renderRepos() {
     main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><small>${s.repos.length}</small></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
-      const pr = ts.filter((x) => x.status === 'pr_open').length;
+      const pr = prsInReview(ts).length;
       return `<div class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}</div>`;
   });

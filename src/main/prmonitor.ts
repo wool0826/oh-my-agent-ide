@@ -7,6 +7,7 @@ import { run, nowIso } from './util';
 import { log } from './log';
 import { ask } from './decisions';
 import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readiness, runsOf, type Check, type RollupItem } from './prchecks';
+import { adoptSeen, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
 import type { Task } from '../shared/types';
 
 /**
@@ -15,6 +16,7 @@ import type { Task } from '../shared/types';
  *   notify, and start tasks that were waiting for this merge.
  * - Keep the merge readiness (CI, conflicts, review) on the task for the UI.
  * - New review comments, then failed CI: hand them to the Worker that opened the PR.
+ * - Each PR once, even when a follow-up task pushed to its branch and recorded the same URL.
  */
 
 function parsePr(url: string) {
@@ -43,23 +45,42 @@ async function fetchComments(task: Task): Promise<Comment[] | null> {
   return out.filter((c) => !/\[bot\]$/.test(c.author));
 }
 
-async function settle(task: Task, state: 'MERGED' | 'CLOSED', headRef: string) {
+/**
+ * The PR was merged or closed: finish the tasks in review or being fixed, clean up each branch once, and announce it once.
+ * Every other task that recorded the PR (failed or cancelled later work, for one) gets the PR's state too.
+ */
+export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', headRef: string) {
   const merged = state === 'MERGED';
-  asking.get(task.id)?.abort.abort(); // the CI question no longer applies
-  task.prState = state;
-  task.status = 'done';
-  task.updatedAt = nowIso();
-  if (merged) task.mergedAt = nowIso();
-  const repo = task.repo ? store.repo(task.repo) : null;
-  const w = task.workerId ? store.worker(task.workerId) : null;
-  const branch = task.branch ?? headRef;
-  if (repo && branch) await cleanupBranch(repo, w?.repo === repo.name ? w.cwd : null, branch).catch((e) => log.warn('cleanup', e));
-  const text = merged ? t('ev.prMerged', { title: task.title }) : t('ev.prClosed', { title: task.title });
-  store.chat('event', text);
-  if (w) store.log(w.id, 'event', text);
-  store.pushUpdate(`${task.id} "${task.title}" PR ${merged ? 'merged' : 'closed without merging'}; branch cleaned up`);
-  notifyInfo(merged ? t('noti.merged') : t('noti.closed'), task.title);
-  workers.onPrSettled(task, merged);
+  const { tasks } = watch;
+  const first = tasks[0];
+  const settling = watch.all.filter((x) => x.prState !== 'MERGED' && x.prState !== 'CLOSED');
+  for (const task of settling) {
+    asking.get(task.id)?.abort.abort(); // the CI question no longer applies
+    task.prState = state;
+    task.updatedAt = nowIso();
+    if (merged) task.mergedAt = nowIso();
+    if (tasks.includes(task)) task.status = 'done';
+  }
+  // The PR's branch, plus a follow-up's own branch if it made one before pushing to the PR's.
+  const cleaned = new Set<string>();
+  for (const task of tasks) {
+    const repo = task.repo ? store.repo(task.repo) : null;
+    const branch = task.branch ?? headRef;
+    if (!repo || !branch || cleaned.has(branch)) continue;
+    cleaned.add(branch);
+    const w = task.workerId ? store.worker(task.workerId) : null;
+    await cleanupBranch(repo, w?.repo === repo.name ? w.cwd : null, branch).catch((e) => log.warn('cleanup', e));
+  }
+  if (!watch.announced) {
+    const text = merged ? t('ev.prMerged', { title: first.title }) : t('ev.prClosed', { title: first.title });
+    store.chat('event', text);
+    for (const id of new Set(tasks.map((x) => x.workerId))) if (id && store.worker(id)) store.log(id, 'event', text);
+    const also = tasks.length > 1 ? ` (also recorded by ${tasks.slice(1).map((x) => x.id).join(', ')})` : '';
+    store.pushUpdate(`${first.id} "${first.title}" PR ${merged ? 'merged' : 'closed without merging'}${also}; branch cleaned up`);
+    notifyInfo(merged ? t('noti.merged') : t('noti.closed'), first.title);
+  }
+  // Tasks waiting (after_task_id) on any of them start, or are cancelled if the PR was closed.
+  for (const task of settling) workers.onPrSettled(task, merged);
   store.changed();
 }
 
@@ -124,7 +145,8 @@ function askAboutCi(task: Task, body: string, names: string) {
   }, () => asking.delete(task.id));
 }
 
-async function checkOne(task: Task) {
+async function checkOne(watch: PrWatch<Task>) {
+  const task = watch.tasks[0];
   const p = parsePr(task.prUrl!);
   if (!p) return;
   const env = { ...ghEnv(), GH_HOST: p.host };
@@ -137,14 +159,18 @@ async function checkOne(task: Task) {
     state: 'OPEN' | 'MERGED' | 'CLOSED'; headRefName: string; headRefOid?: string;
     mergeable?: string; reviewDecision?: string; statusCheckRollup?: RollupItem[];
   };
-  if (j.state !== 'OPEN') return settle(task, j.state, j.headRefName);
+  if (j.state !== 'OPEN') return settle(watch, j.state, j.headRefName);
   const checks = parseChecks(j.statusCheckRollup);
   const ready = readiness(checks, j.mergeable, j.reviewDecision);
-  if (JSON.stringify(ready) !== JSON.stringify(task.prChecks ?? null)) {
-    task.prChecks = ready;
+  for (const x of watch.tasks) {
+    if (JSON.stringify(ready) === JSON.stringify(x.prChecks ?? null)) continue;
+    x.prChecks = ready;
     store.changed();
   }
-  if (task.status !== 'pr_open') return; // the Worker is already on it
+  // A Worker is already on it: this task, or a follow-up working on the same PR.
+  if (task.status !== 'pr_open' || prBusy(watch.all)) return;
+  // Comments and CI go to the task that opened the PR; it is told about anything a follow-up on the PR already handled.
+  adoptSeen(task, watch.all);
   if (await sendComments(task)) return;
   await fixCi(task, env, checks, j.headRefOid ?? '');
 }
@@ -156,11 +182,9 @@ export async function checkPrs() {
   running = true;
   lastRun = Date.now();
   try {
-    for (const task of store.data.tasks) {
-      if (!task.prUrl || task.prState === 'MERGED' || task.prState === 'CLOSED') continue;
-      // While a Worker is fixing review comments the task is "running"; still notice a merge.
-      if (task.status !== 'pr_open' && task.status !== 'running') continue;
-      try { await checkOne(task); } catch (e) { log.warn('pr check', task.prUrl, (e as Error).message); }
+    // While a Worker is fixing review comments the task is "running"; still notice a merge.
+    for (const watch of prsToWatch(store.data.tasks)) {
+      try { await checkOne(watch); } catch (e) { log.warn('pr check', watch.url, (e as Error).message); }
     }
   } finally {
     running = false;
