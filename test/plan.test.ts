@@ -63,6 +63,15 @@ test('planFallback: no headings takes the first sentences in order; nothing to t
   assert.equal(planFallback('```\ncode only\n```'), null);
 });
 
+test('planFallback: keeps the lines the Worker did write, and skips a title that only says "Plan"', () => {
+  assert.deepEqual(planFallback('# Plan\n\nWHAT: Add dark mode.\n\n## Approach\nSwap the variables.\n\n## Notes\nNothing else.'), {
+    what: 'Add dark mode.', how: 'Swap the variables.', output: 'Nothing else.', auto: true,
+  });
+  assert.equal(planFallback('# Implementation plan\n\nAdd the toggle. Then test.\n\n## Steps\nEdit it.')!.what, 'Add the toggle.');
+  assert.equal(planFallback('# 계획\n\n토글을 추가합니다.')!.what, '토글을 추가합니다.');
+  assert.equal(planFallback('# Plan for dark mode\n\nText.')!.what, 'Plan for dark mode');
+});
+
 test('planFallback: one section that is both approach and result is not used twice', () => {
   const s = planFallback('# Change and test\n\n## Implementation and tests\nEdit the file.\nRun the tests.')!;
   assert.equal(s.how, 'Edit the file.');

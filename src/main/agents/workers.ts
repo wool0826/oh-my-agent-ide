@@ -311,6 +311,7 @@ class WorkerManager {
         store.log(w.id, 'user', t('log.planApproved'));
         if (task) {
           task.planApproved = true;
+          this.summaryAsked.delete(task.id);
           store.pushUpdate(`${w.id} ${task.id} "${task.title}": the user approved the plan; ${w.id} is carrying it out.`);
           // Sent mid-turn, it reaches the Worker in this turn right after the tool result.
           if (s && !s.closed) s.send(planApproved(task));

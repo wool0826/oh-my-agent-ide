@@ -58,18 +58,27 @@ function labelled(l: string): [keyof typeof LABELS, string] | null {
   return null;
 }
 
-/** The WHAT / HOW / OUTPUT lines near the top of the plan, or null unless all three are there. */
-export function planSummary(plan: string): PlanSummary | null {
-  const lines = proseLines(plan).slice(0, HEAD_LINES);
+/** The labelled lines among the top lines of the plan, and the lines they took (label lines and values below them). */
+function labels(lines: string[]) {
   const found: Partial<Record<keyof typeof LABELS, string>> = {};
-  lines.forEach((l, i) => {
+  const taken = new Set<number>();
+  const head = lines.slice(0, HEAD_LINES);
+  head.forEach((l, i) => {
     const hit = labelled(l);
-    if (!hit || found[hit[0]] !== undefined) return;
+    if (!hit) return;
+    taken.add(i);
+    if (found[hit[0]] !== undefined) return;
     // The sentence may sit on the line below its label.
     let v = plain(hit[1]);
-    if (!v && lines[i + 1] && !labelled(lines[i + 1])) v = plain(unmark(lines[i + 1]));
+    if (!v && head[i + 1] && !labelled(head[i + 1])) { v = plain(unmark(head[i + 1])); taken.add(i + 1); }
     if (v) found[hit[0]] = clip(v);
   });
+  return { found, taken };
+}
+
+/** The WHAT / HOW / OUTPUT lines near the top of the plan, or null unless all three are there. */
+export function planSummary(plan: string): PlanSummary | null {
+  const { found } = labels(proseLines(plan));
   return found.what && found.how && found.output ? { what: found.what, how: found.how, output: found.output } : null;
 }
 
@@ -83,13 +92,19 @@ function sentence(l: string) {
   return clip(m ? m[1] : s, 160);
 }
 
+/** A title that says only that this is a plan. */
+const GENERIC_TITLE = /^((implementation|work|the)\s+)?(plan|계획|구현 계획|작업 계획)$/i;
+
 /**
- * A summary pulled from the plan itself, for a Worker that left out the three lines even when asked:
- * the title heading (or first sentence) as what, the first sentence under an approach-like heading as how,
- * and the first under a result- or verification-like heading as output. Marked auto; null for an empty plan.
+ * A summary pulled from the plan itself, for a Worker that left out the three lines even when asked.
+ * Whichever of the lines it did write are kept. For the rest: the title heading (or first sentence) as what,
+ * the first sentence under an approach-like heading as how, and the first under a result- or verification-like
+ * heading as output. Marked auto; null for an empty plan.
  */
 export function planFallback(plan: string): PlanSummary | null {
-  const lines = proseLines(plan);
+  const all = proseLines(plan);
+  const { found, taken } = labels(all);
+  const lines = all.filter((_, i) => !taken.has(i));
   const sections: { head: string; body: string[] }[] = [{ head: '', body: [] }];
   for (const l of lines) {
     if (/^#{1,6}\s/.test(l)) sections.push({ head: plain(unmark(l)), body: [] });
@@ -101,10 +116,8 @@ export function planFallback(plan: string): PlanSummary | null {
   const nextUnused = () => lines.find((l) => !/^#{1,6}\s/.test(l) && !used.has(l));
 
   const title = sections.find((x) => x.head)?.head.replace(/^(plan|계획)\s*[:：-]\s*/i, '');
-  const what = title ? clip(title, 160) : sentence(take(nextUnused()));
-  const howLine = take(firstUnder(HOW_HEAD) ?? nextUnused());
-  const outLine = take(firstUnder(OUT_HEAD) ?? nextUnused());
-  const how = howLine ? sentence(howLine) : '';
-  const output = outLine ? sentence(outLine) : '';
+  const what = found.what ?? (title && !GENERIC_TITLE.test(title) ? clip(title, 160) : sentence(take(nextUnused())));
+  const how = found.how ?? sentence(take(firstUnder(HOW_HEAD) ?? nextUnused()));
+  const output = found.output ?? sentence(take(firstUnder(OUT_HEAD) ?? nextUnused()));
   return what || how || output ? { what, how, output, auto: true } : null;
 }
