@@ -58,6 +58,10 @@ test('scroll: moved elements are reported, and a shorter list clamps', () => {
   restoreScroll([short], saved, (e) => moved.push(e));
   assert.equal(short.scrollTop, 300);
   assert.deepEqual(moved, [short]);
+  const empty = el('wk-list', 0, 0, 0);
+  restoreScroll([empty], saved, (e) => moved.push(e));
+  assert.equal(empty.scrollTop, 0);
+  assert.deepEqual(moved, [short], 'an element that cannot move is not reported');
 });
 
 test('scroll: elements whose bar was showing come back with the time it had left, keys that are gone are skipped', () => {

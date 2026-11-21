@@ -258,9 +258,11 @@ function onScroll(e: Event) {
 /** Move an element without showing its bar: following new messages, or putting an offset back. */
 function scrollQuietly(el: HTMLElement, top: number, left = el.scrollLeft) {
   if (el.scrollTop === top && el.scrollLeft === left) return;
+  const before = offsets(el);
   el.scrollTop = top;
   el.scrollLeft = left;
-  quietAt.set(el, offsets(el));
+  // A write the element can't follow (already at the bottom, or hidden) fires no scroll event to clear the mark.
+  if (offsets(el) !== before) quietAt.set(el, offsets(el));
 }
 
 /**
@@ -1505,7 +1507,7 @@ function showPane(id: Pane) {
     if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
   const sp = document.querySelector('.spanes');
-  if (sp) sp.scrollTop = 0;
+  if (sp instanceof HTMLElement) scrollQuietly(sp, 0);
   pathEnds();
   if (id === 'models') void loadModels('fresh');
 }

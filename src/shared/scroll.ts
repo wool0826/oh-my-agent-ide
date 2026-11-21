@@ -36,7 +36,7 @@ export function saveScroll<T extends Scrollable>(els: Iterable<T>, barLeft: (el:
 
 /**
  * Put the saved offsets back on the elements that now carry those keys. Only offsets that differ are written,
- * so an element the render kept is left alone. Returns the elements whose scrollbar was showing, with the time
+ * so an element the render kept is left alone, and moved() hears only of elements that did move. Returns the elements whose scrollbar was showing, with the time
  * it had left, so the caller keeps it up on a new element without starting the countdown over.
  */
 export function restoreScroll<T extends Scrollable>(els: Iterable<T>, saved: Map<string, ScrollPos>, moved: (el: T) => void = () => {}): [T, number][] {
@@ -48,10 +48,12 @@ export function restoreScroll<T extends Scrollable>(els: Iterable<T>, saved: Map
     const pos = key ? saved.get(key) : undefined;
     if (!key || !pos || done.has(key)) continue;
     done.add(key);
-    if (el.scrollTop !== pos.top || el.scrollLeft !== pos.left) {
+    const top = el.scrollTop, left = el.scrollLeft;
+    if (top !== pos.top || left !== pos.left) {
       el.scrollTop = pos.top;
       el.scrollLeft = pos.left;
-      moved(el);
+      // Clamped to where it was (an empty list), it didn't move, and no scroll event follows.
+      if (el.scrollTop !== top || el.scrollLeft !== left) moved(el);
     }
     if (pos.bar) bars.push([el, pos.bar]);
   }
