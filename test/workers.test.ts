@@ -770,3 +770,57 @@ test('a Worker session leaves out the tools it never needs, caps command output,
   const input = { kind: 'note', text: 'Hi' };
   assert.deepEqual(await s.cfg.canUseTool!('mcp__oma__tell_dispatcher', input, opts), { behavior: 'allow', updatedInput: input });
 });
+
+test('a task waiting for one that finishes without a PR starts then, and the Dispatcher hears it', async () => {
+  const a = addWorker({ sessionId: 'sa' });
+  const dep = addTask(a, { title: 'Research' });
+  workers.ensureSession(a);
+  const b = addWorker({ sessionId: 'sb' });
+  const next = addTask(b, { status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  report(a, 'RESULT: Wrote the notes');
+  assert.equal(dep.status, 'done');
+  assert.equal(next.status, 'running');
+  await tick();
+  assert.match(sent.get(b.id)?.[0] ?? '', new RegExp(`waited for ${dep.id} "Research", which finished without a PR: Wrote the notes`));
+  assert.ok(store.data.pendingUpdates.some((u) => u.startsWith(`${next.id} "Task" (${b.id}) waited for ${dep.id}, which finished without a PR; it started`)));
+});
+
+test('a task waiting for one that fails is cancelled with the tasks waiting on it, and the Dispatcher hears why', async () => {
+  const a = addWorker({ sessionId: 'sa' });
+  const dep = addTask(a);
+  const s = workers.ensureSession(a)!;
+  const next = addTask(addWorker(), { status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  const last = addTask(addWorker(), { status: 'blocked', afterTaskId: next.id, startedAt: null });
+  s.ev.onTurnEnd!({ text: 'It broke.', isError: true, internal: false });
+  assert.deepEqual([dep.status, next.status, last.status], ['failed', 'cancelled', 'cancelled']);
+  assert.ok(store.data.chat.some((c) => c.text === `Cancelled "Task": "Task" ended without a PR to merge`));
+  assert.ok(store.data.pendingUpdates.some((u) => u.includes(`${dep.id} "Task" ended as failed with no PR to merge, so the tasks waiting for it were cancelled: ${next.id} "Task" cancelled (it waited for ${dep.id}); ${last.id} "Task" cancelled (it waited for ${next.id})`)));
+  await tick();
+});
+
+test('a review fix that fails leaves its PR open, so the task waiting for the merge keeps waiting', () => {
+  const a = addWorker({ sessionId: 'sa' });
+  const dep = addTask(a, { prUrl: 'https://github.com/o/r/pull/7', prState: 'OPEN', finishedAt: now });
+  const s = workers.ensureSession(a)!;
+  const next = addTask(addWorker(), { status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  s.ev.onTurnEnd!({ text: 'It broke.', isError: true, internal: false });
+  assert.deepEqual([dep.status, next.status], ['failed', 'blocked']);
+});
+
+test('a PR closed without merging cancels the tasks waiting for it, and the ones waiting on those', async () => {
+  const dep = addTask(addWorker(), { status: 'done', prUrl: 'https://github.com/o/r/pull/8', prState: 'CLOSED', finishedAt: now });
+  const next = addTask(addWorker(), { status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  const last = addTask(addWorker(), { status: 'blocked', afterTaskId: next.id, startedAt: null });
+  workers.onPrSettled(dep, false);
+  assert.deepEqual([next.status, last.status], ['cancelled', 'cancelled']);
+  assert.equal(store.data.chat.filter((c) => c.kind === 'error').length, 1);
+  await tick();
+});
+
+test('on restart, a task left waiting for one that already ended without a PR starts', () => {
+  const dep = addTask(addWorker(), { status: 'done', finishedAt: now });
+  const b = addWorker({ sessionId: 'sb' });
+  const next = addTask(b, { status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  workers.resumeAfterRestart();
+  assert.equal(next.status, 'running');
+});

@@ -162,7 +162,7 @@ function boardServer(d: Dispatcher) {
         const ws = store.data.workers.filter((w) => a.include_archived || w.status !== 'archived');
         return ok(ws.length ? ws.map((w) => workerLine(w.id)).join('\n') : 'No Workers.');
       }),
-      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context. With after_task_id the task waits until that task\'s PR is merged, then starts automatically.', {
+      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context. With after_task_id the task waits until that task\'s PR is merged, then starts automatically; if that task finishes without a PR it starts then, and if it fails or its PR is closed unmerged the waiting task is cancelled and you are told.', {
         title: z.string().describe('Short task name'),
         prompt: z.string().describe('Instructions for the Worker: background, desired result, definition of done. Include any attached file paths.'),
         kind: z.enum(['code', 'other']).describe('code: change a repository and open a PR. other: research, documents, reports'),

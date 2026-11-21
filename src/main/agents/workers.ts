@@ -24,7 +24,7 @@ import { t, langName, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
-import { cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
+import { afterDependency, cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
 import { canStart, queueOrder, slotsUsed, waitsForSlot } from '../../shared/slots';
@@ -557,6 +557,7 @@ class WorkerManager {
     this.requestWakes.delete(task.id);
     store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
     store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true);
+    this.followUp(task);
     this.fillSlots();
   }
 
@@ -603,6 +604,7 @@ class WorkerManager {
     store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`, true);
     if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
     notifyInfo(`${w.id} ${label}`, `${task.title}: ${summary}`);
+    this.followUp(task);
     store.changed();
     this.fillSlots();
   }
@@ -624,6 +626,9 @@ class WorkerManager {
       task.status = 'blocked';
       store.log(w.id, 'event', t('log.blocked', { id: task.afterTaskId }));
       store.changed();
+      // It may have ended while this Worker was being set up.
+      const dep = store.task(task.afterTaskId);
+      if (afterDependency(dep) !== 'wait') this.settleAllBlocked();
       return w;
     }
     if (!this.hasSlot(w)) {
@@ -639,31 +644,69 @@ class WorkerManager {
 
   /** The PR that blocked tasks were waiting for was merged (or closed). */
   onPrSettled(doneTask: Task, merged: boolean) {
-    for (const task of store.data.tasks) {
-      if (task.status !== 'blocked' || task.afterTaskId !== doneTask.id || !task.workerId) continue;
-      const w = store.worker(task.workerId);
-      if (!w) continue;
-      if (!merged) {
-        task.status = 'cancelled';
-        task.updatedAt = nowIso();
-        store.chat('error', t('ev.blockedCancelled', { title: task.title, dep: doneTask.title }), task.id);
-        store.log(w.id, 'event', t('log.blockedCancelled'));
-        store.pushUpdate(`${task.id} "${task.title}" cancelled: ${doneTask.id} PR was closed without merging`);
-        continue;
-      }
-      if (!this.hasSlot(w)) {
-        store.log(w.id, 'event', t('log.blockedMerged', { id: doneTask.id }));
+    this.settleBlocked(doneTask, merged ? 'start' : 'cancel');
+  }
+
+  /**
+   * A task ended (or the app started): tasks waiting on it with after_task_id start or are cancelled, as
+   * afterDependency says. Without this, a dependency that finished without a PR, or failed, would hold them forever.
+   */
+  private followUp(dep: Task) {
+    const how = afterDependency(dep);
+    if (how !== 'wait') this.settleBlocked(dep, how);
+  }
+
+  /** Every blocked task whose dependency already ended, as saved state may hold (one that ended before this check existed). */
+  private settleAllBlocked() {
+    const deps = new Set(store.data.tasks.filter((x) => x.status === 'blocked' && x.afterTaskId).map((x) => x.afterTaskId!));
+    for (const id of deps) {
+      const dep = store.task(id);
+      if (dep) this.followUp(dep);
+      else this.settleBlocked({ id, title: id } as Task, 'cancel');
+    }
+  }
+
+  private settleBlocked(dep: Task, how: 'start' | 'cancel') {
+    const waiting = store.data.tasks.filter((x) => x.status === 'blocked' && x.afterTaskId === dep.id && x.workerId && store.worker(x.workerId));
+    if (!waiting.length) return;
+    if (how === 'cancel') return this.cancelBlocked(dep, waiting);
+    const merged = dep.prState === 'MERGED';
+    for (const task of waiting) {
+      const w = store.worker(task.workerId!)!;
+      const slot = this.hasSlot(w);
+      if (!merged) store.pushUpdate(`${task.id} "${task.title}" (${w.id}) waited for ${dep.id}, which finished without a PR; it ${slot ? 'started' : 'now waits for a free Worker slot'}.`);
+      if (!slot) {
+        store.log(w.id, 'event', t(merged ? 'log.blockedMerged' : 'log.blockedDone', { id: dep.id }));
         this.waitForSlot(w, task);
         continue;
       }
       task.status = 'running';
       task.updatedAt = nowIso();
       w.title = task.title;
-      store.chat('event', t('ev.blockedStarted', { id: w.id, title: task.title, dep: doneTask.title }));
-      store.log(w.id, 'event', t('log.blockedStarted', { id: doneTask.id }));
+      store.chat('event', t(merged ? 'ev.blockedStarted' : 'ev.blockedStartedDone', { id: w.id, title: task.title, dep: dep.title }));
+      store.log(w.id, 'event', t(merged ? 'log.blockedStarted' : 'log.blockedStartedDone', { id: dep.id }));
       this.dispatch(w, task);
     }
     store.changed();
+  }
+
+  /**
+   * What the blocked tasks build on never comes: they are cancelled, with the tasks waiting on them, like a
+   * cancel from the queue. The Dispatcher hears why, so it can plan them again.
+   */
+  private cancelBlocked(dep: Task, waiting: Task[]) {
+    const why = dep.prState === 'CLOSED' ? 'closed' : !store.task(dep.id) ? 'gone' : 'failed';
+    const reports = this.cancelNow(waiting.map((x) => x.id), dep.id, why);
+    if (!reports.length) return;
+    for (const r of reports) {
+      if (r.followerOf !== dep.id) continue;
+      if (why === 'closed') store.chat('error', t('ev.blockedCancelled', { title: r.title, dep: dep.title }), r.id);
+      else store.chat('event', t(why === 'gone' ? 'ev.cancelled' : 'ev.blockedFailed', { title: r.title, dep: dep.title }), r.id);
+    }
+    const reason = why === 'closed' ? 'had its PR closed without merging' : why === 'gone' ? 'no longer exists' : `ended as ${dep.status} with no PR to merge`;
+    store.pushUpdate(`${dep.id}${why === 'gone' ? '' : ` "${dep.title}"`} ${reason}, so the tasks waiting for it were cancelled: ${reports.map(describeCancel).join('; ')}. If they are still wanted, create them again (with after_task_id once ${dep.id} or a replacement is in progress).`);
+    store.changed();
+    void this.tidyCancelled(reports);
   }
 
   private taskMessage(w: Worker, task: Task) {
@@ -680,7 +723,8 @@ class WorkerManager {
     if (needsPlan(task)) head.push(`Plan first: you are in plan mode (read-only). Investigate, then present your plan with ExitPlanMode. ${planSummaryRule()} The user approves it before you change anything; if they ask for changes, revise and present it again. Once it is approved, carry out the plan in this session and report the finished work.`);
     if (task.afterTaskId) {
       const dep = store.task(task.afterTaskId);
-      if (dep?.prUrl) head.push(`This task builds on ${dep.prUrl}, which has been merged into the default branch.`);
+      if (dep?.prUrl && dep.prState === 'MERGED') head.push(`This task builds on ${dep.prUrl}, which has been merged into the default branch.`);
+      else if (dep?.status === 'done') head.push(`This task waited for ${dep.id} "${dep.title}", which finished without a PR: ${dep.summary ?? ''}${dep.files.length ? ` Files: ${dep.files.join(', ')}` : ''}`);
     }
     return `${head.join('\n')}\n\n${task.prompt}`;
   }
@@ -902,12 +946,28 @@ class WorkerManager {
   }
 
   private async cancel(ids: string[], by: 'user' | 'dispatcher', all: boolean): Promise<CancelReport[]> {
-    const { picked, followers } = cancelSet(store.data.tasks, ids);
     // Every status changes before the first await, so a usage limit resetting meanwhile starts none of them.
-    const reports = [...picked.map((x) => this.markCancelled(x, null)), ...followers.map((x) => this.markCancelled(x, x.afterTaskId ?? null))];
+    const reports = this.cancelNow(ids);
     if (!reports.length) return reports;
     this.announce(reports, all);
     store.changed();
+    await this.tidyCancelled(reports);
+    if (by === 'user') store.pushUpdate(`The user cancelled queued work: ${reports.map(describeCancel).join('; ')}`);
+    store.changed();
+    return reports;
+  }
+
+  /**
+   * Mark these tasks and the tasks waiting on them cancelled, at once. `after` and `why`: they were cancelled because
+   * the task they waited for ended that way (failed, or its PR was closed).
+   */
+  private cancelNow(ids: string[], after: string | null = null, why: 'closed' | 'failed' | 'gone' | null = null): CancelReport[] {
+    const { picked, followers } = cancelSet(store.data.tasks, ids);
+    return [...picked.map((x) => this.markCancelled(x, after, why)), ...followers.map((x) => this.markCancelled(x, x.afterTaskId ?? null))];
+  }
+
+  /** Delete the branches cancelled tasks left and archive Workers left with nothing, then say what was kept. */
+  private async tidyCancelled(reports: CancelReport[]) {
     for (const r of reports) {
       try { await this.cleanUp(r); } catch (e) { log.warn(`cancel cleanup ${r.id}`, e); }
     }
@@ -920,12 +980,9 @@ class WorkerManager {
       const vars = { title: r.title, branch: r.kept.branch, n: r.kept.commits, path: r.kept.path };
       store.chat('event', t(r.kept.dirty ? 'ev.cancelKeptChanges' : 'ev.cancelKeptCommits', vars));
     }
-    if (by === 'user') store.pushUpdate(`The user cancelled queued work: ${reports.map(describeCancel).join('; ')}`);
-    store.changed();
-    return reports;
   }
 
-  private markCancelled(task: Task, followerOf: string | null): CancelReport {
+  private markCancelled(task: Task, followerOf: string | null, why: 'closed' | 'failed' | 'gone' | null = null): CancelReport {
     const wasQueued = task.status === 'queued';
     task.status = statusAfterCancel(task);
     task.queueReason = null;
@@ -942,7 +999,8 @@ class WorkerManager {
         // Its session may have started on it: tell it before it hears anything else.
         if (taskStarted(w, task) && task.status === 'cancelled') this.notes.set(w.id, [...(this.notes.get(w.id) ?? []), task.id]);
       }
-      store.log(w.id, 'event', task.status !== 'cancelled' ? t('log.queueDropped') : followerOf ? t('log.cancelledAfter', { id: followerOf }) : t('log.cancelled'));
+      const after = why === 'closed' ? t('log.blockedCancelled') : why === 'failed' ? t('log.blockedFailed', { id: followerOf ?? '' }) : followerOf ? t('log.cancelledAfter', { id: followerOf }) : t('log.cancelled');
+      store.log(w.id, 'event', task.status !== 'cancelled' ? t('log.queueDropped') : after);
     }
     return { id: task.id, title: task.title, workerId: w?.id ?? null, status: task.status, followerOf, kept: null };
   }
@@ -1119,6 +1177,7 @@ class WorkerManager {
     }
     // After the resumes, so the slots these free go to tasks that waited for one, oldest first.
     for (const { w, task } of failed) this.fail(w, task, w.statusText);
+    this.settleAllBlocked();
     store.changed();
     this.retryQueued();
   }

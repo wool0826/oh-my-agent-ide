@@ -299,3 +299,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Outlines, not text.** The letters are stored as paths in `scripts/icon-lettering.mjs`, shaped with HarfBuzz the way Chromium shapes them, so `npm run icon` needs no font file and renders the same everywhere. To change the wording or the size, outline the new text the same way (the file's header has the settings).
     - **32 px and below** show the bar and a large "Oh" only, slightly heavier. Three lines cannot be read at those sizes.
     - `scripts/make-icon.mjs` draws it; the ICO, ICNS and PNG are rendered as before (decision 89).
+92. **A task waiting on another (after_task_id) no longer waits forever when that task opens no PR.** Before, only a merged or closed PR released it, so a dependency that finished without a PR, failed or was stopped left it blocked until someone cancelled it by hand.
+    - **Finished without a PR: it starts** (or takes the next free slot). The dependency did its work; there is just nothing to merge (a report, or a task that ended without pushing). Its task message says so and carries the dependency's summary and files.
+    - **Failed (stopping counts), cancelled, PR closed unmerged, or gone: it is cancelled**, with the tasks waiting on it, the way cancelling from the queue already does. What it builds on never comes, and starting it on the default branch would build on nothing. The Dispatcher is told why and can plan it again.
+    - **An open PR still means waiting for the merge**, even when a later review or CI fix on it fails.
+    - Checked when a task finishes or fails, when a blocked task is assigned, and on app start (state saved before this rule).
