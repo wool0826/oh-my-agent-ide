@@ -3,6 +3,7 @@ import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types
 import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
 import { hasSpend, spendVars, type Spend } from '../shared/spend';
+import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 
 declare global {
@@ -62,6 +63,8 @@ const ui = {
   models: { models: [], fetchedAt: null, error: null } as ModelList,
   modelsLoading: false,
   restartAsk: false,
+  /** Asking before cancelling queued tasks: one task, or the whole queue. */
+  cancelAsk: null as { ids: string[]; all: boolean } | null,
 };
 
 /* ---------- helpers ---------- */
@@ -273,7 +276,7 @@ function renderSidebar() {
   // A Worker stopped by an error is not running; it waits for someone to tell it to continue.
   const failed = s.workers.filter((w) => w.status === 'error');
   const prs = s.tasks.filter((x) => x.status === 'pr_open');
-  const queued = s.tasks.filter((x) => x.status === 'queued' || x.status === 'blocked');
+  const queued = s.tasks.filter(isQueued);
   const todayStr = new Date().toDateString();
   const doneToday = s.tasks.filter((x) => (x.status === 'done' || x.status === 'pr_open') && x.finishedAt && new Date(x.finishedAt).toDateString() === todayStr).length;
   const archived = s.workers.filter((w) => w.status === 'archived').length;
@@ -300,15 +303,22 @@ function renderSidebar() {
   const prRows = prs.map((x) => `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
   const qRows = queued.map((x) => {
     const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''} ${t('task.queued')}`;
-    return `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span></div>`;
+    return `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span>${cancelX(x)}</div>`;
   }).join('');
+  const qTitle = `${t('side.queue')}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
   const any = decRows || runRows || prRows || qRows || errRows;
   const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<span>${t('side.emptyTitle')}</span></div>`;
   const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
     <div class="row${doneToday ? '' : ' zero'}" data-action="view" data-v="worker">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></div>
     <div class="row${archived ? '' : ' zero'}" data-action="view" data-v="worker">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
-  $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(t('side.queue'), qRows) + sec(t('side.errors'), errRows) + empty + misc;
+  $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
+}
+
+/** The × on a queued task's row: asks before cancelling it. */
+function cancelX(x: Task) {
+  const label = esc(`${t('cancel.task')}: ${x.title}`);
+  return `<button class="clear-x" data-action="task-cancel" data-id="${esc(x.id)}" title="${t('cancel.task')}" aria-label="${label}"><svg><use href="#s-x"/></svg></button>`;
 }
 
 function usageTip(a: AccountView) {
@@ -692,12 +702,67 @@ function renderWorkerInspector() {
       ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(w.statusText, 140))}</span>` : ''}
     </div>
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
-    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskStatus(x.status)}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
+    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskStatus(x.status)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${w.status === 'running' || w.status === 'waiting' ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
       <button class="btn def" data-action="worker-msg" data-id="${w.id}">${t('wk.message')}</button>
     </div>`;
+}
+
+/* ---------- cancelling queued tasks ---------- */
+
+/** Ask before cancelling: what goes, what only loses its queued work, and which waiting tasks go with it. */
+function renderCancelDialog() {
+  const root = $('#dlg');
+  const ask = ui.cancelAsk;
+  // The whole queue as it is now, so a task queued while the dialog is open is listed too.
+  const set = ask && S ? cancelSet(S.tasks, ask.all ? S.tasks.filter(isQueued).map((x) => x.id) : ask.ids) : null;
+  if (!ask || !set?.picked.length) {
+    // Nothing left to ask about (closed, or the task started or was cancelled meanwhile).
+    ui.cancelAsk = null;
+    root.hidden = true;
+    root.innerHTML = '';
+    root.dataset.key = '';
+    return;
+  }
+  const list = (xs: Task[]) => {
+    const shown = xs.slice(0, 5);
+    return `<ul class="dlg-list">${shown.map((x) => `<li>${esc(x.title)}</li>`).join('')}${xs.length > shown.length ? `<li class="more">${t('cancel.more', { n: xs.length - shown.length })}</li>` : ''}</ul>`;
+  };
+  let title: string, body: string, ok: string;
+  if (ask.all) {
+    title = t('cancel.allTitle');
+    body = `<p>${t('cancel.allBody', { n: set.picked.length })}</p>${list(set.picked)}`;
+    ok = t('cancel.allOk');
+  } else {
+    const x = set.picked[0];
+    const st = statusAfterCancel(x);
+    title = t('cancel.title', { title: x.title });
+    body = `<p>${t(st === 'pr_open' ? 'cancel.bodyPr' : st === 'done' ? 'cancel.bodyFollowup' : 'cancel.body')}</p>${set.followers.length ? `<p>${t('cancel.followers')}</p>${list(set.followers)}` : ''}`;
+    ok = t('cancel.ok');
+  }
+  // State updates arrive often; re-render only when the content changes, so focus stays put.
+  const key = JSON.stringify([title, body, ok]);
+  if (!root.hidden && root.dataset.key === key) return;
+  const opening = root.hidden;
+  root.dataset.key = key;
+  root.innerHTML = `<div class="dlg-back" data-action="cancel-dismiss"></div>
+  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="cdlg-t">
+    <h2 id="cdlg-t">${esc(title)}</h2>${body}
+    <div class="dlg-btns"><button class="btn" data-action="cancel-dismiss">${t('cancel.keep')}</button><button class="btn danger-fill" data-action="cancel-ok">${esc(ok)}</button></div>
+  </div>`;
+  root.hidden = false;
+  if (opening) root.querySelector<HTMLButtonElement>('.dlg-btns .btn')?.focus();
+}
+
+async function confirmCancel() {
+  const ask = ui.cancelAsk;
+  ui.cancelAsk = null;
+  renderCancelDialog();
+  if (!ask) return;
+  const rs = ask.all ? await call<CancelReport[]>('queue:clear') : await call<CancelReport[]>('task:cancel', ask.ids[0]);
+  if (rs?.length) toast(rs.some((r) => r.kept) ? t('toast.cancelKept') : t('toast.cancelled', { n: rs.length }));
 }
 
 /* ---------- repositories ---------- */
@@ -1389,6 +1454,7 @@ function renderAll(force = false) {
   if (langChanged) force = true;
   renderSidebar();
   renderUsage();
+  if (ui.cancelAsk) renderCancelDialog();
   if (ui.view === 'chat') { renderChat(force); renderChatInspector(); }
   if (ui.view === 'worker') { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
   if (ui.view === 'repo') renderRepos();
@@ -1498,6 +1564,10 @@ async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'worker-stop': await call('worker:stop', id); break;
+    case 'task-cancel': ui.cancelAsk = { ids: [id], all: false }; renderCancelDialog(); break;
+    case 'queue-clear': ui.cancelAsk = { ids: [], all: true }; renderCancelDialog(); break;
+    case 'cancel-dismiss': ui.cancelAsk = null; renderCancelDialog(); break;
+    case 'cancel-ok': await confirmCancel(); break;
     case 'worker-archive': await call('worker:archive', id); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
@@ -1718,6 +1788,7 @@ function init() {
     }
     if (e.key === 'Escape') {
       if (pop.el) { closePop(true); return; }
+      if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
       if (ui.settingsShown) closeSettings();
       $('#ctxmenu').hidden = true;

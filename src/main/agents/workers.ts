@@ -16,6 +16,7 @@ import { loadSettings } from '../settings';
 import { cachedModels } from '../models';
 import { modelLabel as labelFor } from '../../shared/models';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
+import { dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork';
 import { worktreeDiff } from '../gitdiff';
 import { notifyInfo } from '../notify';
 import { isAttached, readPath } from '../attachments';
@@ -23,6 +24,8 @@ import { t, langName, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
+import { cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
+import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 
 const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
@@ -440,7 +443,7 @@ class WorkerManager {
     s.setEffort(this.effortFor(task));
     // Plan mode must be in place before the task message arrives.
     void s.setMode(needsPlan(task) ? 'plan' : 'auto').then(() => {
-      s.send(this.taskMessage(w, task));
+      s.send(this.withNotes(w, this.taskMessage(w, task)));
       after.forEach((m) => s.send(m));
     });
     store.changed();
@@ -479,7 +482,7 @@ class WorkerManager {
       if (!out.length) out.push(LIMIT_RESET_MSG);
     }
     this.reopenLast(w);
-    out.forEach((m) => s.send(m));
+    out.forEach((m, i) => s.send(i ? m : this.withNotes(w, m)));
     this.touch(w);
   }
 
@@ -523,6 +526,134 @@ class WorkerManager {
 
   async stop(workerId: string) {
     await this.sessions.get(workerId)?.interrupt();
+  }
+
+  /** The task's turn is under way in its session: that is running work, which only Stop interrupts. */
+  private inProgress(task: Task) {
+    const w = task.workerId ? store.worker(task.workerId) : null;
+    return !!w && !!this.sessions.get(w.id)?.busy && this.currentTask(w)?.id === task.id;
+  }
+
+  /** The Worker is using its worktree: mid-turn, or one of its tasks is running. */
+  private working(w: Worker) {
+    return !!this.sessions.get(w.id)?.busy
+      || w.taskIds.some((id) => { const x = store.task(id); return x?.status === 'running' || x?.status === 'waiting'; });
+  }
+
+  /** Cancel one task that is waiting to start (queued or blocked), with the tasks waiting on it. */
+  cancelTask(id: string, by: 'user' | 'dispatcher') {
+    const task = store.task(id);
+    if (!task) throw new Error(t('err.noTask', { id }));
+    if (!isQueued(task) || this.inProgress(task)) throw new Error(t('err.notQueued', { id: task.id, status: t(`task.${task.status}` as Key) }));
+    return this.cancel([task.id], by, false);
+  }
+
+  /** Cancel every task waiting to start. Running work is left alone. */
+  clearQueue(by: 'user' | 'dispatcher') {
+    return this.cancel(store.data.tasks.filter((x) => isQueued(x) && !this.inProgress(x)).map((x) => x.id), by, true);
+  }
+
+  private async cancel(ids: string[], by: 'user' | 'dispatcher', all: boolean): Promise<CancelReport[]> {
+    const { picked, followers } = cancelSet(store.data.tasks, ids);
+    // Every status changes before the first await, so a usage limit resetting meanwhile starts none of them.
+    const reports = [...picked.map((x) => this.markCancelled(x, null)), ...followers.map((x) => this.markCancelled(x, x.afterTaskId ?? null))];
+    if (!reports.length) return reports;
+    this.announce(reports, all);
+    store.changed();
+    for (const r of reports) {
+      try { await this.cleanUp(r); } catch (e) { log.warn(`cancel cleanup ${r.id}`, e); }
+    }
+    for (const id of new Set(reports.map((r) => r.workerId))) {
+      if (!id || reports.some((r) => r.workerId === id && r.kept)) continue;
+      try { await this.retireIfUnused(id); } catch (e) { log.warn(`cancel retire ${id}`, e); }
+    }
+    for (const r of reports) {
+      if (!r.kept) continue;
+      const vars = { title: r.title, branch: r.kept.branch, n: r.kept.commits, path: r.kept.path };
+      store.chat('event', t(r.kept.dirty ? 'ev.cancelKeptChanges' : 'ev.cancelKeptCommits', vars));
+    }
+    if (by === 'user') store.pushUpdate(`The user cancelled queued work: ${reports.map(describeCancel).join('; ')}`);
+    store.changed();
+    return reports;
+  }
+
+  private markCancelled(task: Task, followerOf: string | null): CancelReport {
+    const wasQueued = task.status === 'queued';
+    task.status = statusAfterCancel(task);
+    task.updatedAt = nowIso();
+    this.reviewing.delete(task.id);
+    this.ciFixing.delete(task.id);
+    this.followups.delete(task.id);
+    const w = task.workerId ? store.worker(task.workerId) : null;
+    if (w) {
+      if (wasQueued) {
+        // Messages held for the paused work go with it, and the "until the limit resets" status too.
+        this.held.delete(w.id);
+        if (!w.taskIds.some((id) => store.task(id)?.status === 'queued')) w.statusText = '';
+        // Its session may have started on it: tell it before it hears anything else.
+        if (taskStarted(w, task) && task.status === 'cancelled') this.notes.set(w.id, [...(this.notes.get(w.id) ?? []), task.id]);
+      }
+      store.log(w.id, 'event', task.status !== 'cancelled' ? t('log.queueDropped') : followerOf ? t('log.cancelledAfter', { id: followerOf }) : t('log.cancelled'));
+    }
+    return { id: task.id, title: task.title, workerId: w?.id ?? null, status: task.status, followerOf, kept: null };
+  }
+
+  private announce(reports: CancelReport[], all: boolean) {
+    const dropped = (r: CancelReport) => t(r.status === 'pr_open' ? 'ev.cancelDroppedPr' : 'ev.cancelDropped', { title: r.title });
+    if (all) {
+      store.chat('event', t('ev.queueCleared', { n: reports.length }));
+      for (const r of reports) if (r.status !== 'cancelled') store.chat('event', dropped(r));
+      return;
+    }
+    const [first, ...rest] = reports;
+    store.chat('event', first.status === 'cancelled' ? t('ev.cancelled', { title: first.title }) : dropped(first));
+    if (rest.length) store.chat('event', t('ev.cancelFollowers', { n: rest.length, titles: rest.map((r) => `"${r.title}"`).join(', ') }));
+  }
+
+  /** Delete the branch a cancelled task left, unless it holds commits or uncommitted changes. */
+  private async cleanUp(r: CancelReport) {
+    const task = store.task(r.id);
+    const w = r.workerId ? store.worker(r.workerId) : null;
+    // Dropped review, CI or follow-up work keeps the task's branch and PR.
+    if (!task || !w || task.status !== 'cancelled' || task.kind !== 'code' || !task.branch) return;
+    const repo = task.repo ? store.repo(task.repo) : null;
+    if (!repo || w.repo !== repo.name) return;
+    const wt = fs.existsSync(path.join(w.cwd, '.git')) ? w.cwd : null;
+    const b = await inspectBranch(repo.path, wt, repo.defaultBranch, task.branch);
+    if (holdsWork(b)) {
+      r.kept = { branch: task.branch, commits: b.commits, dirty: b.dirty, path: wt ?? repo.path };
+      store.log(w.id, 'event', t('log.cancelKept', { branch: task.branch }));
+      return;
+    }
+    // A Worker busy in the worktree stays on its branch; that branch is the cancelled one only in odd states.
+    if (b.checkedOut && this.working(w)) return;
+    await dropBranch(repo.path, wt, repo.defaultBranch, task.branch, b, ghEnv());
+  }
+
+  /**
+   * A Worker left with only cancelled tasks is archived, which removes its worktree, but only when nothing in it is uncommitted.
+   * An archived Worker kept its worktree for a task waiting on a merge (archive()); once none is left, it goes.
+   */
+  private async retireIfUnused(id: string) {
+    const w = store.worker(id);
+    if (!w || this.working(w)) return;
+    const archived = w.status === 'archived';
+    const hasWorktree = !!w.repo && fs.existsSync(path.join(w.cwd, '.git'));
+    if (archived) {
+      if (!hasWorktree || w.taskIds.some((x) => { const st = store.task(x)?.status; return st === 'pr_open' || st === 'blocked'; })) return;
+    } else if (!w.taskIds.length || w.taskIds.some((x) => store.task(x)?.status !== 'cancelled')) return;
+    if (hasWorktree && !(await worktreeClean(w.cwd))) return;
+    await this.archive(w.id);
+  }
+
+  /** Tasks cancelled while this Worker's session had them, per Worker; it hears it with its next message. */
+  private notes = new Map<string, string[]>();
+
+  private withNotes(w: Worker, msg: string) {
+    const ids = this.notes.get(w.id);
+    if (!ids?.length) return msg;
+    this.notes.delete(w.id);
+    return `[Cancelled] The user cancelled ${ids.join(', ')} while it was waiting; do not continue it. The app deleted its branch unless it held commits or uncommitted changes, and may have moved this worktree back to the default branch.\n\n${msg}`;
   }
 
   async archive(workerId: string) {
