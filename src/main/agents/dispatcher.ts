@@ -110,7 +110,7 @@ function boardServer() {
         model: z.enum(['opus', 'fable']).optional().describe('Default opus. fable only for deep design work'),
         after_task_id: z.string().optional().describe('Start only after this task\'s PR is merged (e.g. a follow-up that needs the merged change)'),
         effort: z.enum(EFFORTS as [Effort, ...Effort[]]).optional().describe('Reasoning effort for this task. Omit for the default. low for trivial edits or lookups, xhigh or max for hard debugging, tricky concurrency, or design.'),
-        plan_first: z.boolean().optional().describe('The Worker investigates read-only and proposes a plan; the user approves it in the decision inbox before any change. Use when the user asks to see a plan first, or the change is large, risky, or ambiguous.'),
+        plan_first: z.boolean().optional().describe('The Worker investigates read-only and proposes a plan; the user approves it in the decision inbox before any change, and the same Worker then carries it out. Use when the user asks to see a plan first, or the change is large, risky, or ambiguous. Write the prompt for the whole job, not "plan only".'),
       }, async (a) => {
         try {
           const { task, worker: w } = await createTask(a);

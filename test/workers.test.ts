@@ -7,7 +7,9 @@ import { workers } from '../src/main/agents/workers';
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
-import type { Task, Worker } from '../src/shared/types';
+import { answer } from '../src/main/decisions';
+import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
+import { ALLOW, type Task, type Worker } from '../src/shared/types';
 
 // Settings and the IDE home live in a temp folder. Nothing here reads them until a test runs.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-workers-'));
@@ -66,7 +68,7 @@ function pausedWorker() {
 beforeEach(() => {
   workers.closeAll();
   (workers as unknown as { held: Map<string, string[]> }).held.clear();
-  Object.assign(store.data, { workers: [], tasks: [], chat: [], pendingUpdates: [] });
+  Object.assign(store.data, { workers: [], tasks: [], chat: [], pendingUpdates: [], decisions: [] });
   sent.clear();
   limit(false);
 });
@@ -255,4 +257,87 @@ test('clearing the queue keeps an open PR whose review work was queued, and leav
   assert.deepEqual([x.status, rev.status, run.status], ['cancelled', 'pr_open', 'running']);
   assert.ok(store.data.chat.some((c) => c.text === 'Cleared the queue: 2 task(s).'));
   assert.deepEqual(await workers.clearQueue('dispatcher'), []);
+});
+
+/** Feed a session what Claude Code would stream, without a process. */
+const feed = (s: AgentSession, ...ms: unknown[]) => ms.forEach((m) => (s as unknown as { handle(m: unknown): void }).handle(m));
+const said = (text: string) => ({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text }] } });
+const turnEnd = (text: string, queued = 0) => ({ type: 'result', subtype: 'success', is_error: false, result: text, queued_turn_count: queued });
+const agents = (n: number) => ({ type: 'system', subtype: 'background_tasks_changed', tasks: [
+  ...Array.from({ length: n }, (_, i) => ({ task_id: `a${i}`, task_type: 'local_agent', description: 'Explore' })),
+  { task_id: 'sh', task_type: 'local_bash', description: 'dev server' },
+] });
+
+/** The Worker calls ExitPlanMode; resolves once the plan card is in the decision inbox. */
+async function presentPlan(s: AgentSession) {
+  const opts = { signal: new AbortController().signal, suggestions: [], toolUseID: 'tu' } as unknown as Parameters<CanUseTool>[2];
+  const result = s.cfg.canUseTool!('ExitPlanMode', { plan: '# Plan' }, opts);
+  await tick();
+  const card = store.data.decisions.find((d) => d.source === 'plan' && d.status === 'pending')!;
+  return { result, card };
+}
+
+test('a plan-first turn that ends while its subagents run leaves the task open; approving the plan has the same session build it', async () => {
+  // As T-0017 went: the Worker started explorers in the background and ended its turn to wait for them.
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, { planFirst: true });
+  const s = workers.ensureSession(w)!;
+  assert.equal(s.cfg.permissionMode, 'plan');
+  feed(s, agents(3), said('Explorers are still running. I\'ll finish the plan when their results come in.'), turnEnd(''));
+  assert.equal(x.status, 'running');
+  assert.equal(x.finishedAt, null);
+  assert.equal(sent.get(w.id), undefined);
+  assert.equal(store.data.chat.filter((c) => c.kind === 'result').length, 0);
+  assert.equal(w.status, 'idle');
+  // The explorers report back and Claude Code starts a turn by itself: the Worker is at work again.
+  feed(s, agents(0), said('Got the reports. Writing the plan.'));
+  assert.equal(w.status, 'running');
+  const { result, card } = await presentPlan(s);
+  assert.equal(x.status, 'waiting');
+  answer(card.id, ALLOW);
+  const r = (await result)!;
+  assert.equal(r.behavior, 'allow');
+  assert.deepEqual((r as { updatedPermissions?: unknown[] }).updatedPermissions, [{ type: 'setMode', mode: 'auto', destination: 'session' }]);
+  assert.equal(s.cfg.permissionMode, 'auto');
+  assert.equal(x.planApproved, true);
+  assert.equal(x.status, 'running');
+  // Whatever the task message said ("plan only"), the Worker hears that this approval is the go-ahead.
+  assert.match(sent.get(w.id)!.at(-1)!, /^\[Plan approved\] .*carry out the plan now in this session/);
+  assert.match(store.data.pendingUpdates.at(-1)!, /approved the plan; .* is carrying it out/);
+  feed(s, said('RESULT: Built it\nPR: none'), turnEnd('RESULT: Built it\nPR: none'));
+  assert.equal(x.status, 'done');
+  assert.equal(x.summary, 'Built it');
+  // Its own result, not a follow-up on a task that had closed early.
+  assert.deepEqual(store.data.chat.filter((c) => c.kind === 'result').map((c) => c.text), ['Built it']);
+});
+
+test('a plan-first turn that ends without a plan is reminded once, then waits for instructions without closing', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, { planFirst: true });
+  const s = workers.ensureSession(w)!;
+  s.ev.onTurnEnd!({ text: 'I looked around.', isError: false, internal: false });
+  assert.equal(x.status, 'running');
+  assert.equal(sent.get(w.id)!.length, 1);
+  assert.match(sent.get(w.id)![0], /^\[Plan needed\] .*present your plan with ExitPlanMode/);
+  s.ev.onTurnEnd!({ text: 'Holding as told.', isError: false, internal: false });
+  assert.equal(x.status, 'running');
+  assert.equal(x.finishedAt, null);
+  assert.equal(sent.get(w.id)!.length, 1);
+  assert.ok(store.data.chat.some((c) => c.kind === 'event' && c.ref === x.id && c.text === `${w.id} stopped without a plan for "${x.title}". The task stays open; send it a message to continue.`));
+  assert.match(store.data.pendingUpdates.at(-1)!, /is still planning: .*"Holding as told\."/);
+  // A turn that fails still fails the task.
+  s.ev.onTurnEnd!({ text: 'It broke.', isError: true, internal: false });
+  assert.equal(x.status, 'failed');
+});
+
+test('a turn with more input queued behind it leaves the task to the turn that follows', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  feed(s, said('Plan approved; noted.'), turnEnd('Plan approved; noted.', 1));
+  assert.equal(x.status, 'running');
+  assert.equal(w.status, 'running');
+  feed(s, said('RESULT: Done'), turnEnd('RESULT: Done'));
+  assert.equal(x.status, 'done');
+  assert.equal(x.summary, 'Done');
 });
