@@ -5,7 +5,7 @@ import { loadSettings, updateSettings, settingsView, saveSettings } from './sett
 import { ensureHome, paths } from './paths';
 import { store } from './store';
 import { accounts } from './accounts';
-import { initMemory, listMemory, readMemory, writeMemory, searchMemory, revisePreference, remember } from './memory';
+import { initMemory, listMemory, readMemory, writeMemory, searchMemoryPage, revisePreference, remember } from './memory';
 import { registerRepo, removeRepo, updateRepo } from './repos';
 import { installPlugin } from './runtime';
 import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisions, withdraw } from './decisions';
@@ -20,6 +20,7 @@ import { claudeHome, ruleFiles } from './claudeContext';
 import { listModels, setSessionModelSource } from './models';
 import { log } from './log';
 import { month, nowIso, oneLine } from './util';
+import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
 import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -45,7 +46,9 @@ function snapshot(): AppState {
     decisions: d.decisions,
     autoAnswers: d.autoAnswers,
     memorySuggestions: loadSettings().memorySuggest ? d.memorySuggestions.filter((x) => x.status === 'pending') : [],
-    chat: d.chat.slice(-400),
+    chat: d.chat.slice(-CHAT_SNAPSHOT),
+    // All of them, not only those in the chat snapshot, so the inspector's "Show more" reaches every one.
+    results: d.chat.filter((c) => (c.kind === 'result' || (c.kind === 'error' && c.ref)) && !c.cleared),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }
@@ -178,7 +181,9 @@ function registerIpc() {
   });
   handle('suggest:save', (id: string, text?: string) => { const file = saveSuggestion(id, text); dispatcher.refreshContext(); return file; });
   handle('suggest:dismiss', (id: string) => dismissSuggestion(id));
-  handle('worker:log', (id: string) => store.readLog(id));
+  // A page of a Worker's conversation: the latest, or the one before line `before` (decision 85).
+  handle('worker:log', (id: string, opts?: { before?: number; limit?: number }) => store.readLog(id, opts?.before, Math.min(opts?.limit ?? PAGE.log, 1000)));
+  handle('chat:page', (before: string, limit?: number) => store.chatPage(before, Math.min(limit ?? PAGE.chat, 1000)));
   handle('worker:send', (id: string, text: string, files?: string[]) => workers.send(id, 'user', text + attachmentBlock(registerAttachments(files ?? []))));
   handle('worker:stop', (id: string) => workers.stop(id));
   handle('task:cancel', (id: string) => workers.cancelTask(id, 'user'));
@@ -192,7 +197,7 @@ function registerIpc() {
   handle('memory:list', () => listMemory());
   handle('memory:read', (p: string) => readMemory(p));
   handle('memory:write', (p: string, c: string) => { writeMemory(p, c); dispatcher.refreshContext(); });
-  handle('memory:search', (q: string) => searchMemory(q, 30));
+  handle('memory:search', (q: string, offset?: number) => searchMemoryPage(q, Math.max(0, offset ?? 0), PAGE.memHits));
   handle('memory:promote', async (repoName: string) => {
     const repo = store.repo(repoName);
     if (!repo) throw new Error(t('err.noRepo', { name: repoName }));

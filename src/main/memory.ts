@@ -5,7 +5,7 @@ import { loadSettings } from './settings';
 import { debounce, ensureDir, month, run, today } from './util';
 import { log } from './log';
 import { t } from './i18n';
-import type { MemoryFile, MemoryHit } from '../shared/types';
+import type { MemoryFile, MemoryHit, MemoryHits } from '../shared/types';
 
 /**
  * IDE memory: markdown under <home>/memory is the source of truth, versioned with git.
@@ -126,8 +126,13 @@ function terms(q: string) {
 }
 
 export function searchMemory(query: string, limit = 8): MemoryHit[] {
+  return searchMemoryPage(query, 0, limit).hits;
+}
+
+/** Hits `offset` to `offset + limit`, best first, out of `total` (the Memory view's "Show more", decision 85). */
+export function searchMemoryPage(query: string, offset: number, limit: number): MemoryHits {
   const ts = terms(query);
-  if (!ts.length || !fs.existsSync(root())) return [];
+  if (!ts.length || !fs.existsSync(root())) return { hits: [], total: 0 };
   const hits: MemoryHit[] = [];
   for (const p of walk(root())) {
     const rel = path.relative(root(), p).replace(/\\/g, '/');
@@ -138,7 +143,8 @@ export function searchMemory(query: string, limit = 8): MemoryHit[] {
       if (score > 0 && line.trim().length > 2) hits.push({ path: rel, line: i + 1, text: line.trim(), score: score + (rel === 'preferences.md' ? 1 : 0) });
     });
   }
-  return hits.sort((a, b) => b.score - a.score).slice(0, limit);
+  hits.sort((a, b) => b.score - a.score);
+  return { hits: hits.slice(offset, offset + limit), total: hits.length };
 }
 
 /** Digest for the Dispatcher system prompt: all preferences and the start of each repo note. */

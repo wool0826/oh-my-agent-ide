@@ -4,7 +4,8 @@ import { EventEmitter } from 'node:events';
 import { readJson, writeJsonAtomic, debounce, nowIso, ensureDir, uid, month } from './util';
 import { paths } from './paths';
 import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
-import type { AutoAnswer, ChatItem, ChatKind, Decision, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
+import { PAGE, itemsBefore, pageBefore } from '../shared/paging';
+import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
 
 export interface DispatcherState {
   sessionId: string | null; date: string | null; contextTokens: number; accountId: string | null;
@@ -87,13 +88,25 @@ class Store extends EventEmitter {
     this.emit('workerLog', workerId, item);
   }
 
-  readLog(workerId: string): WorkerLogItem[] {
+  /** A page of a Worker's log: the last `limit` lines before line `before` (the end when absent). Lines that don't parse are skipped. */
+  readLog(workerId: string, before?: number, limit: number = PAGE.log): LogPage {
+    let lines: string[];
     try {
-      return fs.readFileSync(path.join(paths().workerLogs, `${workerId}.jsonl`), 'utf8')
-        .split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorkerLogItem);
+      lines = fs.readFileSync(path.join(paths().workerLogs, `${workerId}.jsonl`), 'utf8').split('\n').filter(Boolean);
     } catch {
-      return [];
+      return { items: [], start: 0, total: 0 };
     }
+    const { start, end } = pageBefore(lines.length, before, limit);
+    const items: WorkerLogItem[] = [];
+    for (const l of lines.slice(start, end)) {
+      try { items.push(JSON.parse(l) as WorkerLogItem); } catch { /* a torn line */ }
+    }
+    return { items, start, total: lines.length };
+  }
+
+  /** Up to `limit` chat items right before the one with id `before`, and whether there are more. */
+  chatPage(before: string, limit: number = PAGE.chat) {
+    return itemsBefore(this.data.chat, before, limit);
   }
 
   /** Count Dispatcher spend for this month; it is kept apart from task spend. */

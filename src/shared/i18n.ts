@@ -17,6 +17,11 @@ const en = {
   general: 'general',
   task: 'Task',
 
+  // paging: long lists and threads load a page at a time
+  'page.more': 'Show {n} more',
+  'page.older': 'Show earlier messages',
+  'page.loading': 'Loading…',
+
   // navigation
   'nav.chat': 'Chat',
   'nav.repo': 'Repositories',
@@ -469,6 +474,10 @@ const ko: Record<Key, string> = {
   none: '아직 없어요',
   general: '일반 작업',
   task: '작업',
+
+  'page.more': '{n}개 더 보기',
+  'page.older': '이전 대화 보기',
+  'page.loading': '불러오는 중…',
 
   'nav.chat': '대화',
   'nav.repo': '저장소',

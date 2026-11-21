@@ -198,6 +198,9 @@ export interface WorkerLogItem {
   text: string;
 }
 
+/** A page of a Worker's log: `items` are lines `start` to `start + items.length` of its `total` (decision 85). */
+export interface LogPage { items: WorkerLogItem[]; start: number; total: number }
+
 export type SoundName = 'chime' | 'bell' | 'ping' | 'none' | 'custom';
 
 export interface SettingsView {
@@ -254,7 +257,10 @@ export interface AppState {
   autoAnswers: AutoAnswer[];
   /** Pending only. */
   memorySuggestions: MemorySuggestion[];
+  /** The last CHAT_SNAPSHOT (shared/paging) chat items; older ones come from `chat:page`. */
   chat: ChatItem[];
+  /** Task outcomes not cleared from the inspector (results, and errors of a task), oldest first. */
+  results: ChatItem[];
   dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null };
 }
 
@@ -263,3 +269,5 @@ export interface DiffView { base: string; branch: string; files: DiffFile[]; tru
 
 export interface MemoryFile { path: string; title: string; kind: 'preference' | 'repo' | 'decision' | 'task' | 'other'; size: number; updatedAt: string }
 export interface MemoryHit { path: string; line: number; text: string; score: number }
+/** A page of memory search hits, best first, out of `total`. */
+export interface MemoryHits { hits: MemoryHit[]; total: number }
