@@ -171,7 +171,7 @@ class WorkerManager {
         w.sessionSpend = session;
         // A turn outside any open task (a message to an idle Worker) counts toward its latest task.
         const task = this.currentTask(w) ?? (w.taskIds.length ? store.task(w.taskIds[w.taskIds.length - 1]) : null);
-        if (task) task.spend = addSpend(task.spend, turn);
+        if (task && hasSpend(turn)) task.spend = addSpend(task.spend, turn);
         store.changed();
       },
       onStatus: (st, text) => {

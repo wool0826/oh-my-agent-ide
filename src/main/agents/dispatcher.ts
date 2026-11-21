@@ -14,6 +14,7 @@ import { attachmentBlock, registerAttachments } from '../attachments';
 import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today } from '../util';
 import { EFFORTS, type Effort, type Task } from '../../shared/types';
+import { hasSpend } from '../../shared/spend';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
@@ -218,6 +219,7 @@ class Dispatcher {
     if (!acc) return null;
     if (freshDay) {
       d.sessionId = null;
+      d.sessionSpend = null;
       d.date = today();
       d.contextTokens = 0;
     }
@@ -241,7 +243,11 @@ class Dispatcher {
       onText: (text) => { store.chat('dispatcher', text); },
       onTool: (_n, summary) => { this.statusText = summary; store.changed(); },
       onContext: (n) => { d.contextTokens = n; store.changed(); },
-      onSpend: (turn, session) => { d.sessionSpend = session; store.dispatcherSpent(turn); },
+      onSpend: (turn, session) => {
+        d.sessionSpend = session;
+        if (hasSpend(turn)) store.dispatcherSpent(turn);
+        else store.changed();
+      },
       onTurnEnd: (r) => {
         if (!r.internal || this.compactingFrom === null) return;
         const from = this.compactingFrom;
@@ -335,6 +341,7 @@ class Dispatcher {
     this.session = null;
     const d = store.data.dispatcher;
     d.sessionId = null;
+    d.sessionSpend = null;
     d.contextTokens = 0;
     d.date = today();
     store.chat('event', t('ev.dispatcherCleared'));

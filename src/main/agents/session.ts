@@ -3,7 +3,7 @@ import { accounts } from '../accounts';
 import { claudeExecutable, pluginPath } from '../runtime';
 import { log } from '../log';
 import { PushQueue } from '../util';
-import { spendOf, spendSince, type SessionSpend, type Spend } from '../../shared/spend';
+import { SpendMeter, spendOf, type SessionSpend, type Spend } from '../../shared/spend';
 
 /** When a turn ends above this size, send /compact. */
 export const COMPACT_AT = 250_000;
@@ -39,7 +39,7 @@ export interface SessionEvents {
   onText?(text: string): void;
   onTool?(name: string, summary: string): void;
   onTurnEnd?(r: { text: string; isError: boolean; internal: boolean }): void;
-  /** What a turn cost (hidden turns and turns a usage limit cut off included), before onTurnEnd. Keep `session` for `spent`. */
+  /** What a turn cost (hidden turns and turns a usage limit cut off included; zero when it only set the baseline), before onTurnEnd. Keep `session` for `spent`. */
   onSpend?(turn: Spend, session: SessionSpend): void;
   onContext?(tokens: number): void;
   onAccount?(accountId: string | null): void;
@@ -70,14 +70,14 @@ export class AgentSession {
   private internalTurn = false;
   private turnText: string[] = [];
   private failingOver = false;
-  /** Claude Code's running totals for this session after the last turn (they carry over a resume). */
-  private spent: Spend | null;
+  /** Kept across restarts of the query (failover, a dead process): the resumed session continues its totals. */
+  private meter: SpendMeter;
 
   constructor(cfg: SessionConfig, ev: SessionEvents) {
     this.cfg = cfg;
     this.ev = ev;
     this.sessionId = cfg.resume;
-    this.spent = cfg.resume && cfg.spent?.sessionId === cfg.resume ? cfg.spent.total : null;
+    this.meter = new SpendMeter(!!cfg.resume, cfg.resume && cfg.spent?.sessionId === cfg.resume ? cfg.spent.total : null);
   }
 
   get accountId() { return this.cfg.accountId; }
@@ -214,7 +214,6 @@ export class AgentSession {
     switch (m.type) {
       case 'system':
         if (m.subtype === 'init') {
-          if (m.session_id !== this.sessionId) this.spent = null;
           this.sessionId = m.session_id;
           this.ev.onInit?.(m.session_id);
         } else if (m.subtype === 'compact_boundary') {
@@ -281,11 +280,9 @@ export class AgentSession {
 
   /** total_cost_usd and modelUsage are running totals for the session; report only what this turn added. */
   private countSpend(m: Extract<SDKMessage, { type: 'result' }>) {
-    const now = spendOf(m);
-    const turn = spendSince(now, this.spent);
-    if (!turn || !this.sessionId) return;
-    this.spent = now;
-    this.ev.onSpend?.(turn, { sessionId: this.sessionId, total: now });
+    const turn = this.meter.take(spendOf(m));
+    if (!turn || !this.sessionId || !this.meter.total) return;
+    this.ev.onSpend?.(turn, { sessionId: this.sessionId, total: this.meter.total });
   }
 
   /** After each turn, read this account's plan usage (experimental API; failures are ignored). */

@@ -51,6 +51,37 @@ export function spendSince(now: Spend, before: Spend | null): Spend | null {
   return { costUsd: now.costUsd - before.costUsd, input: now.input - before.input, output: now.output - before.output, cacheRead: now.cacheRead - before.cacheRead, cacheWrite: now.cacheWrite - before.cacheWrite };
 }
 
+/**
+ * Turns one session's running totals into what each turn added. Totals carry over a resume (an app restart,
+ * an account failover), so a resumed session starts from what was already counted for it.
+ * Resumed without that (a session from before spend was recorded), the first totals mix earlier turns
+ * with the current one and cannot be split: they only set the baseline, so old history is not charged to this task.
+ */
+export class SpendMeter {
+  private last: Spend | null;
+  private baselineOnly: boolean;
+
+  constructor(resumed: boolean, counted: Spend | null) {
+    this.last = counted;
+    this.baselineOnly = resumed && !counted;
+  }
+
+  /** The totals counted so far, to save for the next resume. */
+  get total() { return this.last; }
+
+  /** What this result added (zero when it only set the baseline); null when it must be ignored. */
+  take(now: Spend): Spend | null {
+    const turn = spendSince(now, this.last);
+    if (!turn) return null;
+    this.last = now;
+    if (this.baselineOnly) {
+      this.baselineOnly = false;
+      return { costUsd: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    }
+    return turn;
+  }
+}
+
 export function formatUsd(n: number) {
   if (!(n > 0)) return '$0';
   if (n < 0.01) return '<$0.01';

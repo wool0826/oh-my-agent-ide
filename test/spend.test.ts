@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addSpend, formatTokens, formatUsd, hasSpend, spendOf, spendSince, spendVars, type Spend } from '../src/shared/spend';
+import { SpendMeter, addSpend, formatTokens, formatUsd, hasSpend, spendOf, spendSince, spendVars, type Spend } from '../src/shared/spend';
 import { tr } from '../src/shared/i18n';
 
 const sp = (costUsd: number, input: number, output: number, cacheRead = 0, cacheWrite = 0): Spend => ({ costUsd, input, output, cacheRead, cacheWrite });
@@ -40,6 +40,37 @@ test('spend: totals that went down mean the counter started over', () => {
 
 test('spend: an all-zero result (crash, startup error) is skipped', () => {
   assert.equal(spendSince(sp(0, 0, 0), sp(4, 900, 300)), null);
+});
+
+test('meter: a new session counts each turn as the growth of its totals', () => {
+  const m = new SpendMeter(false, null);
+  assert.deepEqual(m.take(sp(1, 100, 10)), sp(1, 100, 10));
+  assert.deepEqual(m.take(sp(3, 250, 30)), sp(2, 150, 20));
+  assert.deepEqual(m.total, sp(3, 250, 30));
+});
+
+test('meter: a resume with saved totals counts only what is new', () => {
+  const m = new SpendMeter(true, sp(3, 250, 30));
+  assert.deepEqual(m.take(sp(4, 300, 40)), sp(1, 50, 10));
+});
+
+test('meter: a resume without saved totals only sets the baseline', () => {
+  const m = new SpendMeter(true, null);
+  assert.deepEqual(m.take(sp(40, 9000, 900)), sp(0, 0, 0));
+  assert.deepEqual(m.total, sp(40, 9000, 900));
+  assert.deepEqual(m.take(sp(41, 9100, 950)), sp(1, 100, 50));
+});
+
+test('meter: a zero result leaves the baseline alone', () => {
+  const m = new SpendMeter(true, sp(3, 250, 30));
+  assert.equal(m.take(sp(0, 0, 0)), null);
+  assert.deepEqual(m.take(sp(4, 300, 40)), sp(1, 50, 10));
+});
+
+test('meter: a counter that started over counts in full and becomes the baseline', () => {
+  const m = new SpendMeter(true, sp(3, 250, 30));
+  assert.deepEqual(m.take(sp(0.5, 20, 5)), sp(0.5, 20, 5));
+  assert.deepEqual(m.take(sp(1, 40, 10)), sp(0.5, 20, 5));
 });
 
 test('spend: adding starts from nothing', () => {
