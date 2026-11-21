@@ -269,7 +269,9 @@ function workerIcon(w: Worker) {
 function renderSidebar() {
   const s = S!;
   const pending = s.decisions.filter((d) => d.status === 'pending');
-  const running = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting' || w.status === 'error');
+  const running = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting');
+  // A Worker stopped by an error is not running; it waits for someone to tell it to continue.
+  const failed = s.workers.filter((w) => w.status === 'error');
   const prs = s.tasks.filter((x) => x.status === 'pr_open');
   const queued = s.tasks.filter((x) => x.status === 'queued' || x.status === 'blocked');
   const todayStr = new Date().toDateString();
@@ -287,24 +289,26 @@ function renderSidebar() {
     const x = task(d.taskId);
     return `<div class="row" data-action="goto-decision" data-id="${d.id}">${ic('ask')}<span class="t"><b>${esc(oneLine(d.title, 60))}</b><small>${esc([d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', '))}</small></span></div>`;
   }).join('');
-  const runRows = running.map((w) => {
+  const workerRow = (w: Worker) => {
     const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
     const what = x?.title ?? w.title;
-    const small = w.status === 'error' ? `${w.id}, ${t('st.error')}` : w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : `${w.repo ?? t('general')}, ${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
-    return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span></div>`;
-  }).join('');
+    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : `${w.repo ?? t('general')}, ${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
+    return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span></div>`;
+  };
+  const runRows = running.map(workerRow).join('');
+  const errRows = failed.map(workerRow).join('');
   const prRows = prs.map((x) => `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
   const qRows = queued.map((x) => {
     const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''} ${t('task.queued')}`;
     return `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span></div>`;
   }).join('');
-  const any = decRows || runRows || prRows || qRows;
+  const any = decRows || runRows || prRows || qRows || errRows;
   const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<span>${t('side.emptyTitle')}</span></div>`;
   const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
     <div class="row${doneToday ? '' : ' zero'}" data-action="view" data-v="worker">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></div>
     <div class="row${archived ? '' : ' zero'}" data-action="view" data-v="worker">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
-  $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(t('side.queue'), qRows) + empty + misc;
+  $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(t('side.queue'), qRows) + sec(t('side.errors'), errRows) + empty + misc;
 }
 
 function usageTip(a: AccountView) {

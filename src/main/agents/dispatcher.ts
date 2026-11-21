@@ -55,7 +55,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     id: store.nextTaskId(), title: a.title, prompt: a.prompt, kind: a.kind,
     repo: a.repo ? store.repo(a.repo)?.name ?? null : null,
     workerId: null, status: 'queued', branch: null, prUrl: null, prState: null, summary: null, files: [],
-    createdAt: nowIso(), updatedAt: nowIso(), finishedAt: null, reviewSyncedAt: null, seenCommentIds: [],
+    createdAt: nowIso(), updatedAt: nowIso(), startedAt: null, finishedAt: null, reviewSyncedAt: null, seenCommentIds: [],
     afterTaskId: after, mergedAt: null,
     effort: s.effortPerTask && a.effort ? a.effort : null,
     planFirst: !!a.plan_first,
