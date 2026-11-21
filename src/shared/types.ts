@@ -1,5 +1,7 @@
 // Data shapes shared by the main process and the renderer.
 
+import type { SessionSpend, Spend } from './spend';
+
 export type Lang = 'en' | 'ko';
 
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -57,6 +59,8 @@ export interface Worker {
   createdAt: string;
   lastActiveAt: string;
   knowledge: string;
+  /** Running totals of its current session, to turn Claude Code's cumulative figures into per-turn ones. */
+  sessionSpend?: SessionSpend | null;
 }
 
 /** blocked: waiting for another task's PR to merge (afterTaskId). */
@@ -88,6 +92,8 @@ export interface Task {
   /** The Worker plans in read-only mode first; the user approves the plan in the decision inbox. */
   planFirst?: boolean;
   planApproved?: boolean;
+  /** What the task's turns cost (API-equivalent estimate) and their tokens, summed over every turn. */
+  spend?: Spend;
 }
 
 export interface DecisionOption { label: string; description?: string }
@@ -193,7 +199,7 @@ export interface AppState {
   decisions: Decision[];
   autoAnswers: AutoAnswer[];
   chat: ChatItem[];
-  dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string };
+  dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null };
 }
 
 export interface DiffFile { path: string; added: number; removed: number; status: 'A' | 'M' | 'D' | 'R' | '?'; patch: string }

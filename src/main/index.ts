@@ -18,7 +18,7 @@ import { t } from './i18n';
 import { claudeHome, ruleFiles } from './claudeContext';
 import { listModels, setSessionModelSource } from './models';
 import { log } from './log';
-import { nowIso, oneLine } from './util';
+import { month, nowIso, oneLine } from './util';
 import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -44,7 +44,7 @@ function snapshot(): AppState {
     decisions: d.decisions,
     autoAnswers: d.autoAnswers,
     chat: d.chat.slice(-400),
-    dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText },
+    dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }
 

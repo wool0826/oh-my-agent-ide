@@ -155,6 +155,7 @@ button { font: inherit; }
 .attach .body b { font-size: var(--ui-font-size); font-weight: 600; }
 .attach .body .sm { font-size: calc(12 * var(--px)); color: var(--label-2); user-select: text; overflow-wrap: anywhere; }
 .attach .links { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: calc(12 * var(--px)); }
+.attach .body .spend, .res .body .spend, .ctxmenu .note .spend { font-size: calc(11 * var(--px)); color: var(--label-3); font-variant-numeric: tabular-nums; }
 .tile { width: 22px; display: grid; place-items: start center; flex: none; }
 
 /* Floating glass capsule; whatever scrolls beneath it shows through, blurred. */
@@ -487,6 +488,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .ctxmenu button:hover:not(:disabled), .ctxmenu button:focus-visible { background: var(--blue); color: #fff; outline: none; }
 .ctxmenu button:disabled { color: var(--label-3); }
 .ctxmenu hr { border: 0; height: .5px; background: var(--sep); margin: 4px 8px; }
+.ctxmenu .note { padding: 4px 10px 2px; font-size: calc(11.5 * var(--px)); color: var(--label-2); max-width: 300px; }
 .toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--glass-menu); -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%); color: var(--label); padding: 9px 16px; border-radius: 999px; font-size: calc(12.5 * var(--px)); box-shadow: var(--rim-hi), 0 18px 40px -12px rgba(0, 0, 0, .65); z-index: 60; max-width: 70vw; }
 .toast.err { color: var(--red); }
 kbd { font: inherit; font-size: calc(11 * var(--px)); font-weight: 600; padding: 0 5px; border-radius: 4px; background: var(--fill); }
