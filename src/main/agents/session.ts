@@ -4,7 +4,7 @@ import { claudeExecutable, pluginPath } from '../runtime';
 import { log } from '../log';
 import { PushQueue } from '../util';
 import { SpendMeter, spendOf, type SessionSpend, type Spend } from '../../shared/spend';
-import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
+import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW } from '../../shared/context';
 
 /** Compaction as the owner sees it: Claude Code's own (mid-turn) and the app's /compact alike. */
 export type CompactEvent =
@@ -39,6 +39,8 @@ export interface SessionConfig {
   spent?: SessionSpend | null;
   /** Context size from which the idle session is compacted after a turn, read when the turn ends. Default COMPACT_AT. */
   compactAt?: () => number;
+  /** Extra environment for this session's Claude Code process, over the account's. */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface SessionEvents {
@@ -92,6 +94,12 @@ export class AgentSession {
   private failingOver = false;
   /** A compaction in progress, with the context size it started from. */
   private compacting: { from: number } | null = null;
+  /**
+   * The context at the first step after the last compaction (0 before any). A boundary reports less than the
+   * next request really holds, so it is measured there.
+   */
+  private compactFloor = 0;
+  private floorPending = false;
   /** Why a compaction failed during the current turn, until its result. */
   private compactFailure: string | null = null;
   /** Kept across restarts of the query (failover, a dead process): the resumed session continues its totals. */
@@ -125,7 +133,7 @@ export class AgentSession {
     const options: Options = {
       model: this.cfg.model,
       cwd: this.cfg.cwd,
-      env: accounts.env(this.cfg.accountId),
+      env: { ...accounts.env(this.cfg.accountId), ...this.cfg.env },
       systemPrompt: { type: 'preset', preset: 'claude_code', append: this.cfg.systemAppend },
       permissionMode: this.cfg.permissionMode ?? 'auto',
       canUseTool: this.cfg.canUseTool,
@@ -266,6 +274,7 @@ export class AgentSession {
           const meta = m.compact_metadata;
           const from = meta?.pre_tokens || this.compacting?.from || this.contextTokens;
           this.compacting = null;
+          this.floorPending = true;
           this.contextTokens = meta?.post_tokens ?? Math.round(this.contextTokens / 4);
           this.ev.onContext?.(this.contextTokens);
           this.ev.onCompact?.({ phase: 'done', from, to: this.contextTokens });
@@ -301,7 +310,11 @@ export class AgentSession {
         const u: any = m.message.usage;
         if (u) {
           const t = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.output_tokens ?? 0);
-          if (t > 0) { this.contextTokens = t; this.ev.onContext?.(t); }
+          if (t > 0) {
+            this.contextTokens = t;
+            if (this.floorPending) { this.compactFloor = t; this.floorPending = false; }
+            this.ev.onContext?.(t);
+          }
         }
         for (const b of m.message.content as any[]) {
           if (b.type === 'text' && b.text?.trim()) {
@@ -344,7 +357,9 @@ export class AgentSession {
         if (!this.busy) this.ev.onStatus?.(failed ? 'error' : 'idle', failed ? text.slice(0, 300) : '');
         // After onTurnEnd, so the owner's threshold sees what the turn settled (a finished task).
         const compactAt = this.cfg.compactAt?.() ?? COMPACT_AT;
-        if (!internal && !isError && this.contextTokens >= compactAt && !this.busy) {
+        // Not again right after a compaction that left the context above the threshold.
+        const grown = this.contextTokens - this.compactFloor >= COMPACT_MIN_GROWTH;
+        if (!internal && !isError && this.contextTokens >= compactAt && grown && !this.busy) {
           log.info(`[${this.cfg.label}] context ${this.contextTokens} >= ${compactAt}, compacting`);
           this.requestCompact();
         }
