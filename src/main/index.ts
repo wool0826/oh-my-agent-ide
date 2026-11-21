@@ -9,7 +9,7 @@ import { initMemory, listMemory, readMemory, writeMemory, searchMemory, revisePr
 import { registerRepo, removeRepo, updateRepo } from './repos';
 import { installPlugin } from './runtime';
 import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisions, withdraw } from './decisions';
-import { dispatcher, createTask } from './agents/dispatcher';
+import { dispatcher, createTask, assignedEvent } from './agents/dispatcher';
 import { workers } from './agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
 import { startPrMonitor, checkPrs, checkPrsSoon } from './prmonitor';
@@ -212,7 +212,7 @@ function registerIpc() {
         notes,
       ].join('\n'),
     });
-    store.chat('event', t('ev.assigned', { id: worker.id, title: task.title }));
+    store.chat('event', assignedEvent(task, worker, false));
     return task.id;
   });
   handle('settings:save', (patch: Partial<SettingsView>) => {
@@ -224,8 +224,11 @@ function registerIpc() {
       || (patch.claudeMemory !== undefined && patch.claudeMemory !== before.claudeMemory)
       || (!!patch.dispatcherEffort && patch.dispatcherEffort !== before.dispatcherEffort)
       || (patch.effortPerTask !== undefined && patch.effortPerTask !== before.effortPerTask);
+    const moreWorkers = patch.maxWorkers !== undefined && patch.maxWorkers > before.maxWorkers;
     updateSettings(patch);
     if (langChanged) dispatcher.refreshContext();
+    // A higher limit starts tasks waiting for a slot now; a lower one stops nothing that runs.
+    if (moreWorkers) workers.fillSlots();
     pushState(); // apply changed settings (language, font) right away
     return { restart: homeChanged };
   });

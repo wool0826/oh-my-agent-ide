@@ -13,9 +13,10 @@ import { loadSettings } from '../settings';
 import { attachmentBlock, registerAttachments } from '../attachments';
 import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today } from '../util';
-import { EFFORTS, type Effort, type Task } from '../../shared/types';
+import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
 import { hasSpend } from '../../shared/spend';
 import { describeCancel } from '../../shared/queue';
+import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { kTokens } from '../../shared/context';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
@@ -28,14 +29,27 @@ function repoLine(r: { name: string; description: string; defaultBranch: string;
   return `- ${r.name}: ${r.description || '(no description)'} [default branch ${r.defaultBranch}] ${r.url}`;
 }
 
+/** A task's status for the Dispatcher; a queued one says what it waits for. */
+function statusLine(x: Task) {
+  if (x.status !== 'queued') return x.status;
+  return waitsForSlot(x) ? 'queued for a free Worker slot' : 'queued until a usage limit resets';
+}
+
 function workerLine(id: string) {
   const w = store.worker(id)!;
   const tasks = w.taskIds.map((x) => store.task(x)).filter(Boolean) as Task[];
   const last = tasks[tasks.length - 1];
   const idleDays = Math.floor((Date.now() - Date.parse(w.lastActiveAt)) / 86400_000);
   return `- ${w.id} [${w.status}] ${w.repo ?? 'general'}, ${modelLabel(w.model)}, context ${Math.round(w.contextTokens / 1000)}K` +
-    `${idleDays ? `, last active ${idleDays} day(s) ago` : ''}\n  Tasks: ${tasks.map((x) => `${x.id} ${x.title} (${x.status}${x.prUrl ? ` ${x.prUrl}` : ''}${x.prState === 'MERGED' ? ' merged' : ''})`).join('; ') || 'none'}` +
+    `${idleDays ? `, last active ${idleDays} day(s) ago` : ''}\n  Tasks: ${tasks.map((x) => `${x.id} ${x.title} (${statusLine(x)}${x.prUrl ? ` ${x.prUrl}` : ''}${x.prState === 'MERGED' ? ' merged' : ''})`).join('; ') || 'none'}` +
     `${last?.summary ? `\n  Latest result: ${oneLine(last.summary, 160)}` : ''}`;
+}
+
+/** The chat line for a task just handed to a Worker: started, waiting for a merge, or waiting for a free slot. */
+export function assignedEvent(task: Task, w: Worker, continuing: boolean) {
+  if (task.status === 'blocked') return t('ev.assignedAfter', { id: w.id, title: task.title, dep: task.afterTaskId ?? '' });
+  if (waitsForSlot(task)) return t('ev.assignedSlot', { id: w.id, title: task.title, n: slotsUsed(store.data.tasks), max: loadSettings().maxWorkers });
+  return t(continuing ? 'ev.assignedCont' : 'ev.assigned', { id: w.id, title: task.title });
 }
 
 /** Create a task and hand it to a Worker. Used by the Dispatcher tool and by UI buttons. */
@@ -114,10 +128,12 @@ function boardServer() {
       }, async (a) => {
         try {
           const { task, worker: w } = await createTask(a);
-          store.chat('event', task.status === 'blocked'
-            ? t('ev.assignedAfter', { id: w.id, title: task.title, dep: task.afterTaskId ?? '' })
-            : t(a.worker_id ? 'ev.assignedCont' : 'ev.assigned', { id: w.id, title: task.title }));
-          return ok(`${task.id} assigned to ${w.id}.${task.status === 'queued' ? ' Every account is held by a usage limit; it starts when the first one resets.' : ''}${task.status === 'blocked' ? ` It starts when ${task.afterTaskId}'s PR is merged.` : ''}`);
+          store.chat('event', assignedEvent(task, w, !!a.worker_id));
+          const wait = waitsForSlot(task)
+            ? ` All ${loadSettings().maxWorkers} Worker slots are in use; it waits in the queue and starts by itself when one frees up.`
+            : task.status === 'queued' ? ' Every account is held by a usage limit; it starts when the first one resets.'
+            : task.status === 'blocked' ? ` It starts when ${task.afterTaskId}'s PR is merged.` : '';
+          return ok(`${task.id} assigned to ${w.id}.${wait}`);
         } catch (e) {
           return fail(`Could not create the task: ${(e as Error).message}`);
         }
@@ -128,7 +144,9 @@ function boardServer() {
       }, async (a) => {
         try {
           workers.send(a.worker_id, 'dispatcher', a.message);
-          return ok('Sent.');
+          const w = store.worker(a.worker_id);
+          const cur = w ? workers.currentTask(w) : null;
+          return ok(cur && waitsForSlot(cur) ? `Held: ${cur.id} waits for a free Worker slot, and the message goes out when it starts.` : 'Sent.');
         } catch (e) {
           return fail((e as Error).message);
         }
@@ -137,7 +155,7 @@ function boardServer() {
         await workers.stop(a.worker_id);
         return ok('Stopped.');
       }),
-      tool('cancel_task', 'Cancel a task that is waiting to start: queued (paused until a usage limit resets) or blocked (waiting for another task\'s PR to merge). It will not start. Tasks waiting on it with after_task_id are cancelled too. Its branch is deleted (and its Worker archived if it has nothing else) unless the branch holds commits or uncommitted changes. If it has an open PR, only the queued review, CI or follow-up work is dropped and the PR stays. Running work is not affected; use stop_worker for that.', {
+      tool('cancel_task', 'Cancel a task that is waiting to start: queued (waiting for a free Worker slot, or paused until a usage limit resets) or blocked (waiting for another task\'s PR to merge). It will not start. Tasks waiting on it with after_task_id are cancelled too. Its branch is deleted (and its Worker archived if it has nothing else) unless the branch holds commits or uncommitted changes. If it has an open PR, only the queued review, CI or follow-up work is dropped and the PR stays. Running work is not affected; use stop_worker for that.', {
         task_id: z.string(),
       }, async (a) => {
         try {
@@ -201,6 +219,7 @@ function systemPrompt() {
     '9. If the message ends with "[Attached files]", pass those absolute paths to the Worker in the task prompt. You may Read them to decide routing.',
     '10. Keep replies short: one or two sentences on what you gave to whom. Avoid lists and headings.',
     '11. To cancel work that has not started or is paused (queued or blocked), use cancel_task; when the user asks to clear or reset the queue, use clear_queue. If a branch was kept because it holds work, tell the user where it is. Running work is stopped with stop_worker instead.',
+    '12. Only a set number of Workers run at once (Settings). A task queued for a free Worker slot starts by itself, the longest waiting first, when a running one finishes; do not cancel or re-create it for that.',
     '',
     'A message prefixed with "[Worker updates]" lists what happened to Workers since your last turn. Use what is relevant to the user\'s request; no need to report it separately.',
     '"[Decision answer]" is the user\'s answer from the decision inbox. Follow up accordingly.',

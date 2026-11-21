@@ -26,12 +26,14 @@ import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
 import { cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
+import { canStart, queueOrder, slotsUsed, waitsForSlot } from '../../shared/slots';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { kTokens } from '../../shared/context';
 
 const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
 const LIMIT_RESET_MSG = 'The usage limit has reset. Continue the task where you left off.';
+const SLOT_FREE_MSG = 'Continue the task where you left off.';
 
 const planNudge = (task: Task) =>
   `[Plan needed] Your turn ended without a plan for ${task.id}. This task is plan-first, so it is not finished until the user approves a plan. Finish investigating and present your plan with ExitPlanMode now; if the user must decide something first, ask with AskUserQuestion. If you were told to hold, reply in one line and stop.`;
@@ -216,6 +218,7 @@ class WorkerManager {
           if (task && task.status !== 'queued') this.fail(w, task, text);
         }
         this.touch(w);
+        if (st === 'idle') this.fillSlots();
       },
       onTurnEnd: (r) => {
         // With more input queued, the turn that follows settles the task.
@@ -387,6 +390,7 @@ class WorkerManager {
     task.summary = oneLine(text || t('err.stopped'), 200);
     store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
     store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`);
+    this.fillSlots();
   }
 
   /**
@@ -430,6 +434,7 @@ class WorkerManager {
     if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
     notifyInfo(`${w.id} ${label}`, `${task.title}: ${summary}`);
     store.changed();
+    this.fillSlots();
   }
 
   /** Assign a task. With workerId, that Worker continues with its context. */
@@ -451,6 +456,10 @@ class WorkerManager {
       store.changed();
       return w;
     }
+    if (!this.hasSlot(w)) {
+      this.waitForSlot(w, task);
+      return w;
+    }
     w.title = task.title;
     task.status = 'running';
     store.changed();
@@ -470,6 +479,11 @@ class WorkerManager {
         store.chat('error', t('ev.blockedCancelled', { title: task.title, dep: doneTask.title }), task.id);
         store.log(w.id, 'event', t('log.blockedCancelled'));
         store.pushUpdate(`${task.id} "${task.title}" cancelled: ${doneTask.id} PR was closed without merging`);
+        continue;
+      }
+      if (!this.hasSlot(w)) {
+        store.log(w.id, 'event', t('log.blockedMerged', { id: doneTask.id }));
+        this.waitForSlot(w, task);
         continue;
       }
       task.status = 'running';
@@ -521,7 +535,7 @@ class WorkerManager {
 
   /** Every account is held by a usage limit: the task waits in the queue until the first one resets. */
   private pause(w: Worker, task: Task | null) {
-    if (task) { task.status = 'queued'; task.updatedAt = nowIso(); }
+    if (task) { task.status = 'queued'; task.queueReason = 'limit'; task.updatedAt = nowIso(); }
     const time = limitResetText(accounts.nextFreeAt());
     w.status = 'idle';
     w.statusText = t('st.limitUntil', { time });
@@ -529,27 +543,64 @@ class WorkerManager {
     store.changed();
   }
 
+  /** Its Worker already holds a slot, or one is free (Settings > Models > Workers at once). */
+  private hasSlot(w: Worker) {
+    return canStart(store.data.tasks, w.id, loadSettings().maxWorkers);
+  }
+
   /**
-   * Send to a Worker whose session is open. Messages held while a usage limit lasted go first.
-   * A task the limit paused runs again: it starts if the Worker never got it, and is told to continue
+   * Every Worker slot is taken: the task waits in the queue, and `msg` (if any) waits with it.
+   * A task already queued keeps its place; fillSlots starts the longest waiting first.
+   */
+  private waitForSlot(w: Worker, task: Task, msg?: string) {
+    if (task.status !== 'queued') task.updatedAt = nowIso();
+    task.status = 'queued';
+    task.queueReason = 'slot';
+    if (msg) this.held.set(w.id, [...(this.held.get(w.id) ?? []), msg]);
+    w.statusText = t('st.slotUntil');
+    store.log(w.id, 'event', t('log.slotWait', { n: slotsUsed(store.data.tasks), max: loadSettings().maxWorkers }));
+    store.changed();
+  }
+
+  /**
+   * A slot may be free: a task finished or failed, a session went idle, or the limit was raised.
+   * Tasks waiting for one start, the longest waiting first. Running Workers are never stopped for a lower limit.
+   */
+  fillSlots() {
+    for (const task of queueOrder(store.data.tasks, 'slot')) {
+      const w = task.workerId ? store.worker(task.workerId) : null;
+      if (!w || !waitsForSlot(task) || !this.hasSlot(w)) continue;
+      const s = this.ensureSession(w);
+      // A usage limit holds every account now: it waits for that instead.
+      if (!s) { this.pause(w, task); continue; }
+      if (!taskStarted(w, task)) w.title = task.title;
+      this.deliver(w, s, [], task);
+    }
+  }
+
+  /**
+   * Send to a Worker whose session is open. Messages held while a usage limit lasted, or while its task waited
+   * for a slot, go first. A queued task runs again: it starts if the Worker never got it, and is told to continue
    * when there is nothing else to send. Otherwise a follow-up may reopen the last task (reopenLast).
    */
   private deliver(w: Worker, s: AgentSession, msgs: string[], task = this.currentTask(w)) {
     const out = [...(this.held.get(w.id) ?? []), ...msgs];
     const paused = task?.status === 'queued';
+    const slot = !!task && waitsForSlot(task);
     if (paused || this.held.has(w.id)) {
       this.held.delete(w.id);
       w.statusText = '';
-      store.log(w.id, 'event', t('log.limitCleared'));
+      store.log(w.id, 'event', t(slot ? 'log.slotFree' : 'log.limitCleared'));
     }
     if (task && paused) {
       task.status = 'running';
+      task.queueReason = null;
       task.updatedAt = nowIso();
       if (!taskStarted(w, task)) {
         this.startTask(w, s, task, out);
         return this.touch(w);
       }
-      if (!out.length) out.push(LIMIT_RESET_MSG);
+      if (!out.length) out.push(slot ? SLOT_FREE_MSG : LIMIT_RESET_MSG);
     }
     this.reopenLast(w);
     out.forEach((m, i) => s.send(i ? m : this.withNotes(w, m)));
@@ -569,6 +620,13 @@ class WorkerManager {
     store.log(w.id, from, text);
     if (from === 'user') store.pushUpdate(`The user wrote to ${w.id} directly: ${oneLine(text, 200)}`);
     const msg = `${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}`;
+    // Its task waits for a slot: the message goes out when the task starts. Work in progress is never held for one.
+    const cur = this.currentTask(w);
+    if (cur && waitsForSlot(cur)) {
+      this.held.set(w.id, [...(this.held.get(w.id) ?? []), msg]);
+      store.log(w.id, 'event', t('log.slotHeld'));
+      return store.changed();
+    }
     const s = this.ensureSession(w);
     if (!s) return this.hold(w, msg);
     this.deliver(w, s, [msg]);
@@ -579,16 +637,18 @@ class WorkerManager {
     const w = task.workerId ? store.worker(task.workerId) : null;
     if (!w) return;
     if (w.status === 'archived') void this.unarchive(w);
-    task.status = 'running';
-    task.updatedAt = nowIso();
     (kind === 'ci' ? this.ciFixing : this.reviewing).add(task.id);
     store.log(w.id, 'event', t(kind === 'ci' ? 'log.ciFix' : 'log.review'));
     const msg = kind === 'ci'
       ? `[CI failure] Checks failed on ${task.prUrl}. Fix them on the same branch (${task.branch}), push, and report what you changed. If a failure does not come from this branch (a flaky test, CI setup, a missing secret), do not change unrelated code; say so in the report.\n\n${body}`
       : `[Review comments] New comments on ${task.prUrl}. Address them on the same branch (${task.branch}), push, and report what you changed. If you leave a comment unaddressed, say why in the report.\n\n${body}`;
+    if (!this.hasSlot(w)) return this.waitForSlot(w, task, msg);
+    task.status = 'running';
+    task.updatedAt = nowIso();
     const s = this.ensureSession(w);
     if (!s) {
       task.status = 'queued';
+      task.queueReason = 'limit';
       return this.hold(w, msg);
     }
     this.deliver(w, s, [msg], task);
@@ -753,7 +813,8 @@ class WorkerManager {
     for (const w of store.data.workers) {
       if (w.status !== 'idle' && w.status !== 'error') continue;
       if (Date.parse(w.lastActiveAt) > cutoff) continue;
-      if (w.taskIds.some((id) => { const x = store.task(id); return x?.status === 'pr_open' || x?.status === 'blocked'; })) continue;
+      // A task waiting in the queue (for a slot or a limit) still needs its worktree.
+      if (w.taskIds.some((id) => { const x = store.task(id); return x?.status === 'pr_open' || x?.status === 'blocked' || x?.status === 'queued'; })) continue;
       log.info(`auto-archive ${w.id}`);
       void this.archive(w.id);
     }
@@ -766,47 +827,65 @@ class WorkerManager {
     this.held.set(w.id, [...(this.held.get(w.id) ?? []), msg]);
     // Its task cannot go on before the limit resets either (the session is gone), so it waits in the queue.
     const task = this.currentTask(w);
-    if (task?.status === 'running') { task.status = 'queued'; task.updatedAt = nowIso(); }
+    if (task?.status === 'running') { task.status = 'queued'; task.queueReason = 'limit'; task.updatedAt = nowIso(); }
     const time = limitResetText(accounts.nextFreeAt());
     w.statusText = t('st.limitUntil', { time });
     store.log(w.id, 'event', t('log.limitHeld', { time }));
     store.changed();
   }
 
-  /** A usage limit reset (or an account was added): continue paused tasks and send held messages. */
+  /**
+   * A usage limit reset (or an account was added): continue paused tasks and send held messages.
+   * Paused tasks had a slot, so they take free ones before tasks waiting for a slot; past the limit they wait too.
+   */
   retryQueued() {
-    for (const task of store.data.tasks) {
-      if (task.status !== 'queued' || !task.workerId) continue;
-      const w = store.worker(task.workerId);
+    for (const task of queueOrder(store.data.tasks, 'limit')) {
+      const w = task.workerId ? store.worker(task.workerId) : null;
       const s = w && this.ensureSession(w);
-      if (w && s) this.deliver(w, s, [], task);
+      if (!w || !s) continue;
+      if (this.hasSlot(w)) this.deliver(w, s, [], task);
+      else this.waitForSlot(w, task);
     }
     for (const id of [...this.held.keys()]) {
       const w = store.worker(id);
       if (!w) { this.held.delete(id); continue; }
+      // Held for a task that waits for a slot: they go out when it starts.
+      const cur = this.currentTask(w);
+      if (cur && waitsForSlot(cur)) continue;
       const s = this.ensureSession(w);
       if (s) this.deliver(w, s, []);
     }
+    this.fillSlots();
   }
 
   /**
    * On app start no session is left. A Worker that was busy continues its task. A Worker that ended in an error
    * gets its unfinished task failed, as a session error does now (state saved before that rule could disagree).
    * Paused tasks start right away when their limit reset while the app was closed.
+   * Interrupted work takes the free slots first, in Worker order; past the limit (lowered meanwhile) it waits for one.
    */
   resumeAfterRestart() {
+    const resume: { w: Worker; task: Task }[] = [];
+    const failed: { w: Worker; task: Task }[] = [];
     for (const w of store.data.workers) {
       if (w.status === 'archived') continue;
       const task = this.currentTask(w);
       const inProgress = task && (task.status === 'running' || task.status === 'waiting');
       if (w.status === 'error') {
-        if (inProgress) this.fail(w, task, w.statusText);
+        if (inProgress) failed.push({ w, task });
         continue;
       }
       const busy = w.status === 'running' || w.status === 'waiting' || w.status === 'starting';
       w.status = 'idle';
       // A Worker saved as busy on a paused task (an older version left them so) was really running it.
       if (!task || (!inProgress && !busy)) continue;
+      resume.push({ w, task });
+    }
+    const settling = new Set([...resume, ...failed].map((r) => r.task));
+    let free = loadSettings().maxWorkers - slotsUsed(store.data.tasks.filter((x) => !settling.has(x)));
+    for (const { w, task } of resume) {
+      if (free <= 0) { this.waitForSlot(w, task, taskStarted(w, task) ? RESUME_MSG : undefined); continue; }
+      free -= 1;
       const s = this.ensureSession(w);
       if (!s) { this.pause(w, task); continue; }
       task.status = 'running';
@@ -815,6 +894,8 @@ class WorkerManager {
       if (taskStarted(w, task)) s.send(RESUME_MSG);
       else this.startTask(w, s, task);
     }
+    // After the resumes, so the slots these free go to tasks that waited for one, oldest first.
+    for (const { w, task } of failed) this.fail(w, task, w.statusText);
     store.changed();
     this.retryQueued();
   }

@@ -71,6 +71,7 @@ beforeEach(() => {
   Object.assign(store.data, { workers: [], tasks: [], chat: [], pendingUpdates: [], decisions: [] });
   sent.clear();
   limit(false);
+  loadSettings().maxWorkers = 3;
 });
 
 test('a usage limit pauses the task: the Worker is idle and the task waits in the queue', () => {
@@ -368,4 +369,156 @@ test('a turn with more input queued behind it leaves the task to the turn that f
   feed(s, said('RESULT: Done'), turnEnd('RESULT: Done'));
   assert.equal(x.status, 'done');
   assert.equal(x.summary, 'Done');
+});
+
+/* ---------- Worker slots ---------- */
+
+/** A task the Dispatcher just created, not yet given to a Worker. */
+const fresh = () => addTask(null, { status: 'queued', startedAt: null });
+/** The Worker's turn ends with its report. */
+const report = (w: Worker, text = 'RESULT: Done') => workers.sessions.get(w.id)!.ev.onTurnEnd!({ text, isError: false, internal: false });
+
+test('with one slot, a second task waits for it and starts by itself when the first finishes', async () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker();
+  const b = addWorker();
+  const x1 = fresh();
+  const x2 = fresh();
+  await workers.assign(x1, a.id, a.model);
+  await workers.assign(x2, b.id, b.model);
+  await tick();
+  assert.equal(x1.status, 'running');
+  assert.deepEqual([x2.status, x2.queueReason], ['queued', 'slot']);
+  assert.equal(x2.startedAt, null);
+  assert.equal(sent.get(b.id), undefined);
+  assert.equal(b.statusText, 'Starts when a Worker slot frees up');
+  report(a);
+  await tick();
+  assert.equal(x1.status, 'done');
+  assert.equal(x2.status, 'running');
+  assert.equal(x2.queueReason, null);
+  assert.equal(b.statusText, '');
+  assert.ok(sent.get(b.id)![0].startsWith(`[Task ${x2.id}]`), sent.get(b.id)![0]);
+});
+
+test('a Worker waiting for an answer keeps its slot; messages to it go out, and a message for a waiting task waits with it', async () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker({ sessionId: 'sa' });
+  const ask = addTask(a, { status: 'waiting' });
+  workers.ensureSession(a);
+  const b = addWorker();
+  const x = fresh();
+  await workers.assign(x, b.id, b.model);
+  assert.equal(x.status, 'queued');
+  workers.send(a.id, 'user', 'Here is more context.');
+  assert.deepEqual(sent.get(a.id), ['[User message] Here is more context.']);
+  workers.send(b.id, 'dispatcher', 'Also check the docs.');
+  assert.equal(sent.get(b.id), undefined);
+  assert.equal(x.status, 'queued');
+  ask.status = 'running';
+  report(a);
+  await tick();
+  assert.equal(x.status, 'running');
+  const msgs = sent.get(b.id)!;
+  assert.equal(msgs.length, 2);
+  assert.ok(msgs[0].startsWith(`[Task ${x.id}]`), msgs[0]);
+  assert.equal(msgs[1], '[Dispatcher] Also check the docs.');
+});
+
+test('review comments wait for a slot, then go out to the same Worker', () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker({ sessionId: 'sa' });
+  addTask(a);
+  workers.ensureSession(a);
+  const b = addWorker({ sessionId: 'sb' });
+  const pr = addTask(b, { status: 'pr_open', prUrl: 'https://github.com/o/r/pull/3', prState: 'OPEN', finishedAt: now });
+  workers.sendReview(pr, '- @me (a.ts:1): rename this');
+  assert.deepEqual([pr.status, pr.queueReason], ['queued', 'slot']);
+  assert.equal(sent.get(b.id), undefined);
+  report(a);
+  assert.equal(pr.status, 'running');
+  assert.equal(sent.get(b.id)!.length, 1);
+  assert.match(sent.get(b.id)![0], /^\[Review comments\] New comments on .*rename this/s);
+  // Its report settles the task again.
+  report(b, 'RESULT: Renamed');
+  assert.equal(pr.status, 'pr_open');
+});
+
+test('a lower limit stops no running Worker; a higher one starts waiting tasks at once, the longest waiting first', async () => {
+  loadSettings().maxWorkers = 2;
+  const ws = [addWorker(), addWorker(), addWorker(), addWorker()];
+  const xs = ws.map(() => fresh());
+  await workers.assign(xs[0], ws[0].id, ws[0].model);
+  await workers.assign(xs[1], ws[1].id, ws[1].model);
+  loadSettings().maxWorkers = 1;
+  await workers.assign(xs[2], ws[2].id, ws[2].model);
+  await new Promise((r) => setTimeout(r, 5)); // a later place in the queue
+  await workers.assign(xs[3], ws[3].id, ws[3].model);
+  assert.deepEqual(xs.map((x) => x.status), ['running', 'running', 'queued', 'queued']);
+  // One of two finishing still leaves one running: at the limit, so nothing starts.
+  report(ws[0]);
+  assert.deepEqual(xs.map((x) => x.status), ['done', 'running', 'queued', 'queued']);
+  loadSettings().maxWorkers = 2;
+  workers.fillSlots();
+  assert.deepEqual(xs.map((x) => x.status), ['done', 'running', 'running', 'queued']);
+});
+
+test('a task waiting for a slot can be cancelled, and nothing starts it afterwards', async () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker();
+  const b = addWorker();
+  const x1 = fresh();
+  const x2 = fresh();
+  await workers.assign(x1, a.id, a.model);
+  await workers.assign(x2, b.id, b.model);
+  await workers.cancelTask(x2.id, 'user');
+  assert.equal(x2.status, 'cancelled');
+  report(a);
+  await tick();
+  assert.equal(x2.status, 'cancelled');
+  assert.equal(sent.get(b.id), undefined);
+});
+
+test('a merge starts a waiting task only when a slot is free; otherwise it joins the queue', () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker({ sessionId: 'sa' });
+  addTask(a);
+  workers.ensureSession(a);
+  const dep = addTask(addWorker(), { status: 'done', prUrl: 'https://github.com/o/r/pull/4', prState: 'MERGED', finishedAt: now });
+  const b = addWorker({ sessionId: 'sb' });
+  const next = addTask(b, { status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  workers.onPrSettled(dep, true);
+  assert.deepEqual([next.status, next.queueReason], ['queued', 'slot']);
+  report(a);
+  assert.equal(next.status, 'running');
+});
+
+test('on restart, interrupted work past the limit waits for a slot and is told to continue when it gets one', () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker({ status: 'running', sessionId: 'sa' });
+  const ta = addTask(a);
+  const b = addWorker({ status: 'running', sessionId: 'sb' });
+  const tb = addTask(b);
+  workers.resumeAfterRestart();
+  assert.equal(ta.status, 'running');
+  assert.match(sent.get(a.id)![0], /app restarted/);
+  assert.deepEqual([tb.status, tb.queueReason], ['queued', 'slot']);
+  assert.equal(sent.get(b.id), undefined);
+  report(a);
+  assert.equal(tb.status, 'running');
+  assert.equal(sent.get(b.id)!.length, 1);
+  assert.match(sent.get(b.id)![0], /app restarted/);
+});
+
+test('when a usage limit resets, paused work takes the free slot before a task that waited for one', async () => {
+  loadSettings().maxWorkers = 1;
+  const { w, x } = pausedWorker();
+  const b = addWorker();
+  const y = addTask(b, { status: 'queued', queueReason: 'slot', startedAt: null, updatedAt: new Date(Date.now() - 60_000).toISOString() });
+  limit(false);
+  workers.retryQueued();
+  assert.equal(x.status, 'running');
+  assert.match(sent.get(w.id)![0], /usage limit has reset/);
+  assert.deepEqual([y.status, y.queueReason], ['queued', 'slot']);
+  assert.equal(sent.get(b.id), undefined);
 });

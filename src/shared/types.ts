@@ -88,6 +88,8 @@ export interface Task {
   seenCommentIds: string[];
   /** Start this task only after that task's PR is merged. */
   afterTaskId?: string | null;
+  /** Why a queued task waits: every Worker slot is taken (slot) or a usage limit holds every account (limit, or unset). */
+  queueReason?: 'slot' | 'limit' | null;
   /** Effort the Dispatcher chose for this task; null = the Worker default. */
   effort?: Effort | null;
   mergedAt?: string | null;
@@ -218,6 +220,8 @@ export interface SettingsView {
   effortPerTask: boolean;
   /** Code tasks have a reviewer subagent check the diff before the PR opens (small changes skip it). */
   selfReview: boolean;
+  /** Workers running at once (1–8). More tasks wait in the queue for a free slot. */
+  maxWorkers: number;
   /** UI font. Empty = system font. Several can be listed, separated by commas. */
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */

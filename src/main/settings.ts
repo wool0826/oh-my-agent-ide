@@ -4,6 +4,7 @@ import path from 'node:path';
 import { readJson, writeJsonAtomic, uid } from './util';
 import type { AccountPlan, SettingsView, UsageWindow } from '../shared/types';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
+import { MAX_WORKERS_DEFAULT, clampMaxWorkers } from '../shared/slots';
 
 export interface StoredAccount {
   id: string;
@@ -47,6 +48,7 @@ export const DEFAULTS: SettingsView = {
   workerEffort: 'high',
   effortPerTask: true,
   selfReview: true,
+  maxWorkers: MAX_WORKERS_DEFAULT,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
   claudeRules: true,
@@ -60,14 +62,15 @@ export function loadSettings(): Settings {
   if (cache) return cache;
   const raw = readJson<Partial<Settings>>(file(), {});
   cache = { ...DEFAULTS, ...raw, accounts: (raw.accounts ?? []).map(fixAccount) };
-  fixFont(cache);
+  fix(cache);
   return cache;
 }
 
-/** Clean font values so a hand-edited settings.json or bad input never breaks the UI. */
-function fixFont(s: SettingsView) {
+/** Clean values so a hand-edited settings.json or bad input never breaks the UI or the Worker limit. */
+function fix(s: SettingsView) {
   s.fontFamily = normalizeFontFamily(s.fontFamily);
   s.fontSize = clampFontSize(s.fontSize);
+  s.maxWorkers = clampMaxWorkers(s.maxWorkers);
 }
 
 function fixAccount(a: Partial<StoredAccount>): StoredAccount {
@@ -95,7 +98,7 @@ export function saveSettings() {
 export function updateSettings(patch: Partial<SettingsView>) {
   const s = loadSettings();
   Object.assign(s, patch);
-  fixFont(s);
+  fix(s);
   saveSettings();
 }
 
