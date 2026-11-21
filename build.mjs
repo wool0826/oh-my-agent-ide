@@ -3,7 +3,7 @@ import fs from 'node:fs';
 
 const watch = process.argv.includes('--watch');
 fs.mkdirSync('dist/renderer', { recursive: true });
-for (const f of ['index.html', 'styles.css']) fs.copyFileSync(`src/renderer/${f}`, `dist/renderer/${f}`);
+for (const f of ['index.html', 'tokens.css', 'styles.css']) fs.copyFileSync(`src/renderer/${f}`, `dist/renderer/${f}`);
 
 const common = { bundle: true, sourcemap: true, logLevel: 'info' };
 const configs = [
