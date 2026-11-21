@@ -37,6 +37,8 @@ export interface SessionConfig {
   agents?: Options['agents'];
   /** Spend already counted for the resumed session (from onSpend), so the resumed totals are not counted twice. */
   spent?: SessionSpend | null;
+  /** Context size from which the idle session is compacted after a turn, read when the turn ends. Default COMPACT_AT. */
+  compactAt?: () => number;
 }
 
 export interface SessionEvents {
@@ -340,8 +342,10 @@ export class AgentSession {
         // A failed /compact is not a failed turn: the session stays usable and its task goes on.
         const failed = isError && !internal;
         if (!this.busy) this.ev.onStatus?.(failed ? 'error' : 'idle', failed ? text.slice(0, 300) : '');
-        if (!internal && !isError && this.contextTokens >= COMPACT_AT && !this.busy) {
-          log.info(`[${this.cfg.label}] context ${this.contextTokens} >= ${COMPACT_AT}, compacting`);
+        // After onTurnEnd, so the owner's threshold sees what the turn settled (a finished task).
+        const compactAt = this.cfg.compactAt?.() ?? COMPACT_AT;
+        if (!internal && !isError && this.contextTokens >= compactAt && !this.busy) {
+          log.info(`[${this.cfg.label}] context ${this.contextTokens} >= ${compactAt}, compacting`);
           this.requestCompact();
         }
         return;

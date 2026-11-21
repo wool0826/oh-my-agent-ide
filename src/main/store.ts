@@ -116,10 +116,15 @@ class Store extends EventEmitter {
     this.changed();
   }
 
-  pushUpdate(text: string) {
+  /**
+   * Worker news for the Dispatcher. It goes with the Dispatcher's next message; with `wake` it is worth a turn
+   * of its own, so the Dispatcher starts one by itself (see Dispatcher.wake).
+   */
+  pushUpdate(text: string, wake = false) {
     this.data.pendingUpdates.push(text);
     if (this.data.pendingUpdates.length > 50) this.data.pendingUpdates.splice(0, this.data.pendingUpdates.length - 50);
     this.changed();
+    if (wake) this.emit('wake');
   }
 
   takeUpdates(): string[] {
