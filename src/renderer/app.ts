@@ -46,6 +46,7 @@ const ui = {
   pane: 'accounts' as Pane,
   attach: { chat: [] as string[], ws: [] as string[] },
   langApplied: '' as string,
+  fontApplied: '' as string,
   accKey: '' as string,
   accMenu: null as string | null,
   accRename: null as string | null,
@@ -848,10 +849,15 @@ function stepValue(id: string, delta: number) {
 
 /** Apply the UI font and text size as CSS variables. Also used for the live preview in Settings. */
 function applyFont(family: string, size: number) {
+  const font = fontStack(family), px = `${clampFontSize(size)}px`;
+  // Every render calls this. Re-place the pills only when the text really changed size; a placement on
+  // each render turned every tab switch into a jump.
+  if (ui.fontApplied === `${font}|${px}`) return;
+  ui.fontApplied = `${font}|${px}`;
   const root = document.documentElement.style;
-  root.setProperty('--font', fontStack(family));
-  root.setProperty('--ui-font-size', `${clampFontSize(size)}px`);
-  requestAnimationFrame(() => glideAll(false));
+  root.setProperty('--font', font);
+  root.setProperty('--ui-font-size', px);
+  glideSoon(false);
 }
 
 function previewFont() {
@@ -960,11 +966,31 @@ function glideAll(animate: boolean) {
   document.querySelectorAll<HTMLElement>('.seg, .segc').forEach((c) => glide(c, animate));
 }
 
+/**
+ * Run glideAll once in the next frame for every request made before it. Separate frame callbacks ran in
+ * the order they were queued, so whichever came first decided whether a switch slid. A placement without
+ * motion (new text size) wins over a slide asked for in the same frame.
+ */
+let glideNext: boolean | null = null;
+function glideSoon(animate: boolean) {
+  if (glideNext !== null) { glideNext &&= animate; return; }
+  glideNext = animate;
+  requestAnimationFrame(() => {
+    const a = glideNext!;
+    glideNext = null;
+    glideAll(a);
+  });
+}
+
 function glide(c: HTMLElement, animate: boolean) {
   const on = c.querySelector<HTMLElement>(':scope > button[aria-pressed="true"], :scope > button.on');
   if (!on || !c.offsetParent) {
-    c.classList.remove('glide-on', 'glide-ready', 'glide-move');
-    delete c.dataset.glide;
+    // Only a control that still shows a pill: rewriting the class of a hidden one is itself a mutation,
+    // which woke the observer every frame and kept a requestAnimationFrame loop running.
+    if (c.dataset.glide !== undefined || c.classList.contains('glide-on')) {
+      c.classList.remove('glide-on', 'glide-ready', 'glide-move');
+      delete c.dataset.glide;
+    }
     return;
   }
   const box = [on.offsetLeft, on.offsetTop, on.offsetWidth, on.offsetHeight];
@@ -1626,12 +1652,7 @@ function init() {
   });
   document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.v as any)));
   // Liquid Glass pills follow every change of selection, however the control was updated.
-  let glideQueued = false;
-  new MutationObserver(() => {
-    if (glideQueued) return;
-    glideQueued = true;
-    requestAnimationFrame(() => { glideQueued = false; glideAll(true); });
-  }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-checked', 'aria-selected', 'hidden'] });
+  new MutationObserver(() => glideSoon(true)).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-checked', 'aria-selected', 'hidden'] });
   window.addEventListener('resize', () => glideAll(false));
   void document.fonts.ready.then(() => glideAll(false));
   void loadModels('cached');
