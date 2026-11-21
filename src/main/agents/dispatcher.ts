@@ -14,9 +14,13 @@ import { attachmentBlock, registerAttachments } from '../attachments';
 import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today } from '../util';
 import { EFFORTS, type Effort, type Task } from '../../shared/types';
+import { hasSpend } from '../../shared/spend';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
+
+/** Spend is shown and recorded only; nothing is held back because of it. */
+const SPEND_NOTE = 'API-equivalent estimate at list prices, summed over every turn including subagents. The accounts are subscriptions, so this is not what is billed. Use it to compare tasks, not to hold work back.';
 
 function repoLine(r: { name: string; description: string; defaultBranch: string; url: string }) {
   return `- ${r.name}: ${r.description || '(no description)'} [default branch ${r.defaultBranch}] ${r.url}`;
@@ -154,10 +158,11 @@ function boardServer() {
         const lines = [...ide, ...cc];
         return ok(lines.length ? lines.join('\n') : 'Nothing relevant in memory.');
       }),
-      tool('task_detail', 'Show one task\'s instructions, status and result.', { task_id: z.string() }, async (a) => {
+      tool('task_detail', 'Show one task\'s instructions, status, result and spend.', { task_id: z.string() }, async (a) => {
         const task = store.task(a.task_id);
         if (!task) return fail('No such task.');
-        return ok(JSON.stringify({ ...task, seenCommentIds: undefined }, null, 2));
+        const spend = task.spend ? { ...task.spend, note: SPEND_NOTE } : undefined;
+        return ok(JSON.stringify({ ...task, seenCommentIds: undefined, spend }, null, 2));
       }),
     ],
   });
@@ -214,6 +219,7 @@ class Dispatcher {
     if (!acc) return null;
     if (freshDay) {
       d.sessionId = null;
+      d.sessionSpend = null;
       d.date = today();
       d.contextTokens = 0;
     }
@@ -224,6 +230,7 @@ class Dispatcher {
       systemAppend: systemPrompt(),
       accountId: acc.id,
       resume: d.sessionId,
+      spent: d.sessionSpend,
       mcpServers: { board: boardServer() },
       tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
       additionalDirectories: [paths().repos],
@@ -236,6 +243,11 @@ class Dispatcher {
       onText: (text) => { store.chat('dispatcher', text); },
       onTool: (_n, summary) => { this.statusText = summary; store.changed(); },
       onContext: (n) => { d.contextTokens = n; store.changed(); },
+      onSpend: (turn, session) => {
+        d.sessionSpend = session;
+        if (hasSpend(turn)) store.dispatcherSpent(turn);
+        else store.changed();
+      },
       onTurnEnd: (r) => {
         if (!r.internal || this.compactingFrom === null) return;
         const from = this.compactingFrom;
@@ -329,6 +341,7 @@ class Dispatcher {
     this.session = null;
     const d = store.data.dispatcher;
     d.sessionId = null;
+    d.sessionSpend = null;
     d.contextTokens = 0;
     d.date = today();
     store.chat('event', t('ev.dispatcherCleared'));

@@ -319,6 +319,13 @@ const en = {
   'res.followupLabel': 'follow-up done',
   'res.doneLabel': 'done',
 
+  // spend (Claude Code's estimate at API list prices; subscription accounts are not billed it)
+  'spend.cost': 'API-equivalent estimate {cost}',
+  'spend.tokens': 'in {in} · out {out} · cache {cache}',
+  'spend.tip': 'Cache read {read}, cache write {write}. Priced at API list rates; a subscription account is not billed this amount.',
+  'spend.memo': 'API-equivalent estimate {cost} (in {in}, out {out}, cache read {read}, cache write {write})',
+  'spend.dispatcher': 'Dispatcher this month',
+
   // worker log
   'log.error': 'Error: {msg}',
   'log.limitWait': 'Paused: every account is at its usage limit. Continues when it resets at {time}.',
@@ -666,6 +673,12 @@ const ko: Record<Key, string> = {
   'res.reviewLabel': '리뷰 반영',
   'res.followupLabel': '추가 지시 반영',
   'res.doneLabel': '완료',
+
+  'spend.cost': 'API 환산 추정 {cost}',
+  'spend.tokens': '입력 {in} · 출력 {out} · 캐시 {cache}',
+  'spend.tip': '캐시 읽기 {read}, 캐시 쓰기 {write}. API 정가로 환산한 값이고, 구독 계정이라 실제로 청구되는 금액은 아니에요.',
+  'spend.memo': 'API 환산 추정 {cost} (입력 {in}, 출력 {out}, 캐시 읽기 {read}, 캐시 쓰기 {write})',
+  'spend.dispatcher': '이번 달 Dispatcher',
 
   'log.error': '오류: {msg}',
   'log.limitWait': '모든 계정이 사용량 한도에 걸려 멈췄어요. {time}에 한도가 풀리면 이어서 해요.',

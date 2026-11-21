@@ -2,6 +2,7 @@ import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, Me
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
+import { hasSpend, spendVars, type Spend } from '../shared/spend';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 
 declare global {
@@ -345,6 +346,15 @@ function resultLinks(x: Task | null) {
   return links;
 }
 
+/** A task's spend, labeled as an API-equivalent estimate. Short: the cost only, tokens on hover. */
+function spendHtml(s: Spend | null | undefined, short = false) {
+  if (!hasSpend(s)) return '';
+  const v = spendVars(s);
+  const text = short ? t('spend.cost', v) : `${t('spend.cost', v)} · ${t('spend.tokens', v)}`;
+  const tip = short ? `${t('spend.tokens', v)}\n${t('spend.tip', v)}` : t('spend.tip', v);
+  return `<span class="spend" title="${esc(tip)}">${esc(text)}</span>`;
+}
+
 function resultGlyph(x: Task | null, err = false) {
   if (err) return sym('s-alert', 'c-red');
   if (x?.prState === 'MERGED') return sym('s-merge', 'c-purple');
@@ -366,7 +376,7 @@ function chatItemHtml(c: ChatItem) {
       const x = task(c.ref);
       const links = resultLinks(x);
       if (x?.workerId) links.push(`<a data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
-      return `<div class="attach"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${inline(c.text)}</span><span class="links">${links.join('')}</span></span></div>`;
+      return `<div class="attach"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${inline(c.text)}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
     }
   }
 }
@@ -473,7 +483,7 @@ function renderChatInspector() {
       html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.map((c) => {
         const x = task(c.ref);
         const lk = resultLinks(x);
-        return `<div class="res"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" title="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}<span>${inline(oneLine(c.text, 140))}</span></span></div>`;
+        return `<div class="res"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" title="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}<span>${inline(oneLine(c.text, 140))}</span>${spendHtml(x?.spend, true)}</span></div>`;
       }).join('')}</div></div>`;
     }
     if (autos.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.map(aaHtml).join('')}</div></div>`;
@@ -1388,7 +1398,8 @@ async function act(el: HTMLElement, e: Event) {
       if (!menu.hidden && menu.dataset.for === 'ctx') { menu.hidden = true; break; }
       const empty = !S!.dispatcher.contextTokens;
       menu.dataset.for = 'ctx';
-      menu.innerHTML = `<button data-action="ctx-compact"${empty ? ' disabled' : ''}>${t('ctx.compact')}</button><button data-action="ctx-clear"${empty ? ' disabled' : ''}>${t('ctx.clear')}</button>`;
+      const spent = hasSpend(S!.dispatcher.spend) ? `<div class="note">${t('spend.dispatcher')}<br>${spendHtml(S!.dispatcher.spend)}</div><hr>` : '';
+      menu.innerHTML = `${spent}<button data-action="ctx-compact"${empty ? ' disabled' : ''}>${t('ctx.compact')}</button><button data-action="ctx-clear"${empty ? ' disabled' : ''}>${t('ctx.clear')}</button>`;
       menu.hidden = false;
       const r = el.getBoundingClientRect();
       menu.style.left = `${Math.max(8, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;

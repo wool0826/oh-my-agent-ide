@@ -23,6 +23,7 @@ import { t, langName, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
+import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 
 const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
 
@@ -147,6 +148,7 @@ class WorkerManager {
       mcpServers: { oma: memoryTools(loadSettings().claudeMemory ? memDir : null) },
       accountId: acc.id,
       resume: w.sessionId,
+      spent: w.sessionSpend,
       settingSources: w.repo ? ['project', 'local'] : [],
       effort: loadSettings().workerEffort,
       permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto',
@@ -165,6 +167,13 @@ class WorkerManager {
       },
       onTool: (_name, summary) => { w.statusText = summary; store.changed(); },
       onContext: (n) => { w.contextTokens = n; },
+      onSpend: (turn, session) => {
+        w.sessionSpend = session;
+        // A turn outside any open task (a message to an idle Worker) counts toward its latest task.
+        const task = this.currentTask(w) ?? (w.taskIds.length ? store.task(w.taskIds[w.taskIds.length - 1]) : null);
+        if (task && hasSpend(turn)) task.spend = addSpend(task.spend, turn);
+        store.changed();
+      },
       onStatus: (st, text) => {
         if (st === 'busy') { if (w.status !== 'waiting') w.status = 'running'; }
         else if (st === 'idle') { w.status = 'idle'; }
@@ -337,7 +346,7 @@ class WorkerManager {
     const label = wasReview ? t('res.reviewLabel') : wasFollowup ? t('res.followupLabel') : t('res.doneLabel');
     store.chat('result', wasReview ? t('res.review', { s: summary }) : wasFollowup ? t('res.followup', { s: summary }) : summary, task.id);
     store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`);
-    if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}`);
+    if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
     notifyInfo(`${w.id} ${label}`, `${task.title}: ${summary}`);
     store.changed();
   }

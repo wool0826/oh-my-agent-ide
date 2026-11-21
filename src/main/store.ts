@@ -1,11 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { readJson, writeJsonAtomic, debounce, nowIso, ensureDir, uid } from './util';
+import { readJson, writeJsonAtomic, debounce, nowIso, ensureDir, uid, month } from './util';
 import { paths } from './paths';
+import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
 
-export interface DispatcherState { sessionId: string | null; date: string | null; contextTokens: number; accountId: string | null }
+export interface DispatcherState {
+  sessionId: string | null; date: string | null; contextTokens: number; accountId: string | null;
+  /** The Dispatcher's own spend (its sessions and the answer-on-your-behalf check) by month, YYYY-MM. */
+  spend?: Record<string, Spend>;
+  sessionSpend?: SessionSpend | null;
+}
 
 export interface Data {
   version: 1;
@@ -86,6 +92,13 @@ class Store extends EventEmitter {
     } catch {
       return [];
     }
+  }
+
+  /** Count Dispatcher spend for this month; it is kept apart from task spend. */
+  dispatcherSpent(s: Spend) {
+    const d = this.data.dispatcher;
+    d.spend = { ...d.spend, [month()]: addSpend(d.spend?.[month()], s) };
+    this.changed();
   }
 
   pushUpdate(text: string) {

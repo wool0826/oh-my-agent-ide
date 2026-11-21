@@ -8,6 +8,7 @@ import { claudeExecutable } from '../runtime';
 import { paths } from '../paths';
 import { log } from '../log';
 import { langName } from '../i18n';
+import { hasSpend, spendOf } from '../../shared/spend';
 
 export interface AdvisorVerdict { canAnswer: boolean; answer: string; basis: string }
 
@@ -70,6 +71,9 @@ export async function adviseOnQuestion(input: { workerId: string; taskTitle: str
     for await (const m of q) {
       if (m.type === 'rate_limit_event') accounts.applyEvent(acc.id, m.rate_limit_info as any);
       if (m.type === 'result') {
+        // A one-off session, so its totals are this check's. It counts as the Dispatcher's own spend.
+        const spend = spendOf(m);
+        if (hasSpend(spend)) store.dispatcherSpent(spend);
         if (m.subtype !== 'success') return null;
         const out: any = (m as any).structured_output ?? safeJson(m.result);
         if (!out || typeof out.canAnswer !== 'boolean') return null;
