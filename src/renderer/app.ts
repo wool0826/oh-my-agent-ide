@@ -1557,20 +1557,24 @@ function show(to: Screen, from: Screen) {
   Object.assign(ui, to);
   const opened = conv(to);
   if (opened && opened !== conv(from)) { ui.lastLogKey = ''; void loadLog(opened); }
-  if (to.wTab !== from.wTab) {
-    ui.lastLogKey = '';
-    if (to.wTab === 'changes' && to.wSel) ui.diffs.delete(to.wSel); // fresh changes each time the tab opens
-  }
+  if (to.wTab !== from.wTab) ui.lastLogKey = '';
+  // Fresh changes each time a Worker's Changes tab comes on screen.
+  if (to.wTab === 'changes' && to.wSel && (from.wTab !== 'changes' || from.wSel !== to.wSel)) ui.diffs.delete(to.wSel);
   if (to.memSel !== from.memSel) {
     ui.memText = '';
-    const id = to.memSel;
-    if (id) void call<string>('memory:read', id).then((text) => { if (ui.memSel === id) { ui.memText = text ?? ''; renderMemory(); } });
+    if (to.memSel) void readMemFile(to.memSel);
   }
   setView(to.view);
 }
 
-/** What a saved screen looks like now: a Worker that is gone is deselected, and its conversation dropped. */
+async function readMemFile(id: string) {
+  const text = await call<string>('memory:read', id);
+  if (ui.memSel === id) { ui.memText = text ?? ''; renderMemory(); }
+}
+
+/** What a saved screen looks like now: a removed repository is deselected; a Worker that is gone too, and its conversation dropped. */
 function stillThere(s: Screen): Screen | null {
+  if (s.repoSel && !S?.repos.some((r) => r.name === s.repoSel)) s = { ...s, repoSel: null };
   if (!s.wSel || worker(s.wSel)) return s;
   return s.view === 'worker' && s.wOpen ? null : { ...s, wSel: null, wOpen: false };
 }
@@ -1706,7 +1710,8 @@ async function act(el: HTMLElement, e: Event) {
       ui.repoSel = null;
       break;
     }
-    case 'mem-select': go({ memSel: id }); break;
+    // Picking the open file again reads it again (a Worker may have changed it).
+    case 'mem-select': if (ui.memSel === id) void readMemFile(id); else go({ memSel: id }); break;
     case 'mem-save': {
       if (!ui.memSel) return;
       ui.memText = $<HTMLTextAreaElement>('#mem-edit').value;
