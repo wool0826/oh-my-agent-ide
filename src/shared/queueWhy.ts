@@ -3,7 +3,7 @@
 
 import { taskRef, type Say } from './askWhy';
 import { afterDependency, hasOpenPr, isQueued } from './queue';
-import { queueOrder, slotsUsed, waitsForSlot } from './slots';
+import { canStart, queueOrder, slotsUsed, waitsForSlot } from './slots';
 import type { AccountView, Task } from './types';
 
 export interface QueueCtx {
@@ -58,7 +58,8 @@ export function queueWhy(say: Say, task: Task, ctx: QueueCtx): QueueWhy | null {
   if (waitsForSlot(task)) {
     const n = slotsUsed(ctx.tasks);
     const why = say('q.slotWhy', { n, max: ctx.maxWorkers });
-    if (n < ctx.maxWorkers) return { why, starts: say('q.slotFree'), cancelled: false, again };
+    // The same test fillSlots makes: its Worker already holds a slot, or one is free.
+    if (canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers)) return { why, starts: say('q.slotFree'), cancelled: false, again };
     const place = queuePlace(ctx.tasks, task.id) ?? { pos: 1, total: 1 };
     return { why, starts: say('q.slotStarts', place), cancelled: false, again };
   }
@@ -67,7 +68,11 @@ export function queueWhy(say: Say, task: Task, ctx: QueueCtx): QueueWhy | null {
   const why = say('q.limitWhy');
   // The same rule as nextFreeAt (shared/usage.ts): only when every account is held does it wait.
   const ends = ctx.accounts.map((a) => (a.limitedUntil ? Date.parse(a.limitedUntil) : 0));
-  if (!ends.length || ends.some((e) => !(e > now))) return { why, starts: say('q.limitReset'), cancelled: false, again };
+  if (!ends.length || ends.some((e) => !(e > now))) {
+    // Going on needs a slot like any other resume (workers.ts retryQueued).
+    const slot = canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers);
+    return { why, starts: say(slot ? 'q.limitReset' : 'q.limitResetSlot', { max: ctx.maxWorkers }), cancelled: false, again };
+  }
   const at = Math.min(...ends);
   const first = ctx.accounts[ends.indexOf(at)];
   return { why, starts: say('q.limitStarts', { account: first.label, time: ctx.time(at) }), cancelled: false, again };

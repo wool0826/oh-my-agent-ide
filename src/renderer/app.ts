@@ -1029,7 +1029,7 @@ async function olderLog(id: string) {
 
 /** What the "why it waits" rules (shared/queueWhy.ts) read from the state. */
 function queueCtx(): QueueCtx {
-  return { tasks: S!.tasks, accounts: S!.accounts, maxWorkers: S!.settings.maxWorkers, time: (ms) => when(new Date(ms).toISOString()) };
+  return { tasks: S!.tasks, accounts: S!.accounts, maxWorkers: S!.settings.maxWorkers, time: (ms) => hhmm(new Date(ms).toISOString()) };
 }
 
 /** One card per queued or blocked task of the Worker: why it waits, what starts it, its request and the tasks waiting on it. */

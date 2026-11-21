@@ -40,6 +40,10 @@ test('queueWhy: a task waiting for a slot says n/max and its place in line', () 
 test('queueWhy: a free slot means it starts shortly', () => {
   const tasks = [T('R1'), slot('Q1', 3)];
   assert.equal(queueWhy(en, tasks[1], ctx(tasks))!.starts, 'A slot is free, so it starts shortly.');
+  // Its Worker already holds a slot (another task of it runs): it may start although all slots are taken.
+  const own = [T('R1'), T('R2'), slot('Q1', 3)];
+  own[2].workerId = 'W-R2';
+  assert.equal(queueWhy(en, own[2], ctx(own))!.starts, 'A slot is free, so it starts shortly.');
 });
 
 test('queueWhy: a usage limit names the account that resets first', () => {
@@ -60,6 +64,9 @@ test('queueWhy: once any account is free again the limit wait ends', () => {
   const accounts = [{ label: 'Team A', limitedUntil: new Date(NOW + 90 * 60_000).toISOString() }, { label: 'Team B', limitedUntil: iso(5) }];
   assert.equal(queueWhy(en, q, ctx([q], { accounts }))!.starts, 'The limit has reset, so it starts shortly.');
   assert.equal(queueWhy(en, q, ctx([q]))!.starts, 'The limit has reset, so it starts shortly.');
+  // Going on still needs a slot.
+  const full = [T('R1'), T('R2'), q];
+  assert.equal(queueWhy(en, q, ctx(full, { accounts }))!.starts, 'The limit has reset; it starts when one of the 2 Worker slots frees up.');
 });
 
 test('queueWhy: a blocked task follows the state of the task it waits for', () => {
