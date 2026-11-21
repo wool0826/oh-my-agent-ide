@@ -4,6 +4,7 @@ import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
 import { hasSpend, spendVars, type Spend } from '../shared/spend';
 import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
+import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
 import { restoreScroll, saveScroll } from '../shared/scroll';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
@@ -178,6 +179,9 @@ const worker = (id: string | null | undefined) => (id ? S?.workers.find((w) => w
 const taskStatus = (st: string) => t(`task.${st}` as Key);
 /** What the sidebar's "Done today" counts, and what its Worker list filter looks for. */
 const finishedToday = (x: Task) => (x.status === 'done' || x.status === 'pr_open') && !!x.finishedAt && new Date(x.finishedAt).toDateString() === new Date().toDateString();
+/** What a queued task waits for: a free Worker slot ("Waiting for a slot 3/3") or a usage limit. */
+const queuedLabel = (x: Task) => (waitsForSlot(x) ? t('st.slotWait', { n: slotsUsed(S!.tasks), max: S!.settings.maxWorkers }) : t('st.limitWait'));
+const taskLabel = (x: Task) => (x.status === 'queued' ? queuedLabel(x) : taskStatus(x.status));
 
 let toastTimer: number | undefined;
 function toast(text: string, err = false) {
@@ -377,7 +381,7 @@ function renderSidebar() {
   const errRows = failed.map(workerRow).join('');
   const prRows = prs.map((x) => `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
   const qRows = queued.map((x) => {
-    const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''} ${t('task.queued')}`;
+    const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''}, ${queuedLabel(x)}`;
     return `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span>${cancelX(x)}</div>`;
   }).join('');
   const qTitle = `${t('side.queue')}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
@@ -660,7 +664,7 @@ function statusPill(w: Worker) {
     case 'archived': return `<span class="pill">${t('st.archived')}</span>`;
   }
   if (x?.status === 'blocked') return `<span class="pill orange">${t('st.afterMerge')}</span>`;
-  if (x?.status === 'queued') return `<span class="pill orange">${t('st.limitWait')}</span>`;
+  if (x?.status === 'queued') return `<span class="pill orange">${queuedLabel(x)}</span>`;
   if (x?.status === 'pr_open') return `<span class="pill pr-open">${t('st.prOpen')}</span>`;
   return `<span class="pill">${t('time.ago', { d: ago(w.lastActiveAt) })}</span>`;
 }
@@ -847,7 +851,7 @@ function renderWorkerInspector() {
       ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(w.statusText, 140))}</span>` : ''}
     </div>
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
-    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskStatus(x.status)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
+    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${w.status === 'running' || w.status === 'waiting' ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
@@ -941,7 +945,7 @@ function renderRepos() {
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" data-scroll="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
       <div class="ins-h"><b>${t('wk.tasks')}</b><small>${ts.length}</small></div>
-      <div class="group">${ts.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskStatus(x.status)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
+      <div class="group">${ts.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
       <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
 }
@@ -1370,7 +1374,8 @@ function settingsHtml() {
       ${row(t('set.design'), 'set-fm', modelPicker('set-fm', st.designModel, t('set.design')))}
       ${row(t('set.defaultEffort'), 'set-we', segc('set-we', st.workerEffort, effortOpts(), t('set.effort')), 'wrap')}
       ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}
-      ${row(t('set.selfReview'), 'set-srev', `<input class="switch" id="set-srev" type="checkbox" ${st.selfReview ? 'checked' : ''}>`)}`, t('set.workers'))}`;
+      ${row(t('set.selfReview'), 'set-srev', `<input class="switch" id="set-srev" type="checkbox" ${st.selfReview ? 'checked' : ''}>`)}
+      ${row(t('set.maxWorkers'), 'set-maxw', stepper('set-maxw', st.maxWorkers, MAX_WORKERS_MIN, MAX_WORKERS_MAX, t('set.maxWorkers')))}`, t('set.workers'))}`;
 
   return `<header class="stopbar drag">
       <button class="btn sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
@@ -1554,6 +1559,7 @@ function readSettingsForm() {
     workerEffort: v('set-we') as Effort,
     effortPerTask: ($('#set-ept') as HTMLInputElement).checked,
     selfReview: ($('#set-srev') as HTMLInputElement).checked,
+    maxWorkers: clampMaxWorkers(v('set-maxw')),
     fontFamily: normalizeFontFamily(v('set-font')),
     fontSize: clampFontSize(v('set-fsize')),
     claudeRules: ($('#set-crules') as HTMLInputElement).checked,
