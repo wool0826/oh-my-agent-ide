@@ -86,7 +86,7 @@ export async function adviseOnQuestion(input: { workerId: string; taskTitle: str
   return null;
 }
 
-function safeJson(s: string | undefined) {
+export function safeJson(s: string | undefined) {
   if (!s) return null;
   const m = s.match(/\{[\s\S]*\}/);
   try { return m ? JSON.parse(m[0]) : null; } catch { return null; }

@@ -149,7 +149,25 @@ export interface AutoAnswer {
   cleared: boolean;
 }
 
-export type ChatKind = 'user' | 'dispatcher' | 'event' | 'result' | 'auto' | 'decision' | 'error';
+/** A fact worth remembering, drawn from a decision answer or a correction, waiting for the user's OK. */
+export interface MemorySuggestion {
+  id: string;
+  /** One card per key: the task id, or the decision id when there is no task. */
+  key: string;
+  taskId: string | null;
+  workerId: string | null;
+  repo: string | null;
+  scope: 'preference' | 'repo';
+  text: string;
+  /** Why it is worth keeping, in the UI language. */
+  reason: string;
+  /** Saved with the fact: task, Worker and the decision or correction it came from. */
+  source: string;
+  status: 'pending' | 'saved' | 'dismissed';
+  createdAt: string;
+}
+
+export type ChatKind ='user' | 'dispatcher' | 'event' | 'result' | 'auto' | 'decision' | 'error';
 
 export interface ChatItem {
   id: string;
@@ -197,6 +215,8 @@ export interface SettingsView {
   claudeRules: boolean;
   /** Workers read and write the Claude Code memory of their repository's checkout. */
   claudeMemory: boolean;
+  /** Offer to remember reusable facts from decision answers and corrections. */
+  memorySuggest: boolean;
 }
 
 /** What Settings shows about the user's Claude Code setup. */
@@ -217,6 +237,8 @@ export interface AppState {
   tasks: Task[];
   decisions: Decision[];
   autoAnswers: AutoAnswer[];
+  /** Pending only. */
+  memorySuggestions: MemorySuggestion[];
   chat: ChatItem[];
   dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null };
 }
