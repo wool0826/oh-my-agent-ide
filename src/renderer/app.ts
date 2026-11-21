@@ -5,6 +5,7 @@ import { modelLabel as labelFor } from '../shared/models';
 import { hasSpend, spendVars, type Spend } from '../shared/spend';
 import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
 import { CONTEXT_WINDOW } from '../shared/context';
+import { restoreScroll, saveScroll } from '../shared/scroll';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 import { History, NavInput, sameScreen, type NavDir, type NavSource, type Screen, type View, type WorkerFilter } from '../shared/history';
 
@@ -197,24 +198,88 @@ async function call<T = any>(ch: string, ...args: unknown[]): Promise<T | undefi
   }
 }
 
-/** Keep typed values and focus across re-renders. Only inputs with data-keep. */
+/** Keep typed values and focus across re-renders (only inputs with data-keep), and scroll offsets (keepScroll). */
 function keepInputs(root: HTMLElement, render: () => void) {
   const vals = new Map<string, string>();
   root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep]').forEach((el) => vals.set(el.dataset.keep!, el.value));
   const active = document.activeElement as HTMLInputElement | null;
   const focusKey = active && root.contains(active) ? active.dataset.keep : undefined;
   const sel = focusKey ? [active!.selectionStart, active!.selectionEnd] : null;
-  const scroll = root.scrollTop;
-  render();
-  root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep]').forEach((el) => {
-    const v = vals.get(el.dataset.keep!);
-    if (v !== undefined && el.type !== 'radio') el.value = v;
+  // Scroll offsets go back last: setting a value resets a textarea's, and focusing scrolls root.
+  keepScroll(root, () => {
+    render();
+    root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep]').forEach((el) => {
+      const v = vals.get(el.dataset.keep!);
+      if (v !== undefined && el.type !== 'radio') el.value = v;
+    });
+    if (focusKey) {
+      const el = root.querySelector<HTMLInputElement>(`[data-keep="${CSS.escape(focusKey)}"]`);
+      if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch { /* not selectable */ } }
+    }
   });
-  if (focusKey) {
-    const el = root.querySelector<HTMLInputElement>(`[data-keep="${CSS.escape(focusKey)}"]`);
-    if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch { /* not selectable */ } }
+}
+
+/* ---------- scrolling ---------- */
+
+/** How long a scrollbar stays up after its element's last scroll event. */
+const SCROLLBAR_LINGER_MS = 1200;
+/** When each showing bar hides (Date.now() ms), and its timer. */
+const bars = new WeakMap<Element, { until: number; timer: number }>();
+/** Offsets the app itself moved an element to. The scroll event that follows is not the user's, so it shows no bar. */
+const quietAt = new WeakMap<Element, string>();
+const offsets = (el: Element) => `${el.scrollTop},${el.scrollLeft}`;
+
+/**
+ * Scrollbars show only while their element scrolls (styles.css, "scrollbars"): .sb-on shows the thumb,
+ * and SCROLLBAR_LINGER_MS after the last scroll .sb-off fades it out. One capture-phase scroll listener (init)
+ * calls this for every scrolling element; keepScroll calls it, with the time left, for a new element that
+ * replaced one whose bar was showing.
+ */
+function showBar(el: Element, ms = SCROLLBAR_LINGER_MS) {
+  clearTimeout(bars.get(el)?.timer);
+  // Only real changes: rewriting the class attribute wakes the observer that places the glass pills.
+  if (el.classList.contains('sb-off')) el.classList.remove('sb-off');
+  if (!el.classList.contains('sb-on')) el.classList.add('sb-on');
+  bars.set(el, { until: Date.now() + ms, timer: window.setTimeout(() => { el.classList.replace('sb-on', 'sb-off'); bars.delete(el); }, ms) });
+}
+
+function onScroll(e: Event) {
+  const el = e.target;
+  // Text fields scroll as the caret moves and have no bar.
+  if (!(el instanceof HTMLElement) || el instanceof HTMLInputElement) return;
+  const quiet = quietAt.get(el);
+  if (quiet !== undefined) {
+    quietAt.delete(el);
+    if (quiet === offsets(el)) return;
   }
-  root.scrollTop = scroll;
+  showBar(el);
+}
+
+/** Move an element without showing its bar: following new messages, or putting an offset back. */
+function scrollQuietly(el: HTMLElement, top: number, left = el.scrollLeft) {
+  if (el.scrollTop === top && el.scrollLeft === left) return;
+  const before = offsets(el);
+  el.scrollTop = top;
+  el.scrollLeft = left;
+  // A write the element can't follow (already at the bottom, or hidden) fires no scroll event to clear the mark.
+  if (offsets(el) !== before) quietAt.set(el, offsets(el));
+}
+
+/**
+ * Keep scroll offsets across a render that rebuilds root's content: root's own, and those of the elements
+ * inside marked data-scroll (lists, plans, diffs), which the render replaces with new elements at the start.
+ * Without this every state push (each tool call of a running Worker) sent them back to the top.
+ * A bar that was showing stays up on the new element for the time it had left, so pushes don't keep it up.
+ */
+function keepScroll(root: HTMLElement, render: () => void) {
+  const keyed = () => root.querySelectorAll<HTMLElement>('[data-scroll]');
+  const saved = saveScroll(keyed(), (el) => (bars.get(el)?.until ?? 0) - Date.now());
+  const top = root.scrollTop, left = root.scrollLeft;
+  render();
+  scrollQuietly(root, top, left);
+  if (!saved.size) return;
+  // An element the render kept still has its bar and timer; only a new one needs them.
+  for (const [el, ms] of restoreScroll(keyed(), saved, (el) => quietAt.set(el, offsets(el)))) if (!bars.has(el)) showBar(el, ms);
 }
 
 /** Static text in index.html carries data-i18n / data-i18n-ph / data-i18n-title keys. */
@@ -450,7 +515,7 @@ function renderChat(force = false) {
   if (!s.chat.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><span>${t('chat.emptyBody')}</span></div>`;
   if (s.dispatcher.busy) html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(s.dispatcher.statusText ? oneLine(s.dispatcher.statusText, 80) : '')}</div>`;
   th.innerHTML = html;
-  if (nearBottom || force) th.scrollTop = th.scrollHeight;
+  if (nearBottom || force) scrollQuietly(th, th.scrollHeight);
   const ctx = s.dispatcher.contextTokens;
   $('#chat-ctx').innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${k(ctx)} / ${k(CONTEXT_WINDOW)}`;
   $<HTMLButtonElement>('#chat-ctx').disabled = !!s.dispatcher.busy;
@@ -486,7 +551,7 @@ function decisionHtml(d: Decision) {
     <div class="src">${icon}<span>${esc(src)}</span></div>
     <div class="q">${esc(d.title)}</div>
     ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
-    ${sum ? planSummaryHtml(d, sum) : d.code ? (d.source === 'plan' ? `<div class="plan-md">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
+    ${sum ? planSummaryHtml(d, sum) : d.code ? (d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
     ${buttons}${custom}
   </div>`;
 }
@@ -502,7 +567,7 @@ function planSummaryHtml(d: Decision, sum: PlanSummary) {
   return `<dl class="plan-sum">${row('plan.what', sum.what)}${row('plan.how', sum.how)}${row('plan.output', sum.output)}</dl>
     ${sum.auto ? `<div class="plan-auto" title="${esc(t('plan.autoHint'))}">${t('plan.auto')}</div>` : ''}
     ${links ? `<div class="plan-links">${links}</div>` : ''}
-    ${open && d.code ? `<div class="plan-md">${md(d.code)}</div>` : ''}`;
+    ${open && d.code ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : ''}`;
 }
 
 function aaHtml(a: AutoAnswer) {
@@ -630,17 +695,21 @@ function renderWorkerList() {
     root.innerHTML = `<div class="vhead"><b>Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b></div>`;
     return;
   }
-  if (f) {
-    // The filter as a chip, with "All" to go back to every Worker.
-    const label = t(f === 'today' ? 'side.doneToday' : 'side.archived');
-    const head = `<div class="vhead"><b>Worker</b><span class="wf"><span class="wf-chip">${ic(f === 'today' ? 'done' : 'arch')}${label}<small>${shown.length}</small></span><button type="button" class="linkbtn wf-all" data-action="worker-filter" data-v="">${t('wk.filterAll')}</button></span></div>`;
-    root.innerHTML = shown.length
-      ? `${head}<div class="lst">${active.map(li).join('')}${arch.length && active.length ? `<div class="lst-h">${t('st.archived')}</div>` : ''}${arch.map(li).join('')}</div>`
-      : `${head}<div class="empty-view">${sym(f === 'today' ? 's-check' : 's-arch')}<b>${t(f === 'today' ? 'wk.noneToday' : 'wk.noneArchived')}</b></div>`;
-    return;
-  }
-  root.innerHTML = `<div class="vhead"><b>Worker</b><small>${t('wk.counts', { a: active.length, b: arch.length })}</small></div>
-    <div class="lst">${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${arch.map(li).join('')}` : ''}</div>`;
+  // Each filter keys its own list, so switching filters starts the new list at the top.
+  const lst = `<div class="lst" data-scroll="wk-list-${f ?? 'all'}">`;
+  keepScroll(root, () => {
+    if (f) {
+      // The filter as a chip, with "All" to go back to every Worker.
+      const label = t(f === 'today' ? 'side.doneToday' : 'side.archived');
+      const head = `<div class="vhead"><b>Worker</b><span class="wf"><span class="wf-chip">${ic(f === 'today' ? 'done' : 'arch')}${label}<small>${shown.length}</small></span><button type="button" class="linkbtn wf-all" data-action="worker-filter" data-v="">${t('wk.filterAll')}</button></span></div>`;
+      root.innerHTML = shown.length
+        ? `${head}${lst}${active.map(li).join('')}${arch.length && active.length ? `<div class="lst-h">${t('st.archived')}</div>` : ''}${arch.map(li).join('')}</div>`
+        : `${head}<div class="empty-view">${sym(f === 'today' ? 's-check' : 's-arch')}<b>${t(f === 'today' ? 'wk.noneToday' : 'wk.noneArchived')}</b></div>`;
+      return;
+    }
+    root.innerHTML = `<div class="vhead"><b>Worker</b><small>${t('wk.counts', { a: active.length, b: arch.length })}</small></div>
+    ${lst}${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${arch.map(li).join('')}` : ''}</div>`;
+  });
 }
 
 /** A Worker's final report starts with RESULT:/PR:/FILE: lines; show them as a result header instead of raw protocol. */
@@ -706,7 +775,7 @@ function renderSession(force = false) {
   if (!log.length) html = `<div class="empty-view"><span>${t('ws.empty')}</span></div>`;
   if (w.status === 'running' || w.status === 'starting') html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(oneLine(w.statusText, 90))}</div>`;
   th.innerHTML = html;
-  if (nearBottom || force) th.scrollTop = th.scrollHeight;
+  if (nearBottom || force) scrollQuietly(th, th.scrollHeight);
 }
 
 function diffLines(patch: string) {
@@ -732,12 +801,10 @@ function renderDiff(w: Worker) {
     const st = f.status === '?' ? 'A' : f.status;
     return `<div class="df${open ? ' open' : ''}">
       <button class="df-h" data-action="diff-file" data-id="${esc(key)}" aria-expanded="${open}"><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg><span class="st st-${st}">${st}</span><span class="p" title="${esc(f.path)}">${esc(f.path)}</span>${f.status === '?' ? `<small>${t('diff.untracked')}</small>` : ''}<span class="n"><b class="plus">+${f.added}</b> <b class="minus">−${f.removed}</b></span></button>
-      ${open ? `<pre class="df-b">${f.patch ? diffLines(f.patch) : `<span class="dl h">${t('diff.binary')}</span>`}</pre>` : ''}
+      ${open ? `<pre class="df-b" data-scroll="diff-${esc(key)}">${f.patch ? diffLines(f.patch) : `<span class="dl h">${t('diff.binary')}</span>`}</pre>` : ''}
     </div>`;
   }).join('');
-  const st = root.scrollTop;
-  root.innerHTML = `${head}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}<div class="dfs">${files}</div>`;
-  root.scrollTop = st;
+  keepScroll(root, () => { root.innerHTML = `${head}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}<div class="dfs">${files}</div>`; });
 }
 
 async function loadDiff(id: string) {
@@ -766,7 +833,7 @@ function renderWorkerInspector() {
   const cur = tasks[0];
   const pillCls = w.status === 'running' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : '';
   const stKey: Record<string, Key> = { running: 'st.running', starting: 'st.starting', waiting: 'st.waitingMe', idle: 'st.idle', error: 'st.error', archived: 'st.archived' };
-  root.innerHTML = `
+  keepScroll(root, () => { root.innerHTML = `
     <div class="ins-h"><b>${esc(w.id)}</b><span class="pill ${pillCls}">${t(stKey[w.status] ?? 'st.idle')}</span></div>
     <div class="group kv">
       <span>${t('kv.task')}</span><span>${esc(cur?.title ?? w.title)}</span>
@@ -785,7 +852,7 @@ function renderWorkerInspector() {
       ${w.status === 'running' || w.status === 'waiting' ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
       <button class="btn def" data-action="worker-msg" data-id="${w.id}">${t('wk.message')}</button>
-    </div>`;
+    </div>`; });
 }
 
 /* ---------- cancelling queued tasks ---------- */
@@ -850,14 +917,14 @@ function renderRepos() {
   const main = $('#repo-main');
   if (!s.repos.length) {
     main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b><span>${t('repo.emptyBody')}</span></div>`;
-  } else {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><small>${s.repos.length}</small></div><div class="lst">${s.repos.map((r) => {
+  } else keepScroll(main, () => {
+    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><small>${s.repos.length}</small></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = ts.filter((x) => x.status === 'pr_open').length;
       return `<div class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}</div>`;
-  }
+  });
   const ins = $('#repo-ins');
   const r = s.repos.find((x) => x.name === ui.repoSel) ?? null;
   if (!r) {
@@ -869,9 +936,9 @@ function renderRepos() {
     ins.innerHTML = `<div class="ins-h"><b>${esc(r.name)}</b></div>
       <div class="group kv"><span>${t('kv.path')}</span><span><a data-action="reveal" data-path="${esc(r.path)}" title="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span title="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
       <div class="ins-h"><b>${t('repo.desc')}</b></div>
-      <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
+      <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" data-scroll="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
       <div class="ins-h"><b>${t('repo.setup')}</b></div>
-      <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
+      <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" data-scroll="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
       <div class="ins-h"><b>${t('wk.tasks')}</b><small>${ts.length}</small></div>
       <div class="group">${ts.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskStatus(x.status)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
@@ -1363,7 +1430,7 @@ function openSettings(pane?: Pane) {
   if (vol) syncSlider(vol);
   const ren = document.getElementById('acc-rename') as HTMLInputElement | null;
   if (ren) { ren.focus(); ren.select(); } else if (focusId) document.getElementById(focusId)?.focus();
-  if (!pane) root.querySelector('.spanes')!.scrollTop = scroll;
+  if (!pane) scrollQuietly(root.querySelector<HTMLElement>('.spanes')!, scroll);
   syncSoundRows();
   syncAccRows();
   filterPanes();
@@ -1440,7 +1507,7 @@ function showPane(id: Pane) {
     if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
   const sp = document.querySelector('.spanes');
-  if (sp) sp.scrollTop = 0;
+  if (sp instanceof HTMLElement) scrollQuietly(sp, 0);
   pathEnds();
   if (id === 'models') void loadModels('fresh');
 }
@@ -1820,7 +1887,7 @@ function bindComposer(box: Box, formSel: string, inputSel: string, send: (text: 
     if (host.style.getPropertyValue('--composer-h') === h) return;
     const atEnd = !!thread && thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
     host.style.setProperty('--composer-h', h);
-    if (thread && atEnd) thread.scrollTop = thread.scrollHeight;
+    if (thread && atEnd) scrollQuietly(thread, thread.scrollHeight);
   }).observe(form);
   input.addEventListener('input', () => { autosize(input); updateSendButton(); });
   input.addEventListener('keydown', (e) => {
@@ -1924,6 +1991,8 @@ function init() {
   void loadModels('cached');
   $('#sheet').addEventListener('scroll', () => closePop(), true);
   window.addEventListener('resize', () => closePop());
+  // Scroll events don't bubble; capturing on document sees every scrolling element.
+  document.addEventListener('scroll', onScroll, { capture: true, passive: true });
 
   // Enter in an input runs the action named in data-enter.
   document.addEventListener('keydown', (e) => {
