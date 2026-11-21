@@ -33,6 +33,7 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 - When a follow-up needs a change that is still in an open PR, say so ("after that PR is merged, …"). The task waits and starts by itself once the PR is merged.
 - The right side collects decisions waiting for you, results (PR links and result files), and answers the Dispatcher gave on your behalf. Correct an auto-answer with the pencil button or by right-clicking it.
 - Each result shows what its task cost as an "API-equivalent estimate" (Claude Code's figure at API list prices) with its input, output and cache tokens. Subscription accounts are not billed this amount, and nothing is held back because of it. The Dispatcher's own cost this month is in the menu of the context indicator next to the send button.
+- When an answer or a correction holds a fact worth reusing, a "Remember this?" card offers to save it to memory (save, edit, or dismiss). It appears only when the check is confident, at most once per task; turn it off in Settings > Memory.
 - In the Worker view, select a Worker to see its conversation with the Dispatcher and message it directly.
 - Say "plan first" (or ask for a large change) and the Worker plans before touching code. The plan arrives in the decision inbox: approve it, or type what to change.
 - In a Worker's conversation, the Changes tab shows what it changed on its branch, committed or not, before a PR exists.
@@ -73,6 +74,7 @@ Build output goes to `dist/`, installers to `release/`.
 | `src/main/agents/dispatcher.ts` | The Dispatcher session and its task-board MCP tools |
 | `src/main/agents/workers.ts` | Creating and assigning Workers, questions and permissions, results, tasks that wait for a merge |
 | `src/main/agents/advisor.ts` | Decides whether a Worker's question can be answered from memory |
+| `src/main/agents/memorySuggest.ts` | Offers to remember reusable facts from decision answers and corrections |
 | `src/main/agents/permissions.ts` | Actions that always ask |
 | `src/main/accounts.ts` | Account pool, usage, assignment |
 | `src/main/prmonitor.ts` | PR status, cleanup after merge, review comments, failed CI |

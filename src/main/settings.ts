@@ -51,6 +51,7 @@ export const DEFAULTS: SettingsView = {
   fontSize: FONT_SIZE_DEFAULT,
   claudeRules: true,
   claudeMemory: true,
+  memorySuggest: true,
 };
 
 let cache: Settings | null = null;

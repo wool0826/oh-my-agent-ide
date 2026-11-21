@@ -1,4 +1,4 @@
-import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
+import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, MemoryFile, MemoryHit, MemorySuggestion, ModelList, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
@@ -39,6 +39,7 @@ const ui = {
   memText: '' as string,
   aaSel: null as string | null,
   aaEdit: null as string | null,
+  sugEdit: null as string | null,
   logs: new Map<string, WorkerLogItem[]>(),
   undo: [] as { kind: 'result' | 'auto'; ids: string[] }[],
   lastChatKey: '',
@@ -491,6 +492,35 @@ function aaHtml(a: AutoAnswer) {
   </div>`;
 }
 
+/** A "Remember this?" card: save as is, edit then save, or dismiss. */
+function sugHtml(sg: MemorySuggestion) {
+  const editing = ui.sugEdit === sg.id;
+  const where = sg.scope === 'repo' && sg.repo ? t('sug.repo', { name: sg.repo }) : t('sug.pref');
+  const src = [where, sg.taskId ?? sg.workerId].filter(Boolean).join(', ');
+  const body = editing
+    ? `<input class="inp" data-keep="sug-${sg.id}" data-enter="sug-save" data-id="${sg.id}" value="${esc(sg.text)}" placeholder="${t('sug.placeholder')}" aria-label="${t('sug.placeholder')}">`
+    : `<div class="q">${esc(sg.text)}</div>`;
+  const save = `<button class="btn def" data-action="sug-save" data-id="${sg.id}">${t('save')}</button>`;
+  const btns = editing
+    ? `<button class="btn" data-action="sug-cancel">${t('cancel')}</button>${save}`
+    : `<button class="btn" data-action="sug-dismiss" data-id="${sg.id}">${t('sug.dismiss')}</button><button class="btn" data-action="sug-edit" data-id="${sg.id}">${t('sug.edit')}</button>${save}`;
+  return `<div class="dec sug" id="sug-${sg.id}">
+    <div class="src">${sym('s-sparkle', 'c-purple')}<span>${esc(src)}</span></div>
+    ${body}
+    ${sg.reason ? `<div class="d">${esc(sg.reason)}</div>` : ''}
+    <div class="btns">${btns}</div>
+  </div>`;
+}
+
+async function saveSug(id: string) {
+  const inp = document.querySelector<HTMLInputElement>(`[data-keep="sug-${id}"]`);
+  const v = inp?.value.trim();
+  if (inp && !v) { inp.focus(); return; }
+  document.getElementById(`sug-${id}`)?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+  ui.sugEdit = null;
+  await call('suggest:save', id, v);
+}
+
 function renderChatInspector() {
   const s = S!;
   const root = $('#chat-ins');
@@ -501,6 +531,7 @@ function renderChatInspector() {
     const autos = s.autoAnswers.filter((a) => !a.cleared).slice(-30).reverse();
     let html = '';
     if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map(decisionHtml).join('')}</div></div>`;
+    if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" title="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.length) {
       html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.map((c) => {
         const x = task(c.ref);
@@ -1143,7 +1174,8 @@ function settingsHtml() {
   const rulesText = !ci ? '…' : ci.rules.length ? ci.rules.join(', ') : t('set.claudeNoRules');
   const memory = `${grp(`
       ${row(t('set.memFolder'), 'set-memdir', `<span class="sval" id="set-memdir" title="${esc(st.home)}">${esc(shortPath(`${st.home}/memory`))}</span><button class="btn" data-action="reveal-memory">${t('set.open')}</button>`)}
-      ${row(t('set.memRemote'), 'set-mem', `<input class="inp w" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}`, t('set.ideMemory'))}
+      ${row(t('set.memRemote'), 'set-mem', `<input class="inp w" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}
+      ${row(t('set.memSuggest'), 'set-msug', `<input class="switch" id="set-msug" type="checkbox" ${st.memorySuggest ? 'checked' : ''}>`)}`, t('set.ideMemory'))}
     ${grp(`
       ${row(t('set.claudeRules'), 'set-crules', `<span class="sval${ci && !ci.rules.length ? ' muted' : ''}" title="${esc(ci ? ci.home : '')}">${esc(rulesText)}</span><input class="switch" id="set-crules" type="checkbox" ${st.claudeRules ? 'checked' : ''}>`)}
       ${row(t('set.claudeMemory'), 'set-cmem', `<input class="switch" id="set-cmem" type="checkbox" ${st.claudeMemory ? 'checked' : ''}>`)}
@@ -1335,6 +1367,7 @@ function readSettingsForm() {
     customSound: v('set-sfile'),
     soundVolume: Number(v('set-vol')),
     memoryRemote: v('set-mem'),
+    memorySuggest: ($('#set-msug') as HTMLInputElement).checked,
     dispatcherModel: v('set-dm'),
     workerModel: v('set-wm'),
     designModel: v('set-fm'),
@@ -1488,6 +1521,10 @@ async function act(el: HTMLElement, e: Event) {
     }
     case 'aa-edit': ui.aaEdit = id; ui.aaSel = id; renderChatInspector(); (document.querySelector(`[data-keep="aa-${id}"]`) as HTMLInputElement | null)?.focus(); break;
     case 'aa-cancel': ui.aaEdit = null; renderChatInspector(); break;
+    case 'sug-edit': ui.sugEdit = id; renderChatInspector(); document.querySelector<HTMLInputElement>(`[data-keep="sug-${id}"]`)?.focus(); break;
+    case 'sug-cancel': ui.sugEdit = null; renderChatInspector(); break;
+    case 'sug-save': await saveSug(id); break;
+    case 'sug-dismiss': await call('suggest:dismiss', id); break;
     case 'aa-send': {
       const inp = document.querySelector<HTMLInputElement>(`[data-keep="aa-${id}"]`);
       const v = inp?.value.trim();
@@ -1706,6 +1743,8 @@ function init() {
       if (el.dataset.enter === 'answer-custom') {
         const v = (el as HTMLInputElement).value.trim();
         if (v) void call('decision:answer', el.dataset.id, v);
+      } else if (el.dataset.enter === 'sug-save') {
+        void saveSug(el.dataset.id ?? '');
       } else if (el.dataset.enter === 'aa-send') {
         void act(Object.assign(document.createElement('button'), { dataset: { action: 'aa-send', id: el.dataset.id } }) as HTMLElement, e);
       }
@@ -1722,6 +1761,7 @@ function init() {
       if (ui.settingsShown) closeSettings();
       $('#ctxmenu').hidden = true;
       if (ui.aaEdit) { ui.aaEdit = null; renderChatInspector(); }
+      if (ui.sugEdit) { ui.sugEdit = null; renderChatInspector(); }
     }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
