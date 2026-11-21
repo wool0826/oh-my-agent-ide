@@ -216,6 +216,7 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .btn:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .inp { font: inherit; font-size: var(--fs-caption); padding: 5px var(--space-10); border-radius: var(--radius-md); border: 0; background: var(--surface-sunken); color: var(--text-primary); box-shadow: var(--well); width: 100%; user-select: text; }
 .inp:focus { outline: var(--focus-outline); outline-offset: 0; }
+.inp::placeholder, .ssearch input::placeholder, .searchbar input::placeholder { color: var(--text-tertiary); }
 textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height: 40vh; line-height: var(--lh-body); }
 
 .res { display: flex; gap: var(--space-10); padding: var(--space-10) var(--space-12); align-items: flex-start; }
