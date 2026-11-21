@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSettings, updateSettings, settingsView, saveSettings } from './settings';
@@ -64,9 +64,11 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 640,
     title: 'Oh My Agent IDE',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e20' : '#f5f5f7',
+    // Matches --canvas, so nothing flashes before the page paints its backdrop.
+    backgroundColor: '#0f1015',
     titleBarStyle: mac ? 'hiddenInset' : 'hidden',
-    trafficLightPosition: mac ? { x: 16, y: 16 } : undefined,
+    // Inside the floating sidebar panel.
+    trafficLightPosition: mac ? { x: 22, y: 22 } : undefined,
     titleBarOverlay: mac ? undefined : { color: '#00000000', symbolColor: '#a1a1a6', height: 44 },
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),

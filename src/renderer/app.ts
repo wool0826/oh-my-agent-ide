@@ -1427,6 +1427,16 @@ function autosize(el: HTMLTextAreaElement) {
 function bindComposer(box: Box, formSel: string, inputSel: string, send: (text: string, files: string[]) => Promise<void> | void) {
   const form = $<HTMLFormElement>(formSel);
   const input = $<HTMLTextAreaElement>(inputSel);
+  // The composer floats over the end of its thread, so the thread keeps that much room below the last message.
+  const host = form.parentElement!;
+  const thread = host.querySelector<HTMLElement>('.thread');
+  new ResizeObserver(() => {
+    const h = `${form.offsetHeight}px`;
+    if (host.style.getPropertyValue('--composer-h') === h) return;
+    const atEnd = !!thread && thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+    host.style.setProperty('--composer-h', h);
+    if (thread && atEnd) thread.scrollTop = thread.scrollHeight;
+  }).observe(form);
   input.addEventListener('input', () => { autosize(input); updateSendButton(); });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
