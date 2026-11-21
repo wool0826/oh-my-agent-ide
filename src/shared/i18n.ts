@@ -94,7 +94,7 @@ const en = {
   'ctx.clear': 'Start new conversation',
   'st.compacting': 'Compacting the conversation…',
   'ev.compacted': 'Compacted the Dispatcher conversation ({a} → {b}).',
-  'ev.compactFailed': 'Could not compact the Dispatcher conversation.',
+  'ev.compactFailed': 'Could not compact the Dispatcher conversation ({msg}). Nothing was lost; it can be compacted again later.',
   'ev.dispatcherCleared': 'Started a new Dispatcher conversation. Workers, tasks and memory are unchanged.',
   'err.dispatcherBusy': 'The Dispatcher is working. Try again when it is done.',
   'chat.ctxHint': 'Dispatcher context',
@@ -376,6 +376,9 @@ const en = {
 
   // worker log
   'log.error': 'Error: {msg}',
+  'log.compacting': 'Compacting the conversation ({a})…',
+  'log.compacted': 'Compacted the conversation ({a} → {b}).',
+  'log.compactFailed': 'Could not compact the conversation ({msg}). The work goes on; it is compacted again later.',
   'log.limitWait': 'Paused: every account is at its usage limit. Continues when it resets at {time}.',
   'log.limitHeld': 'Every account is at its usage limit. This goes out when it resets at {time}.',
   'log.question': 'Question',
@@ -514,7 +517,7 @@ const ko: Record<Key, string> = {
   'ctx.clear': '새 대화 시작',
   'st.compacting': '대화를 압축하는 중…',
   'ev.compacted': 'Dispatcher 대화를 압축했어요 ({a} → {b}).',
-  'ev.compactFailed': 'Dispatcher 대화를 압축하지 못했어요.',
+  'ev.compactFailed': 'Dispatcher 대화를 압축하지 못했어요 ({msg}). 대화는 그대로이고, 나중에 다시 압축할 수 있어요.',
   'ev.dispatcherCleared': 'Dispatcher와 새 대화를 시작했어요. Worker, 작업, 메모리는 그대로예요.',
   'err.dispatcherBusy': 'Dispatcher가 일하는 중이에요. 끝난 뒤에 다시 해 주세요.',
   'chat.ctxHint': 'Dispatcher 컨텍스트',
@@ -785,6 +788,9 @@ const ko: Record<Key, string> = {
   'spend.dispatcher': '이번 달 Dispatcher',
 
   'log.error': '오류: {msg}',
+  'log.compacting': '대화를 압축하는 중… ({a})',
+  'log.compacted': '대화를 압축했어요 ({a} → {b}).',
+  'log.compactFailed': '대화를 압축하지 못했어요 ({msg}). 작업은 그대로 이어지고, 나중에 다시 압축해요.',
   'log.limitWait': '모든 계정이 사용량 한도에 걸려 멈췄어요. {time}에 한도가 풀리면 이어서 해요.',
   'log.limitHeld': '모든 계정이 사용량 한도에 걸렸어요. {time}에 한도가 풀리면 보낼게요.',
   'log.question': '질문',

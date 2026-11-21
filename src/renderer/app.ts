@@ -4,6 +4,7 @@ import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
 import { hasSpend, spendVars, type Spend } from '../shared/spend';
 import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
+import { CONTEXT_WINDOW } from '../shared/context';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 
 declare global {
@@ -21,7 +22,6 @@ declare global {
 
 const ide = window.ide;
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
-const COMPACT_AT = 250_000;
 const isMac = ide.platform === 'darwin';
 
 let S: AppState | null = null;
@@ -441,7 +441,7 @@ function renderChat(force = false) {
   th.innerHTML = html;
   if (nearBottom || force) th.scrollTop = th.scrollHeight;
   const ctx = s.dispatcher.contextTokens;
-  $('#chat-ctx').innerHTML = `${ring(ctx / COMPACT_AT).replace('class="ring"', '')}${k(ctx)} / 250K`;
+  $('#chat-ctx').innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${k(ctx)} / ${k(CONTEXT_WINDOW)}`;
   $<HTMLButtonElement>('#chat-ctx').disabled = !!s.dispatcher.busy;
   updateSendButton();
 }
@@ -586,7 +586,7 @@ function renderWorkerList() {
     const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
     return `<div class="li${ui.wSel === w.id ? ' sel' : ''}${w.status === 'archived' ? ' dim' : ''}" data-action="select-worker" data-id="${w.id}">${workerIcon(w)}
       <span class="m"><b>${esc(w.id)} ${esc(x?.title ?? w.title)}</b><span>${esc([w.repo ?? t('general'), modelLabel(w.model), acctLabel(w.accountId), w.statusText && w.status === 'running' ? w.statusText : ''].filter(Boolean).join(', '))}</span></span>
-      <span class="r">${w.status !== 'archived' ? ring(w.contextTokens / COMPACT_AT) + k(w.contextTokens) : ''}${statusPill(w)}</span></div>`;
+      <span class="r">${w.status !== 'archived' ? ring(w.contextTokens / CONTEXT_WINDOW) + k(w.contextTokens) : ''}${statusPill(w)}</span></div>`;
   };
   if (!s.workers.length) {
     root.innerHTML = `<div class="vhead"><b>Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b></div>`;
@@ -729,7 +729,7 @@ function renderWorkerInspector() {
       <span>${t('kv.folder')}</span><span><a data-action="reveal" data-path="${esc(w.cwd)}" title="${esc(w.cwd)}">${esc(base(w.cwd))}</a></span>
       <span>${t('kv.model')}</span><span>${modelLabel(w.model)} · ${t(`effort.${(S!.settings.effortPerTask && cur?.effort) || S!.settings.workerEffort}` as Key)}</span>
       <span>${t('kv.account')}</span><span>${esc(acctLabel(w.accountId))}</span>
-      <span>${t('kv.context')}</span><span>${k(w.contextTokens)} / 250K</span>
+      <span>${t('kv.context')}</span><span>${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}</span>
       ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(w.statusText, 140))}</span>` : ''}
     </div>
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
