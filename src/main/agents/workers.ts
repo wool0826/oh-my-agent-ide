@@ -32,6 +32,13 @@ import { kTokens } from '../../shared/context';
 const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
 const LIMIT_RESET_MSG = 'The usage limit has reset. Continue the task where you left off.';
 
+const planNudge = (task: Task) =>
+  `[Plan needed] Your turn ended without a plan for ${task.id}. This task is plan-first, so it is not finished until the user approves a plan. Finish investigating and present your plan with ExitPlanMode now; if the user must decide something first, ask with AskUserQuestion. If you were told to hold, reply in one line and stop.`;
+
+/** The task message may say to plan only or to wait for approval; this is that approval. */
+const planApproved = (task: Task) =>
+  `[Plan approved] The user approved your plan for ${task.id}. That is the go-ahead this task was waiting for, even where the task message says to plan only: carry out the plan now in this session${task.kind === 'code' && task.branch ? ` on branch ${task.branch}` : ''}, and report the finished work as usual${task.kind === 'code' ? ', with the PR' : ''}. Do not stop at the plan.`;
+
 function workerPrompt(w: Worker) {
   const s = loadSettings();
   return [
@@ -87,6 +94,8 @@ class WorkerManager {
   private reviewing = new Set<string>();
   private ciFixing = new Set<string>();
   private followups = new Set<string>();
+  /** Plan-first tasks whose Worker was reminded to present its plan, until it presents one. */
+  private planNudged = new Set<string>();
 
   /**
    * A follow-up for a task that finished (or failed) less than 3 days ago reopens that task,
@@ -202,9 +211,13 @@ class WorkerManager {
         this.touch(w);
       },
       onTurnEnd: (r) => {
-        if (r.internal) return;
+        // With more input queued, the turn that follows settles the task.
+        if (r.internal || r.queued) return;
         const task = this.currentTask(w);
-        if (task) this.finalize(w, task, r.text, r.isError);
+        if (!task) return;
+        // A plan-first task is not done before its plan is approved.
+        if (needsPlan(task) && !r.isError) return this.awaitPlan(w, task, r.text, !!r.background);
+        this.finalize(w, task, r.text, r.isError);
       },
       onLimited: () => this.pause(w, this.currentTask(w)),
       // Shown in the Worker's conversation. A failed compaction leaves the task alone (it is retried later).
@@ -261,6 +274,7 @@ class WorkerManager {
   /** The Worker finished planning: the user approves the plan or says what to change. */
   private async reviewPlan(w: Worker, input: Record<string, unknown>, signal: AbortSignal) {
     const task = this.currentTask(w);
+    if (task) this.planNudged.delete(task.id);
     const plan = String(input.plan ?? '').trim();
     store.log(w.id, 'worker', plan ? `${t('log.plan')}\n\n${plan}` : t('log.plan'));
     const prev = w.status;
@@ -274,10 +288,15 @@ class WorkerManager {
         options: [{ label: ALLOW }], questionKey: null,
       }, signal);
       if (ans === ALLOW) {
-        if (task) task.planApproved = true;
         const s = this.sessions.get(w.id);
         if (s) s.cfg.permissionMode = 'auto';
         store.log(w.id, 'user', t('log.planApproved'));
+        if (task) {
+          task.planApproved = true;
+          store.pushUpdate(`${w.id} ${task.id} "${task.title}": the user approved the plan; ${w.id} is carrying it out.`);
+          // Sent mid-turn, it reaches the Worker in this turn right after the tool result.
+          if (s && !s.closed) s.send(planApproved(task));
+        }
         return { behavior: 'allow' as const, updatedInput: input, updatedPermissions: [{ type: 'setMode' as const, mode: 'auto' as const, destination: 'session' as const }] };
       }
       store.log(w.id, 'user', `${t('log.planRevise')}: ${ans === DENY ? t('deny') : ans}`);
@@ -349,6 +368,26 @@ class WorkerManager {
     task.summary = oneLine(text || t('err.stopped'), 200);
     store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
     store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`);
+  }
+
+  /**
+   * A plan-first turn ended with no approved plan, so the task stays open. When background subagents are still running,
+   * the session goes on by itself once they report. Otherwise the Worker is reminded once to present its plan;
+   * after that the task waits for the user or the Dispatcher, who are told.
+   */
+  private awaitPlan(w: Worker, task: Task, text: string, background: boolean) {
+    task.updatedAt = nowIso();
+    if (background) return store.changed();
+    const s = this.sessions.get(w.id);
+    if (s && !s.closed && !this.planNudged.has(task.id)) {
+      this.planNudged.add(task.id);
+      store.log(w.id, 'event', t('log.planNudge'));
+      s.send(planNudge(task));
+      return this.touch(w);
+    }
+    store.chat('event', t('ev.planMissing', { id: w.id, title: task.title }), task.id);
+    store.pushUpdate(`${w.id} ${task.id} "${task.title}" is still planning: its turn ended without a plan to approve ("${oneLine(text, 160)}"). The task stays open; send_to_worker if it needs instructions.`);
+    store.changed();
   }
 
   private finalize(w: Worker, task: Task, text: string, isError: boolean) {
@@ -435,7 +474,7 @@ class WorkerManager {
     } else {
       head.push(`Output folder: ${path.join(w.cwd, task.id)}`);
     }
-    if (needsPlan(task)) head.push('Plan first: you are in plan mode (read-only). Investigate, then present your plan with ExitPlanMode. The user approves it before you change anything; if they ask for changes, revise and present it again.');
+    if (needsPlan(task)) head.push('Plan first: you are in plan mode (read-only). Investigate, then present your plan with ExitPlanMode. The user approves it before you change anything; if they ask for changes, revise and present it again. Once it is approved, carry out the plan in this session and report the finished work.');
     if (task.afterTaskId) {
       const dep = store.task(task.afterTaskId);
       if (dep?.prUrl) head.push(`This task builds on ${dep.prUrl}, which has been merged into the default branch.`);

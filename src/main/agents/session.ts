@@ -43,7 +43,11 @@ export interface SessionEvents {
   onInit?(sessionId: string): void;
   onText?(text: string): void;
   onTool?(name: string, summary: string): void;
-  onTurnEnd?(r: { text: string; isError: boolean; internal: boolean }): void;
+  /**
+   * queued: more input is waiting, so another turn follows and settles what this one left open.
+   * background: subagents or workflows the session started are still running; each one starts a turn by itself when it settles.
+   */
+  onTurnEnd?(r: { text: string; isError: boolean; internal: boolean; queued?: boolean; background?: boolean }): void;
   /** What a turn cost (hidden turns and turns a usage limit cut off included; zero when it only set the baseline), before onTurnEnd. Keep `session` for `spent`. */
   onSpend?(turn: Spend, session: SessionSpend): void;
   onContext?(tokens: number): void;
@@ -76,6 +80,8 @@ export class AgentSession {
   contextTokens = 0;
   busy = false;
   closed = false;
+  /** Background subagents and workflows still running in this session's process. Shells and monitors do not count. */
+  background = 0;
   private q: Query | null = null;
   private input: PushQueue<SDKUserMessage> | null = null;
   private pendingInternal = 0;
@@ -112,6 +118,8 @@ export class AgentSession {
 
   start() {
     this.input = new PushQueue<SDKUserMessage>();
+    // Background work belongs to the process; a new one starts with none.
+    this.background = 0;
     const options: Options = {
       model: this.cfg.model,
       cwd: this.cfg.cwd,
@@ -267,6 +275,8 @@ export class AgentSession {
         } else if (m.subtype === 'local_command_output' && this.compacting && this.pendingInternal > 0) {
           // The app's /compact may answer here; its text says why it failed.
           this.turnText.push(m.content);
+        } else if (m.subtype === 'background_tasks_changed') {
+          this.background = liveAgents(m.tasks);
         }
         return;
       case 'rate_limit_event':
@@ -274,6 +284,11 @@ export class AgentSession {
         return;
       case 'assistant': {
         if (m.parent_tool_use_id) return;
+        // A turn the session started by itself (a background subagent finished) is work too.
+        if (!this.busy) {
+          this.busy = true;
+          this.ev.onStatus?.('busy', '');
+        }
         if (!this.internalTurn && this.turnText.length === 0 && this.pendingInternal > 0) {
           this.internalTurn = true;
         }
@@ -320,7 +335,7 @@ export class AgentSession {
         }
         const queued = (m as any).queued_turn_count ?? 0;
         this.busy = queued > 0;
-        this.ev.onTurnEnd?.({ text: finalText || text, isError, internal });
+        this.ev.onTurnEnd?.({ text: finalText || text, isError, internal, queued: queued > 0, background: this.background > 0 });
         void this.readPlanUsage();
         // A failed /compact is not a failed turn: the session stays usable and its task goes on.
         const failed = isError && !internal;
@@ -385,6 +400,11 @@ export class AgentSession {
       this.failingOver = false;
     }
   }
+}
+
+/** Background subagents and workflows in a background_tasks_changed list; shells, monitors and watchers can run on indefinitely. */
+export function liveAgents(tasks: { task_type: string; ambient?: boolean }[]) {
+  return tasks.filter((x) => !x.ambient && /agent|workflow/.test(x.task_type)).length;
 }
 
 export function summarizeTool(name: string, input: any, max = 140): string {
