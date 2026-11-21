@@ -4,6 +4,7 @@ import { createSdkMcpServer, tool, type CanUseTool } from '@anthropic-ai/claude-
 import { z } from 'zod';
 import { AgentSession, summarizeTool } from './session';
 import { alwaysAskHook, ALWAYS_ASK_PREFIX } from './permissions';
+import { REVIEWER, reviewerAgent, selfReviewLine } from './selfReview';
 import { adviseOnQuestion } from './advisor';
 import { accounts } from '../accounts';
 import { store } from '../store';
@@ -151,6 +152,9 @@ class WorkerManager {
       permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto',
       canUseTool: this.permissionHandler(w),
       hooks: { PreToolUse: [alwaysAskHook()] },
+      // Registered even with self-review off, so turning it on reaches sessions that are already open.
+      // Its model is read when the session starts, like the Worker's own.
+      agents: { [REVIEWER]: reviewerAgent(loadSettings().dispatcherModel) },
     }, {
       onInit: (sid) => { w.sessionId = sid; store.changed(); },
       onAccount: (id) => { w.accountId = id; store.changed(); },
@@ -394,6 +398,8 @@ class WorkerManager {
     if (task.kind === 'code' && repo) {
       head.push(`Repository: ${repo.name} (default branch ${repo.defaultBranch})`);
       head.push(`Branch: ${task.branch}. Start with \`git fetch origin\` then \`git switch -c ${task.branch} origin/${repo.defaultBranch}\`. If you are already on that branch, continue there.`);
+      const review = selfReviewLine(loadSettings().selfReview, repo.defaultBranch);
+      if (review) head.push(review);
     } else {
       head.push(`Output folder: ${path.join(w.cwd, task.id)}`);
     }

@@ -162,6 +162,8 @@ export interface SettingsView {
   workerEffort: Effort;
   /** Let the Dispatcher pick a different effort per task. */
   effortPerTask: boolean;
+  /** Code tasks have a reviewer subagent check the diff before the PR opens (small changes skip it). */
+  selfReview: boolean;
   /** UI font. Empty = system font. Several can be listed, separated by commas. */
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */

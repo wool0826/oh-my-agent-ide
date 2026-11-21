@@ -27,6 +27,8 @@ export interface SessionConfig {
   permissionMode?: PermissionMode;
   /** Flag settings for this session (e.g. where Claude Code keeps its auto-memory). */
   settings?: Options['settings'];
+  /** Subagents the session can start with the Agent tool (e.g. the self-review reviewer). */
+  agents?: Options['agents'];
 }
 
 export interface SessionEvents {
@@ -103,6 +105,7 @@ export class AgentSession {
       hooks: this.cfg.hooks,
       tools: this.cfg.tools,
       settings: this.cfg.settings,
+      agents: this.cfg.agents,
       resume: this.sessionId ?? undefined,
       pathToClaudeCodeExecutable: claudeExecutable(),
       stderr: (d) => log.warn(`[${this.cfg.label}]`, d.trim().slice(0, 500)),

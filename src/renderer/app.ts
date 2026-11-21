@@ -1126,7 +1126,8 @@ function settingsHtml() {
       ${row(t('set.model'), 'set-wm', modelPicker('set-wm', st.workerModel, 'Worker'))}
       ${row(t('set.design'), 'set-fm', modelPicker('set-fm', st.designModel, t('set.design')))}
       ${row(t('set.defaultEffort'), 'set-we', segc('set-we', st.workerEffort, effortOpts(), t('set.effort')), 'wrap')}
-      ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}`, t('set.workers'))}`;
+      ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}
+      ${row(t('set.selfReview'), 'set-srev', `<input class="switch" id="set-srev" type="checkbox" ${st.selfReview ? 'checked' : ''}>`)}`, t('set.workers'))}`;
 
   return `<header class="stopbar drag">
       <button class="btn sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
@@ -1308,6 +1309,7 @@ function readSettingsForm() {
     dispatcherEffort: v('set-de') as Effort,
     workerEffort: v('set-we') as Effort,
     effortPerTask: ($('#set-ept') as HTMLInputElement).checked,
+    selfReview: ($('#set-srev') as HTMLInputElement).checked,
     fontFamily: normalizeFontFamily(v('set-font')),
     fontSize: clampFontSize(v('set-fsize')),
     claudeRules: ($('#set-crules') as HTMLInputElement).checked,
