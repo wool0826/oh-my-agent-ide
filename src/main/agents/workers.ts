@@ -25,6 +25,7 @@ import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
 import { cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
+import { planFallback, planSummary } from '../../shared/plan';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { kTokens } from '../../shared/context';
@@ -38,6 +39,10 @@ const planNudge = (task: Task) =>
 /** The task message may say to plan only or to wait for approval; this is that approval. */
 const planApproved = (task: Task) =>
   `[Plan approved] The user approved your plan for ${task.id}. That is the go-ahead this task was waiting for, even where the task message says to plan only: carry out the plan now in this session${task.kind === 'code' && task.branch ? ` on branch ${task.branch}` : ''}, and report the finished work as usual${task.kind === 'code' ? ', with the PR' : ''}. Do not stop at the plan.`;
+
+/** The user approves from these three lines; the full plan stays folded under them. */
+const planSummaryRule = () =>
+  `Start the plan with exactly three lines, one sentence each in ${langName()}: "WHAT: " what you will do, "HOW: " how you will do it, "OUTPUT: " what the user gets when it is done. Put the details below them.`;
 
 function workerPrompt(w: Worker) {
   const s = loadSettings();
@@ -96,6 +101,8 @@ class WorkerManager {
   private followups = new Set<string>();
   /** Plan-first tasks whose Worker was reminded to present its plan, until it presents one. */
   private planNudged = new Set<string>();
+  /** Plan-first tasks whose Worker was already sent back once for leaving out the WHAT / HOW / OUTPUT lines. */
+  private summaryAsked = new Set<string>();
 
   /**
    * A follow-up for a task that finished (or failed) less than 3 days ago reopens that task,
@@ -276,6 +283,17 @@ class WorkerManager {
     const task = this.currentTask(w);
     if (task) this.planNudged.delete(task.id);
     const plan = String(input.plan ?? '').trim();
+    let summary = planSummary(plan);
+    if (!summary) {
+      // Sent back once to add the lines, before the user sees it; a second plan without them is taken as it is.
+      const key = task?.id ?? w.id;
+      if (!this.summaryAsked.has(key)) {
+        this.summaryAsked.add(key);
+        store.log(w.id, 'event', t('log.planNoSummary'));
+        return { behavior: 'deny' as const, message: `The plan is missing its summary lines. ${planSummaryRule()} Add them at the top, keep the rest of the plan, and present it again with ExitPlanMode.` };
+      }
+      summary = planFallback(plan);
+    }
     store.log(w.id, 'worker', plan ? `${t('log.plan')}\n\n${plan}` : t('log.plan'));
     const prev = w.status;
     w.status = 'waiting';
@@ -284,7 +302,7 @@ class WorkerManager {
     try {
       const ans = await ask({
         source: 'plan', workerId: w.id, taskId: task?.id ?? null,
-        title: t('plan.title'), detail: task?.title ?? w.title, code: plan || null,
+        title: t('plan.title'), detail: task?.title ?? w.title, code: plan || null, summary,
         options: [{ label: ALLOW }], questionKey: null,
       }, signal);
       if (ans === ALLOW) {
@@ -474,7 +492,7 @@ class WorkerManager {
     } else {
       head.push(`Output folder: ${path.join(w.cwd, task.id)}`);
     }
-    if (needsPlan(task)) head.push('Plan first: you are in plan mode (read-only). Investigate, then present your plan with ExitPlanMode. The user approves it before you change anything; if they ask for changes, revise and present it again. Once it is approved, carry out the plan in this session and report the finished work.');
+    if (needsPlan(task)) head.push(`Plan first: you are in plan mode (read-only). Investigate, then present your plan with ExitPlanMode. ${planSummaryRule()} The user approves it before you change anything; if they ask for changes, revise and present it again. Once it is approved, carry out the plan in this session and report the finished work.`);
     if (task.afterTaskId) {
       const dep = store.task(task.afterTaskId);
       if (dep?.prUrl) head.push(`This task builds on ${dep.prUrl}, which has been merged into the default branch.`);

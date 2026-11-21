@@ -132,6 +132,17 @@ export interface Decision {
   answer: string | null;
   createdAt: string;
   answeredAt: string | null;
+  /** plan: the plan's WHAT / HOW / OUTPUT lines, shown on the card above the collapsed plan. */
+  summary?: PlanSummary | null;
+}
+
+/** Three one-sentence lines at the top of a plan-first plan (src/shared/plan.ts). */
+export interface PlanSummary {
+  what: string;
+  how: string;
+  output: string;
+  /** The Worker left the lines out even when asked; these were pulled from the plan text. */
+  auto?: boolean;
 }
 
 /** Answer values for permission decisions. The renderer shows localized labels. */

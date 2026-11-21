@@ -587,3 +587,15 @@ b.minus { color: #ff6961; font-weight: 600; }
   .sidebar, .inspector, .snav, .seg, .usage, .attach, .composer, .pop, .amenu, .ctxmenu, .dlg, .toast, .dlg-back { -webkit-backdrop-filter: none; backdrop-filter: none; }
   .composer { background: #242427; }
 }
+
+/* plan summary card */
+.plan-sum { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; padding: 9px 11px; border-radius: 12px; background: var(--fill-2); box-shadow: var(--well); font-size: calc(12 * var(--px)); line-height: 1.45; }
+.plan-sum dt { color: var(--label-2); font-weight: 500; }
+.plan-sum dd { margin: 0; color: var(--label); user-select: text; overflow-wrap: anywhere; }
+.plan-sum code { display: inline; padding: 1px 4px; word-break: normal; font-size: .95em; }
+.plan-auto { align-self: flex-start; font-size: calc(10.5 * var(--px)); color: var(--label-2); padding: 1px 7px; border-radius: 999px; background: var(--fill-2); box-shadow: var(--rim); cursor: help; }
+.plan-links { display: flex; gap: 14px; flex-wrap: wrap; }
+.plan-links button { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--blue); font: inherit; font-size: calc(11.5 * var(--px)); cursor: pointer; }
+.plan-links button:hover { text-decoration: underline; }
+.plan-links button:focus-visible { outline: var(--focus); outline-offset: 2px; border-radius: 4px; }
+.plan-links button:disabled { opacity: .45; cursor: default; text-decoration: none; }

@@ -268,10 +268,12 @@ const agents = (n: number) => ({ type: 'system', subtype: 'background_tasks_chan
   { task_id: 'sh', task_type: 'local_bash', description: 'dev server' },
 ] });
 
-/** The Worker calls ExitPlanMode; resolves once the plan card is in the decision inbox. */
-async function presentPlan(s: AgentSession) {
+const PLAN = '# Plan\nWHAT: Add the thing.\nHOW: Change one file.\nOUTPUT: A PR.\n\n## Steps\n1. Edit it.';
+
+/** The Worker calls ExitPlanMode; resolves once the plan card is in the decision inbox (no card if the plan was sent back). */
+async function presentPlan(s: AgentSession, plan = PLAN) {
   const opts = { signal: new AbortController().signal, suggestions: [], toolUseID: 'tu' } as unknown as Parameters<CanUseTool>[2];
-  const result = s.cfg.canUseTool!('ExitPlanMode', { plan: '# Plan' }, opts);
+  const result = s.cfg.canUseTool!('ExitPlanMode', { plan }, opts);
   await tick();
   const card = store.data.decisions.find((d) => d.source === 'plan' && d.status === 'pending')!;
   return { result, card };
@@ -294,6 +296,7 @@ test('a plan-first turn that ends while its subagents run leaves the task open; 
   assert.equal(w.status, 'running');
   const { result, card } = await presentPlan(s);
   assert.equal(x.status, 'waiting');
+  assert.deepEqual(card.summary, { what: 'Add the thing.', how: 'Change one file.', output: 'A PR.' });
   answer(card.id, ALLOW);
   const r = (await result)!;
   assert.equal(r.behavior, 'allow');
@@ -328,6 +331,31 @@ test('a plan-first turn that ends without a plan is reminded once, then waits fo
   // A turn that fails still fails the task.
   s.ev.onTurnEnd!({ text: 'It broke.', isError: true, internal: false });
   assert.equal(x.status, 'failed');
+});
+
+test('a plan without its WHAT / HOW / OUTPUT lines is sent back once, then taken with a summary pulled from its text', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, { planFirst: true });
+  assert.match((workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x), /Start the plan with exactly three lines, one sentence each in English: "WHAT: ".*"HOW: ".*"OUTPUT: "/);
+  const s = workers.ensureSession(w)!;
+  const bare = '# Plan: Add dark mode\n\n## Approach\nAdd a theme setting and swap the CSS variables.\n\n## Verification\nRun the tests and check both themes.';
+  const first = await presentPlan(s, bare);
+  assert.equal(first.card, undefined);
+  const r1 = (await first.result)!;
+  assert.equal(r1.behavior, 'deny');
+  assert.match((r1 as { message: string }).message, /missing its summary lines.*"WHAT: ".*present it again with ExitPlanMode/);
+  assert.equal(x.status, 'running');
+  // Left out again: no second round trip, the card gets a summary marked as extracted.
+  const second = await presentPlan(s, bare);
+  assert.deepEqual(second.card.summary, { what: 'Add dark mode', how: 'Add a theme setting and swap the CSS variables.', output: 'Run the tests and check both themes.', auto: true });
+  assert.equal(second.card.code, bare);
+  answer(second.card.id, 'Use the system theme too');
+  assert.equal((await second.result)!.behavior, 'deny');
+  // The revised plan has the lines.
+  const third = await presentPlan(s);
+  assert.equal(third.card.summary?.auto, undefined);
+  answer(third.card.id, ALLOW);
+  assert.equal((await third.result)!.behavior, 'allow');
 });
 
 test('a turn with more input queued behind it leaves the task to the turn that follows', () => {
