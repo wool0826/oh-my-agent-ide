@@ -154,6 +154,9 @@ const en = {
   // workers
   'wk.emptyTitle': 'No Workers yet',
   'wk.counts': '{a} active, {b} archived',
+  'wk.filterAll': 'All',
+  'wk.noneToday': 'No Worker finished a task today',
+  'wk.noneArchived': 'No archived Workers',
   'wk.pickTitle': 'Pick a Worker',
   'wk.tasks': 'Tasks',
   'wk.stop': 'Stop',
@@ -576,6 +579,9 @@ const ko: Record<Key, string> = {
 
   'wk.emptyTitle': '아직 Worker가 없어요',
   'wk.counts': '활성 {a}개, 보관 {b}개',
+  'wk.filterAll': '전체',
+  'wk.noneToday': '오늘 작업을 끝낸 Worker가 없어요',
+  'wk.noneArchived': '보관된 Worker가 없어요',
   'wk.pickTitle': 'Worker를 고르세요',
   'wk.tasks': '맡았던 작업',
   'wk.stop': '멈추기',

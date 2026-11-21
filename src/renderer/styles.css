@@ -587,3 +587,11 @@ b.minus { color: #ff6961; font-weight: 600; }
   .sidebar, .inspector, .snav, .seg, .usage, .attach, .composer, .pop, .amenu, .ctxmenu, .dlg, .toast, .dlg-back { -webkit-backdrop-filter: none; backdrop-filter: none; }
   .composer { background: #242427; }
 }
+
+/* worker list filter */
+.wf { display: flex; align-items: center; gap: 8px; }
+.wf-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 5px; border-radius: 999px; background: var(--glass-3); box-shadow: var(--rim); color: var(--label); font-size: calc(11.5 * var(--px)); font-weight: 600; white-space: nowrap; }
+.wf-chip .ic { width: 14px; height: 14px; }
+.wf-chip .ic svg { width: 12px; height: 12px; }
+.wf-chip small { font-weight: 600; font-variant-numeric: tabular-nums; }
+.wf-all { font-size: calc(11.5 * var(--px)); }
