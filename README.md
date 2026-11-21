@@ -17,13 +17,13 @@ npm run dist:mac
 
 ## First run
 
-Settings opens. Sections are on the left.
+Settings opens. Sections are on the left. Changes are saved as you make them; a new IDE home folder is used after a restart.
 
 1. **Accounts.** Up to 4. For each Team or Enterprise account, run `claude setup-token` in a terminal and paste the token, then pick its plan. To use the Claude Code login already on this PC, choose "Use this PC's login".
-2. **General.** Language, IDE home folder (clones, worktrees, results and memory live here; default `~/OhMyAgentIDE`), company GitHub host such as `github.company.com` (log in first with `gh auth login --hostname github.company.com`), and how long idle Workers stay before they are archived.
+2. **General.** Language, IDE home folder (clones, worktrees, results and memory live here; default `~/oh-my-agent-ide`), company GitHub host such as `github.company.com` (log in first with `gh auth login --hostname github.company.com`), and how long idle Workers stay before they are archived.
 3. **Notifications.** OS notifications on or off, the sound played when a decision is needed (built-in chime, bell, ping, your own file, or none), and its volume.
 4. **Memory.** Optional remote for the memory git repository: the clone URL of an empty private repository, such as `https://github.com/me/agent-memory.git` or `git@github.com:me/agent-memory.git`. Leave it empty to keep memory in a local git repository only.
-5. **Models.** Model IDs for the Dispatcher, Workers, and design work.
+5. **Models.** The model for the Dispatcher, for Workers, and for design work, picked from the models your accounts can use. The list is read from the Anthropic API, so new models appear without an app update.
 
 ## Using it
 

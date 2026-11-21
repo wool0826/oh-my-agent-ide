@@ -2,9 +2,11 @@ import path from 'node:path';
 import { loadSettings } from './settings';
 import { ensureDir } from './util';
 
-/** Layout under the IDE home. A new home in settings takes effect on the next launch. */
+let runningHome: string | null = null;
+
+/** Layout under the IDE home. The home is read once per launch, so a new one in settings waits for a restart. */
 export function paths() {
-  const home = loadSettings().home;
+  const home = (runningHome ??= loadSettings().home);
   return {
     home,
     repos: path.join(home, 'repos'),

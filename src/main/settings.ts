@@ -27,12 +27,12 @@ export interface Settings extends SettingsView {
   accounts: StoredAccount[];
 }
 
-const dataDir = () => (process.env.OMA_DATA_DIR ? path.resolve(process.env.OMA_DATA_DIR) : app.getPath('userData'));
+export const dataDir = () => (process.env.OMA_DATA_DIR ? path.resolve(process.env.OMA_DATA_DIR) : app.getPath('userData'));
 const file = () => path.join(dataDir(), 'settings.json');
 
 export const DEFAULTS: SettingsView = {
   language: 'en',
-  home: path.join(os.homedir(), 'OhMyAgentIDE'),
+  home: path.join(os.homedir(), 'oh-my-agent-ide'),
   githubHost: '',
   notifications: true,
   sound: 'chime',

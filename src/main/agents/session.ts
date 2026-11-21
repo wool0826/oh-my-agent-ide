@@ -143,6 +143,18 @@ export class AgentSession {
     try { await this.q?.interrupt(); } catch { /* already finished */ }
   }
 
+  /** The models Claude Code offers this session's account, or null when no session is running. */
+  async supportedModels(): Promise<{ id: string; name: string }[] | null> {
+    if (!this.q) return null;
+    try {
+      const list = await Promise.race([this.q.supportedModels(), new Promise<never>((_, no) => setTimeout(() => no(new Error('timeout')), 10_000))]);
+      return list.map((m) => ({ id: m.resolvedModel ?? m.value, name: m.displayName }));
+    } catch (e) {
+      log.warn(`[${this.cfg.label}] models`, (e as Error).message);
+      return null;
+    }
+  }
+
   close() {
     this.closed = true;
     this.input?.close();

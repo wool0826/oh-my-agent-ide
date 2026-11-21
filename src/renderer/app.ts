@@ -1,6 +1,7 @@
-import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, MemoryFile, MemoryHit, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
+import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
+import { modelLabel as labelFor } from '../shared/models';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 
 declare global {
@@ -56,6 +57,9 @@ const ui = {
   wTab: 'chat' as 'chat' | 'changes',
   diffs: new Map<string, DiffView | 'loading' | null>(),
   diffOpen: new Set<string>(),
+  models: { models: [], fetchedAt: null, error: null } as ModelList,
+  modelsLoading: false,
+  restartAsk: false,
 };
 
 /* ---------- helpers ---------- */
@@ -143,8 +147,7 @@ function lv(v: number | null) {
 }
 const pct = (v: number | null) => (v === null ? '–' : `${v}%`);
 function modelLabel(m: string) {
-  const x = m.match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:$|-\d{8}$)/);
-  return x ? `${x[1][0].toUpperCase()}${x[1].slice(1)} ${x[2]}${x[3] ? `.${x[3]}` : ''}` : m;
+  return labelFor(m, ui.models.models);
 }
 function acctLabel(id: string | null) { return S?.accounts.find((a) => a.id === id)?.label ?? '–'; }
 function prNum(url: string | null) { return url?.match(/\/pull\/(\d+)/)?.[1] ?? ''; }
@@ -730,7 +733,7 @@ function renderMemory() {
 
 /* ---------- controls: popover list, font picker ---------- */
 
-type Opt = { value: string; label: string; font?: string };
+type Opt = { value: string; label: string; font?: string; sub?: string };
 const pop = { el: null as HTMLElement | null, owner: null as HTMLElement | null };
 
 function closePop(focusOwner = false) {
@@ -762,7 +765,7 @@ function openPop(owner: HTMLElement, items: Opt[], selected: string, onPick: (v:
   const el = document.createElement('div');
   el.className = 'pop';
   el.setAttribute('role', 'listbox');
-  el.innerHTML = items.map((o) => `<button type="button" role="option" class="pop-i${o.value === selected ? ' on' : ''}" aria-selected="${o.value === selected}" data-v="${esc(o.value)}"${o.font ? ` style="font-family:&quot;${esc(o.font)}&quot;, var(--font)"` : ''}>${sym('s-tick', 'pop-tick')}<span>${esc(o.label)}</span></button>`).join('');
+  el.innerHTML = items.map((o) => `<button type="button" role="option" class="pop-i${o.value === selected ? ' on' : ''}" aria-selected="${o.value === selected}" data-v="${esc(o.value)}"${o.font ? ` style="font-family:&quot;${esc(o.font)}&quot;, var(--font)"` : ''}>${sym('s-tick', 'pop-tick')}<span>${esc(o.label)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</button>`).join('');
   document.body.appendChild(el);
   placePop(el, owner, minWidth);
   pop.el = el;
@@ -848,6 +851,7 @@ function applyFont(family: string, size: number) {
   const root = document.documentElement.style;
   root.setProperty('--font', fontStack(family));
   root.setProperty('--ui-font-size', `${clampFontSize(size)}px`);
+  requestAnimationFrame(() => glideAll(false));
 }
 
 function previewFont() {
@@ -866,12 +870,62 @@ const PANES: { id: Pane; key: Key; glyph: string }[] = [
 const PLAN_OPTS: Opt[] = [{ value: 'team', label: 'Team' }, { value: 'enterprise', label: 'Enterprise' }];
 const effortOpts = (): Opt[] => EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}` as Key) }));
 const AVATAR = ['var(--blue)', 'var(--green)', 'var(--purple)', 'var(--orange)'];
-const MODEL_IDS = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5', fable: 'claude-fable-5-2' };
+/** Choices until the account's model list has been read once. */
+const FALLBACK_MODELS = ['claude-fable-5-2', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'];
 
-/** Model choices; a configured model that is not in the list stays selectable. */
-function modelOpts(ids: string[], cur: string): Opt[] {
-  const list = cur && !ids.includes(cur) ? [...ids, cur] : ids;
-  return list.map((id) => ({ value: id, label: modelLabel(id) }));
+/** Every model the accounts can use, newest first; a configured model missing from the list stays selectable. */
+function modelOpts(cur: string): Opt[] {
+  const ids = ui.models.models.length ? ui.models.models.map((m) => m.id) : FALLBACK_MODELS;
+  const list = cur && !ids.includes(cur) ? [cur, ...ids] : ids;
+  return list.map((id) => ({ value: id, label: modelLabel(id), sub: id }));
+}
+
+/** A button that opens a model list, backed by a hidden input like segc. */
+function modelPicker(id: string, value: string, label: string) {
+  return `<span class="dd"><input type="hidden" id="${id}" value="${esc(value)}"><button type="button" class="dd-btn" data-dd="${id}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(label)}"><span>${esc(modelLabel(value))}</span>${sym('s-updown')}</button></span>`;
+}
+
+function openModelPicker(btn: HTMLElement) {
+  if (pop.owner === btn) { closePop(); return; }
+  const inp = document.getElementById(btn.dataset.dd!) as HTMLInputElement | null;
+  if (!inp) return;
+  openPop(btn, modelOpts(inp.value), inp.value, (v) => {
+    if (v === inp.value) return;
+    inp.value = v;
+    btn.querySelector('span')!.textContent = modelLabel(v);
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  }, 260);
+}
+
+/** Read the model list; 'now' asks the API even if the saved list is recent. */
+async function loadModels(mode: 'cached' | 'fresh' | 'now') {
+  ui.modelsLoading = true;
+  syncModelRows();
+  const r = await call<ModelList>('models:list', mode);
+  ui.modelsLoading = false;
+  if (r) ui.models = r;
+  syncModelRows();
+}
+
+function modelsStatus() {
+  const m = ui.models;
+  if (ui.modelsLoading) return '…';
+  if (m.error === 'no-account' && !m.models.length) return t('set.modelsNoAccount');
+  if (m.error === 'no-token' && !m.models.length) return t('set.modelsNoToken');
+  if (m.error && !m.models.length) return t('set.modelsFailed', { msg: m.error });
+  if (!m.fetchedAt) return '–';
+  return t(m.error ? 'set.modelsStale' : 'set.modelsCount', { n: m.models.length, time: when(m.fetchedAt) });
+}
+
+/** Update the list status and the picker labels in place, without re-rendering Settings. */
+function syncModelRows() {
+  const st = document.getElementById('set-mlist');
+  if (st) { st.textContent = modelsStatus(); st.classList.toggle('bad', !!ui.models.error); }
+  document.querySelectorAll<HTMLElement>('[data-dd]').forEach((b) => {
+    const v = (document.getElementById(b.dataset.dd!) as HTMLInputElement | null)?.value;
+    const s = b.querySelector('span');
+    if (v && s) s.textContent = modelLabel(v);
+  });
 }
 
 /** Segmented control backed by a hidden input, so the form reads it like any field. */
@@ -895,6 +949,44 @@ function syncSegs(root: ParentNode = document) {
     b.classList.toggle('on', on);
     b.setAttribute('aria-checked', String(on));
   });
+}
+
+/**
+ * Liquid Glass segmented controls: one glass pill (the control's ::before) sits under the chosen
+ * segment. A changed choice slides and stretches it there; a new, re-shown or resized control places it
+ * without motion.
+ */
+function glideAll(animate: boolean) {
+  document.querySelectorAll<HTMLElement>('.seg, .segc').forEach((c) => glide(c, animate));
+}
+
+function glide(c: HTMLElement, animate: boolean) {
+  const on = c.querySelector<HTMLElement>(':scope > button[aria-pressed="true"], :scope > button.on');
+  if (!on || !c.offsetParent) {
+    c.classList.remove('glide-on', 'glide-ready', 'glide-move');
+    delete c.dataset.glide;
+    return;
+  }
+  const box = [on.offsetLeft, on.offsetTop, on.offsetWidth, on.offsetHeight];
+  const key = box.join(',');
+  if (c.dataset.glide === key) return;
+  const from = c.dataset.glide?.split(',').map(Number);
+  const slide = animate && !!from && c.classList.contains('glide-ready');
+  c.dataset.glide = key;
+  if (!slide) c.classList.remove('glide-ready', 'glide-move');
+  c.style.setProperty('--gx', `${box[0]}px`);
+  c.style.setProperty('--gy', `${box[1]}px`);
+  c.style.setProperty('--gw', `${box[2]}px`);
+  c.style.setProperty('--gh', `${box[3]}px`);
+  c.classList.add('glide-on');
+  if (!slide) {
+    void c.offsetWidth; // place it first, then turn transitions on
+    c.classList.add('glide-ready');
+  } else if (from && (Math.abs(from[0] - box[0]) > 1 || Math.abs(from[1] - box[1]) > 1)) {
+    c.classList.remove('glide-move');
+    void c.offsetWidth; // restart the stretch
+    c.classList.add('glide-move');
+  }
 }
 
 function stepper(id: string, value: number, min: number, max: number, label: string) {
@@ -998,20 +1090,20 @@ function settingsHtml() {
       ${row(t('set.claudeMemory'), 'set-cmem', `<input class="switch" id="set-cmem" type="checkbox" ${st.claudeMemory ? 'checked' : ''}>`)}
       ${row(t('set.claudeFolder'), 'set-cdir', `<span class="sval" id="set-cdir" title="${esc(ci ? ci.home : '')}">${esc(ci ? shortPath(ci.home, 2) : '…')}</span><button class="btn" data-action="reveal-claude">${t('set.open')}</button>`)}`, 'Claude Code')}`;
 
-  const m = MODEL_IDS;
   const models = `${grp(`
-      ${row(t('set.model'), 'set-dm', segc('set-dm', st.dispatcherModel, modelOpts([m.haiku, m.sonnet, m.opus], st.dispatcherModel), 'Dispatcher'), 'wrap')}
+      ${row(t('set.modelList'), 'set-mlist', `<span class="sval${ui.models.error ? ' bad' : ''}" id="set-mlist">${esc(modelsStatus())}</span><button class="btn" data-action="models-refresh">${t('diff.refresh')}</button>`)}`)}
+    ${grp(`
+      ${row(t('set.model'), 'set-dm', modelPicker('set-dm', st.dispatcherModel, 'Dispatcher'))}
       ${row(t('set.effort'), 'set-de', segc('set-de', st.dispatcherEffort, effortOpts(), t('set.effort')), 'wrap')}`, 'Dispatcher')}
     ${grp(`
-      ${row(t('set.model'), 'set-wm', segc('set-wm', st.workerModel, modelOpts([m.sonnet, m.opus, m.fable], st.workerModel), 'Worker'), 'wrap')}
-      ${row(t('set.design'), 'set-fm', segc('set-fm', st.designModel, modelOpts([m.opus, m.fable], st.designModel), t('set.design')), 'wrap')}
+      ${row(t('set.model'), 'set-wm', modelPicker('set-wm', st.workerModel, 'Worker'))}
+      ${row(t('set.design'), 'set-fm', modelPicker('set-fm', st.designModel, t('set.design')))}
       ${row(t('set.defaultEffort'), 'set-we', segc('set-we', st.workerEffort, effortOpts(), t('set.effort')), 'wrap')}
       ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}`, t('set.workers'))}`;
 
   return `<header class="stopbar drag">
       <button class="btn sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
       <h1>${t('set.title')}</h1>
-      <span class="stop-r"><span class="dirty" id="set-dirty" hidden>${t('set.unsaved')}</span><button class="btn" data-action="revert-settings" id="set-revert" disabled>${t('set.revert')}</button><button class="btn def" data-action="save-settings">${t('save')}</button></span>
     </header>
     <div class="sbody">
       <nav class="snav" aria-label="${t('set.title')}">
@@ -1022,7 +1114,19 @@ function settingsHtml() {
       <main class="spanes"><div class="sinner">${pane('accounts', accounts)}${pane('general', general)}${pane('display', display)}${pane('alerts', alerts)}${pane('memory', memory)}${pane('models', models)}</div></main>
     </div>
     ${ui.accMenu || ui.accRename ? '<div class="click-catch" data-action="acc-dismiss"></div>' : ''}
-    ${removeDialog()}`;
+    ${removeDialog()}
+    ${restartDialog()}`;
+}
+
+/** After the IDE home folder changes: it takes effect on the next launch. */
+function restartDialog() {
+  if (!ui.restartAsk) return '';
+  return `<div class="dlg-back" data-action="restart-later"></div>
+  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t">
+    <h2 id="dlg-t">${t('set.restartTitle')}</h2>
+    <p>${t('set.restartBody')}</p>
+    <div class="dlg-btns"><button class="btn" data-action="restart-later">${t('set.restartLater')}</button><button class="btn def" data-action="restart-now">${t('set.restartNow')}</button></div>
+  </div>`;
 }
 
 /** Re-render the settings window, keeping unsaved field values. */
@@ -1035,7 +1139,7 @@ async function loadClaudeInfo() {
 function openSettings(pane?: Pane) {
   if (pane) ui.pane = pane;
   // Each time the window opens (button, shortcut or first run), not on every re-render.
-  if (!ui.settingsShown) void loadClaudeInfo();
+  if (!ui.settingsShown) { void loadClaudeInfo(); if (ui.pane === 'models') void loadModels('fresh'); }
   closePop();
   const root = $('#sheet');
   const keep = new Map<string, string | boolean>();
@@ -1059,7 +1163,6 @@ function openSettings(pane?: Pane) {
   syncSoundRows();
   syncAccRows();
   filterPanes();
-  syncDirty();
   root.hidden = false;
   document.body.classList.add('modal');
   if (!ui.version) void call<string>('app:version').then((v) => { if (v) { ui.version = v; const el = root.querySelector('.ver'); if (el) el.textContent = `v${v}`; } });
@@ -1086,16 +1189,27 @@ function syncSoundRows() {
   document.querySelectorAll<HTMLElement>('.custom-row').forEach((el) => { el.hidden = kind !== 'custom'; });
 }
 
-/** Show "Unsaved changes" and enable Revert while the form differs from the saved settings. */
-function syncDirty() {
+/* Settings save as they change: switches, segments, pickers and steppers at once; typed text after a
+   short pause or when the field loses focus; the home folder only when it loses focus or is picked. */
+let saveTimer = 0;
+function saveSoon(delay = 600) {
+  clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => void saveSettingsNow(), delay);
+}
+
+async function saveSettingsNow() {
+  clearTimeout(saveTimer);
   if (!ui.settingsShown || !S || !document.getElementById('set-lang')) return;
   const f = readSettingsForm() as Record<string, unknown>;
   const cur = S.settings as unknown as Record<string, unknown>;
-  const dirty = Object.keys(f).some((k) => f[k] !== cur[k]);
-  const label = document.getElementById('set-dirty');
-  if (label) label.hidden = !dirty;
-  const rv = document.getElementById('set-revert') as HTMLButtonElement | null;
-  if (rv) rv.disabled = !dirty;
+  const patch = Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== cur[k])) as Partial<ReturnType<typeof readSettingsForm>>;
+  if (!Object.keys(patch).length) return;
+  const langChanged = patch.language !== undefined;
+  Object.assign(S.settings, patch); // the new values count before the state comes back (font, labels)
+  customCache = null;
+  if (langChanged) { ui.settingsShown = false; applyStaticText(); openSettings(); }
+  const r = await call<{ restart: boolean }>('settings:save', patch);
+  if (r?.restart && ui.settingsShown) { ui.restartAsk = true; openSettings(); }
 }
 
 /** Search box: keep only the sections whose labels match, and show the first match. */
@@ -1124,6 +1238,7 @@ function showPane(id: Pane) {
   const sp = document.querySelector('.spanes');
   if (sp) sp.scrollTop = 0;
   pathEnds();
+  if (id === 'models') void loadModels('fresh');
 }
 
 /** Long folder paths in Settings show their end, which is the part that differs. Runs once the pane is visible. */
@@ -1133,23 +1248,27 @@ function pathEnds() {
 }
 
 function closeSettings() {
+  void saveSettingsNow(); // reads the form before it goes away
   closePop();
   ui.settingsShown = false;
   ui.accMenu = ui.accRename = ui.accRemove = null;
+  ui.restartAsk = false;
   ui.setQ = '';
   $('#sheet').hidden = true;
   $('#sheet').innerHTML = '';
   document.body.classList.remove('modal');
-  // Drop an unsaved preview (after a save, S.settings already holds the new values).
   if (S) applyFont(S.settings.fontFamily, S.settings.fontSize);
 }
+
+/** The company GitHub host keeps only the host name: no scheme, path or capitals. */
+const hostOnly = (v: string) => v.trim().replace(/^[a-z]+:\/\//i, '').replace(/[/?#].*$/, '').toLowerCase();
 
 function readSettingsForm() {
   const v = (id: string) => ($(`#${id}`) as HTMLInputElement).value.trim();
   return {
     language: v('set-lang') as Lang,
-    home: v('set-home'),
-    githubHost: v('set-gh').replace(/^[a-z]+:\/\//i, '').replace(/[/?#].*$/, '').toLowerCase(),
+    home: v('set-home') || S!.settings.home,
+    githubHost: hostOnly(v('set-gh')),
     archiveDays: Math.max(1, Number(v('set-arch')) || 7),
     notifications: ($('#set-noti') as HTMLInputElement).checked,
     sound: v('set-sound') as SoundName,
@@ -1374,45 +1493,29 @@ async function act(el: HTMLElement, e: Event) {
     case 'acc-remove': ui.accMenu = null; ui.accRemove = id; openSettings(); break;
     case 'acc-remove-cancel': ui.accRemove = null; openSettings(); break;
     case 'acc-remove-ok': ui.accRemove = null; openSettings(); await call('account:remove', id); break;
-    case 'revert-settings': {
-      ui.settingsShown = false; // re-render from the saved values, not the form
-      openSettings();
-      if (S) applyFont(S.settings.fontFamily, S.settings.fontSize);
-      break;
-    }
     case 'pick-home': {
       const p = await call<string | null>('settings:pickHome');
-      if (p) $<HTMLInputElement>('#set-home').value = p;
+      if (p) { $<HTMLInputElement>('#set-home').value = p; void saveSettingsNow(); }
       break;
     }
     case 'pick-sound': {
       const p = await call<string | null>('sound:pick');
-      if (p) $<HTMLInputElement>('#set-sfile').value = p;
+      if (p) { $<HTMLInputElement>('#set-sfile').value = p; void saveSettingsNow(); }
       break;
     }
+    case 'restart-later': ui.restartAsk = false; openSettings(); break;
+    case 'restart-now': await call('app:relaunch'); break;
+    case 'models-refresh': void loadModels('now'); break;
     case 'font-reset': {
       $<HTMLInputElement>('#set-font').value = '';
       $<HTMLInputElement>('#set-fsize').value = String(FONT_SIZE_DEFAULT);
       previewFont();
-      syncDirty();
+      void saveSettingsNow();
       break;
     }
     case 'sound-test': {
       const f = readSettingsForm();
       await playSound(f.sound, f.soundVolume, f.customSound);
-      break;
-    }
-    case 'save-settings': {
-      const patch = readSettingsForm();
-      const r = await call<{ restart: boolean }>('settings:save', patch);
-      if (!r) return;
-      customCache = null;
-      const langChanged = patch.language !== S!.settings.language;
-      Object.assign(S!.settings, patch); // keep the new font even before the new state arrives
-      if (langChanged) { ui.settingsShown = false; applyStaticText(); openSettings(); } else syncDirty();
-      if (r.restart) {
-        if (confirm(t('confirm.restart'))) await call('app:relaunch');
-      } else toast(tr(patch.language, 'toast.settingsSaved'));
       break;
     }
   }
@@ -1490,6 +1593,8 @@ function init() {
     const tgt = e.target as HTMLElement;
     const segBtn = tgt.closest<HTMLButtonElement>('[data-segc]');
     if (segBtn) { pickSeg(segBtn); return; }
+    const dd = tgt.closest<HTMLElement>('[data-dd]');
+    if (dd) { openModelPicker(dd); return; }
     const combo = tgt.closest<HTMLElement>('[data-combo]');
     if (combo) {
       const inp = document.getElementById(combo.dataset.combo!) as HTMLInputElement;
@@ -1508,7 +1613,8 @@ function init() {
     const el = e.target as HTMLSelectElement;
     if (el.dataset.change === 'sound-kind') syncSoundRows();
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
-    if (el.closest?.('#sheet')) syncDirty();
+    if (el.id === 'set-gh') el.value = hostOnly(el.value);
+    if (el.closest?.('#sheet')) void saveSettingsNow();
   });
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
@@ -1516,9 +1622,19 @@ function init() {
     if (el.id === 'set-fsize') previewFont();
     if (el.id === 'set-font') { markFont(el); previewFont(); void openFontPicker(el, false); }
     if (el.id === 'set-q') { ui.setQ = el.value; filterPanes(); return; }
-    if (el.closest('#sheet')) syncDirty();
+    if (el.closest('#sheet') && el.id !== 'set-home') saveSoon(el.matches('.step-v, .slider') ? 300 : 600);
   });
   document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.v as any)));
+  // Liquid Glass pills follow every change of selection, however the control was updated.
+  let glideQueued = false;
+  new MutationObserver(() => {
+    if (glideQueued) return;
+    glideQueued = true;
+    requestAnimationFrame(() => { glideQueued = false; glideAll(true); });
+  }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-checked', 'aria-selected', 'hidden'] });
+  window.addEventListener('resize', () => glideAll(false));
+  void document.fonts.ready.then(() => glideAll(false));
+  void loadModels('cached');
   $('#sheet').addEventListener('scroll', () => closePop(), true);
   window.addEventListener('resize', () => closePop());
 

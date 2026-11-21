@@ -172,6 +172,11 @@ export interface SettingsView {
 /** What Settings shows about the user's Claude Code setup. */
 export interface ClaudeInfo { home: string; rules: string[]; memoryHome: string }
 
+/** A model the account can use, from the API's model list. */
+export interface ModelInfo { id: string; name: string; created: string }
+/** The model list and when it was last read; error is the last failed refresh, if any. */
+export interface ModelList { models: ModelInfo[]; fetchedAt: string | null; error: string | null }
+
 export interface AppState {
   ready: boolean;
   setupNeeded: boolean;

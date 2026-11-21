@@ -16,6 +16,7 @@ import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { attachmentBlock, registerAttachments } from './attachments';
 import { t } from './i18n';
 import { claudeHome, ruleFiles } from './claudeContext';
+import { listModels, setSessionModelSource } from './models';
 import { log } from './log';
 import { nowIso, oneLine } from './util';
 import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
@@ -179,7 +180,8 @@ function registerIpc() {
   });
   handle('settings:save', (patch: Partial<SettingsView>) => {
     const before = loadSettings();
-    const homeChanged = !!patch.home && patch.home !== before.home;
+    // Compared with the folder in use: changing it and back again needs no restart.
+    const homeChanged = !!patch.home && patch.home !== paths().home;
     const langChanged = (!!patch.language && patch.language !== before.language)
       || (patch.claudeRules !== undefined && patch.claudeRules !== before.claudeRules)
       || (patch.claudeMemory !== undefined && patch.claudeMemory !== before.claudeMemory)
@@ -212,6 +214,9 @@ function registerIpc() {
   handle('reveal:path', (p: string) => shell.showItemInFolder(p));
   handle('pr:check', () => checkPrs());
   handle('app:version', () => app.getVersion());
+  // Settings > Models asks for a fresh list (at most a minute old), its Refresh button for a new one;
+  // other callers take one up to 6 hours old.
+  handle('models:list', (mode: 'cached' | 'fresh' | 'now') => listModels(mode === 'now' ? 0 : mode === 'fresh' ? 60_000 : 6 * 3600_000));
   handle('claude:info', (): ClaudeInfo => ({ home: claudeHome(), rules: ruleFiles(), memoryHome: path.join(claudeHome(), 'projects') }));
   handle('app:relaunch', () => { app.relaunch(); app.quit(); });
 }
@@ -238,6 +243,8 @@ async function boot() {
     }
   });
   accounts.startPolling();
+  setSessionModelSource(async () => (await dispatcher.session?.supportedModels()) ?? null);
+  void listModels(6 * 3600_000);
   workers.resumeAfterRestart();
   startPrMonitor();
   setInterval(() => workers.retryQueued(), 2 * 60_000).unref();

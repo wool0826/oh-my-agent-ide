@@ -12,6 +12,8 @@ import { remember, searchMemory } from '../memory';
 import { memoryDirFor, searchClaudeMemory, userRulesSection } from '../claudeContext';
 import { paths } from '../paths';
 import { loadSettings } from '../settings';
+import { cachedModels } from '../models';
+import { modelLabel as labelFor } from '../../shared/models';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
 import { worktreeDiff } from '../gitdiff';
 import { notifyInfo } from '../notify';
@@ -557,10 +559,7 @@ function needsPlan(task: Task | null) {
 }
 
 export function modelLabel(m: string) {
-  if (m.includes('fable')) return 'Fable 5.2';
-  if (m.includes('opus')) return 'Opus 5.5';
-  if (m.includes('sonnet')) return 'Sonnet 5.5';
-  return m;
+  return labelFor(m, cachedModels().models);
 }
 
 export const workers = new WorkerManager();
