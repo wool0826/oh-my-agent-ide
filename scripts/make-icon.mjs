@@ -1,17 +1,40 @@
-// Writes the app icon as SVG: build/icon.svg (macOS layout) and build/icon-win.svg (Windows layout).
-// Liquid Glass style: stacked frosted glass windows with a prompt, on a blue squircle.
+// Writes the app icon as SVG into build/. Render PNG, ICO and ICNS afterwards with `npm run icon`.
+//   icon.svg, icon-small.svg          macOS layout
+//   icon-win.svg, icon-win-small.svg  Windows layout
+// Graphite Glass (docs/design-system): a graphite glass squircle holding a formation of dots.
+// One white lead (the Dispatcher) hands down to two blue agents, and they to three.
+// The small files are for 32 px and below: no links, halo or gloss, and equal, larger dots on a 64 unit grid,
+// so on the full-bleed Windows body every dot lands on whole pixels at 16 and 32 px.
 // The body is drawn in a 1024 unit box and placed on a 1024 canvas:
-//   mac: 824 body with room for its shadow (macOS icon grid); win: 960 body, lighter shadow.
-// Render PNG/ICO afterwards with `npm run icon`.
+//   mac: 824 body with room for its shadow (macOS icon grid); win: 960 body, lighter shadow; win small: full bleed, no shadow.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const f2 = (n) => n.toFixed(2);
+const f2 = (n) => String(+n.toFixed(2));
+
+// Primitives from docs/design-system/source/tokens.mjs (ref.gray, ref.blue).
+const GRAY = { 0: '#ffffff', 750: '#3a3a3f', 850: '#222226', 950: '#131316' };
+const BLUE = { 300: '#64b1ff', 400: '#1a8cff', 500: '#007aff', 600: '#0a6ae8', 700: '#0058c7' };
+// Dot fills, top to bottom, per row. The lead is white, shaded toward blue.
+const TONES = [[GRAY[0], '#cfe0ff'], [BLUE[300], BLUE[500]], [BLUE[400], BLUE[700]]];
+
+// Dot centers per row, their radii, and the link width (0: no links).
+const LAYOUTS = {
+  full: { rows: [[[512, 292]], [[384, 516], [640, 516]], [[256, 736], [512, 736], [768, 736]]], r: [104, 86, 68], link: 14 },
+  small: { rows: [[[512, 192]], [[320, 512], [704, 512]], [[192, 832], [512, 832], [832, 832]]], r: [128, 128, 128], link: 0 },
+};
+
+const TARGETS = {
+  'icon.svg': { layout: 'full', size: 824, shadow: [12, 16, 0.34] },
+  'icon-small.svg': { layout: 'small', size: 824, shadow: [12, 16, 0.34] },
+  'icon-win.svg': { layout: 'full', size: 960, shadow: [6, 8, 0.24] },
+  'icon-win-small.svg': { layout: 'small', size: 1024, shadow: null },
+};
 
 /** Superellipse |x|^n + |y|^n = 1: close to Apple's continuous-corner icon shape at n = 5. */
-function squircle(n = 5, a = 512, c = 512, steps = 900) {
+function squircle(n = 5, a = 512, c = 512, steps = 720) {
   const pts = [];
   for (let i = 0; i < steps; i++) {
     const t = (2 * Math.PI * i) / steps;
@@ -21,136 +44,72 @@ function squircle(n = 5, a = 512, c = 512, steps = 900) {
   return `M${pts.join(' L')} Z`;
 }
 
-/** Rounded rectangle whose corners are superellipse quadrants. */
-function crect(x, y, w, h, r, n = 4, steps = 40) {
-  const q = (t) => [Math.cos(t) ** (2 / n), Math.sin(t) ** (2 / n)];
-  const pts = [];
-  const corner = (cx, cy, sx, sy, from, to) => {
-    for (let i = 0; i <= steps; i++) {
-      const t = (Math.PI / 2) * (from + (to - from) * (i / steps));
-      const [c, s] = q(t);
-      pts.push([cx + sx * r * c, cy + sy * r * s]);
+const stops = (s) => s.map(([o, c, op = 1]) => `<stop offset="${o}" stop-color="${c}"${op === 1 ? '' : ` stop-opacity="${f2(op)}"`}/>`).join('');
+// Gradient coordinates are in user space: the same 1024 unit box the shapes are drawn in.
+const lin = (id, s, [x1, y1, x2, y2]) => `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f2(x1)}" y1="${f2(y1)}" x2="${f2(x2)}" y2="${f2(y2)}">${stops(s)}</linearGradient>`;
+const rad = (id, s, [cx, cy, r]) => `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${f2(cx)}" cy="${f2(cy)}" r="${f2(r)}">${stops(s)}</radialGradient>`;
+const dropShadow = (id, dy, blur, color, opacity, pad) =>
+  `<filter id="${id}" x="-${pad}%" y="-${pad}%" width="${100 + 2 * pad}%" height="${110 + 2 * pad}%"><feDropShadow dx="0" dy="${dy}" stdDeviation="${blur}" flood-color="${color}" flood-opacity="${opacity}"/></filter>`;
+
+/** Graphite glass body: dark gradient, a sheen from the upper left, a blue glow under the dots, a top-lit rim. */
+function body(small) {
+  const defs =
+    `<path id="body" d="${squircle()}"/><clipPath id="bodyClip"><use href="#body"/></clipPath>` +
+    lin('bg', [[0, GRAY[750]], [0.45, GRAY[850]], [1, GRAY[950]]], [0, 0, 0, 1024]) +
+    rad('sheen', [[0, GRAY[0], 0.17], [1, GRAY[0], 0]], [300, -40, 900]) +
+    rad('glow', [[0, BLUE[400], 0.34], [0.55, BLUE[600], 0.1], [1, BLUE[600], 0]], [512, 470, 480]) +
+    // Small sizes get a stronger rim, which keeps the body apart from a dark taskbar.
+    lin('rim', [[0, GRAY[0], small ? 0.6 : 0.5], [0.2, GRAY[0], 0.16], [0.6, GRAY[0], small ? 0.14 : 0.07], [1, GRAY[0], small ? 0.3 : 0.2]], [0, 0, 0, 1024]);
+  const under = '<use href="#body" fill="url(#bg)"/><use href="#body" fill="url(#sheen)"/><use href="#body" fill="url(#glow)"/>';
+  // The stroke is centered on the outline and clipped, so half its width shows.
+  const over = `<use href="#body" fill="none" stroke="url(#rim)" stroke-width="${small ? 44 : 9}"/>`;
+  return { defs, under, over };
+}
+
+/** The dots: each one hands down to the two below it. */
+function formation(small) {
+  const L = LAYOUTS[small ? 'small' : 'full'];
+  let defs = '', dots = '', links = '';
+  L.rows.forEach((row, i) => row.forEach(([x, y], j) => {
+    const r = L.r[i];
+    const circle = (fill) => `<circle cx="${x}" cy="${y}" r="${r}" fill="url(#${fill})"/>`;
+    defs += lin(`d${i}${j}`, [[0, TONES[i][0]], [1, TONES[i][1]]], [x, y - r, x, y + r]);
+    dots += circle(`d${i}${j}`);
+    // Blue dots are glossy beads: a soft highlight toward the upper left.
+    if (!small && i > 0) {
+      defs += rad(`g${i}${j}`, [[0, GRAY[0], 0.55], [1, GRAY[0], 0]], [x - r * 0.32, y - r * 0.42, r * 0.95]);
+      dots += circle(`g${i}${j}`);
     }
-  };
-  corner(x + w - r, y + r, 1, -1, 1, 0);
-  corner(x + w - r, y + h - r, 1, 1, 0, 1);
-  corner(x + r, y + h - r, -1, 1, 1, 0);
-  corner(x + r, y + r, -1, -1, 0, 1);
-  return `M${pts.map(([a, b]) => `${f2(a)},${f2(b)}`).join(' L')} Z`;
-}
-
-const grad = (id, stops, [x1, y1, x2, y2] = [0, 0, 0, 1], units = '') =>
-  `<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${units ? ` gradientUnits="${units}"` : ''}>` +
-  stops.map(([o, c, op]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${op}"/>`).join('') +
-  '</linearGradient>';
-
-const STYLE = {
-  bg: [[0, '#5DB2FF', 1], [1, '#1C57EE', 1]],
-  glow: ['#FFFFFF', 0.26],
-  // back, middle, front pane: top color/opacity, bottom color/opacity
-  panes: [
-    ['#FFFFFF', 0.34, '#FFFFFF', 0.16],
-    ['#FFFFFF', 0.46, '#FFFFFF', 0.24],
-    ['#FFFFFF', 0.9, '#F2F7FF', 0.78],
-  ],
-  glyph: ['#3A8DFF', '#1A4FE0'],
-  shadow: ['#0A2A8A', 0.4],
-  rim: 0.95,
-  bodyRim: 0.55,
-};
-
-// Full layout: three panes. Small layout (Windows 16-32 px): two panes, a heavier prompt, no fine shadows,
-// because three panes and a thin prompt turn to mush at that size.
-const LAYOUTS = {
-  full: {
-    panes: [
-      { x: 296, y: 232, w: 560, h: 400, r: 118, fill: STYLE.panes[0] },
-      { x: 232, y: 320, w: 560, h: 400, r: 118, fill: STYLE.panes[1] },
-      { x: 168, y: 408, w: 560, h: 400, r: 118, fill: STYLE.panes[2] },
-    ],
-    glyph: { d: 'M262 540 L346 608 L262 676 M394 676 H514', width: 46, y0: 530, y1: 690, shadow: true },
-    paneShadow: { dy: 26, blur: 26 },
-    backdrop: 18,
-  },
-  small: {
-    panes: [
-      { x: 252, y: 196, w: 640, h: 440, r: 130, fill: ['#FFFFFF', 0.52, '#FFFFFF', 0.3] },
-      { x: 132, y: 360, w: 660, h: 470, r: 138, fill: ['#FFFFFF', 0.97, '#F2F7FF', 0.92] },
-    ],
-    glyph: { d: 'M250 503 L376 595 L250 687 M436 687 H606', width: 84, y0: 480, y1: 710, shadow: false },
-    paneShadow: { dy: 18, blur: 18 },
-    backdrop: 12,
-  },
-};
-
-function body(S, L) {
-  const d = [];
-  const [sc, so] = S.shadow;
-  d.push(`<path id="body" d="${squircle()}"/>`, '<clipPath id="bodyClip"><use href="#body"/></clipPath>');
-  d.push(grad('bg', S.bg));
-  d.push(`<radialGradient id="glow" cx="0.26" cy="0.06" r="0.85"><stop offset="0" stop-color="${S.glow[0]}" stop-opacity="${S.glow[1]}"/><stop offset="1" stop-color="${S.glow[0]}" stop-opacity="0"/></radialGradient>`);
-  d.push(grad('bodyRim', [[0, '#FFFFFF', S.bodyRim], [0.18, '#FFFFFF', S.bodyRim * 0.25], [0.5, '#FFFFFF', 0], [1, '#FFFFFF', S.bodyRim * 0.3]]));
-  d.push(grad('rim', [[0, '#FFFFFF', S.rim], [0.22, '#FFFFFF', S.rim * 0.32], [0.6, '#FFFFFF', 0.04], [1, '#FFFFFF', S.rim * 0.42]]));
-  d.push(grad('sheen', [[0, '#FFFFFF', 0.3], [0.42, '#FFFFFF', 0]]));
-  d.push(`<filter id="bblur" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="${L.backdrop}" edgeMode="duplicate"/></filter>`);
-  d.push(`<filter id="pshadow" x="-40%" y="-40%" width="180%" height="190%"><feGaussianBlur stdDeviation="${L.paneShadow.blur}"/></filter>`);
-  d.push(`<filter id="gshadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="${sc}" flood-opacity="${(so * 0.55).toFixed(3)}"/></filter>`);
-  d.push(grad('glyph', [[0, S.glyph[0], 1], [1, S.glyph[1], 1]], [0, L.glyph.y0, 0, L.glyph.y1], 'userSpaceOnUse'));
-  d.push('<g id="L0"><rect width="1024" height="1024" fill="url(#bg)"/><rect width="1024" height="1024" fill="url(#glow)"/></g>');
-
-  const layers = L.panes.map((_, k) => `P${k}`);
-  L.panes.forEach(({ x, y, w, h, r, fill: [tc, to, bc, bo] }, k) => {
-    const id = `pane${k}`;
-    d.push(`<path id="${id}" d="${crect(x, y, w, h, r)}"/>`);
-    d.push(`<path id="${id}-in" d="${crect(x + 2.5, y + 2.5, w - 5, h - 5, r - 2.5)}"/>`);
-    d.push(`<clipPath id="${id}-clip"><use href="#${id}"/></clipPath>`);
-    d.push(grad(`${id}-fill`, [[0, tc, to], [1, bc, bo]]));
-    // Frosted glass: what lies beneath, blurred, seen through a white tint, with a light rim.
-    const backdrop = ['L0', ...layers.slice(0, k)].map((b) => `<use href="#${b}"/>`).join('');
-    d.push(
-      `<g id="${layers[k]}">` +
-        `<use href="#${id}" fill="${sc}" opacity="${so}" filter="url(#pshadow)" transform="translate(0 ${L.paneShadow.dy})"/>` +
-        `<g clip-path="url(#${id}-clip)"><g filter="url(#bblur)">${backdrop}</g></g>` +
-        `<use href="#${id}" fill="url(#${id}-fill)"/>` +
-        `<use href="#${id}" fill="url(#sheen)"/>` +
-        `<use href="#${id}-in" fill="none" stroke="url(#rim)" stroke-width="5"/>` +
-      '</g>',
-    );
-  });
-
+    if (L.link && i < L.rows.length - 1) for (const [qx, qy] of [L.rows[i + 1][j], L.rows[i + 1][j + 1]]) links += `<path d="M${x} ${y} L${qx} ${qy}"/>`;
+  }));
+  if (small) return { defs, content: dots };
+  // The lead is the light source: a soft halo around it.
+  const [[lx, ly]] = L.rows[0];
+  const halo = L.r[0] * 2.5;
+  defs += rad('halo', [[0, TONES[0][1], 0.34], [0.5, BLUE[300], 0.12], [1, BLUE[300], 0]], [lx, ly, halo]) + dropShadow('dotShadow', 10, 14, '#000814', 0.45, 40);
   const content =
-    '<g clip-path="url(#bodyClip)">' +
-    '<use href="#L0"/>' + layers.map((l) => `<use href="#${l}"/>`).join('') +
-    `<path d="${L.glyph.d}"${L.glyph.shadow ? ' filter="url(#gshadow)"' : ''} fill="none" stroke="url(#glyph)" stroke-width="${L.glyph.width}" stroke-linecap="round" stroke-linejoin="round"/>` +
-    '<use href="#body" fill="none" stroke="url(#bodyRim)" stroke-width="7"/>' +
-    '</g>';
-  return { defs: d.join(''), content };
+    `<circle cx="${lx}" cy="${ly}" r="${f2(halo)}" fill="url(#halo)"/>` +
+    `<g fill="none" stroke="${GRAY[0]}" stroke-opacity="0.2" stroke-width="${L.link}" stroke-linecap="round">${links}</g>` +
+    `<g filter="url(#dotShadow)">${dots}</g>`;
+  return { defs, content };
 }
-
-const TARGETS = {
-  mac: { layout: 'full', size: 824, shadow: [12, 16, 0.32] },
-  win: { layout: 'full', size: 960, shadow: [6, 8, 0.22] },
-  'win-small': { layout: 'small', size: 1000, shadow: null },
-};
 
 function icon(target) {
   const T = TARGETS[target];
-  const { defs, content } = body(STYLE, LAYOUTS[T.layout]);
+  const small = T.layout === 'small';
+  const b = body(small);
+  const f = formation(small);
   const off = (1024 - T.size) / 2;
-  const shadow = T.shadow
-    ? `<filter id="ishadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="${T.shadow[0]}" stdDeviation="${T.shadow[1]}" flood-color="#000" flood-opacity="${T.shadow[2]}"/></filter>`
-    : '';
-  const placed = `<g transform="translate(${off} ${off}) scale(${T.size / 1024})">${content}</g>`;
+  const inner = `<g clip-path="url(#bodyClip)">${b.under}${f.content}${b.over}</g>`;
+  const placed = T.size === 1024 ? inner : `<g transform="translate(${off} ${off}) scale(${T.size / 1024})">${inner}</g>`;
   return (
     '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">' +
-    `<defs>${defs}${shadow}</defs>` +
-    (T.shadow ? `<g filter="url(#ishadow)">${placed}</g>` : placed) +
+    `<defs>${b.defs}${f.defs}${T.shadow ? dropShadow('iconShadow', T.shadow[0], T.shadow[1], '#000', T.shadow[2], 20) : ''}</defs>` +
+    (T.shadow ? `<g filter="url(#iconShadow)">${placed}</g>` : placed) +
     '</svg>'
   );
 }
 
 fs.mkdirSync(path.join(root, 'build'), { recursive: true });
-fs.writeFileSync(path.join(root, 'build', 'icon.svg'), icon('mac'));
-fs.writeFileSync(path.join(root, 'build', 'icon-win.svg'), icon('win'));
-fs.writeFileSync(path.join(root, 'build', 'icon-win-small.svg'), icon('win-small'));
-console.log('wrote build/icon.svg, build/icon-win.svg, build/icon-win-small.svg');
+for (const target of Object.keys(TARGETS)) fs.writeFileSync(path.join(root, 'build', target), icon(target));
+console.log(`wrote ${Object.keys(TARGETS).map((t) => `build/${t}`).join(', ')}`);

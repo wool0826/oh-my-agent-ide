@@ -1,6 +1,8 @@
-// Renders build/icon.svg and build/icon-win.svg with Chromium (run through Electron):
-//   build/icon.png  1024 px, macOS layout (electron-builder makes the .icns from it)
-//   build/icon.ico  16-256 px, Windows layout (simplified at 32 px and below); each size rendered from the vector
+// Renders the SVGs in build/ with Chromium (run through Electron):
+//   build/icon.png   1024 px, macOS layout
+//   build/icon.icns  macOS, 16 to 1024 px
+//   build/icon.ico   Windows, 16 to 256 px
+// Each size is rendered from the vector. 32 px and below use the simplified small layout.
 // Usage: electron scripts/render-icon.cjs
 const { app, BrowserWindow } = require('electron');
 const fs = require('node:fs');
@@ -9,34 +11,13 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const out = (f) => path.join(root, 'build', f);
 const ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256];
+const SMALL_UP_TO = 32;
 
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.disableHardwareAcceleration();
 
-/** ICO container holding PNG images (supported since Windows Vista). */
-function ico(images) {
-  const header = Buffer.alloc(6);
-  header.writeUInt16LE(0, 0);
-  header.writeUInt16LE(1, 2);
-  header.writeUInt16LE(images.length, 4);
-  const dir = Buffer.alloc(16 * images.length);
-  let offset = 6 + dir.length;
-  images.forEach(({ size, png }, i) => {
-    const e = i * 16;
-    dir.writeUInt8(size >= 256 ? 0 : size, e);
-    dir.writeUInt8(size >= 256 ? 0 : size, e + 1);
-    dir.writeUInt8(0, e + 2);
-    dir.writeUInt8(0, e + 3);
-    dir.writeUInt16LE(1, e + 4);
-    dir.writeUInt16LE(32, e + 6);
-    dir.writeUInt32LE(png.length, e + 8);
-    dir.writeUInt32LE(offset, e + 12);
-    offset += png.length;
-  });
-  return Buffer.concat([header, dir, ...images.map((x) => x.png)]);
-}
-
 app.whenReady().then(async () => {
+  const { ico, icns, ICNS_SIZES } = await import('./icon-files.mjs');
   const win = new BrowserWindow({
     width: 1024, height: 1024, show: false, frame: false, transparent: true,
     backgroundColor: '#00000000', useContentSize: true,
@@ -52,15 +33,19 @@ app.whenReady().then(async () => {
     win.webContents.invalidate();
     await new Promise((r) => setTimeout(r, 150));
     const img = await win.webContents.capturePage({ x: 0, y: 0, width: size, height: size });
+    const got = img.getSize();
+    if (got.width !== size || got.height !== size) throw new Error(`${svgFile} at ${size} px was captured as ${got.width}x${got.height}`);
     return img.toPNG();
   }
 
-  fs.writeFileSync(out('icon.png'), await render('icon.svg', 1024));
-  const images = [];
-  // 32 px and below use the simplified small layout.
-  for (const size of ICO_SIZES) images.push({ size, png: await render(size <= 32 ? 'icon-win-small.svg' : 'icon-win.svg', size) });
-  fs.writeFileSync(out('icon.ico'), ico(images));
-  console.log('wrote build/icon.png, build/icon.ico');
+  const mac = {};
+  for (const size of ICNS_SIZES) mac[size] = await render(size <= SMALL_UP_TO ? 'icon-small.svg' : 'icon.svg', size);
+  fs.writeFileSync(out('icon.png'), mac[1024]);
+  fs.writeFileSync(out('icon.icns'), icns(mac));
+  const windows = [];
+  for (const size of ICO_SIZES) windows.push({ size, png: await render(size <= SMALL_UP_TO ? 'icon-win-small.svg' : 'icon-win.svg', size) });
+  fs.writeFileSync(out('icon.ico'), ico(windows));
+  console.log('wrote build/icon.png, build/icon.icns, build/icon.ico');
   app.quit();
 }).catch((e) => {
   console.error('icon render failed:', e && e.message ? e.message : e);
