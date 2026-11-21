@@ -37,6 +37,7 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 - Say "plan first" (or ask for a large change) and the Worker plans before touching code. The plan arrives in the decision inbox: approve it, or type what to change.
 - In a Worker's conversation, the Changes tab shows what it changed on its branch, committed or not, before a PR exists.
 - Before opening a PR, a Worker has a reviewer on the Dispatcher's (lighter) model check its diff, fixes what holds up, and notes the result in one line of the PR body. Small changes (up to 30 lines in up to 3 files, or docs only) skip it. Turn it off with "Self-review before PR" in Settings → Models.
+- Open PRs show whether they are ready to merge: CI, conflicts and review, on the result cards and in the Worker view. When CI fails, the Worker gets the end of the failed GitHub Actions log (or just the link, for other CI) and fixes it on the same branch, up to 3 times per task; after that the decision inbox asks whether to keep going.
 - In the Repositories view, a setup command (for example `npm ci`) runs in every new worktree. `ROOT_PATH` points at the main checkout, so `cp $env:ROOT_PATH/.env .` (Windows) or `cp "$ROOT_PATH/.env" .` copies local config.
 - In the Memory view, review and edit preferences, repository notes and past decisions. Opening a repository note offers a button to have a Worker open a PR adding it to that repository's CLAUDE.md.
 
@@ -74,7 +75,8 @@ Build output goes to `dist/`, installers to `release/`.
 | `src/main/agents/advisor.ts` | Decides whether a Worker's question can be answered from memory |
 | `src/main/agents/permissions.ts` | Actions that always ask |
 | `src/main/accounts.ts` | Account pool, usage, assignment |
-| `src/main/prmonitor.ts` | PR status, cleanup after merge, review comments |
+| `src/main/prmonitor.ts` | PR status, cleanup after merge, review comments, failed CI |
+| `src/main/prchecks.ts` | Merge readiness from PR checks, which CI failures to hand back, log tails |
 | `src/main/attachments.ts` | Paths of files dropped into messages |
 | `src/main/memory.ts` | Markdown memory with git history |
 | `src/shared/i18n.ts` | English and Korean UI text |

@@ -32,7 +32,7 @@ function workerPrompt(w: Worker) {
   return [
     `You are Worker ${w.id} in Oh My Agent IDE. The Dispatcher assigns your tasks; the user only sees results and the decisions that truly need them. Write all progress messages and reports in ${langName()}.`,
     '',
-    'Task messages start with "[Task T-xxxx]". Messages starting with "[Dispatcher]", "[User message]" or "[Review comments]" are further instructions for the work in progress.',
+    'Task messages start with "[Task T-xxxx]". Messages starting with "[Dispatcher]", "[User message]", "[Review comments]" or "[CI failure]" are further instructions for the work in progress.',
     'A message may end with an "[Attached files]" list of paths the user dropped in. Read them directly from those paths when relevant.',
     '',
     'Code tasks:',
@@ -41,7 +41,7 @@ function workerPrompt(w: Worker) {
     `- When done, commit, push, and open a ready-for-review PR (not a draft) with \`gh pr create\`. Do not request reviewers.${s.githubHost ? ` GH_HOST is set to ${s.githubHost}.` : ''}`,
     `- Write the PR title and body in the language the repository's recent PRs use; if there is no clear convention, use ${langName()}. The body lists what changed and which tests you ran.`,
     '- Do not comment on or merge PRs.',
-    '- On "[Review comments]", fix them on the same branch and push.',
+    '- On "[Review comments]" or "[CI failure]", fix them on the same branch and push.',
     '',
     'Non-code tasks (research, documents, reports):',
     '- Create the output folder named in the task message and save results there as files (usually markdown).',
@@ -78,8 +78,9 @@ function parseResult(text: string, cwd: string) {
 
 class WorkerManager {
   sessions = new Map<string, AgentSession>();
-  /** Review fixes and follow-ups on finished tasks get different result-card wording. */
+  /** Review fixes, CI fixes and follow-ups on finished tasks get different result-card wording. */
   private reviewing = new Set<string>();
+  private ciFixing = new Set<string>();
   private followups = new Set<string>();
 
   /** A follow-up for a task that finished less than 3 days ago reopens that task. */
@@ -334,6 +335,7 @@ class WorkerManager {
       return;
     }
     const wasReview = this.reviewing.delete(task.id);
+    const wasCi = this.ciFixing.delete(task.id);
     const wasFollowup = this.followups.delete(task.id);
     const firstFinish = !task.finishedAt;
     task.summary = summary;
@@ -343,9 +345,9 @@ class WorkerManager {
     task.prState = task.prUrl ? (task.prState ?? 'OPEN') : null;
     task.finishedAt = nowIso();
     if (task.prUrl && !task.reviewSyncedAt) task.reviewSyncedAt = nowIso();
-    const label = wasReview ? t('res.reviewLabel') : wasFollowup ? t('res.followupLabel') : t('res.doneLabel');
-    store.chat('result', wasReview ? t('res.review', { s: summary }) : wasFollowup ? t('res.followup', { s: summary }) : summary, task.id);
-    store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`);
+    const label = wasReview ? t('res.reviewLabel') : wasCi ? t('res.ciFixLabel') : wasFollowup ? t('res.followupLabel') : t('res.doneLabel');
+    store.chat('result', wasReview ? t('res.review', { s: summary }) : wasCi ? t('res.ciFix', { s: summary }) : wasFollowup ? t('res.followup', { s: summary }) : summary, task.id);
+    store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`);
     if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
     notifyInfo(`${w.id} ${label}`, `${task.title}: ${summary}`);
     store.changed();
@@ -458,16 +460,18 @@ class WorkerManager {
     this.touch(w);
   }
 
-  /** New review comments on a PR. */
-  sendReview(task: Task, body: string) {
+  /** New review comments on a PR, or its failed CI checks. */
+  sendReview(task: Task, body: string, kind: 'review' | 'ci' = 'review') {
     const w = task.workerId ? store.worker(task.workerId) : null;
     if (!w) return;
     if (w.status === 'archived') void this.unarchive(w);
     task.status = 'running';
     task.updatedAt = nowIso();
-    this.reviewing.add(task.id);
-    store.log(w.id, 'event', t('log.review'));
-    const msg = `[Review comments] New comments on ${task.prUrl}. Address them on the same branch (${task.branch}), push, and report what you changed. If you leave a comment unaddressed, say why in the report.\n\n${body}`;
+    (kind === 'ci' ? this.ciFixing : this.reviewing).add(task.id);
+    store.log(w.id, 'event', t(kind === 'ci' ? 'log.ciFix' : 'log.review'));
+    const msg = kind === 'ci'
+      ? `[CI failure] Checks failed on ${task.prUrl}. Fix them on the same branch (${task.branch}), push, and report what you changed. If a failure does not come from this branch (a flaky test, CI setup, a missing secret), do not change unrelated code; say so in the report.\n\n${body}`
+      : `[Review comments] New comments on ${task.prUrl}. Address them on the same branch (${task.branch}), push, and report what you changed. If you leave a comment unaddressed, say why in the report.\n\n${body}`;
     const s = this.ensureSession(w);
     if (!s) {
       task.status = 'queued';
