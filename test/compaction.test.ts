@@ -9,7 +9,7 @@ import { dispatcher } from '../src/main/agents/dispatcher';
 import { accounts } from '../src/main/accounts';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
-import { COMPACT_AT, CONTEXT_WINDOW, WORKER_IDLE_COMPACT } from '../src/shared/context';
+import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW, WORKER_IDLE_COMPACT } from '../src/shared/context';
 import type { Task, Worker } from '../src/shared/types';
 
 // Settings and the IDE home live in a temp folder. Two accounts, so a limit can move a session to the other one.
@@ -205,7 +205,7 @@ test("a Worker's compaction is shown in its conversation, and a limit that stops
   workers.closeAll();
 });
 
-test('a Worker is compacted from 100K once its task is finished; while the task is open it waits for 80% of the window', () => {
+test('a Worker is compacted from 60K once its task is finished; while the task is open it waits for 80% of the window', () => {
   workers.closeAll();
   const { w, x } = worker();
   const s = workers.ensureSession(w)!;
@@ -229,6 +229,25 @@ test('a Worker is compacted from 100K once its task is finished; while the task 
   feed(s, assistant(WORKER_IDLE_COMPACT - 1, 'src/parse.ts'));
   feed(s, result({ result: 'src/parse.ts' }));
   assert.equal(sent().length, 4);
+
+  // Above it again, but hardly grown since the compaction (which left it at 60K - 1): not compacted after every turn.
+  s.send('[Dispatcher question] And the line?');
+  feed(s, assistant(WORKER_IDLE_COMPACT + COMPACT_MIN_GROWTH - 2, 'Line 12'));
+  feed(s, result({ result: 'Line 12' }));
+  assert.equal(sent().length, 5);
+  // Grown by a real piece of work: compacted again.
+  s.send('[Dispatcher] Rename it.');
+  feed(s, assistant(WORKER_IDLE_COMPACT + COMPACT_MIN_GROWTH - 1, 'Renamed.'));
+  feed(s, result({ result: 'Renamed.' }));
+  assert.deepEqual(sent().slice(5), ['[Dispatcher] Rename it.', '/compact']);
+  workers.closeAll();
+});
+
+test('a Worker runs with a 5-minute prompt cache and without the bundled skills; the Dispatcher keeps its own', () => {
+  workers.closeAll();
+  const { w } = worker();
+  assert.deepEqual(workers.ensureSession(w)!.cfg.env, { FORCE_PROMPT_CACHING_5M: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1' });
+  assert.equal((dispatcher as unknown as { open(): AgentSession }).open().cfg.env, undefined);
   workers.closeAll();
 });
 

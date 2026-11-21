@@ -40,6 +40,16 @@ const GO_ON_MSG ='[Dispatcher] Your answer was delivered. Go on with your task w
 
 /** Built-in tools a Worker never needs. Left out, their definitions are not re-read on every step. */
 const UNUSED_TOOLS = ['Workflow', 'ScheduleWakeup', 'ReportFindings', 'ListAgents'];
+/**
+ * Environment for a Worker's Claude Code process (its subagents inherit it).
+ * - A 5-minute prompt cache. A Worker steps every few seconds, so the cache stays warm while it works, and writing
+ *   to it costs 1.25x input instead of the 2x of the 1-hour cache Claude Code uses on subscriptions. In 1,617 measured
+ *   Worker steps only 4 came 5 to 60 minutes after the one before. The Dispatcher waits minutes between turns and
+ *   keeps the 1-hour cache.
+ * - No bundled skills (debug, verify, code-review, claude-api and others). Their listing is about 2,300 tokens sent
+ *   with every request, and no Worker used one. The app's own skills and the repository's stay.
+ */
+const WORKER_ENV = { FORCE_PROMPT_CACHING_5M: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1' };
 /** Command output a Worker gets inline; Claude Code saves the rest to a file it can read in parts (its default is 30,000). */
 const SHELL_OUTPUT_CHARS = 12_000;
 /** Requests from one task that each start a Dispatcher turn; later ones wait for its next turn. */
@@ -226,6 +236,7 @@ class WorkerManager {
       settings: { ...(loadSettings().claudeMemory ? { autoMemoryDirectory: memDir } : { autoMemoryEnabled: false }), bashOutputMaxChars: SHELL_OUTPUT_CHARS },
       mcpServers: { oma: workerTools(loadSettings().claudeMemory ? memDir : null, (kind, text) => this.fromWorker(w, kind, text)) },
       disallowedTools: UNUSED_TOOLS,
+      env: WORKER_ENV,
       // With its task finished, an idle Worker is compacted much earlier (see WORKER_IDLE_COMPACT).
       compactAt: () => (this.currentTask(w) ? COMPACT_AT : WORKER_IDLE_COMPACT),
       accountId: acc.id,
