@@ -506,8 +506,21 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); color: var(--text-primary); padding: var(--space-8) var(--space-16); border-radius: var(--radius-full); font-size: var(--fs-caption); box-shadow: var(--rim-strong), var(--shadow-3); z-index: var(--z-toast); max-width: 70vw; }
 .toast.err { color: var(--danger-text); }
 kbd { font: inherit; font-size: var(--fs-caption2); font-weight: 600; padding: 0 var(--space-4); border-radius: var(--radius-xs); background: var(--surface-code-inline); }
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: var(--radius-md); border: 3px solid transparent; background-clip: content-box; }
+
+/* scrollbars: shown only while their element scrolls, vertical and horizontal alike. app.ts (showBar) marks the
+   scrolling element .sb-on, and 1.2 s after its last scroll event swaps that for .sb-off, which fades the thumb out.
+   Chromium's overlay scrollbars don't take effect in Electron on Windows, so the bar keeps a thin gutter, the same
+   whether it shows or not, and nothing shifts. The thumb also shows under the pointer, so it can be grabbed.
+   --sb-thumb is reset on every element so a nested list doesn't show its bar while its parent scrolls. */
+@property --sb-thumb { syntax: '<color>'; inherits: true; initial-value: transparent; }
+* { --sb-thumb: transparent; }
+.sb-on { --sb-thumb: var(--scrollbar-thumb); }
+.sb-off { transition: --sb-thumb var(--dur-slow) var(--ease-out); }
+::-webkit-scrollbar { width: var(--space-8); height: var(--space-8); }
+::-webkit-scrollbar-thumb { background: var(--sb-thumb); border-radius: var(--radius-full); border: var(--space-2) solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background-color: var(--scrollbar-thumb); border-width: 1px; }
+::-webkit-scrollbar-corner { background: transparent; }
+
 
 /* Worker session header */
 .wk-list, .wk-session { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
