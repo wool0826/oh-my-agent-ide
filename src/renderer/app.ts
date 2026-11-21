@@ -307,7 +307,8 @@ function renderSidebar() {
 }
 
 function usageTip(a: AccountView) {
-  const head = `${a.label}\n5h ${pct(a.fiveHour.utilization)} · 7d ${pct(a.sevenDay.utilization)}`;
+  const base = `${a.label}\n5h ${pct(a.fiveHour.utilization)} · 7d ${pct(a.sevenDay.utilization)}`;
+  const head = a.limitedUntil ? `${base}\n${t('usage.limitedUntil', { t: hhmm(a.limitedUntil) })}` : base;
   if (a.lastError) return `${head}\n${a.lastError}`;
   if (!a.usageUpdatedAt) return `${head}\n${t('usage.unknown')}`;
   const parts = [head, t('usage.asOf', { t: hhmm(a.usageUpdatedAt) })];

@@ -18,7 +18,7 @@ import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
 import { worktreeDiff } from '../gitdiff';
 import { notifyInfo } from '../notify';
 import { isAttached, readPath } from '../attachments';
-import { t, langName } from '../i18n';
+import { t, langName, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
@@ -128,12 +128,11 @@ class WorkerManager {
     return w;
   }
 
-  /** Open a session on a picked account if none is open. Null when every account is limited. */
+  /** Open a session on a picked account if none is open. Null when a usage limit holds every account. */
   ensureSession(w: Worker): AgentSession | null {
     const existing = this.sessions.get(w.id);
-    if (existing && !existing.closed) return existing;
-    const cur = accounts.get(w.accountId);
-    const acc = cur && !accounts.isLimited(cur) ? cur : accounts.pick();
+    if (existing && !existing.closed) return existing.ready() ? existing : null;
+    const acc = accounts.isFree(w.accountId) ? accounts.get(w.accountId) : accounts.pick();
     if (!acc) return null;
     const memDir = workerMemoryDir(w);
     const s = new AgentSession({
@@ -180,9 +179,10 @@ class WorkerManager {
       onLimited: () => {
         const task = this.currentTask(w);
         if (task) { task.status = 'queued'; task.updatedAt = nowIso(); }
+        const time = limitResetText(accounts.nextFreeAt());
         w.status = 'idle';
-        w.statusText = t('st.allLimited');
-        store.log(w.id, 'event', t('log.allLimited'));
+        w.statusText = t('st.limitUntil', { time });
+        store.log(w.id, 'event', t('log.limitWait', { time }));
         store.changed();
       },
     });
@@ -408,8 +408,10 @@ class WorkerManager {
   private dispatch(w: Worker, task: Task) {
     const s = this.ensureSession(w);
     if (!s) {
+      const time = limitResetText(accounts.nextFreeAt());
       task.status = 'queued';
-      w.statusText = t('st.allLimited');
+      w.statusText = t('st.limitUntil', { time });
+      store.log(w.id, 'event', t('log.limitWait', { time }));
       store.changed();
       return;
     }
@@ -430,10 +432,14 @@ class WorkerManager {
     if (w.status === 'archived') void this.unarchive(w);
     store.log(w.id, from, text);
     if (from === 'user') store.pushUpdate(`The user wrote to ${w.id} directly: ${oneLine(text, 200)}`);
+    const msg = `${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}`;
     const s = this.ensureSession(w);
-    if (!s) throw new Error(t('err.allLimitedSend'));
+    if (!s) {
+      this.hold(w, msg);
+      return;
+    }
     this.reopenLast(w);
-    s.send(`${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}`);
+    s.send(msg);
     this.touch(w);
   }
 
@@ -446,9 +452,14 @@ class WorkerManager {
     task.updatedAt = nowIso();
     this.reviewing.add(task.id);
     store.log(w.id, 'event', t('log.review'));
+    const msg = `[Review comments] New comments on ${task.prUrl}. Address them on the same branch (${task.branch}), push, and report what you changed. If you leave a comment unaddressed, say why in the report.\n\n${body}`;
     const s = this.ensureSession(w);
-    if (!s) { task.status = 'queued'; store.changed(); return; }
-    s.send(`[Review comments] New comments on ${task.prUrl}. Address them on the same branch (${task.branch}), push, and report what you changed. If you leave a comment unaddressed, say why in the report.\n\n${body}`);
+    if (!s) {
+      task.status = 'queued';
+      this.hold(w, msg);
+      return;
+    }
+    s.send(msg);
     store.changed();
   }
 
@@ -489,7 +500,18 @@ class WorkerManager {
     }
   }
 
-  /** Retry tasks paused by account limits. */
+  /** Messages that came while a usage limit held every account, per Worker; sent when the first limit resets. */
+  private held = new Map<string, string[]>();
+
+  private hold(w: Worker, msg: string) {
+    this.held.set(w.id, [...(this.held.get(w.id) ?? []), msg]);
+    const time = limitResetText(accounts.nextFreeAt());
+    w.statusText = t('st.limitUntil', { time });
+    store.log(w.id, 'event', t('log.limitHeld', { time }));
+    store.changed();
+  }
+
+  /** A usage limit reset (or an account was added): continue paused tasks and send held messages. */
   retryQueued() {
     for (const task of store.data.tasks) {
       if (task.status !== 'queued' || !task.workerId) continue;
@@ -498,10 +520,27 @@ class WorkerManager {
       const s = this.ensureSession(w);
       if (!s) return;
       task.status = 'running';
+      task.updatedAt = nowIso();
       w.statusText = '';
       store.log(w.id, 'event', t('log.limitCleared'));
-      s.send(w.sessionId ? 'The account limit has cleared. Continue the task where you left off.' : this.taskMessage(w, task));
+      const held = this.held.get(w.id) ?? [];
+      this.held.delete(w.id);
+      if (!w.sessionId) s.send(this.taskMessage(w, task));
+      if (held.length) held.forEach((m) => s.send(m));
+      else if (w.sessionId) s.send('The usage limit has reset. Continue the task where you left off.');
       store.changed();
+    }
+    for (const [id, msgs] of [...this.held]) {
+      const w = store.worker(id);
+      if (!w) { this.held.delete(id); continue; }
+      const s = this.ensureSession(w);
+      if (!s) return;
+      this.held.delete(id);
+      w.statusText = '';
+      store.log(w.id, 'event', t('log.limitCleared'));
+      this.reopenLast(w);
+      msgs.forEach((m) => s.send(m));
+      this.touch(w);
     }
   }
 

@@ -3,11 +3,8 @@ import { loadSettings, saveSettings, encryptToken, decryptToken, type StoredAcco
 import { log } from './log';
 import { nowIso, uid } from './util';
 import { t } from './i18n';
-import { liveWindow } from '../shared/usage';
+import { chooseAccount, isExhausted, limitEnd, liveWindow, nextFreeAt } from '../shared/usage';
 import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type UsageWindow } from '../shared/types';
-
-/** Above this usage (%) an account gets no new sessions, and running work moves to another account. */
-export const RED = 80;
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 
@@ -25,7 +22,7 @@ class Accounts extends EventEmitter {
       id: a.id, label: a.label, kind: a.kind, plan: a.plan,
       fiveHour: liveWindow(a.fiveHour), sevenDay: liveWindow(a.sevenDay),
       usageUpdatedAt: a.usageUpdatedAt, usageSource: a.usageSource,
-      limited: this.isLimited(a), lastError: a.lastError,
+      limited: this.isLimited(a), limitedUntil: this.isLimited(a) ? a.limitedUntil : null, lastError: a.lastError,
     }));
   }
 
@@ -86,31 +83,25 @@ class Accounts extends EventEmitter {
     return env;
   }
 
-  private score(a: StoredAccount) {
-    return Math.max(liveWindow(a.fiveHour).utilization ?? 0, liveWindow(a.sevenDay).utilization ?? 0);
+  /** Only an account a usage limit actually rejected is limited, until that limit resets. High usage alone is not. */
+  isLimited(a: StoredAccount) {
+    return isExhausted(a);
   }
 
-  isLimited(a: StoredAccount) {
-    if (a.limitedUntil && Date.parse(a.limitedUntil) > Date.now()) return true;
-    return this.score(a) > RED;
+  /** The account exists and no limit is holding it. */
+  isFree(id: string | null) {
+    const a = this.get(id);
+    return !!a && !this.isLimited(a);
   }
 
   /**
-   * Pick an account for a new session: the lowest usage among accounts that are not limited;
+   * Pick an account for a new session: the lowest usage among accounts no limit is holding, however high;
    * within 5 points, the one assigned longest ago. `exclude` is the account that just hit its limit.
+   * Null only when every account is held by a limit (or there are none).
    */
   pick(exclude?: string | null): StoredAccount | null {
-    const all = this.list().filter((a) => a.id !== exclude);
-    if (!all.length) return null;
-    const open = all.filter((a) => !this.isLimited(a));
-    const pool = open.length ? open : [];
-    if (!pool.length) return null;
-    pool.sort((x, y) => {
-      const d = this.score(x) - this.score(y);
-      if (Math.abs(d) > 5) return d;
-      return Date.parse(x.lastAssignedAt ?? '1970-01-01') - Date.parse(y.lastAssignedAt ?? '1970-01-01');
-    });
-    const chosen = pool[0];
+    const chosen = chooseAccount(this.list(), Date.now(), exclude);
+    if (!chosen) return null;
     chosen.lastAssignedAt = nowIso();
     saveSettings();
     return chosen;
@@ -121,11 +112,20 @@ class Accounts extends EventEmitter {
     return l.length > 0 && l.every((a) => this.isLimited(a));
   }
 
-  /** A session reported a limit error. Without resetsAt, retry in 30 minutes. */
+  /** When every account is held by a limit: when the first one resets (ms). Otherwise null. */
+  nextFreeAt() {
+    return nextFreeAt(this.list());
+  }
+
+  /** A usage limit rejected this account. It is skipped until the limit resets (see limitEnd). */
   markLimited(id: string | null, resetsAtMs?: number) {
     const a = this.get(id);
     if (!a) return;
-    a.limitedUntil = new Date(resetsAtMs && resetsAtMs > Date.now() ? resetsAtMs : Date.now() + 30 * 60_000).toISOString();
+    let end = limitEnd(a, Date.now(), resetsAtMs);
+    // A report without its own reset time never shortens one that had it (the rejection event comes first).
+    if (!resetsAtMs && a.limitedUntil) end = Math.max(end, Date.parse(a.limitedUntil));
+    a.limitedUntil = new Date(end).toISOString();
+    log.info('usage limit', a.label, 'until', a.limitedUntil);
     saveSettings();
     this.emit('changed');
   }
@@ -160,7 +160,6 @@ class Accounts extends EventEmitter {
     if (s) a.sevenDay = s;
     a.usageUpdatedAt = nowIso();
     if (a.kind !== 'token' || a.usageSource !== 'endpoint') a.usageSource = 'events';
-    if (a.limitedUntil && Date.parse(a.limitedUntil) > Date.now() && this.score(a) < RED) a.limitedUntil = null;
     saveSettings();
     this.emit('changed');
   }
@@ -202,7 +201,6 @@ class Accounts extends EventEmitter {
         a.usageUpdatedAt = nowIso();
         a.usageSource = 'endpoint';
         a.lastError = null;
-        if (a.limitedUntil && Date.parse(a.limitedUntil) > Date.now() && this.score(a) < RED) a.limitedUntil = null;
       } catch (e) {
         a.lastError = t('acc.err.usage', { msg: (e as Error).message });
         log.warn('usage refresh', a.label, (e as Error).message);

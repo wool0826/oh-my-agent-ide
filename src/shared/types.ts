@@ -22,7 +22,10 @@ export interface AccountView {
   sevenDay: UsageWindow;
   usageUpdatedAt: string | null;
   usageSource: 'endpoint' | 'events' | null;
+  /** A usage limit rejected the account. */
   limited: boolean;
+  /** When that limit resets, while it holds. */
+  limitedUntil: string | null;
   lastError: string | null;
 }
 

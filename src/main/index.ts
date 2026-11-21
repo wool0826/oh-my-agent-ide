@@ -49,6 +49,26 @@ function snapshot(): AppState {
 }
 
 let pushTimer: NodeJS.Timeout | null = null;
+/** Continue work that a usage limit paused: Worker tasks, held messages, and the Dispatcher. */
+function retryAfterLimits() {
+  workers.retryQueued();
+  dispatcher.retryHeld();
+}
+
+/** While a usage limit holds every account, wake up right after the first one resets. */
+let limitTimer: NodeJS.Timeout | null = null;
+function scheduleLimitRetry() {
+  if (limitTimer) clearTimeout(limitTimer);
+  limitTimer = null;
+  const at = accounts.nextFreeAt();
+  if (at === null) return;
+  limitTimer = setTimeout(() => {
+    limitTimer = null;
+    retryAfterLimits();
+    scheduleLimitRetry();
+  }, Math.max(1_000, at - Date.now() + 5_000));
+}
+
 function pushState() {
   if (pushTimer) return;
   pushTimer = setTimeout(() => {
@@ -237,6 +257,7 @@ async function boot() {
   installPlugin();
   store.on('changed', pushState);
   accounts.on('changed', pushState);
+  accounts.on('changed', scheduleLimitRetry);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
   onDecisionCreated((d) => {
     notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), d.title);
@@ -251,7 +272,8 @@ async function boot() {
   void listModels(6 * 3600_000);
   workers.resumeAfterRestart();
   startPrMonitor();
-  setInterval(() => workers.retryQueued(), 2 * 60_000).unref();
+  setInterval(retryAfterLimits, 2 * 60_000).unref();
+  scheduleLimitRetry();
   setInterval(() => { workers.autoArchive(); pruneDecisions(); }, 60 * 60_000).unref();
   setTimeout(() => workers.autoArchive(), 60_000).unref();
 }

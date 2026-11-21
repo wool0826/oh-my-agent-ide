@@ -11,7 +11,7 @@ import { registerRepo } from '../repos';
 import { paths } from '../paths';
 import { loadSettings } from '../settings';
 import { attachmentBlock, registerAttachments } from '../attachments';
-import { t, langName } from '../i18n';
+import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today } from '../util';
 import { EFFORTS, type Effort, type Task } from '../../shared/types';
 
@@ -111,7 +111,7 @@ function boardServer() {
           store.chat('event', task.status === 'blocked'
             ? t('ev.assignedAfter', { id: w.id, title: task.title, dep: task.afterTaskId ?? '' })
             : t(a.worker_id ? 'ev.assignedCont' : 'ev.assigned', { id: w.id, title: task.title }));
-          return ok(`${task.id} assigned to ${w.id}.${task.status === 'queued' ? ' Every account is at its limit; it starts when one frees up.' : ''}${task.status === 'blocked' ? ` It starts when ${task.afterTaskId}'s PR is merged.` : ''}`);
+          return ok(`${task.id} assigned to ${w.id}.${task.status === 'queued' ? ' Every account is held by a usage limit; it starts when the first one resets.' : ''}${task.status === 'blocked' ? ` It starts when ${task.afterTaskId}'s PR is merged.` : ''}`);
         } catch (e) {
           return fail(`Could not create the task: ${(e as Error).message}`);
         }
@@ -198,16 +198,19 @@ class Dispatcher {
   statusText = '';
   /** Context size when the user asked to compact; null when no compaction was requested. */
   private compactingFrom: number | null = null;
+  /** Messages that came while every account was held by a usage limit; sent when the first one resets. */
+  private held: string[] = [];
+  /** A turn a usage limit cut off; continued when the first limit resets. */
+  private cutOff = false;
 
   get busy() { return !!this.session?.busy; }
 
   private open(): AgentSession | null {
     const d = store.data.dispatcher;
     const freshDay = d.date !== today();
-    if (this.session && !this.session.closed && !freshDay) return this.session;
+    if (this.session && !this.session.closed && !freshDay) return this.session.ready() ? this.session : null;
     if (this.session) this.session.close();
-    const cur = accounts.get(d.accountId);
-    const acc = cur && !accounts.isLimited(cur) ? cur : accounts.pick();
+    const acc = accounts.isFree(d.accountId) ? accounts.get(d.accountId) : accounts.pick();
     if (!acc) return null;
     if (freshDay) {
       d.sessionId = null;
@@ -246,7 +249,10 @@ class Dispatcher {
         if (st !== 'busy') this.statusText = '';
         store.changed();
       },
-      onLimited: () => store.chat('error', t('err.allLimited')),
+      onLimited: () => {
+        this.cutOff = true;
+        store.chat('event', t('ev.limitPaused', { time: limitResetText(accounts.nextFreeAt()) }));
+      },
     });
     this.session = s;
     store.changed();
@@ -260,20 +266,42 @@ class Dispatcher {
     store.chat('user', full);
     const s = this.open();
     if (!s) {
-      store.chat('error', accounts.list().length ? t('err.allLimited') : t('err.noAccount'));
+      if (!accounts.list().length) { store.chat('error', t('err.noAccount')); return; }
+      this.held.push(full);
+      store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt()) }));
+      store.changed();
       return;
     }
-    const updates = store.takeUpdates();
-    const prefix = updates.length ? `[Worker updates]\n${updates.map((u) => `- ${u}`).join('\n')}\n\n` : '';
-    s.send(prefix + full);
-    store.changed();
+    this.deliver(s, [full]);
   }
 
   /** The user answered a question the Dispatcher posted. */
   decisionAnswered(question: string, answer: string) {
+    const msg = `[Decision answer] Question: ${question}\nAnswer: ${answer}`;
+    const s = this.open();
+    if (!s) { this.held.push(msg); return; }
+    this.deliver(s, [msg]);
+  }
+
+  /** A usage limit reset: continue the cut-off turn and send what was held, if an account is free now. */
+  retryHeld() {
+    if (!this.held.length && !this.cutOff) return;
     const s = this.open();
     if (!s) return;
-    s.send(`[Decision answer] Question: ${question}\nAnswer: ${answer}`);
+    store.chat('event', t('log.limitCleared'));
+    this.deliver(s, []);
+  }
+
+  /** Send messages in one turn, after Worker updates and anything a usage limit held back. */
+  private deliver(s: AgentSession, msgs: string[]) {
+    const parts = this.cutOff ? ['[Usage limit reset] Your last turn was cut off by a usage limit. Continue where you left off.'] : [];
+    parts.push(...this.held, ...msgs);
+    this.held = [];
+    this.cutOff = false;
+    const updates = store.takeUpdates();
+    const prefix = updates.length ? `[Worker updates]\n${updates.map((u) => `- ${u}`).join('\n')}\n\n` : '';
+    s.send(prefix + parts.join('\n\n'));
+    store.changed();
   }
 
   async stop() {
@@ -287,7 +315,7 @@ class Dispatcher {
     // A new day starts a new session anyway; nothing to compact.
     if (!d.sessionId || d.date !== today()) return;
     const s = this.open();
-    if (!s) throw new Error(accounts.list().length ? t('err.allLimited') : t('err.noAccount'));
+    if (!s) throw new Error(accounts.list().length ? t('err.limitUntil', { time: limitResetText(accounts.nextFreeAt()) }) : t('err.noAccount'));
     this.compactingFrom = d.contextTokens;
     this.statusText = t('st.compacting');
     s.compact();

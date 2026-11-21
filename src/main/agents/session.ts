@@ -3,7 +3,6 @@ import { accounts } from '../accounts';
 import { claudeExecutable, pluginPath } from '../runtime';
 import { log } from '../log';
 import { PushQueue } from '../util';
-import { t } from '../i18n';
 
 /** When a turn ends above this size, send /compact. */
 export const COMPACT_AT = 250_000;
@@ -72,6 +71,18 @@ export class AgentSession {
   }
 
   get accountId() { return this.cfg.accountId; }
+
+  /**
+   * Before the session (re)starts, move it off an account a usage limit is holding.
+   * False when every account is held, so it cannot start now.
+   */
+  ready(): boolean {
+    if (this.q || accounts.isFree(this.cfg.accountId)) return true;
+    const next = accounts.pick(this.cfg.accountId);
+    if (!next) return false;
+    this.cfg.accountId = next.id;
+    return true;
+  }
 
   start() {
     this.input = new PushQueue<SDKUserMessage>();
@@ -180,7 +191,10 @@ export class AgentSession {
       log.error(`[${this.cfg.label}] session error`, msg);
       this.q = null;
       this.busy = false;
-      if (LIMIT_RE.test(msg)) return void this.failover();
+      if (LIMIT_RE.test(msg)) {
+        accounts.markLimited(this.cfg.accountId);
+        return void this.failover();
+      }
       this.ev.onStatus?.('error', msg.slice(0, 300));
     }
   }
@@ -276,9 +290,10 @@ export class AgentSession {
       try { this.q?.close(); } catch { /* ignore */ }
       this.q = null;
       if (!next) {
+        // Every account is held by a limit: the owner picks this up again when the first one resets.
         this.busy = false;
+        this.ev.onStatus?.('idle', '');
         this.ev.onLimited?.();
-        this.ev.onStatus?.('error', t('acc.allLimitedResume'));
         return;
       }
       log.info(`[${this.cfg.label}] failover ${old} -> ${next.id}`);
@@ -290,16 +305,6 @@ export class AgentSession {
     } finally {
       this.failingOver = false;
     }
-  }
-
-  /** Used to restart after a limit clears. */
-  resumeAfterLimit(text: string) {
-    const next = accounts.pick();
-    if (!next) return false;
-    this.cfg.accountId = next.id;
-    this.start();
-    this.send(text);
-    return true;
   }
 }
 

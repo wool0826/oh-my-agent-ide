@@ -52,7 +52,7 @@ const en = {
   'st.limitWait': 'Waiting for limit',
   'st.prOpen': 'PR open',
   'st.inReview': 'in review',
-  'st.allLimited': 'Waiting: every account is at its limit',
+  'st.limitUntil': 'Continues when the usage limit resets at {time}',
 
   // sidebar
   'side.decisions': 'Needs your decision',
@@ -68,6 +68,7 @@ const en = {
   // usage
   'usage.addAccount': 'Add an account',
   'usage.unknown': 'Usage not known yet',
+  'usage.limitedUntil': 'At its usage limit until {t}',
   'usage.asOf': 'As of {t}',
   'usage.no7d': '7-day usage arrives only when the usage server answers; the limit events during work report the 5-hour window.',
 
@@ -278,7 +279,6 @@ const en = {
   'acc.err.token': 'Paste the token starting with sk-ant- that claude setup-token printed.',
   'acc.err.usageScope': 'This token cannot read usage. Limit events during work fill it in instead.',
   'acc.err.usage': 'Usage lookup failed ({msg})',
-  'acc.allLimitedResume': 'Every account is at its usage limit. Work continues when a limit clears.',
 
   // permissions
   'perm.bash': 'Run this command?',
@@ -320,7 +320,8 @@ const en = {
 
   // worker log
   'log.error': 'Error: {msg}',
-  'log.allLimited': 'Paused: every account is at its usage limit. Continues when a limit clears.',
+  'log.limitWait': 'Paused: every account is at its usage limit. Continues when it resets at {time}.',
+  'log.limitHeld': 'Every account is at its usage limit. This goes out when it resets at {time}.',
   'log.question': 'Question',
   'log.options': 'Options',
   'log.answer': 'Answer',
@@ -329,7 +330,7 @@ const en = {
   'log.blockedStarted': '{id} was merged; starting.',
   'log.blockedCancelled': 'The PR this task waited for was closed without merging; cancelled.',
   'log.review': 'New PR review comments; addressing them.',
-  'log.limitCleared': 'The account limit cleared; continuing.',
+  'log.limitCleared': 'The usage limit reset; continuing.',
   'log.restarted': 'The app restarted; continuing.',
 
   // notifications
@@ -342,8 +343,9 @@ const en = {
   'err.noRepo': 'Repository is not registered: {name}',
   'err.noWorker': 'No such Worker: {id}',
   'err.wrongRepo': '{id} works on {has}, so it cannot take a {want} task.',
-  'err.allLimited': 'Every account is at its usage limit. Send again once a limit clears.',
-  'err.allLimitedSend': 'Every account is at its usage limit, so this cannot be sent now.',
+  'ev.limitPaused': 'Every account hit its usage limit. The Dispatcher continues when it resets at {time}.',
+  'ev.limitHeld': 'Every account is at its usage limit. This goes out when it resets at {time}.',
+  'err.limitUntil': 'Every account is at its usage limit until {time}.',
   'err.noAccount': 'Add an account in Settings first.',
   'err.dispatcher': 'Dispatcher error: {msg}',
   'err.noItem': 'That item no longer exists.',
@@ -409,7 +411,7 @@ const ko: Record<Key, string> = {
   'st.limitWait': '한도 대기',
   'st.prOpen': 'PR 열림',
   'st.inReview': '리뷰 대기',
-  'st.allLimited': '모든 계정이 한도라 대기 중',
+  'st.limitUntil': '{time}에 사용량 한도가 풀리면 이어서 해요',
 
   'side.decisions': '결정 필요',
   'side.running': '실행 중',
@@ -423,6 +425,7 @@ const ko: Record<Key, string> = {
 
   'usage.addAccount': '계정 등록',
   'usage.unknown': '아직 사용량을 모름',
+  'usage.limitedUntil': '{t}까지 사용량 한도',
   'usage.asOf': '{t} 기준',
   'usage.no7d': '7일 사용량은 사용량 서버가 답할 때만 들어와요. 작업 중 한도 알림은 5시간 값만 알려 줘요.',
 
@@ -625,7 +628,6 @@ const ko: Record<Key, string> = {
   'acc.err.token': 'claude setup-token으로 받은 sk-ant-로 시작하는 토큰을 붙여 넣어 주세요.',
   'acc.err.usageScope': '사용량 조회 권한이 없는 토큰이에요. 작업 중 들어오는 한도 정보로 대신 표시합니다.',
   'acc.err.usage': '사용량 조회 실패 ({msg})',
-  'acc.allLimitedResume': '모든 계정이 사용량 한도에 걸렸어요. 한도가 풀리면 이어서 진행합니다.',
 
   'perm.bash': '이 명령을 실행해도 될까요?',
   'perm.tool': '{tool} 실행을 허용할까요?',
@@ -664,7 +666,8 @@ const ko: Record<Key, string> = {
   'res.doneLabel': '완료',
 
   'log.error': '오류: {msg}',
-  'log.allLimited': '모든 계정이 사용량 한도에 걸려 잠시 멈췄어요. 한도가 풀리면 이어서 진행합니다.',
+  'log.limitWait': '모든 계정이 사용량 한도에 걸려 멈췄어요. {time}에 한도가 풀리면 이어서 해요.',
+  'log.limitHeld': '모든 계정이 사용량 한도에 걸렸어요. {time}에 한도가 풀리면 보낼게요.',
   'log.question': '질문',
   'log.options': '선택지',
   'log.answer': '답변',
@@ -673,7 +676,7 @@ const ko: Record<Key, string> = {
   'log.blockedStarted': '{id}이 머지돼 시작해요.',
   'log.blockedCancelled': '기다리던 PR이 머지 없이 닫혀 취소했어요.',
   'log.review': 'PR 리뷰 코멘트가 달려 반영을 시작했어요.',
-  'log.limitCleared': '계정 한도가 풀려 이어서 진행해요.',
+  'log.limitCleared': '사용량 한도가 풀려 이어서 해요.',
   'log.restarted': '앱이 다시 시작돼 이어서 진행해요.',
 
   'noti.decision': '결정이 필요해요',
@@ -684,8 +687,9 @@ const ko: Record<Key, string> = {
   'err.noRepo': '등록되지 않은 저장소예요: {name}',
   'err.noWorker': '없는 Worker예요: {id}',
   'err.wrongRepo': '{id}는 {has}용 Worker라 {want} 작업을 맡길 수 없어요.',
-  'err.allLimited': '모든 계정이 사용량 한도에 걸렸어요. 한도가 풀리면 다시 보내 주세요.',
-  'err.allLimitedSend': '모든 계정이 사용량 한도에 걸려 지금은 보낼 수 없어요.',
+  'ev.limitPaused': '모든 계정이 사용량 한도에 걸렸어요. {time}에 한도가 풀리면 Dispatcher가 이어서 해요.',
+  'ev.limitHeld': '모든 계정이 사용량 한도에 걸렸어요. {time}에 한도가 풀리면 보낼게요.',
+  'err.limitUntil': '{time}까지 모든 계정이 사용량 한도예요.',
   'err.noAccount': '설정에서 계정을 먼저 등록해 주세요.',
   'err.dispatcher': 'Dispatcher 오류: {msg}',
   'err.noItem': '없는 항목이에요.',
