@@ -94,6 +94,23 @@ export interface Task {
   planApproved?: boolean;
   /** What the task's turns cost (API-equivalent estimate) and their tokens, summed over every turn. */
   spend?: Spend;
+  /** Merge readiness of the open PR, from the PR monitor. */
+  prChecks?: PrChecks | null;
+  /** CI runs (GitHub Actions run IDs, or external checks) whose failure was already handled. */
+  seenCiRuns?: string[];
+  /** Times the Worker was sent failed CI checks to fix. */
+  ciFixAttempts?: number;
+}
+
+/** Is the open PR ready to merge: CI, conflicts and review. */
+export interface PrChecks {
+  /** none: the PR has no checks. failing wins over pending. */
+  ci: 'passing' | 'failing' | 'pending' | 'none';
+  /** Names of the failed checks. */
+  failed: string[];
+  conflicts: boolean;
+  /** GitHub's review decision; null when the branch needs no review. */
+  review: 'approved' | 'changes' | 'required' | null;
 }
 
 export interface DecisionOption { label: string; description?: string }
