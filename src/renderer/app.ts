@@ -5,6 +5,7 @@ import { modelLabel as labelFor } from '../shared/models';
 import { hasSpend, spendVars, type Spend } from '../shared/spend';
 import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
 import { prsInReview } from '../shared/prs';
+import { reasonText } from '../shared/askWhy';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
 import { restoreScroll, saveScroll } from '../shared/scroll';
@@ -444,7 +445,9 @@ function renderSidebar() {
   const sec = (title: string, rows: string, cls = '') => rows ? `<section class="side-sec ${cls}"><h4>${title}</h4>${rows}</section>` : '';
   const decRows = pending.map((d) => {
     const x = task(d.taskId);
-    return `<div class="row" data-action="goto-decision" data-id="${d.id}">${ic('ask')}<span class="t"><b>${esc(oneLine(d.summary?.what || d.title, 60))}</b><small>${esc([d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', '))}</small></span></div>`;
+    // Why it is asked, the same text as on the card and in the notification; the whole of it in the tooltip.
+    const small = d.reason ? `${d.workerId ?? 'Dispatcher'} · ${d.reason.why}` : [d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', ');
+    return `<div class="row" data-action="goto-decision" data-id="${d.id}"${d.reason ? ` title="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(d.summary?.what || d.title, 60))}</b><small>${esc(small)}</small></span></div>`;
   }).join('');
   const workerRow = (w: Worker) => {
     const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
@@ -680,6 +683,7 @@ function decisionHtml(d: Decision) {
   return `<div class="dec" id="dec-${d.id}">
     <div class="src">${icon}<span>${esc(src)}</span></div>
     <div class="q">${esc(d.title)}</div>
+    ${d.reason ? `<div class="reason"><span>${esc(d.reason.what)}</span> ${esc(d.reason.why)}</div>` : ''}
     ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
     ${sum ? planSummaryHtml(d, sum) : d.code ? (d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
     ${buttons}${custom}

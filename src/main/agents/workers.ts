@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createSdkMcpServer, tool, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { AgentSession, summarizeTool } from './session';
-import { alwaysAskHook, ALWAYS_ASK_PREFIX } from './permissions';
+import { alwaysAskHook, alwaysAskRule, ALWAYS_ASK_PREFIX } from './permissions';
 import { REVIEWER, reviewerAgent, selfReviewLine } from './selfReview';
 import { adviseOnQuestion } from './advisor';
 import { accounts } from '../accounts';
@@ -26,6 +26,7 @@ import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
 import { cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
+import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
 import { canStart, queueOrder, slotsUsed, waitsForSlot } from '../../shared/slots';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
@@ -259,14 +260,16 @@ class WorkerManager {
       if (task) task.status = 'waiting';
       store.changed();
       try {
-        const reason = (opts.decisionReason ?? '').replace(ALWAYS_ASK_PREFIX, '');
+        // The always-ask hook's reason is ours (the rule says it better); any other is Claude Code's own.
+        const cc = opts.decisionReason?.startsWith(ALWAYS_ASK_PREFIX) ? null : opts.decisionReason;
         const ans = await ask({
           source: 'permission', workerId: w.id, taskId: task?.id ?? null,
           title: toolName === 'Bash' ? t('perm.bash') : t('perm.tool', { tool: toolName.replace(/^mcp__\w+__/, '') }),
-          detail: reason ? t('perm.reason', { reason }) : (opts.title ?? ''),
+          detail: '',
           code: summarizeTool(toolName, input, 1200),
           options: [{ label: ALLOW }, { label: DENY }],
           questionKey: null,
+          reason: permissionReason(t, { who: w.id, task, tool: toolName, input, rule: alwaysAskRule(toolName, input), blockedPath: opts.blockedPath, decisionReason: cc ?? opts.description }),
         }, opts.signal);
         store.log(w.id, 'user', `${summarizeTool(toolName, input)} → ${ans === ALLOW ? t('allow') : ans === DENY ? t('deny') : ans}`);
         if (ans === ALLOW) return { behavior: 'allow', updatedInput: input };
@@ -306,7 +309,7 @@ class WorkerManager {
       const ans = await ask({
         source: 'plan', workerId: w.id, taskId: task?.id ?? null,
         title: t('plan.title'), detail: task?.title ?? w.title, code: plan || null, summary,
-        options: [{ label: ALLOW }], questionKey: null,
+        options: [{ label: ALLOW }], questionKey: null, reason: planReason(t, { who: w.id, task }),
       }, signal);
       if (ans === ALLOW) {
         const s = this.sessions.get(w.id);
@@ -370,6 +373,7 @@ class WorkerManager {
           title: q.question, detail: task ? task.title : w.title, code: null,
           options: (q.options ?? []).map((o: any) => ({ label: String(o.label), description: o.description ? String(o.description) : undefined })),
           questionKey: q.question,
+          reason: questionReason(t, { who: w.id, task, advisor: verdict?.basis }),
         }, signal);
         answers[q.question] = ans;
         store.log(w.id, 'user', `${t('log.answer')}: ${ans}`);
