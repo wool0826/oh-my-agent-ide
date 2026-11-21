@@ -1,4 +1,4 @@
-import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, MemoryFile, MemoryHit, MemorySuggestion, ModelList, PlanSummary, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
+import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, LogPage, MemoryFile, MemoryHit, MemoryHits, MemorySuggestion, ModelList, PlanSummary, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
@@ -8,6 +8,7 @@ import { prsInReview } from '../shared/prs';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
 import { restoreScroll, saveScroll } from '../shared/scroll';
+import { CHAT_SNAPSHOT, PAGE, firstPage, pagesFor, slideOlder, threadStart } from '../shared/paging';
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SUGGESTIONS, clampFontSize, fontStack, normalizeFontFamily } from '../shared/font';
 import { History, NavInput, sameScreen, type NavDir, type NavSource, type Screen, type View, type WorkerFilter } from '../shared/history';
 
@@ -46,11 +47,25 @@ const ui = {
   memSel: null as string | null,
   memFiles: [] as MemoryFile[],
   memHits: null as MemoryHit[] | null,
+  /** The query memHits answer, and how many hits it has in all (they load a page at a time). */
+  memQ: '',
+  memTotal: 0,
   memText: '' as string,
   aaSel: null as string | null,
   aaEdit: null as string | null,
   sugEdit: null as string | null,
+  /** Each Worker's loaded conversation: lines logFrom to the end of its log (decision 85). */
   logs: new Map<string, WorkerLogItem[]>(),
+  logFrom: new Map<string, number>(),
+  /** Chat items older than the state's snapshot, loaded with chat:page as the reader scrolls up. */
+  chatOlder: [] as ChatItem[],
+  /** The id of the first chat item the thread shows, and of the first item known to have none before it. */
+  chatFrom: null as string | null,
+  chatEndAt: null as string | null,
+  /** Threads loading their page before ('chat', or a Worker id). */
+  loadingOlder: new Set<string>(),
+  /** How many items each "Show more" list shows, by list key (moreBtn). */
+  pages: new Map<string, number>(),
   undo: [] as { kind: 'result' | 'auto'; ids: string[] }[],
   lastChatKey: '',
   lastLogKey: '',
@@ -287,6 +302,64 @@ function keepScroll(root: HTMLElement, render: () => void) {
   for (const [el, ms] of restoreScroll(keyed(), saved, (el) => quietAt.set(el, offsets(el)))) if (!bars.has(el)) showBar(el, ms);
 }
 
+/* ---------- paging (decision 85) ---------- */
+
+/** How many items a "Show more" list shows now: one page until its button is pressed. */
+function shownOf(key: string, page: number) { return Math.max(page, ui.pages.get(key) ?? 0); }
+
+/** The button that ends a list with `left` more items; each press shows `page` more. */
+function moreBtn(key: string, left: number, page: number) {
+  if (left <= 0) return '';
+  return `<button type="button" class="more-btn" data-action="page-more" data-page="${esc(key)}" data-n="${page}">${t('page.more', { n: Math.min(left, page) })}</button>`;
+}
+
+/** The part of a list on screen, and the "Show more" button for the rest. */
+function paged<T>(key: string, items: T[], page: number) {
+  const { items: shown, left } = firstPage(items, shownOf(key, page));
+  return { items: shown, more: moreBtn(key, left, page) };
+}
+
+/** The start of a thread with earlier items: they load as it comes within reach (watchTop), or on a click. */
+function olderBtn(thread: 'chat' | 'log', loading: boolean) {
+  return `<button type="button" class="pg-top" data-action="page-older" data-v="${thread}">${t(loading ? 'page.loading' : 'page.older')}</button>`;
+}
+
+/** Each thread's watch on its .pg-top. Within reach is up to 600px above the top, so a page loads before the reader gets there. */
+const topWatch = new Map<HTMLElement, IntersectionObserver>();
+function watchTop(th: HTMLElement, load: () => void) {
+  let io = topWatch.get(th);
+  if (!io) {
+    io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) load(); }, { root: th, rootMargin: '600px 0px 0px 0px' });
+    topWatch.set(th, io);
+  }
+  io.disconnect();
+  const top = th.querySelector('.pg-top');
+  if (top) io.observe(top);
+}
+
+/**
+ * Put a thread's new content in, keeping the reader's place: at the end when following it, the same distance
+ * from the end when a page went in above (`older`), and otherwise the same offset, since what is above stays put.
+ */
+function setThread(th: HTMLElement, html: string, follow: boolean, older: boolean) {
+  const fromEnd = th.scrollHeight - th.scrollTop;
+  th.innerHTML = html;
+  if (older) scrollQuietly(th, th.scrollHeight - fromEnd);
+  else if (follow) scrollQuietly(th, th.scrollHeight);
+}
+
+/** Says "Loading…" on a thread's .pg-top while its page is on the way. */
+function markLoading(th: HTMLElement) {
+  const top = th.querySelector('.pg-top');
+  if (top) top.textContent = t('page.loading');
+}
+
+/** Back to "Show earlier messages" when the page didn't come. */
+function unmarkLoading(th: HTMLElement) {
+  const top = th.querySelector('.pg-top');
+  if (top) top.textContent = t('page.older');
+}
+
 /** Static text in index.html carries data-i18n / data-i18n-ph / data-i18n-title keys. */
 function applyStaticText() {
   if (ui.langApplied === lang()) return;
@@ -496,18 +569,38 @@ function chatItemHtml(c: ChatItem) {
   }
 }
 
-function renderChat(force = false) {
+/** The chat items held: pages loaded with chat:page, then the state's snapshot. */
+function chatAll(): ChatItem[] {
+  return ui.chatOlder.length ? [...ui.chatOlder, ...S!.chat] : S!.chat;
+}
+
+/** Whether the store has chat items before the first one held (the snapshot is full, and no answer said none). */
+function chatHasEarlier(all: ChatItem[]) {
+  return S!.chat.length >= CHAT_SNAPSHOT && !!all[0] && all[0].id !== ui.chatEndAt;
+}
+
+/**
+ * The thread shows its last page and, once the reader scrolls up, from the first item shown on (ui.chatFrom).
+ * `older`: a page went in above, so the reader's place is kept from the end.
+ */
+function renderChat(force = false, older = false) {
   const s = S!;
-  const key = `${lang()}:${s.chat.length}:${s.chat[s.chat.length - 1]?.id}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
-  if (!force && key === ui.lastChatKey) return;
-  ui.lastChatKey = key;
   const th = $('#chat-thread');
   const nearBottom = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
-  let html = '';
+  const all = chatAll();
+  const from = threadStart(all.length, all.findIndex((c) => c.id === ui.chatFrom), PAGE.chat, (nearBottom || force) && !older);
+  ui.chatFrom = all[from]?.id ?? null;
+  // Pages no longer shown are let go; scrolling up loads them again.
+  if (ui.chatOlder.length && from >= ui.chatOlder.length) ui.chatOlder = [];
+  const earlier = from > 0 || chatHasEarlier(all);
+  const key = `${lang()}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
+  if (!force && !older && key === ui.lastChatKey) return;
+  ui.lastChatKey = key;
+  let html = earlier ? olderBtn('chat', ui.loadingOlder.has('chat')) : '';
   let last = 0;
   // The same error said again right after itself (e.g. every account at its limit) shows once with a count.
   const items: { c: ChatItem; n: number }[] = [];
-  for (const c of s.chat) {
+  for (const c of all.slice(from)) {
     const prev = items[items.length - 1];
     if (prev && c.kind === 'error' && prev.c.kind === 'error' && prev.c.text === c.text && !c.ref && !prev.c.ref) { prev.n++; continue; }
     items.push({ c, n: 1 });
@@ -518,14 +611,45 @@ function renderChat(force = false) {
     last = ts;
     html += n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
   }
-  if (!s.chat.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><span>${t('chat.emptyBody')}</span></div>`;
+  if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><span>${t('chat.emptyBody')}</span></div>`;
   if (s.dispatcher.busy) html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(s.dispatcher.statusText ? oneLine(s.dispatcher.statusText, 80) : '')}</div>`;
-  th.innerHTML = html;
-  if (nearBottom || force) scrollQuietly(th, th.scrollHeight);
+  setThread(th, html, nearBottom || force, older);
+  watchTop(th, () => void olderChat());
   const ctx = s.dispatcher.contextTokens;
   $('#chat-ctx').innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${k(ctx)} / ${k(CONTEXT_WINDOW)}`;
   $<HTMLButtonElement>('#chat-ctx').disabled = !!s.dispatcher.busy;
   updateSendButton();
+}
+
+/** Show the chat page before the first one shown: from the items held, else from the store (chat:page). */
+async function olderChat() {
+  if (!S || ui.loadingOlder.has('chat')) return;
+  const all = chatAll();
+  const from = all.findIndex((c) => c.id === ui.chatFrom);
+  if (from > 0) {
+    ui.chatFrom = all[Math.max(0, from - PAGE.chat)].id;
+    renderChat(false, true);
+    return;
+  }
+  if (from < 0 || !chatHasEarlier(all)) return;
+  const first = all[0].id;
+  ui.loadingOlder.add('chat');
+  markLoading($('#chat-thread'));
+  const r = await call<{ items: ChatItem[]; more: boolean }>('chat:page', first, PAGE.chat);
+  ui.loadingOlder.delete('chat');
+  // No answer (the error is a toast): the button stays and asks again on the next scroll or state push, but
+  // nothing renders now, since a render would re-watch the button and ask again at once.
+  if (!r) { unmarkLoading($('#chat-thread')); return; }
+  // The items held changed meanwhile (the snapshot slid past them); scrolling up asks again.
+  if (chatAll()[0]?.id === first) {
+    if (r.items.length) {
+      ui.chatOlder = [...r.items, ...ui.chatOlder];
+      ui.chatFrom = r.items[0].id;
+    }
+    // None left: stop asking from this item.
+    if (!r.more) ui.chatEndAt = r.items[0]?.id ?? first;
+  }
+  if (ui.view === 'chat') renderChat(false, true);
 }
 
 function updateSendButton() {
@@ -619,6 +743,11 @@ function sugHtml(sg: MemorySuggestion) {
   </div>`;
 }
 
+/** Auto-answers not cleared from the inspector, newest first. */
+function visibleAutos() {
+  return S!.autoAnswers.filter((a) => !a.cleared).reverse();
+}
+
 async function saveSug(id: string) {
   const inp = document.querySelector<HTMLInputElement>(`[data-keep="sug-${id}"]`);
   const v = inp?.value.trim();
@@ -633,20 +762,20 @@ function renderChatInspector() {
   const root = $('#chat-ins');
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
-    // Task outcomes only. Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
-    const results = s.chat.filter((c) => (c.kind === 'result' || (c.kind === 'error' && c.ref)) && !c.cleared).slice(-30).reverse();
-    const autos = s.autoAnswers.filter((a) => !a.cleared).slice(-30).reverse();
+    // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
+    const results = paged('results', s.results.slice().reverse(), PAGE.results);
+    const autos = paged('autos', visibleAutos(), PAGE.autos);
     let html = '';
     if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map(decisionHtml).join('')}</div></div>`;
     if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" title="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
-    if (results.length) {
-      html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.map((c) => {
+    if (results.items.length) {
+      html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
         const lk = resultLinks(x);
         return `<div class="res"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" title="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}<span>${inline(oneLine(c.text, 140))}</span>${spendHtml(x?.spend, true)}</span></div>`;
-      }).join('')}</div></div>`;
+      }).join('')}${results.more}</div></div>`;
     }
-    if (autos.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.map(aaHtml).join('')}</div></div>`;
+    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
     if (!html) {
       const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
       html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
@@ -701,6 +830,9 @@ function renderWorkerList() {
     root.innerHTML = `<div class="vhead"><b>Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b></div>`;
     return;
   }
+  // Archived Workers come a page at a time, in every list that has them.
+  const archPage = paged('archived', arch, PAGE.archived);
+  const archLis = archPage.items.map(li).join('') + archPage.more;
   // Each filter keys its own list, so switching filters starts the new list at the top.
   const lst = `<div class="lst" data-scroll="wk-list-${f ?? 'all'}">`;
   keepScroll(root, () => {
@@ -709,12 +841,12 @@ function renderWorkerList() {
       const label = t(f === 'today' ? 'side.doneToday' : 'side.archived');
       const head = `<div class="vhead"><b>Worker</b><span class="wf"><span class="wf-chip">${ic(f === 'today' ? 'done' : 'arch')}${label}<small>${shown.length}</small></span><button type="button" class="linkbtn wf-all" data-action="worker-filter" data-v="">${t('wk.filterAll')}</button></span></div>`;
       root.innerHTML = shown.length
-        ? `${head}${lst}${active.map(li).join('')}${arch.length && active.length ? `<div class="lst-h">${t('st.archived')}</div>` : ''}${arch.map(li).join('')}</div>`
+        ? `${head}${lst}${active.map(li).join('')}${arch.length && active.length ? `<div class="lst-h">${t('st.archived')}</div>` : ''}${archLis}</div>`
         : `${head}<div class="empty-view">${sym(f === 'today' ? 's-check' : 's-arch')}<b>${t(f === 'today' ? 'wk.noneToday' : 'wk.noneArchived')}</b></div>`;
       return;
     }
     root.innerHTML = `<div class="vhead"><b>Worker</b><small>${t('wk.counts', { a: active.length, b: arch.length })}</small></div>
-    ${lst}${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${arch.map(li).join('')}` : ''}</div>`;
+    ${lst}${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${archLis}` : ''}</div>`;
   });
 }
 
@@ -748,7 +880,8 @@ function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem | null)
   }
 }
 
-function renderSession(force = false) {
+/** `older`: a page of the conversation went in above, so the reader's place is kept from the end. */
+function renderSession(force = false, older = false) {
   const w = worker(ui.wSel);
   $('#wk-list').hidden = ui.wOpen && !!w;
   $('#wk-session').hidden = !(ui.wOpen && w);
@@ -764,12 +897,17 @@ function renderSession(force = false) {
   $('#ws-diff').hidden = ui.wTab !== 'changes';
   if (ui.wTab === 'changes') { if (force || !ui.diffs.has(w.id)) renderDiff(w); return; }
   const log = ui.logs.get(w.id) ?? [];
-  const key = `${lang()}:${w.id}:${log.length}:${w.status}:${w.statusText}`;
-  if (!force && key === ui.lastLogKey) return;
-  ui.lastLogKey = key;
   const th = $('#ws-thread');
   const nearBottom = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
-  let html = '';
+  // Following the end, a conversation grown past two pages goes back to its last page; scrolling up loads the rest again.
+  const cut = threadStart(log.length, 0, PAGE.log, (nearBottom || force) && !older);
+  if (cut) { log.splice(0, cut); ui.logFrom.set(w.id, (ui.logFrom.get(w.id) ?? 0) + cut); }
+  const start = ui.logFrom.get(w.id) ?? 0;
+  const loading = ui.loadingOlder.has(w.id);
+  const key = `${lang()}:${w.id}:${start}:${log.length}:${loading}:${w.status}:${w.statusText}`;
+  if (!force && !older && key === ui.lastLogKey) return;
+  ui.lastLogKey = key;
+  let html = start > 0 ? olderBtn('log', loading) : '';
   let last = 0;
   log.forEach((it, i) => {
     const ts = Date.parse(it.ts);
@@ -780,8 +918,8 @@ function renderSession(force = false) {
   });
   if (!log.length) html = `<div class="empty-view"><span>${t('ws.empty')}</span></div>`;
   if (w.status === 'running' || w.status === 'starting') html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(oneLine(w.statusText, 90))}</div>`;
-  th.innerHTML = html;
-  if (nearBottom || force) scrollQuietly(th, th.scrollHeight);
+  setThread(th, html, nearBottom || force, older);
+  watchTop(th, () => { if (ui.wSel) void olderLog(ui.wSel); });
 }
 
 function diffLines(patch: string) {
@@ -822,10 +960,30 @@ async function loadDiff(id: string) {
   if (w && ui.wSel === id && ui.wTab === 'changes') renderDiff(w);
 }
 
+/** A Worker's conversation opens on its last page. */
 async function loadLog(id: string) {
-  const items = await call<WorkerLogItem[]>('worker:log', id);
-  if (items) ui.logs.set(id, items);
+  const r = await call<LogPage>('worker:log', id, { limit: PAGE.log });
+  if (r) { ui.logs.set(id, r.items); ui.logFrom.set(id, r.start); }
   renderSession(true);
+}
+
+/** Load the page of a Worker's conversation before the first one loaded. */
+async function olderLog(id: string) {
+  const from = ui.logFrom.get(id) ?? 0;
+  if (!from || !ui.logs.has(id) || ui.loadingOlder.has(id)) return;
+  ui.loadingOlder.add(id);
+  markLoading($('#ws-thread'));
+  const r = await call<LogPage>('worker:log', id, { before: from, limit: PAGE.log });
+  ui.loadingOlder.delete(id);
+  // No answer: as in olderChat, the button stays for the next try.
+  if (!r) { unmarkLoading($('#ws-thread')); return; }
+  const log = ui.logs.get(id);
+  // Reloaded or cut meanwhile, the page no longer joins what is loaded; scrolling up asks again.
+  if (log && ui.logFrom.get(id) === from) {
+    ui.logs.set(id, [...r.items, ...log]);
+    ui.logFrom.set(id, r.start);
+  }
+  if (ui.view === 'worker' && ui.wOpen && ui.wSel === id && ui.wTab === 'chat') renderSession(false, true);
 }
 
 function renderWorkerInspector() {
@@ -938,7 +1096,8 @@ function renderRepos() {
     return;
   }
   keepInputs(ins, () => {
-    const ts = s.tasks.filter((x) => x.repo === r.name).slice(-15).reverse();
+    const all = s.tasks.filter((x) => x.repo === r.name).reverse();
+    const ts = paged(`repo-tasks:${r.name}`, all, PAGE.repoTasks);
     ins.innerHTML = `<div class="ins-h"><b>${esc(r.name)}</b></div>
       <div class="group kv"><span>${t('kv.path')}</span><span><a data-action="reveal" data-path="${esc(r.path)}" title="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span title="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
       <div class="ins-h"><b>${t('repo.desc')}</b></div>
@@ -946,8 +1105,8 @@ function renderRepos() {
       <div class="ins-h"><b>${t('repo.setup')}</b></div>
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" data-scroll="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
-      <div class="ins-h"><b>${t('wk.tasks')}</b><small>${ts.length}</small></div>
-      <div class="group">${ts.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
+      <div class="ins-h"><b>${t('wk.tasks')}</b><small>${all.length}</small></div>
+      <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
       <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
 }
@@ -959,6 +1118,22 @@ async function loadMemory() {
   renderMemory();
 }
 
+/** Search memory: a new query's first page, or (`offset`, the hits shown) the page after them. */
+async function searchMem(q: string, offset = 0) {
+  ui.memQ = q;
+  if (!q) { ui.memHits = null; ui.memTotal = 0; renderMemory(); return; }
+  const r = await call<MemoryHits>('memory:search', q, offset);
+  // A newer query, or the same page asked twice: this answer is stale.
+  if (ui.memQ !== q || (offset && offset !== ui.memHits?.length)) return;
+  // Each page is a fresh search, so a memory file edited between pages can shift a hit into the next page: skip repeats.
+  const kept = offset ? ui.memHits ?? [] : [];
+  const seen = new Set(kept.map((h) => `${h.path}:${h.line}`));
+  ui.memHits = [...kept, ...(r?.hits ?? []).filter((h) => !seen.has(`${h.path}:${h.line}`))];
+  ui.memTotal = r?.total ?? ui.memHits.length;
+  if (!offset) scrollQuietly($('#mem-list'), 0);
+  renderMemory();
+}
+
 function memIcon(kind: MemoryFile['kind']) {
   return kind === 'preference' ? ic('pref', 'star') : kind === 'repo' ? ic('repo', 'box') : kind === 'decision' ? ic('done') : ic('doc', 'doc');
 }
@@ -966,7 +1141,9 @@ function memIcon(kind: MemoryFile['kind']) {
 function renderMemory() {
   const list = $('#mem-list');
   if (ui.memHits) {
-    list.innerHTML = ui.memHits.length ? ui.memHits.map((h) => `<div class="hit" data-action="mem-select" data-id="${esc(h.path)}"><small>${esc(h.path)}:${h.line}</small><span>${esc(h.text)}</span></div>`).join('') : `<div class="empty-view"><span>${t('mem.noHits')}</span></div>`;
+    list.innerHTML = ui.memHits.length
+      ? ui.memHits.map((h) => `<div class="hit" data-action="mem-select" data-id="${esc(h.path)}"><small>${esc(h.path)}:${h.line}</small><span>${esc(h.text)}</span></div>`).join('') + moreBtn('mem-hits', ui.memTotal - ui.memHits.length, PAGE.memHits)
+      : `<div class="empty-view"><span>${t('mem.noHits')}</span></div>`;
   } else {
     list.innerHTML = ui.memFiles.map((f) => `<div class="li${ui.memSel === f.path ? ' sel' : ''}" data-action="mem-select" data-id="${esc(f.path)}">${memIcon(f.kind)}<span class="m"><b>${esc(f.title)}</b><span>${esc(f.path)}</span></span><span class="r">${hhmm(f.updatedAt)}</span></div>`).join('')
       || `<div class="empty-view">${sym('s-sparkle')}<b>${t('mem.emptyTitle')}</b></div>`;
@@ -1762,9 +1939,23 @@ async function act(el: HTMLElement, e: Event) {
       renderChips(box);
       break;
     }
+    case 'page-more': {
+      // A "Show more" button (moreBtn): the next page of its list. Focus moves to the button that replaces it,
+      // below the new items, without scrolling there, so the list stays where the new items start.
+      const key = el.dataset.page ?? '';
+      if (key === 'mem-hits') await searchMem(ui.memQ, ui.memHits?.length ?? 0);
+      else {
+        const n = Number(el.dataset.n) || 1;
+        ui.pages.set(key, shownOf(key, n) + n);
+        renderAll();
+      }
+      document.querySelector<HTMLElement>(`[data-action="page-more"][data-page="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
+      break;
+    }
+    case 'page-older': if (el.dataset.v === 'chat') void olderChat(); else if (ui.wSel) void olderLog(ui.wSel); break;
     case 'clear': {
       const kind = el.dataset.kind as 'result' | 'auto';
-      const ids = kind === 'auto' ? S!.autoAnswers.filter((x) => !x.cleared).map((x) => x.id) : S!.chat.filter((c) => (c.kind === 'result' || c.kind === 'error') && !c.cleared).map((c) => c.id);
+      const ids = kind === 'auto' ? S!.autoAnswers.filter((x) => !x.cleared).map((x) => x.id) : S!.results.map((c) => c.id);
       ui.undo.push({ kind, ids });
       await call('chat:clear', kind);
       toast(t(kind === 'auto' ? 'toast.clearedAuto' : 'toast.clearedResults', { key: isMac ? '⌘Z' : 'Ctrl+Z' }));
@@ -1773,6 +1964,9 @@ async function act(el: HTMLElement, e: Event) {
     case 'aa-select': {
       if (ui.view !== 'chat') go({ view: 'chat' });
       ui.aaSel = id;
+      // An older one may be past the pages shown.
+      const at = visibleAutos().findIndex((x) => x.id === id);
+      if (at >= 0) ui.pages.set('autos', pagesFor(at, shownOf('autos', PAGE.autos), PAGE.autos));
       renderChatInspector();
       document.getElementById(`aa-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       break;
@@ -2074,15 +2268,13 @@ function init() {
   $<HTMLInputElement>('#mem-q').addEventListener('input', (e) => {
     clearTimeout(memTimer);
     const q = (e.target as HTMLInputElement).value.trim();
-    memTimer = window.setTimeout(async () => {
-      ui.memHits = q ? ((await call<MemoryHit[]>('memory:search', q)) ?? []) : null;
-      renderMemory();
-    }, 200);
+    memTimer = window.setTimeout(() => void searchMem(q), 200);
   });
 
   ide.onState((s) => {
     const firstSetup = !S && s.setupNeeded;
     const langChanged = S && S.settings.language !== s.settings.language;
+    if (S) ui.chatOlder = slideOlder(ui.chatOlder, S.chat, s.chat, ui.chatFrom);
     S = s;
     renderAll();
     // The settings sheet only depends on accounts; re-render it only when they change.

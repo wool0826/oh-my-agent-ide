@@ -608,3 +608,13 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 .plan-links button:hover { text-decoration: underline; }
 .plan-links button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); border-radius: var(--space-4); }
 .plan-links button:disabled { opacity: .45; cursor: default; text-decoration: none; }
+
+/* paging (decision 85): "Show more" ends a long list, and a thread with earlier messages starts with .pg-top,
+   which loads them as it comes within reach (or on a click) */
+.more-btn { display: block; width: 100%; flex-shrink: 0; padding: var(--space-8) var(--space-12); border: 0; border-radius: var(--radius-lg); background: none; color: var(--text-link); font: inherit; font-size: var(--fs-caption); font-weight: 500; text-align: center; cursor: pointer; }
+.more-btn:hover { background: var(--surface-hover); }
+.more-btn:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.group > .more-btn { border-radius: 0; border-top: .5px solid var(--border-subtle); }
+.pg-top { align-self: center; padding: var(--space-4) var(--space-12); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-tertiary); font: inherit; font-size: var(--fs-caption2); font-weight: 500; cursor: pointer; }
+.pg-top:hover { color: var(--text-link); }
+.pg-top:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
