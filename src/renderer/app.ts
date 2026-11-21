@@ -1,4 +1,4 @@
-import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, MemoryFile, MemoryHit, MemorySuggestion, ModelList, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
+import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, MemoryFile, MemoryHit, MemorySuggestion, ModelList, PlanSummary, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
@@ -61,6 +61,8 @@ const ui = {
   wTab: 'chat' as 'chat' | 'changes',
   diffs: new Map<string, DiffView | 'loading' | null>(),
   diffOpen: new Set<string>(),
+  /** Plan cards whose full plan is unfolded below the summary, by decision id. */
+  planOpen: new Set<string>(),
   models: { models: [], fetchedAt: null, error: null } as ModelList,
   modelsLoading: false,
   restartAsk: false,
@@ -291,7 +293,7 @@ function renderSidebar() {
   const sec = (title: string, rows: string, cls = '') => rows ? `<section class="side-sec ${cls}"><h4>${title}</h4>${rows}</section>` : '';
   const decRows = pending.map((d) => {
     const x = task(d.taskId);
-    return `<div class="row" data-action="goto-decision" data-id="${d.id}">${ic('ask')}<span class="t"><b>${esc(oneLine(d.title, 60))}</b><small>${esc([d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', '))}</small></span></div>`;
+    return `<div class="row" data-action="goto-decision" data-id="${d.id}">${ic('ask')}<span class="t"><b>${esc(oneLine(d.summary?.what || d.title, 60))}</b><small>${esc([d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', '))}</small></span></div>`;
   }).join('');
   const workerRow = (w: Worker) => {
     const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
@@ -470,13 +472,28 @@ function decisionHtml(d: Decision) {
     buttons = `<div class="btns${col ? ' col' : ''}">${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${esc(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
   }
   const custom = `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${d.source === 'permission' ? t('dec.denyWhy') : d.source === 'plan' ? t('plan.revise') : t('dec.other')}">`;
+  const sum = d.source === 'plan' ? d.summary : null;
   return `<div class="dec" id="dec-${d.id}">
     <div class="src">${icon}<span>${esc(src)}</span></div>
     <div class="q">${esc(d.title)}</div>
     ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
-    ${d.code ? (d.source === 'plan' ? `<div class="plan-md">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
+    ${sum ? planSummaryHtml(d, sum) : d.code ? (d.source === 'plan' ? `<div class="plan-md">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
     ${buttons}${custom}
   </div>`;
+}
+
+/** A plan card's WHAT / HOW / OUTPUT lines, with the full plan folded below them and a way to the Worker's conversation. */
+function planSummaryHtml(d: Decision, sum: PlanSummary) {
+  const open = ui.planOpen.has(d.id);
+  const row = (key: Key, v: string) => v ? `<dt>${t(key)}</dt><dd>${inline(v)}</dd>` : '';
+  const links = [
+    d.code ? `<button data-action="plan-toggle" data-id="${d.id}" aria-expanded="${open}">${t(open ? 'plan.hide' : 'plan.details')}<span aria-hidden="true">${open ? '▴' : '▾'}</span></button>` : '',
+    d.workerId ? `<button data-action="open-worker" data-id="${esc(d.workerId)}">${t('plan.open')}<span aria-hidden="true">→</span></button>` : '',
+  ].join('');
+  return `<dl class="plan-sum">${row('plan.what', sum.what)}${row('plan.how', sum.how)}${row('plan.output', sum.output)}</dl>
+    ${sum.auto ? `<div class="plan-auto" title="${esc(t('plan.autoHint'))}">${t('plan.auto')}</div>` : ''}
+    ${links ? `<div class="plan-links">${links}</div>` : ''}
+    ${open && d.code ? `<div class="plan-md">${md(d.code)}</div>` : ''}`;
 }
 
 function aaHtml(a: AutoAnswer) {
@@ -1559,6 +1576,12 @@ async function act(el: HTMLElement, e: Event) {
     case 'answer': {
       el.closest('.dec')?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
       await call('decision:answer', id, el.dataset.val);
+      break;
+    }
+    case 'plan-toggle': {
+      if (!ui.planOpen.delete(id)) ui.planOpen.add(id);
+      renderChatInspector();
+      document.querySelector<HTMLButtonElement>(`[data-action="plan-toggle"][data-id="${CSS.escape(id)}"]`)?.focus();
       break;
     }
     case 'open-url': e.preventDefault(); await call('open:external', el.dataset.href); break;

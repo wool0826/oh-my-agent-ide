@@ -575,3 +575,15 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 
 /* Reduce transparency (macOS accessibility, Windows transparency effects off): tokens.css swaps every surface for
    its solid twin, drops the sheen and the wash, and sets the blur tokens to none, so nothing is needed here. */
+
+/* plan summary card */
+.plan-sum { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-4) var(--space-10); padding: var(--space-8) var(--space-12); border-radius: var(--radius-lg); background: var(--surface-sunken); box-shadow: var(--well); font-size: var(--fs-caption); line-height: var(--lh-body); }
+.plan-sum dt { color: var(--text-secondary); font-weight: 500; }
+.plan-sum dd { margin: 0; color: var(--text-primary); user-select: text; overflow-wrap: anywhere; }
+.plan-sum code { display: inline; padding: 1px var(--space-4); word-break: normal; font-size: .95em; }
+.plan-auto { align-self: flex-start; font-size: var(--fs-caption2); color: var(--text-secondary); padding: 1px var(--space-6); border-radius: var(--radius-full); background: var(--surface-raised); box-shadow: var(--rim); cursor: help; }
+.plan-links { display: flex; gap: var(--space-12); flex-wrap: wrap; }
+.plan-links button { display: inline-flex; align-items: center; gap: var(--space-4); padding: 0; border: 0; background: none; color: var(--text-link); font: inherit; font-size: var(--fs-caption); cursor: pointer; }
+.plan-links button:hover { text-decoration: underline; }
+.plan-links button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); border-radius: var(--space-4); }
+.plan-links button:disabled { opacity: .45; cursor: default; text-decoration: none; }

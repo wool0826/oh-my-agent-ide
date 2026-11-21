@@ -268,7 +268,7 @@ async function boot() {
   accounts.on('changed', scheduleLimitRetry);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
   onDecisionCreated((d) => {
-    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), d.title);
+    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), d.summary?.what || d.title);
   });
   onLateAnswer((d) => {
     if (d.workerId) {
