@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, nativeTheme } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSettings, updateSettings, settingsView, saveSettings } from './settings';
@@ -59,6 +59,10 @@ function pushState() {
 
 function createWindow() {
   const mac = process.platform === 'darwin';
+  // The UI is dark only, but Windows paints the window frame from the system theme: in light mode the
+  // outline turns light and a 1px #f3f3f3 strip shows on the left, right and bottom edges (on a monitor
+  // whose DPI differs from the primary one). A dark native theme gives the frame dark colors too.
+  if (process.platform === 'win32') nativeTheme.themeSource = 'dark';
   win = new BrowserWindow({
     width: 1320,
     height: 860,
