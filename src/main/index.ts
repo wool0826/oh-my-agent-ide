@@ -65,7 +65,7 @@ function createWindow() {
     minHeight: 640,
     title: 'Oh My Agent IDE',
     // Matches --canvas, so nothing flashes before the page paints its backdrop.
-    backgroundColor: '#0f1015',
+    backgroundColor: '#131316',
     titleBarStyle: mac ? 'hiddenInset' : 'hidden',
     // Inside the floating sidebar panel.
     trafficLightPosition: mac ? { x: 22, y: 22 } : undefined,

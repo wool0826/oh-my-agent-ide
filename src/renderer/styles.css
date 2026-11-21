@@ -4,15 +4,14 @@
   --sep: rgba(255, 255, 255, .09); --fill: rgba(255, 255, 255, .12); --fill-2: rgba(255, 255, 255, .07);
   --blue: #0a84ff; --red: #ff453a; --orange: #ff9f0a; --green: #30d158;
   --yellow: #ffd60a; --purple: #bf5af2; --indigo: #5e5ce6; --teal: #40c8e0; --gray: #98989d; --pink: #ff375f;
-  --win: #101116; --win-line: rgba(255, 255, 255, .12);
+  --win: #131316; --win-line: rgba(255, 255, 255, .12);
   --bubble-ai: rgba(255, 255, 255, .09); --seg-on: rgba(255, 255, 255, .2);
-  /* Liquid Glass. The painted backdrop gives the glass something to show through. */
-  --canvas: #0f1015;
-  --accents: radial-gradient(110% 85% at 0% 0%, rgba(46, 86, 170, .5) 0%, transparent 58%),
-             radial-gradient(95% 80% at 100% 100%, rgba(96, 58, 168, .34) 0%, transparent 56%);
+  /* Liquid Glass over graphite: a neutral backdrop, lit faintly from the top. */
+  --canvas: #131316;
+  --accents: linear-gradient(180deg, rgba(255, 255, 255, .04) 0, rgba(255, 255, 255, 0) 45%);
   --backdrop: var(--accents), var(--canvas);
   --glass: rgba(255, 255, 255, .055); --glass-2: rgba(255, 255, 255, .085); --glass-3: rgba(255, 255, 255, .14); --glass-hi: rgba(255, 255, 255, .2);
-  --glass-menu: rgba(36, 38, 46, .66);
+  --glass-menu: rgba(38, 38, 42, .68);
   --blur: blur(28px) saturate(180%);
   /* Specular rim: light from the upper left catches the top and left edges, with a fainter glint opposite. */
   --rim: inset 1px 1px 0 rgba(255, 255, 255, .16), inset -1px -1px 0 rgba(255, 255, 255, .06), inset 0 0 0 .5px rgba(255, 255, 255, .06);
@@ -148,7 +147,7 @@ button { font: inherit; }
 .tile { width: 22px; display: grid; place-items: start center; flex: none; }
 
 /* Floating glass capsule; whatever scrolls beneath it shows through, blurred. */
-.composer { position: absolute; left: 18px; right: 18px; bottom: 16px; z-index: 2; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 24px; background: rgba(40, 42, 50, .5); -webkit-backdrop-filter: blur(26px) saturate(190%); backdrop-filter: blur(26px) saturate(190%); box-shadow: var(--rim-hi), 0 18px 40px -12px rgba(0, 0, 0, .65); transition: box-shadow .15s; }
+.composer { position: absolute; left: 18px; right: 18px; bottom: 16px; z-index: 2; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 24px; background: rgba(42, 42, 46, .52); -webkit-backdrop-filter: blur(26px) saturate(190%); backdrop-filter: blur(26px) saturate(190%); box-shadow: var(--rim-hi), 0 18px 40px -12px rgba(0, 0, 0, .65); transition: box-shadow .15s; }
 .composer:focus-within { box-shadow: var(--rim-hi), 0 0 0 3px color-mix(in srgb, var(--blue) 38%, transparent), 0 18px 40px -12px rgba(0, 0, 0, .65); }
 .field { flex: 1; border: 0; background: none; border-radius: 0; padding: 6px 0; }
 .field.input { font: inherit; font-size: var(--ui-font-size); color: var(--label); outline: none; min-width: 0; resize: none; max-height: 50vh; line-height: 1.4; user-select: text; overflow-y: auto; scrollbar-width: none; }
@@ -454,7 +453,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .switch:focus-visible { outline: var(--focus); }
 
 /* attached files */
-.composer.drop { box-shadow: var(--rim-hi), 0 0 0 2px var(--blue); background: color-mix(in srgb, var(--blue) 14%, rgba(40, 42, 50, .5)); }
+.composer.drop { box-shadow: var(--rim-hi), 0 0 0 2px var(--blue); background: color-mix(in srgb, var(--blue) 14%, rgba(42, 42, 46, .52)); }
 .fchips { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 0; }
 .fchip { display: inline-flex; align-items: center; gap: 5px; max-width: 260px; padding: 3px 4px 3px 9px; border-radius: 999px; background: var(--glass-3); box-shadow: var(--rim); color: var(--label); font-size: calc(11.5 * var(--px)); }
 .fchip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -542,9 +541,9 @@ b.minus { color: #ff6961; font-weight: 600; }
 
 /* Reduce transparency (macOS accessibility, Windows transparency effects off): solid surfaces. */
 @media (prefers-reduced-transparency: reduce) {
-  :root { --glass: #1d1e24; --glass-2: #24252c; --glass-3: #2e2f37; --bubble-ai: #26272e; --glass-menu: #26272e; --seg-on: #3a3b44; }
+  :root { --glass: #1e1e21; --glass-2: #252528; --glass-3: #2f2f33; --bubble-ai: #27272a; --glass-menu: #27272a; --seg-on: #3b3b40; }
   body, .settings-win { background: var(--canvas); }
   .sidebar, .inspector, .snav { background: var(--glass); }
   .sidebar, .inspector, .snav, .seg, .usage, .attach, .sgrp, .composer, .pop, .amenu, .ctxmenu, .dlg, .toast, .dlg-back { -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .composer { background: #23242b; }
+  .composer { background: #242427; }
 }
