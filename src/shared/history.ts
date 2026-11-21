@@ -1,4 +1,4 @@
-// Back and forward through the screens the user visited, like a browser (decision 80).
+// Back and forward through the screens the user visited, like a browser (decision 81).
 // Pure, so the renderer and the tests share it.
 
 export type View = 'chat' | 'worker' | 'repo' | 'memory';

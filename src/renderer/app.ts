@@ -399,8 +399,8 @@ function spendHtml(s: Spend | null | undefined, short = false) {
 
 function resultGlyph(x: Task | null, err = false) {
   if (err) return sym('s-alert', 'c-red');
-  if (x?.prState === 'MERGED') return sym('s-merge', 'c-purple');
-  return x?.prUrl ? sym('s-pr', 'c-purple') : x?.files.length ? sym('s-doc', 'c-teal') : sym('s-check', 'c-green');
+  if (x?.prState === 'MERGED') return sym('s-merge', 'c-pr-merged');
+  return x?.prUrl ? sym('s-pr', x.prState === 'CLOSED' ? 'c-pr-closed' : 'c-pr-open') : x?.files.length ? sym('s-doc', 'c-teal') : sym('s-check', 'c-green');
 }
 
 function chatItemHtml(c: ChatItem) {
@@ -579,7 +579,7 @@ function statusPill(w: Worker) {
   }
   if (x?.status === 'blocked') return `<span class="pill orange">${t('st.afterMerge')}</span>`;
   if (x?.status === 'queued') return `<span class="pill orange">${t('st.limitWait')}</span>`;
-  if (x?.status === 'pr_open') return `<span class="pill purple">${t('st.prOpen')}</span>`;
+  if (x?.status === 'pr_open') return `<span class="pill pr-open">${t('st.prOpen')}</span>`;
   return `<span class="pill">${t('time.ago', { d: ago(w.lastActiveAt) })}</span>`;
 }
 
@@ -838,7 +838,7 @@ function renderRepos() {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = ts.filter((x) => x.status === 'pr_open').length;
-      return `<div class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill purple">PR ${pr}</span>` : ''}</span></div>`;
+      return `<div class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}</div>`;
   }
   const ins = $('#repo-ins');
@@ -1530,7 +1530,7 @@ function openWorker(id: string) {
   go({ view: 'worker', wSel: id, wOpen: true });
 }
 
-/* ---------- screen history: Back and Forward (decision 80) ---------- */
+/* ---------- screen history: Back and Forward (decision 81) ---------- */
 
 const nav = new History<Screen>(sameScreen);
 const navInput = new NavInput();
