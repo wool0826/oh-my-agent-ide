@@ -36,6 +36,8 @@ button { font: inherit; }
 .nodrag, .drag button, .drag input { -webkit-app-region: no-drag; }
 [hidden] { display: none !important; }
 .c-red { color: var(--danger); } .c-blue { color: var(--accent); } .c-green { color: var(--success); } .c-orange { color: var(--warning); } .c-gray { color: var(--state-idle); } .c-purple { color: var(--review); } .c-indigo { color: var(--kind-repo); } .c-pink { color: var(--kind-pref); } .c-teal { color: var(--kind-doc); }
+/* PR state, as on GitHub: open green, merged purple, closed gray (the --pr-* tokens at the end of tokens.css) */
+.c-pr-open { color: var(--pr-open); } .c-pr-merged { color: var(--pr-merged); } .c-pr-closed { color: var(--pr-closed); }
 .selectable { user-select: text; }
 
 .win { height: 100vh; display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--inspector-w); grid-template-rows: var(--toolbar-h) minmax(0, 1fr); }
@@ -68,7 +70,7 @@ button { font: inherit; }
 /* Status glyphs: colored line icons; running is a spinning ring */
 .ic { --c: var(--state-idle); width: var(--icon-lg); height: var(--icon-lg); flex: none; display: grid; place-items: center; color: var(--c); }
 .ic svg { width: var(--icon-md); height: var(--icon-md); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.k-ask { --c: var(--state-ask); } .k-run { --c: var(--state-run); } .k-pr { --c: var(--state-review); } .k-wait { --c: var(--state-wait); }
+.k-ask { --c: var(--state-ask); } .k-run { --c: var(--state-run); } .k-pr { --c: var(--pr-open); } .k-wait { --c: var(--state-wait); }
 .k-done { --c: var(--state-done); } .k-arch { --c: var(--state-idle); } .k-repo { --c: var(--kind-repo); } .k-pref { --c: var(--kind-pref); } .k-doc { --c: var(--kind-doc); } .k-err { --c: var(--state-error); } .k-idle { --c: var(--state-idle); }
 .k-run svg { animation: spin var(--dur-spin) linear infinite; transform-origin: 50% 50%; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -279,6 +281,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .pill.purple { background: var(--review-soft); color: var(--review-text); }
 .pill.green { background: var(--success-soft); color: var(--success-text); }
 .pill.orange { background: var(--warning-soft); color: var(--warning-text); }
+.pill.pr-open { background: var(--pr-open-soft); color: var(--pr-open-text); }
 /* PR readiness badges (CI, conflicts, review). <i>, so the span rules of cards don't recolor them. */
 .prst { display: inline-flex; flex-wrap: wrap; gap: var(--space-4); vertical-align: 1px; }
 .prst i { font-style: normal; font-size: var(--fs-caption2); font-weight: 600; line-height: 1.5; padding: 0 7px; border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); white-space: nowrap; }
