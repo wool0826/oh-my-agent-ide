@@ -3,7 +3,8 @@ import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types
 import { tr, type Key } from '../shared/i18n';
 import { modelLabel as labelFor } from '../shared/models';
 import { hasSpend, spendVars, type Spend } from '../shared/spend';
-import { cancelSet, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
+import { cancelSet, followersOf, isQueued, statusAfterCancel, type CancelReport } from '../shared/queue';
+import { queueWhy, queueWhyText, type QueueCtx } from '../shared/queueWhy';
 import { prsInReview } from '../shared/prs';
 import { reasonText } from '../shared/askWhy';
 import { workerDecisions } from '../shared/inbox';
@@ -92,6 +93,8 @@ const ui = {
   diffOpen: new Set<string>(),
   /** Plan cards whose full plan is unfolded below the summary, by decision id. */
   planOpen: new Set<string>(),
+  /** Queued tasks whose request is shown in full on the Worker view's waiting card. */
+  qOpen: new Set<string>(),
   models: { models: [], fetchedAt: null, error: null } as ModelList,
   modelsLoading: false,
   restartAsk: false,
@@ -476,7 +479,8 @@ function renderSidebar() {
   const prRows = prs.map((x) => `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
   const qRows = queued.map((x) => {
     const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''}, ${queuedLabel(x)}`;
-    return `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span>${cancelX(x)}</div>`;
+    const why = queueWhy(t, x, queueCtx());
+    return `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}"${why ? ` title="${esc(queueWhyText(why))}"` : ''}>${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span>${cancelX(x)}</div>`;
   }).join('');
   const qTitle = `${t('side.queue')}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
   const any = decRows || runRows || prRows || qRows || errRows;
@@ -1023,6 +1027,40 @@ async function olderLog(id: string) {
   if (ui.view === 'worker' && ui.wOpen && ui.wSel === id && ui.wTab === 'chat') renderSession(false, true);
 }
 
+/** What the "why it waits" rules (shared/queueWhy.ts) read from the state. */
+function queueCtx(): QueueCtx {
+  return { tasks: S!.tasks, accounts: S!.accounts, maxWorkers: S!.settings.maxWorkers, time: (ms) => when(new Date(ms).toISOString()) };
+}
+
+/** One card per queued or blocked task of the Worker: why it waits, what starts it, its request and the tasks waiting on it. */
+function waitingCardsHtml(w: Worker) {
+  const ctx = queueCtx();
+  return w.taskIds.map((id) => task(id)).filter((x): x is Task => !!x && isQueued(x)).map((x) => {
+    const q = queueWhy(t, x, ctx);
+    if (!q) return '';
+    const dep = x.status === 'blocked' ? task(x.afterTaskId) : null;
+    const followers = followersOf(ctx.tasks, x.id);
+    // A request that only repeats the title says nothing new.
+    const prompt = x.prompt.trim() === x.title.trim() ? '' : x.prompt.trim();
+    const long = prompt.length > 240 || prompt.split('\n').length > 4;
+    const open = ui.qOpen.has(x.id);
+    const links = [
+      long ? `<button data-action="queue-prompt" data-id="${esc(x.id)}" aria-expanded="${open}">${t(open ? 'plan.hide' : 'plan.details')}<span aria-hidden="true">${open ? '▴' : '▾'}</span></button>` : '',
+      dep?.workerId && dep.workerId !== w.id ? `<button data-action="open-worker" data-id="${esc(dep.workerId)}">${t('q.openDep', { id: dep.id })}<span aria-hidden="true">→</span></button>` : '',
+      `<button class="danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>`,
+    ].join('');
+    const follow = followers.map((f) => `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(f.workerId ?? '')}"${f.workerId ? '' : ' disabled'}>${esc(f.id)} ${esc(oneLine(f.title, 60))}</button>`).join('<br>');
+    return `<div class="ins-h"><b>${t('q.title')}</b><span class="pill orange">${x.status === 'blocked' ? t('st.afterMerge') : queuedLabel(x)}</span></div>
+    <div class="group qcard">
+      <div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${esc([x.repo ?? t('general'), x.planFirst && !x.planApproved ? t('plan.badge') : ''].filter(Boolean).join(' · '))} · <time datetime="${esc(x.updatedAt)}" title="${esc(hhmm(x.updatedAt))}">${t('q.since', { t: Date.now() - Date.parse(x.updatedAt) < 60_000 ? t('time.now') : t('time.ago', { d: ago(x.updatedAt) }) })}</time></span></div>
+      <dl class="plan-sum q-sum"><dt>${t('q.why')}</dt><dd>${esc(q.why)}</dd><dt>${t('q.starts')}</dt><dd${q.cancelled ? ' class="warn"' : ''}>${esc(q.starts)}</dd>${q.again ? `<dt></dt><dd>${esc(q.again)}</dd>` : ''}</dl>
+      ${prompt ? `<div class="q-prompt${long && !open ? ' clip' : ''}" data-scroll="qp-${esc(x.id)}"><small>${t('q.prompt')}</small>${esc(prompt)}</div>` : ''}
+      ${follow ? `<div class="q-follow"><small>${t('q.followers')}</small>${follow}</div>` : ''}
+      <div class="plan-links q-links">${links}</div>
+    </div>`;
+  }).join('');
+}
+
 function renderWorkerInspector() {
   const root = $('#wk-ins');
   const w = worker(ui.wSel);
@@ -1043,6 +1081,7 @@ function renderWorkerInspector() {
   keepScroll(root, () => { root.innerHTML = `
     ${open.length ? `<div class="ins-h"><b>${t('ins.decisions')}</b><span class="count">${open.length}</span></div><div class="group">${open.map((d) => decisionHtml(d, true)).join('')}</div>` : ''}
     <div class="ins-h"><b>${esc(w.id)}</b><span class="pill ${pillCls}">${t(asked ? 'st.awaitDispatcher' : stKey[w.status] ?? 'st.idle')}</span></div>
+    ${waitingCardsHtml(w)}
     <div class="group kv">
       <span>${t('kv.task')}</span><span>${esc(cur?.title ?? w.title)}</span>
       <span>${t('kv.repo')}</span><span>${esc(w.repo ?? t('general'))}</span>
@@ -1997,6 +2036,12 @@ async function act(el: HTMLElement, e: Event) {
     case 'answer': {
       el.closest('.dec')?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
       await call('decision:answer', id, el.dataset.val);
+      break;
+    }
+    case 'queue-prompt': {
+      if (!ui.qOpen.delete(id)) ui.qOpen.add(id);
+      renderWorkerInspector();
+      document.querySelector<HTMLButtonElement>(`[data-action="queue-prompt"][data-id="${CSS.escape(id)}"]`)?.focus();
       break;
     }
     case 'plan-toggle': {

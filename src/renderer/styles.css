@@ -617,6 +617,20 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 .plan-links button:hover { text-decoration: underline; }
 .plan-links button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); border-radius: var(--space-4); }
 .plan-links button:disabled { opacity: .45; cursor: default; text-decoration: none; }
+.plan-links button.danger { color: var(--danger-text); }
+
+/* a queued task's card in the Worker view: why it waits, what starts it, its request, the tasks waiting on it */
+.qcard { padding-bottom: var(--space-10); }
+.qcard .q-sum { margin: 0 var(--space-12) var(--space-8); }
+.qcard .q-sum dd { word-break: keep-all; }
+.q-sum dd.warn { color: var(--danger-text); }
+.q-prompt, .q-follow { margin: 0 var(--space-12) var(--space-8); font-size: var(--fs-caption); line-height: var(--lh-body); overflow-wrap: anywhere; }
+.q-prompt { white-space: pre-wrap; word-break: keep-all; user-select: text; max-height: 320px; overflow: auto; }
+.q-prompt.clip { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden; }
+.q-prompt small, .q-follow small { display: block; color: var(--text-secondary); font-size: var(--fs-caption2); }
+.q-follow .linkbtn { text-align: left; font-size: var(--fs-caption); }
+.q-follow .linkbtn:disabled { color: var(--text-secondary); cursor: default; text-decoration: none; }
+.q-links { padding: 0 var(--space-12); }
 
 /* paging (decision 85): "Show more" ends a long list, and a thread with earlier messages starts with .pg-top,
    which loads them as it comes within reach (or on a click) */

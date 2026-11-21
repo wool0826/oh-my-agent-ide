@@ -315,3 +315,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 95. **An "Add repository" button in the Repositories view.** Before, a repository could only be added by asking the Dispatcher or from first-run setup, and the empty view only said there were none.
     - The button sits in the view header next to the count, and in the empty state.
     - It opens a short form in the right panel: a URL, `org/repo` or local folder (with Choose folder…) and an optional description. It calls the existing `repo:add`, and the new repository is selected with a toast once it is cloned.
+96. **A queued task's details are shown in the Worker view, not in a new panel or a popover.** Clicking a queue row already opened its Worker, and the Worker's conversation holds the full task message beside it. A new task panel would need its own view, history and shortcuts, and a popover on the sidebar would be rebuilt on every state update and has no room for a long request.
+    - **The card.** The Worker view's right side starts with one "Waiting" card per queued or blocked task of that Worker. It shows why the task waits, what starts it, how long it has waited, its request (collapsed after five lines), the tasks waiting on it, and Cancel. The queue row's tooltip gives the same reason.
+    - **The rules** are in `src/shared/queueWhy.ts` and are built only from the app state, with no new fields:
+      - A slot: n/max, and its place in line, the longest waiting first (`queueOrder`).
+      - A usage limit: the account whose limit ends first, and the time it resets.
+      - A merge: the PR it waits for, or that it starts or is cancelled now because of how the task it waits for ended (`afterDependency`, decision 92). A cancel shows in red.
+    - **Not shown:** messages held for the Worker until its task starts. They are not in the app state, and the conversation already logs them.
