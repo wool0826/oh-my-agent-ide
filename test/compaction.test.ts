@@ -9,7 +9,7 @@ import { dispatcher } from '../src/main/agents/dispatcher';
 import { accounts } from '../src/main/accounts';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
-import { COMPACT_AT, CONTEXT_WINDOW } from '../src/shared/context';
+import { COMPACT_AT, CONTEXT_WINDOW, WORKER_IDLE_COMPACT } from '../src/shared/context';
 import type { Task, Worker } from '../src/shared/types';
 
 // Settings and the IDE home live in a temp folder. Two accounts, so a limit can move a session to the other one.
@@ -202,6 +202,33 @@ test("a Worker's compaction is shown in its conversation, and a limit that stops
     'Compacting the conversation (216K)…',
     "Could not compact the conversation (You've hit your 5-hour limit). The work goes on; it is compacted again later.",
   ]);
+  workers.closeAll();
+});
+
+test('a Worker is compacted from 100K once its task is finished; while the task is open it waits for 80% of the window', () => {
+  workers.closeAll();
+  const { w, x } = worker();
+  const s = workers.ensureSession(w)!;
+  s.send('Task');
+  // The turn ends with the task still open: it waits for the Dispatcher.
+  feed(s, assistant(WORKER_IDLE_COMPACT + 5_000, 'BLOCKED: I need the bucket name.'));
+  feed(s, result({ result: 'BLOCKED: I need the bucket name.' }));
+  assert.equal(x.status, 'waiting');
+  assert.deepEqual(sent(), ['Task']);
+
+  s.send('[Dispatcher] It is stage-eu.');
+  feed(s, assistant(WORKER_IDLE_COMPACT + 6_000, 'RESULT: Done'));
+  feed(s, result({ result: 'RESULT: Done' }));
+  assert.equal(x.status, 'done');
+  assert.deepEqual(sent(), ['Task', '[Dispatcher] It is stage-eu.', '/compact']);
+  feed(s, boundary(WORKER_IDLE_COMPACT + 6_000, 9_000));
+  feed(s, result());
+
+  // Below it, a finished Worker is left alone.
+  s.send('[Dispatcher question] Which file?');
+  feed(s, assistant(WORKER_IDLE_COMPACT - 1, 'src/parse.ts'));
+  feed(s, result({ result: 'src/parse.ts' }));
+  assert.equal(sent().length, 4);
   workers.closeAll();
 });
 

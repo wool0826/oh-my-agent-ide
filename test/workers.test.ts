@@ -554,3 +554,219 @@ test('a Worker archived while its task waits for a slot comes back when the task
   assert.equal(x2.status, 'running');
   assert.notEqual(b.status, 'archived');
 });
+
+/* ---------- Talking with the Dispatcher ---------- */
+
+/** Times Worker news asked for a Dispatcher turn of its own. */
+let wakes = 0;
+store.on('wake', () => { wakes += 1; });
+beforeEach(() => { wakes = 0; });
+
+/** A Worker with an open session: on a running task, or idle after one whose PR is still open. */
+function talking(taskOver: Partial<Task> = {}) {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, taskOver);
+  return { w, x, s: workers.ensureSession(w)! };
+}
+const finished: Partial<Task> = { status: 'pr_open', finishedAt: now, prUrl: 'https://github.com/o/r/pull/1', prState: 'OPEN' };
+/** The Worker's turn says this and ends. */
+const turn = (s: AgentSession, text: string) => feed(s, said(text), turnEnd(text));
+const chatLines = () => store.data.chat.map((c) => c.text);
+
+test('a question to an idle Worker reopens no task, and what its turn says reaches the Dispatcher as the answer', () => {
+  const { w, x, s } = talking(finished);
+  assert.equal(workers.ask(w.id, 'Which file holds the parser?'), 'sent');
+  assert.equal(x.status, 'pr_open', 'instructions would reopen it as a follow-up; a question does not');
+  assert.ok(sent.get(w.id)![0].startsWith('[Dispatcher question] Which file holds the parser?'), sent.get(w.id)![0]);
+  assert.equal(w.ask?.text, 'Which file holds the parser?');
+  turn(s, 'It is src/parse.ts.');
+  assert.equal(w.ask, null);
+  assert.equal(x.status, 'pr_open');
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} answered your question "Which file holds the parser?": It is src/parse.ts.`]);
+  assert.equal(wakes, 1);
+  assert.deepEqual(chatLines(), [`Dispatcher → ${w.id} question: Which file holds the parser?`, `${w.id} → Dispatcher: It is src/parse.ts.`]);
+});
+
+test('mid-task, tell_dispatcher answers the question and the task goes on to its own report', () => {
+  const { w, x, s } = talking();
+  workers.ask(w.id, 'How far along are you?');
+  assert.match(workers.fromWorker(w, 'answer', 'Half way: the parser is done.'), /^Delivered/);
+  assert.equal(w.ask, null);
+  assert.equal(x.status, 'running');
+  assert.equal(wakes, 1);
+  assert.deepEqual(store.readLog(w.id, undefined, 2).items.map((i) => [i.from, i.text]), [
+    ['dispatcher', 'Question: How far along are you?'],
+    ['worker', 'To the Dispatcher: Half way: the parser is done.'],
+  ]);
+  turn(s, 'RESULT: Done');
+  assert.equal(x.status, 'done');
+  assert.deepEqual(store.data.pendingUpdates, [
+    `${w.id} answered your question "How far along are you?": Half way: the parser is done.`,
+    `${w.id} ${x.id} "Task" done: Done`,
+  ]);
+  assert.equal(wakes, 2, 'the result starts a Dispatcher turn too');
+});
+
+test('a Worker that answers in plain text mid-task and stops is told to go on; the answer is no task result', () => {
+  const { w, x, s } = talking();
+  workers.ask(w.id, 'How far along are you?');
+  turn(s, 'Half way.');
+  assert.equal(x.status, 'running');
+  assert.equal(w.ask, null);
+  assert.ok(sent.get(w.id)![1].startsWith('[Dispatcher] Your answer was delivered.'), sent.get(w.id)![1]);
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} answered your question "How far along are you?": Half way.`]);
+  turn(s, 'RESULT: Done');
+  assert.equal(x.status, 'done');
+});
+
+test('a Worker that answers with the tool and ends its turn there is told to go on too, once', () => {
+  const { w, x, s } = talking();
+  workers.ask(w.id, 'How far along are you?');
+  workers.fromWorker(w, 'answer', 'Half way.');
+  turn(s, 'Answered.');
+  assert.equal(x.status, 'running', 'the turn that answered a question says nothing about the task');
+  assert.ok(sent.get(w.id)![1].startsWith('[Dispatcher] Your answer was delivered.'), sent.get(w.id)![1]);
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} answered your question "How far along are you?": Half way.`]);
+  // The next turn is its report, with the RESULT lines or without.
+  turn(s, 'All of it is done now.');
+  assert.equal(x.status, 'done');
+  assert.equal(sent.get(w.id)!.length, 2);
+});
+
+test('a question whose turn fails or says nothing is reported as unanswered, so no later text is taken for the answer', () => {
+  const { w, s } = talking(finished);
+  workers.ask(w.id, 'Which file?');
+  s.ev.onTurnEnd!({ text: 'It broke.', isError: true, internal: false });
+  assert.equal(w.ask, null);
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} did not answer your question "Which file?" (It broke.). Ask again if you still need the answer.`]);
+  assert.equal(wakes, 1);
+});
+
+test('an answer nobody asked for and a note wait for the next Dispatcher turn; empty text is not sent', () => {
+  const { w, x } = talking();
+  assert.match(workers.fromWorker(w, 'answer', 'By the way, the tests are slow.'), /^Noted/);
+  assert.match(workers.fromWorker(w, 'note', 'Half of the files are migrated.'), /^Noted/);
+  assert.match(workers.fromWorker(w, 'note', '  '), /^Nothing was sent/);
+  assert.deepEqual(store.data.pendingUpdates, [
+    `${w.id} (${x.id}) notes: By the way, the tests are slow.`,
+    `${w.id} (${x.id}) notes: Half of the files are migrated.`,
+  ]);
+  assert.equal(wakes, 0);
+  assert.deepEqual(chatLines(), []);
+});
+
+test('a reply to instructions with no task to report on goes to the Dispatcher instead of being dropped', () => {
+  const { w, x, s } = talking({ status: 'done', finishedAt: now, prUrl: 'https://github.com/o/r/pull/1', prState: 'MERGED' });
+  assert.equal(workers.send(w.id, 'dispatcher', 'Did the migration touch settings?'), 'sent');
+  assert.equal(x.status, 'done', 'a merged task is not reopened');
+  turn(s, 'No, only the store.');
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} replied to your message: No, only the store.`]);
+  assert.equal(wakes, 0);
+  // Only the turn the Dispatcher's message started: a later turn of its own is not reported.
+  turn(s, 'Also tidied my notes.');
+  assert.equal(store.data.pendingUpdates.length, 1);
+});
+
+test('a request the Worker cannot go on without keeps its task open, and the Dispatcher\'s message sets it going again', () => {
+  const { w, x, s } = talking();
+  assert.match(workers.fromWorker(w, 'request', 'What is W-9 changing in store.ts?'), /^Delivered/);
+  assert.equal(w.request?.text, 'What is W-9 changing in store.ts?');
+  assert.equal(wakes, 1);
+  assert.deepEqual(chatLines(), [`${w.id} → Dispatcher request: What is W-9 changing in store.ts?`]);
+  turn(s, 'I will wait for that.');
+  assert.equal(x.status, 'waiting');
+  assert.equal(w.status, 'idle');
+  assert.equal(w.statusText, 'Waiting for the Dispatcher');
+  assert.match(store.data.pendingUpdates[0], new RegExp(`^${w.id} \\(${x.id} "Task"\\) asks you: What is W-9 changing in store\\.ts\\?`));
+  // The Dispatcher may have done something about the request without writing back: it hears that the task stopped for it.
+  assert.equal(wakes, 2);
+  assert.match(store.data.pendingUpdates[1], new RegExp(`^${w.id} \\(${x.id} "Task"\\) stopped and waits for your reply to what it asked: What is W-9 changing in store\\.ts\\?\\n  Its task stays open and keeps its Worker slot until the Worker hears from you`));
+  assert.equal(store.data.pendingUpdates.length, 2);
+
+  assert.equal(workers.send(w.id, 'dispatcher', 'Only pushUpdate.'), 'sent');
+  assert.equal(w.request, null);
+  assert.equal(x.status, 'running');
+  assert.equal(sent.get(w.id)![0], '[Dispatcher] Only pushUpdate.');
+  turn(s, 'RESULT: Done');
+  assert.equal(x.status, 'done');
+});
+
+test('a BLOCKED report keeps the task open with its slot and tells the Dispatcher; a request that the task outlived is closed with it', () => {
+  loadSettings().maxWorkers = 1;
+  const { w, x, s } = talking();
+  turn(s, 'I looked everywhere.\nBLOCKED: I need the name of the staging bucket.');
+  assert.equal(x.status, 'waiting');
+  assert.equal(w.request?.text, 'I need the name of the staging bucket.');
+  assert.equal(wakes, 1);
+  assert.match(store.data.pendingUpdates[0], /is blocked and waits for you: I need the name of the staging bucket\./);
+  assert.deepEqual(chatLines(), [`${w.id} is blocked and waits for the Dispatcher: I need the name of the staging bucket.`]);
+  // Still holding the only slot.
+  const b = addWorker();
+  const y = fresh();
+  return workers.assign(y, b.id, b.model).then(() => {
+    assert.equal(y.status, 'queued');
+    workers.send(w.id, 'user', 'It is stage-eu.');
+    assert.equal(x.status, 'running');
+    workers.fromWorker(w, 'request', 'Is W-9 done?');
+    turn(s, 'RESULT: Done');
+    assert.equal(x.status, 'done');
+    assert.equal(w.request, null);
+  });
+});
+
+test('past five requests in one task, more of them wait for the next Dispatcher turn', () => {
+  const { w } = talking();
+  for (let i = 1; i <= 7; i++) workers.fromWorker(w, 'request', `Request ${i}`);
+  assert.equal(wakes, 5);
+  assert.equal(store.data.pendingUpdates.length, 7);
+});
+
+test('with no task open the same holds per Worker, and the count starts over when it is answered', () => {
+  const { w } = talking({ status: 'done', finishedAt: now, prUrl: 'https://github.com/o/r/pull/1', prState: 'MERGED' });
+  for (let i = 1; i <= 7; i++) workers.fromWorker(w, 'request', `Request ${i}`);
+  assert.equal(wakes, 5);
+  workers.send(w.id, 'dispatcher', 'Here is what you asked for.');
+  assert.equal(w.request, null);
+  workers.fromWorker(w, 'request', 'One more thing.');
+  assert.equal(wakes, 6);
+});
+
+test('a turn that ends without a report while its subagents run does not finish the task', () => {
+  const { x, s } = talking();
+  feed(s, agents(1), said('Explorers are still running.'), turnEnd('Explorers are still running.'));
+  assert.equal(x.status, 'running');
+  assert.deepEqual(store.data.pendingUpdates, []);
+  feed(s, agents(0), said('RESULT: Done'), turnEnd('RESULT: Done'));
+  assert.equal(x.status, 'done');
+});
+
+test('a question held by a usage limit goes out when it resets, still without reopening a task', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, finished);
+  limit(true);
+  assert.equal(workers.ask(w.id, 'Which file?'), 'limit');
+  limit(false);
+  workers.retryQueued();
+  assert.ok(sent.get(w.id)![0].startsWith('[Dispatcher question] Which file?'), sent.get(w.id)![0]);
+  assert.equal(x.status, 'pr_open');
+});
+
+test('on restart a task that waits for the Dispatcher is not told to continue, and an open question is given back', () => {
+  const w = addWorker({ sessionId: 'sid', request: { text: 'Need the bucket name.', at: now }, ask: { text: 'Which file?', at: now } });
+  const x = addTask(w, { status: 'waiting' });
+  workers.resumeAfterRestart();
+  assert.equal(sent.get(w.id), undefined);
+  assert.equal(x.status, 'waiting');
+  assert.equal(w.ask, null);
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} did not answer your question "Which file?" (the app restarted). Ask again if you still need the answer.`]);
+  assert.equal(wakes, 0);
+});
+
+test('a Worker session leaves out the tools it never needs, caps command output, and has its own tools allowed in any mode', async () => {
+  const { s } = talking();
+  assert.deepEqual(s.cfg.disallowedTools, ['Workflow', 'ScheduleWakeup', 'ReportFindings', 'ListAgents']);
+  assert.equal((s.cfg.settings as { bashOutputMaxChars: number }).bashOutputMaxChars, 12_000);
+  const opts = { signal: new AbortController().signal, suggestions: [], toolUseID: 'tu' } as unknown as Parameters<CanUseTool>[2];
+  const input = { kind: 'note', text: 'Hi' };
+  assert.deepEqual(await s.cfg.canUseTool!('mcp__oma__tell_dispatcher', input, opts), { behavior: 'allow', updatedInput: input });
+});

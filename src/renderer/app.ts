@@ -198,7 +198,15 @@ const taskStatus = (st: string) => t(`task.${st}` as Key);
 const finishedToday = (x: Task) => (x.status === 'done' || x.status === 'pr_open') && !!x.finishedAt && new Date(x.finishedAt).toDateString() === new Date().toDateString();
 /** What a queued task waits for: a free Worker slot ("Waiting for a slot 3/3") or a usage limit. */
 const queuedLabel = (x: Task) => (waitsForSlot(x) ? t('st.slotWait', { n: slotsUsed(S!.tasks), max: S!.settings.maxWorkers }) : t('st.limitWait'));
-const taskLabel = (x: Task) => (x.status === 'queued' ? queuedLabel(x) : taskStatus(x.status));
+/**
+ * The task is open because its Worker needs the Dispatcher, not the user (decision 87): the turn ended, so the Worker
+ * is idle, and the task keeps its slot.
+ */
+const awaitsDispatcher = (x: Task | null | undefined) => {
+  const w = x?.status === 'waiting' ? worker(x.workerId) : null;
+  return !!w && w.status === 'idle' && !!w.request;
+};
+const taskLabel = (x: Task) => (x.status === 'queued' ? queuedLabel(x) : awaitsDispatcher(x) ? t('st.awaitDispatcher') : taskStatus(x.status));
 
 let toastTimer: number | undefined;
 function toast(text: string, err = false) {
@@ -418,7 +426,7 @@ function workerIcon(w: Worker) {
   if (w.status === 'error') return ic('err');
   if (w.status === 'archived') return ic('arch');
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
-  if (x?.status === 'queued' || x?.status === 'blocked') return ic('wait');
+  if (x?.status === 'queued' || x?.status === 'blocked' || awaitsDispatcher(x)) return ic('wait');
   if (x?.status === 'pr_open') return ic('pr');
   if (x?.status === 'done') return ic('done');
   return ic('idle');
@@ -427,7 +435,9 @@ function workerIcon(w: Worker) {
 function renderSidebar() {
   const s = S!;
   const pending = s.decisions.filter((d) => d.status === 'pending');
-  const running = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting');
+  const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
+  // A Worker that waits for the Dispatcher's answer is listed too: its task is open and holds a slot.
+  const running = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting' || awaitsDispatcher(lastTask(w)));
   // A Worker stopped by an error is not running; it waits for someone to tell it to continue.
   const failed = s.workers.filter((w) => w.status === 'error');
   // One row per PR, even when a follow-up task recorded the same PR.
@@ -450,9 +460,9 @@ function renderSidebar() {
     return `<div class="row" data-action="goto-decision" data-id="${d.id}"${d.reason ? ` title="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(d.summary?.what || d.title, 60))}</b><small>${esc(small)}</small></span></div>`;
   }).join('');
   const workerRow = (w: Worker) => {
-    const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+    const x = lastTask(w);
     const what = x?.title ?? w.title;
-    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : `${w.repo ?? t('general')}, ${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
+    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : `${w.repo ?? t('general')}, ${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
     return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span></div>`;
   };
   const runRows = running.map(workerRow).join('');
@@ -798,6 +808,7 @@ function statusPill(w: Worker) {
     case 'error': return `<span class="pill red">${t('st.error')}</span>`;
     case 'archived': return `<span class="pill">${t('st.archived')}</span>`;
   }
+  if (awaitsDispatcher(x)) return `<span class="pill orange">${t('st.awaitDispatcher')}</span>`;
   if (x?.status === 'blocked') return `<span class="pill orange">${t('st.afterMerge')}</span>`;
   if (x?.status === 'queued') return `<span class="pill orange">${queuedLabel(x)}</span>`;
   if (x?.status === 'pr_open') return `<span class="pill pr-open">${t('st.prOpen')}</span>`;
@@ -999,10 +1010,11 @@ function renderWorkerInspector() {
   }
   const tasks = w.taskIds.map((id) => task(id)).filter(Boolean).reverse() as Task[];
   const cur = tasks[0];
-  const pillCls = w.status === 'running' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : '';
+  const asked = awaitsDispatcher(cur);
+  const pillCls = w.status === 'running' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : asked ? 'orange' : '';
   const stKey: Record<string, Key> = { running: 'st.running', starting: 'st.starting', waiting: 'st.waitingMe', idle: 'st.idle', error: 'st.error', archived: 'st.archived' };
   keepScroll(root, () => { root.innerHTML = `
-    <div class="ins-h"><b>${esc(w.id)}</b><span class="pill ${pillCls}">${t(stKey[w.status] ?? 'st.idle')}</span></div>
+    <div class="ins-h"><b>${esc(w.id)}</b><span class="pill ${pillCls}">${t(asked ? 'st.awaitDispatcher' : stKey[w.status] ?? 'st.idle')}</span></div>
     <div class="group kv">
       <span>${t('kv.task')}</span><span>${esc(cur?.title ?? w.title)}</span>
       <span>${t('kv.repo')}</span><span>${esc(w.repo ?? t('general'))}</span>
@@ -1013,6 +1025,7 @@ function renderWorkerInspector() {
       <span>${t('kv.account')}</span><span>${esc(acctLabel(w.accountId))}</span>
       <span>${t('kv.context')}</span><span>${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}</span>
       ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(w.statusText, 140))}</span>` : ''}
+      ${w.request && w.status !== 'archived' ? `<span>${t('kv.request')}</span><span title="${esc(w.request.text)}">${esc(oneLine(w.request.text, 140))}</span>` : ''}
     </div>
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
     <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>

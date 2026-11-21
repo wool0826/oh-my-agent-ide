@@ -278,6 +278,8 @@ async function boot() {
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
+  // Worker news worth a turn of its own: the Dispatcher starts one by itself.
+  store.on('wake', () => dispatcher.wake());
   onDecisionCreated((d) => {
     notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d));
   });

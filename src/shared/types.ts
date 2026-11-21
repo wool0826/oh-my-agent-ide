@@ -61,6 +61,16 @@ export interface Worker {
   knowledge: string;
   /** Running totals of its current session, to turn Claude Code's cumulative figures into per-turn ones. */
   sessionSpend?: SessionSpend | null;
+  /** A question from the Dispatcher (ask_worker) that this Worker has not answered yet. */
+  ask?: OpenNote | null;
+  /** What this Worker asked the Dispatcher for (tell_dispatcher request, or a BLOCKED report), not answered yet. */
+  request?: OpenNote | null;
+}
+
+/** A question or request between the Dispatcher and a Worker that still waits for its answer. */
+export interface OpenNote {
+  text: string;
+  at: string;
 }
 
 /** blocked: waiting for another task's PR to merge (afterTaskId). */

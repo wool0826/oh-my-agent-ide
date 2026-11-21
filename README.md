@@ -36,6 +36,7 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 - The right side collects decisions waiting for you, results (PR links and result files), and answers the Dispatcher gave on your behalf. Correct an auto-answer with the pencil button or by right-clicking it.
 - Every decision says why it needs you: which Worker asks to do what for which task, and why it is not decided without you (the always-ask rule and its risk, a path outside the Worker's folders, or what memory could not answer). The sidebar row and the OS notification show the same reason.
 - A new task goes to an idle Worker that already worked on the same repository, preferring one that worked on the same area of the code. A Worker that is busy, has other open work, or whose context is at 60% of the window or more is passed over. A new Worker is created only when none fits, or when you ask for a fresh one.
+- The Dispatcher and Workers talk to each other. The Dispatcher can ask a Worker a question or read its conversation, and a Worker can answer, ask for something or report that it is blocked without finishing its task. When an answer, a request or a result comes in, the Dispatcher tells you what it means without waiting for your next message; the chat shows one line per exchange. A Worker that waits for the Dispatcher reads "Waiting for the Dispatcher" and keeps its slot; you can also answer it yourself in its conversation.
 - Each result shows what its task cost as an "API-equivalent estimate" (Claude Code's figure at API list prices) with its input, output and cache tokens. Subscription accounts are not billed this amount, and nothing is held back because of it. The Dispatcher's own cost this month is in the menu of the context indicator next to the send button.
 - When an answer or a correction holds a fact worth reusing, a "Remember this?" card offers to save it to memory (save, edit, or dismiss). It appears only when the check is confident, at most once per task; turn it off in Settings > Memory.
 - In the Worker view, select a Worker to see its conversation with the Dispatcher and message it directly. "Done today" and "Archived Workers" in the sidebar filter the Worker list; "All" shows every Worker again.
@@ -78,8 +79,8 @@ Build output goes to `dist/`, installers to `release/`.
 | Path | What it does |
 |---|---|
 | `src/main/agents/session.ts` | One Claude Code session: account failover, compaction (80% of a 250K window, and by Claude Code mid-turn), usage reading |
-| `src/main/agents/dispatcher.ts` | The Dispatcher session and its task-board MCP tools |
-| `src/main/agents/workers.ts` | Creating and assigning Workers, questions and permissions, results, tasks that wait for a merge |
+| `src/main/agents/dispatcher.ts` | The Dispatcher session, its task-board MCP tools, and the turns Worker news starts |
+| `src/main/agents/workers.ts` | Creating and assigning Workers, questions and permissions, talking to the Dispatcher, results, tasks that wait for a merge |
 | `src/main/agents/advisor.ts` | Decides whether a Worker's question can be answered from memory |
 | `src/main/agents/memorySuggest.ts` | Offers to remember reusable facts from decision answers and corrections |
 | `src/main/agents/permissions.ts` | Actions that always ask |

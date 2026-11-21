@@ -30,11 +30,34 @@ import { permissionReason, planReason, questionReason } from '../../shared/askWh
 import { canStart, queueOrder, slotsUsed, waitsForSlot } from '../../shared/slots';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
-import { kTokens } from '../../shared/context';
+import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
 
 const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
 const LIMIT_RESET_MSG = 'The usage limit has reset. Continue the task where you left off.';
 const SLOT_FREE_MSG = 'Continue the task where you left off.';
+/** A Worker that answered a question mid-task and stopped: the answer is no task result. */
+const GO_ON_MSG ='[Dispatcher] Your answer was delivered. Go on with your task where you left off, and report it with the RESULT lines when it is done.';
+
+/** Built-in tools a Worker never needs. Left out, their definitions are not re-read on every step. */
+const UNUSED_TOOLS = ['Workflow', 'ScheduleWakeup', 'ReportFindings', 'ListAgents'];
+/** Command output a Worker gets inline; Claude Code saves the rest to a file it can read in parts (its default is 30,000). */
+const SHELL_OUTPUT_CHARS = 12_000;
+/** Requests from one task that each start a Dispatcher turn; later ones wait for its next turn. */
+const MAX_REQUEST_WAKES = 5;
+/** What the Dispatcher is told about a task that stopped for it: only a message to the Worker sets it going again. */
+const REPLY_NOTE = 'Its task stays open and keeps its Worker slot until the Worker hears from you: reply with send_to_worker, also after you did something else about it (create_task, request_decision).';
+
+export type TellKind = 'answer' | 'request' | 'note';
+
+/** Long text for the Dispatcher, cut where it would crowd its context; read_worker has the rest. */
+const clip = (text: string, max: number) => {
+  const s = text.trim().replace(/\r?\n/g, '\n  ');
+  return s.length > max ? `${s.slice(0, max)}… (cut; read_worker has the rest)` : s;
+};
+
+const QUESTION_TAG = '[Dispatcher question]';
+const question = (text: string) =>
+  `${QUESTION_TAG} ${text}\n\nAnswer with the tell_dispatcher tool (kind "answer"), then go on with what you were doing. This is a question, not a new task.`;
 
 const planNudge = (task: Task) =>
   `[Plan needed] Your turn ended without a plan for ${task.id}. This task is plan-first, so it is not finished until the user approves a plan. Finish investigating and present your plan with ExitPlanMode now; if the user must decide something first, ask with AskUserQuestion. If you were told to hold, reply in one line and stop.`;
@@ -54,6 +77,17 @@ function workerPrompt(w: Worker) {
     '',
     'Task messages start with "[Task T-xxxx]". Messages starting with "[Dispatcher]", "[User message]", "[Review comments]" or "[CI failure]" are further instructions for the work in progress.',
     'A message may end with an "[Attached files]" list of paths the user dropped in. Read them directly from those paths when relevant.',
+    '',
+    'Talking to the Dispatcher (tell_dispatcher tool). It does not see your conversation, so write each message complete on its own:',
+    '- "[Dispatcher question]" asks you something. Reply with kind "answer", then go on with what you were doing. It is not a new task and needs no RESULT lines.',
+    '- kind "request": you need the Dispatcher to do or answer something, such as what another Worker is doing, or a new task for work outside yours. Keep working on what does not depend on it; the answer comes as a "[Dispatcher]" message.',
+    '- kind "note": a milestone worth knowing that needs no reply. Use it rarely.',
+    '- Do not start subagents or workflows to build work outside your task (other features, parallel lanes); ask for new tasks with a request. Subagents are for searching and for the self-review.',
+    '',
+    'Keep your context small; every step reads all of it again:',
+    '- Find the place with Grep or Glob, then Read only that range (offset and limit). Do not print whole files with cat, sed or Get-Content, and do not read again what you already read or just edited.',
+    '- Keep command output short: pipe long output through tail or head, and look at `git diff --stat` before the diff of one file.',
+    '- Make independent tool calls in the same step, not one at a time.',
     '',
     'Code tasks:',
     '- The current folder is a git worktree of the repository. Create the branch named in the task message from the default branch and work there.',
@@ -80,12 +114,20 @@ function workerPrompt(w: Worker) {
     'PR: PR URL (if any)',
     'FILE: absolute path of a result file (one line per file)',
     'Then a short explanation below.',
+    'If you cannot finish without something only the Dispatcher or the user can give, and AskUserQuestion does not fit, start the final message with "BLOCKED: what you need" instead of the RESULT line. The task stays open and goes on when the answer comes.',
   ].join('\n');
 }
 
+/**
+ * How a turn's last message reports the task: a RESULT line says it is finished, a BLOCKED line (without one)
+ * that it cannot go on by itself.
+ */
 function parseResult(text: string, cwd: string) {
   const lines = text.split('\n').map((l) => l.trim());
   const pick = (k: string) => lines.filter((l) => l.toUpperCase().startsWith(k + ':')).map((l) => l.slice(k.length + 1).trim()).filter(Boolean);
+  const reported = pick('RESULT').length > 0;
+  const stuck = lines.find((l) => l.toUpperCase().startsWith('BLOCKED:'));
+  const blocked = reported || stuck === undefined ? null : stuck.slice('BLOCKED:'.length).trim() || oneLine(text, 200);
   const summary = pick('RESULT')[0] ?? oneLine(lines.find((l) => l && !l.startsWith('#')) ?? text, 200);
   const prLine = pick('PR')[0];
   const prUrl = (prLine?.match(/https?:\/\/\S+\/pull\/\d+/) ?? text.match(/https?:\/\/[^\s)>\]]+\/pull\/\d+/))?.[0] ?? null;
@@ -93,7 +135,7 @@ function parseResult(text: string, cwd: string) {
     .map((f) => f.replace(/^`|`$/g, ''))
     .map((f) => (path.isAbsolute(f) ? f : path.join(cwd, f)))
     .filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
-  return { summary, prUrl, files };
+  return { summary, prUrl, files, reported, blocked };
 }
 
 class WorkerManager {
@@ -106,6 +148,12 @@ class WorkerManager {
   private planNudged = new Set<string>();
   /** Plan-first tasks whose Worker was already sent back once for leaving out the WHAT / HOW / OUTPUT lines. */
   private summaryAsked = new Set<string>();
+  /** Workers with no open task that the Dispatcher wrote to: what their turn says goes back to it. */
+  private replyOwed = new Set<string>();
+  /** Workers sent a Dispatcher question that no turn of theirs has ended on yet. */
+  private questioned = new Set<string>();
+  /** Requests that started a Dispatcher turn, per task (or Worker, with no task open). */
+  private requestWakes = new Map<string, number>();
 
   /**
    * A follow-up for a task that finished (or failed) less than 3 days ago reopens that task,
@@ -175,8 +223,11 @@ class WorkerManager {
       systemAppend: workerPrompt(w) + (loadSettings().claudeRules ? userRulesSection() : ''),
       // One auto-memory per repository, shared with the user's own Claude Code sessions there (not one per worktree).
       // Off in Settings: no Claude Code auto-memory at all, rather than a separate one per worktree.
-      settings: loadSettings().claudeMemory ? { autoMemoryDirectory: memDir } : { autoMemoryEnabled: false },
-      mcpServers: { oma: memoryTools(loadSettings().claudeMemory ? memDir : null) },
+      settings: { ...(loadSettings().claudeMemory ? { autoMemoryDirectory: memDir } : { autoMemoryEnabled: false }), bashOutputMaxChars: SHELL_OUTPUT_CHARS },
+      mcpServers: { oma: workerTools(loadSettings().claudeMemory ? memDir : null, (kind, text) => this.fromWorker(w, kind, text)) },
+      disallowedTools: UNUSED_TOOLS,
+      // With its task finished, an idle Worker is compacted much earlier (see WORKER_IDLE_COMPACT).
+      compactAt: () => (this.currentTask(w) ? COMPACT_AT : WORKER_IDLE_COMPACT),
       accountId: acc.id,
       resume: w.sessionId,
       spent: w.sessionSpend,
@@ -224,11 +275,7 @@ class WorkerManager {
       onTurnEnd: (r) => {
         // With more input queued, the turn that follows settles the task.
         if (r.internal || r.queued) return;
-        const task = this.currentTask(w);
-        if (!task) return;
-        // A plan-first task is not done before its plan is approved.
-        if (needsPlan(task) && !r.isError) return this.awaitPlan(w, task, r.text, !!r.background);
-        this.finalize(w, task, r.text, r.isError);
+        this.turnEnded(w, r.text, r.isError, !!r.background);
       },
       onLimited: () => this.pause(w, this.currentTask(w)),
       // Shown in the Worker's conversation. A failed compaction leaves the task alone (it is retried later).
@@ -251,6 +298,8 @@ class WorkerManager {
     return async (toolName, input, opts) => {
       if (toolName === 'AskUserQuestion') return this.answerQuestions(w, input, opts.signal);
       if (toolName === 'ExitPlanMode') return this.reviewPlan(w, input, opts.signal);
+      // The app's own tools (recall, tell_dispatcher) change nothing in the worktree; in plan mode too.
+      if (toolName.startsWith('mcp__oma__')) return { behavior: 'allow', updatedInput: input };
       // Files the user attached may be read without asking.
       const rp = readPath(toolName, input);
       if (rp && isAttached(rp)) return { behavior: 'allow', updatedInput: input };
@@ -388,12 +437,115 @@ class WorkerManager {
     return { behavior: 'allow' as const, updatedInput: { ...input, answers } };
   }
 
+  /**
+   * A turn ended. What it said goes to the Dispatcher when the Dispatcher waits for it, and its open task (if any)
+   * is finished only when the turn says so: not while subagents still run, and not while the Worker waits for the
+   * Dispatcher.
+   */
+  private turnEnded(w: Worker, text: string, isError: boolean, background: boolean) {
+    const task = this.currentTask(w);
+    const owed = this.replyOwed.delete(w.id);
+    const questioned = this.questioned.delete(w.id);
+    const said = !isError && !!text.trim();
+    // The turn that read a question closes it. An answer in plain text, without tell_dispatcher, still reaches the Dispatcher.
+    if (said && w.ask) this.fromWorker(w, 'answer', text, true);
+    else if (w.ask) this.unanswered(w, isError ? text : '', true);
+    // A reply to instructions with no task to report on. It needs no turn of the Dispatcher's own.
+    else if (said && owed && !task) store.pushUpdate(`${w.id} replied to your message: ${clip(text, 1000)}`);
+    if (!task) return;
+    // A plan-first task is not done before its plan is approved.
+    if (needsPlan(task) && !isError) return this.awaitPlan(w, task, text, background);
+    if (!isError) {
+      const { reported, blocked } = parseResult(text, w.cwd);
+      if (!reported) {
+        // Subagents the turn started are still running; the session goes on by itself when they report.
+        if (background) { task.updatedAt = nowIso(); return store.changed(); }
+        if (blocked || w.request) return this.awaitDispatcher(w, task, blocked);
+        // It stopped after a question (answered with the tool or in plain text), so the turn may have said nothing
+        // about the task: it is told to go on, once.
+        const s = this.sessions.get(w.id);
+        if (questioned && s && !s.closed) {
+          s.send(GO_ON_MSG);
+          return this.touch(w);
+        }
+      }
+    }
+    this.finalize(w, task, text, isError);
+  }
+
+  /**
+   * The turn ended with the task unfinished because the Worker needs the Dispatcher. The task stays open and keeps
+   * its slot, like any task that waits for an answer, and goes on with the next message to the Worker.
+   */
+  private awaitDispatcher(w: Worker, task: Task, need: string | null) {
+    task.status = 'waiting';
+    task.updatedAt = nowIso();
+    // A BLOCKED report without a request is the request. One made earlier told the Dispatcher what is needed; now
+    // it hears that the task stopped for it, in case it did something about the request without writing back.
+    if (!w.request) this.raise(w, task, need ?? '', true);
+    else store.pushUpdate(`${w.id} (${task.id} "${task.title}") stopped and waits for your reply to what it asked: ${oneLine(w.request.text, 300)}\n  ${REPLY_NOTE}`, this.wakesLeft(task.id));
+    w.statusText = t('st.awaitDispatcher');
+    store.changed();
+  }
+
+  /** Counts one more thing a Worker needs from the Dispatcher; past the cap for one task (or one Worker without a task) it starts no turn. */
+  private wakesLeft(key: string) {
+    const n = (this.requestWakes.get(key) ?? 0) + 1;
+    this.requestWakes.set(key, n);
+    return n <= MAX_REQUEST_WAKES;
+  }
+
+  /** A question got no answer: the turn that read it failed or was stopped, or the app restarted first. */
+  private unanswered(w: Worker, why: string, wake: boolean) {
+    const asked = w.ask?.text ?? '';
+    w.ask = null;
+    store.pushUpdate(`${w.id} did not answer your question "${oneLine(asked, 200)}"${why ? ` (${oneLine(why, 200)})` : ''}. Ask again if you still need the answer.`, wake);
+  }
+
+  /** Tell the Dispatcher what a Worker needs from it. Past the cap for one task, it waits for the Dispatcher's next turn. */
+  private raise(w: Worker, task: Task | null, text: string, blocked = false) {
+    const wake = this.wakesLeft(task?.id ?? w.id);
+    w.request = { text, at: nowIso() };
+    const about = task ? ` (${task.id} "${task.title}")` : '';
+    store.chat('event', t(blocked ? 'ev.blocked' : 'ev.requested', { id: w.id, text: oneLine(text, 200) }), task?.id);
+    store.pushUpdate(blocked
+      ? `${w.id}${about} is blocked and waits for you: ${clip(text, 4000)}\n  ${REPLY_NOTE}`
+      : `${w.id}${about} asks you: ${clip(text, 4000)}\n  Reply with send_to_worker: the answer, or what you did about it.`, wake);
+  }
+
+  /**
+   * What a Worker tells the Dispatcher with tell_dispatcher. An answer to an open question and a request start
+   * a Dispatcher turn; a note, or an answer nobody asked for, waits for its next one.
+   * spoken: it was the text of the Worker's turn, which its conversation shows already. Returns the tool's reply.
+   */
+  fromWorker(w: Worker, kind: TellKind, text: string, spoken = false): string {
+    const body = text.trim();
+    if (!body) return 'Nothing was sent: the text is empty.';
+    if (!spoken) store.log(w.id, 'worker', `${t('log.toDispatcher')}: ${body}`);
+    const task = this.currentTask(w);
+    if (kind === 'answer' && w.ask) {
+      const asked = w.ask.text;
+      w.ask = null;
+      store.chat('event', t('ev.answered', { id: w.id, text: oneLine(body, 200) }));
+      store.pushUpdate(`${w.id} answered your question "${oneLine(asked, 200)}": ${clip(body, 4000)}`, true);
+      return 'Delivered to the Dispatcher. Go on with what you were doing.';
+    }
+    if (kind === 'request') {
+      this.raise(w, task, body);
+      return 'Delivered. The answer comes as a "[Dispatcher]" message. Go on with what does not depend on it; if nothing is left, end your turn with "BLOCKED: what you need".';
+    }
+    store.pushUpdate(`${w.id}${task ? ` (${task.id})` : ''} notes: ${clip(body, 1000)}`);
+    return 'Noted. The Dispatcher reads it on its next turn.';
+  }
+
   private fail(w: Worker, task: Task, text: string) {
     task.status = 'failed';
     task.updatedAt = nowIso();
     task.summary = oneLine(text || t('err.stopped'), 200);
+    w.request = null;
+    this.requestWakes.delete(task.id);
     store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
-    store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`);
+    store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true);
     this.fillSlots();
   }
 
@@ -413,7 +565,7 @@ class WorkerManager {
       return this.touch(w);
     }
     store.chat('event', t('ev.planMissing', { id: w.id, title: task.title }), task.id);
-    store.pushUpdate(`${w.id} ${task.id} "${task.title}" is still planning: its turn ended without a plan to approve ("${oneLine(text, 160)}"). The task stays open; send_to_worker if it needs instructions.`);
+    store.pushUpdate(`${w.id} ${task.id} "${task.title}" is still planning: its turn ended without a plan to approve ("${oneLine(text, 160)}"). The task stays open; send_to_worker if it needs instructions.`, true);
     store.changed();
   }
 
@@ -425,6 +577,9 @@ class WorkerManager {
     const wasCi = this.ciFixing.delete(task.id);
     const wasFollowup = this.followups.delete(task.id);
     const firstFinish = !task.finishedAt;
+    // Finished anyway: what it asked the Dispatcher for holds nothing up any more.
+    w.request = null;
+    this.requestWakes.delete(task.id);
     task.summary = summary;
     task.prUrl = prUrl ?? task.prUrl;
     task.files = files.length ? files : task.files;
@@ -434,7 +589,7 @@ class WorkerManager {
     if (task.prUrl && !task.reviewSyncedAt) task.reviewSyncedAt = nowIso();
     const label = wasReview ? t('res.reviewLabel') : wasCi ? t('res.ciFixLabel') : wasFollowup ? t('res.followupLabel') : t('res.doneLabel');
     store.chat('result', wasReview ? t('res.review', { s: summary }) : wasCi ? t('res.ciFix', { s: summary }) : wasFollowup ? t('res.followup', { s: summary }) : summary, task.id);
-    store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`);
+    store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`, true);
     if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
     notifyInfo(`${w.id} ${label}`, `${task.title}: ${summary}`);
     store.changed();
@@ -586,7 +741,8 @@ class WorkerManager {
   /**
    * Send to a Worker whose session is open. Messages held while a usage limit lasted, or while its task waited
    * for a slot, go first. A queued task runs again: it starts if the Worker never got it, and is told to continue
-   * when there is nothing else to send. Otherwise a follow-up may reopen the last task (reopenLast).
+   * when there is nothing else to send. Otherwise a follow-up may reopen the last task (reopenLast);
+   * a question from the Dispatcher is no follow-up and reopens nothing.
    */
   private deliver(w: Worker, s: AgentSession, msgs: string[], task = this.currentTask(w)) {
     const out = [...(this.held.get(w.id) ?? []), ...msgs];
@@ -607,7 +763,7 @@ class WorkerManager {
       }
       if (!out.length) out.push(slot ? SLOT_FREE_MSG : LIMIT_RESET_MSG);
     }
-    this.reopenLast(w);
+    if (out.some((m) => !m.startsWith(QUESTION_TAG))) this.reopenLast(w);
     out.forEach((m, i) => s.send(i ? m : this.withNotes(w, m)));
     this.touch(w);
   }
@@ -618,25 +774,69 @@ class WorkerManager {
     return (st.effortPerTask && task?.effort) || st.workerEffort;
   }
 
+  /** Instructions for a Worker. Says where the message is now: sent, or held for a slot or a usage limit. */
   send(workerId: string, from: 'user' | 'dispatcher', text: string) {
     const w = store.worker(workerId);
     if (!w) throw new Error(t('err.noWorker', { id: workerId }));
     if (w.status === 'archived') void this.unarchive(w);
     store.log(w.id, from, text);
     if (from === 'user') store.pushUpdate(`The user wrote to ${w.id} directly: ${oneLine(text, 200)}`);
-    const msg = `${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}`;
+    // From either one, it answers what the Worker asked the Dispatcher for: a task that waited for that goes on.
+    if (w.request) {
+      const cur = this.currentTask(w);
+      w.request = null;
+      // What it asks with no task open is counted per Worker, from one answer to the next.
+      this.requestWakes.delete(w.id);
+      if (cur?.status === 'waiting' && !this.sessions.get(w.id)?.busy) {
+        cur.status = 'running';
+        cur.updatedAt = nowIso();
+        w.statusText = '';
+      }
+    }
+    const how = this.post(w, `${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}`);
+    // With no task to report on, what the turn says goes back to the Dispatcher as an update.
+    if (from === 'dispatcher' && how === 'sent' && !this.currentTask(w)) this.replyOwed.add(w.id);
+    return how;
+  }
+
+  /**
+   * The Dispatcher asks a Worker something. Unlike instructions, a question reopens no task, and the answer goes
+   * back to the Dispatcher: by tell_dispatcher, mid-task too, or as the text of the turn. Says where the question is now.
+   */
+  ask(workerId: string, text: string) {
+    const w = store.worker(workerId);
+    if (!w) throw new Error(t('err.noWorker', { id: workerId }));
+    if (w.status === 'archived') void this.unarchive(w);
+    store.log(w.id, 'dispatcher', `${t('log.question')}: ${text}`);
+    store.chat('event', t('ev.asked', { id: w.id, text: oneLine(text, 200) }));
+    // Questions asked before an answer came are answered together.
+    w.ask = { text: w.ask ? `${w.ask.text}\n${text}` : text, at: w.ask?.at ?? nowIso() };
+    this.questioned.add(w.id);
+    return this.post(w, question(text));
+  }
+
+  /** Route a message to a Worker: now, or held until its task gets a slot or a usage limit resets. */
+  private post(w: Worker, msg: string): 'sent' | 'slot' | 'limit' {
     // Its task waits for a slot: the message goes out when the task starts. Work in progress is never held for one.
     const cur = this.currentTask(w);
     if (cur && waitsForSlot(cur)) {
       this.held.set(w.id, [...(this.held.get(w.id) ?? []), msg]);
       store.log(w.id, 'event', t('log.slotHeld'));
-      return store.changed();
+      store.changed();
+      return 'slot';
     }
     // Paused for a usage limit: going on needs a slot like any other resume.
-    if (cur?.status === 'queued' && !this.hasSlot(w)) return this.waitForSlot(w, cur, msg);
+    if (cur?.status === 'queued' && !this.hasSlot(w)) {
+      this.waitForSlot(w, cur, msg);
+      return 'slot';
+    }
     const s = this.ensureSession(w);
-    if (!s) return this.hold(w, msg);
-    this.deliver(w, s, [msg]);
+    if (!s) {
+      this.hold(w, msg);
+      return 'limit';
+    }
+    this.deliver(w, s, [msg], cur);
+    return 'sent';
   }
 
   /** New review comments on a PR, or its failed CI checks. */
@@ -879,6 +1079,8 @@ class WorkerManager {
       if (w.status === 'archived') continue;
       const task = this.currentTask(w);
       const inProgress = task && (task.status === 'running' || task.status === 'waiting');
+      // The turn that would have answered is gone with the session, and so is a question that was held.
+      if (w.ask) this.unanswered(w, 'the app restarted', false);
       if (w.status === 'error') {
         if (inProgress) failed.push({ w, task });
         continue;
@@ -887,6 +1089,8 @@ class WorkerManager {
       w.status = 'idle';
       // A Worker saved as busy on a paused task (an older version left them so) was really running it.
       if (!task || (!inProgress && !busy)) continue;
+      // Its turn had ended and the task waits for the Dispatcher's answer: nothing was interrupted.
+      if (w.request && task.status === 'waiting' && !busy) continue;
       resume.push({ w, task });
     }
     const settling = new Set([...resume, ...failed].map((r) => r.task));
@@ -922,13 +1126,26 @@ function workerMemoryDir(w: Worker) {
   return memoryDirFor(repo ? repo.path : paths().home);
 }
 
-/** Read-only memory search for Workers: IDE memory plus the shared Claude Code memory. */
-function memoryTools(memDir: string | null) {
+/**
+ * A Worker's own tools: read-only memory search (IDE memory plus the shared Claude Code memory) and its line to
+ * the Dispatcher. Neither changes files, so both work in plan mode too.
+ */
+function workerTools(memDir: string | null, tell: (kind: TellKind, text: string) => string) {
   return createSdkMcpServer({
     name: 'oma',
-    version: '0.2.0',
+    version: '0.3.0',
     alwaysLoad: true,
     tools: [
+      tool(
+        'tell_dispatcher',
+        'Say something to the Dispatcher without ending your turn. kind "answer": the answer to a "[Dispatcher question]". kind "request": something you need the Dispatcher to do or answer (what another Worker is doing, a new task for work outside yours); its reply comes later as a "[Dispatcher]" message. kind "note": news that needs no reply.',
+        {
+          kind: z.enum(['answer', 'request', 'note']),
+          text: z.string().describe('Complete on its own: the Dispatcher does not see your conversation.'),
+        },
+        async (a) => ({ content: [{ type: 'text' as const, text: tell(a.kind, a.text) }] }),
+        { annotations: { readOnlyHint: true } },
+      ),
       tool('recall', "Search the user's memory: preferences, repository notes, past decisions and finished tasks (IDE memory), and the Claude Code memory shared for this repository.", { query: z.string() }, async (a) => {
         const ide = searchMemory(a.query, 8).map((h) => `[ide] ${h.path}:${h.line} ${h.text}`);
         const cc = memDir ? searchClaudeMemory(a.query, [memDir], 8).map((h) => `[claude] ${h.file}:${h.line} ${h.text}`) : [];
