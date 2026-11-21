@@ -46,6 +46,7 @@ export const DEFAULTS: SettingsView = {
   dispatcherEffort: 'medium',
   workerEffort: 'high',
   effortPerTask: true,
+  selfReview: true,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
   claudeRules: true,
