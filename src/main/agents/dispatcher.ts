@@ -16,6 +16,7 @@ import { nowIso, oneLine, today } from '../util';
 import { EFFORTS, type Effort, type Task } from '../../shared/types';
 import { hasSpend } from '../../shared/spend';
 import { describeCancel } from '../../shared/queue';
+import { kTokens } from '../../shared/context';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
@@ -217,8 +218,6 @@ function systemPrompt() {
 class Dispatcher {
   session: AgentSession | null = null;
   statusText = '';
-  /** Context size when the user asked to compact; null when no compaction was requested. */
-  private compactingFrom: number | null = null;
   /** Messages that came while every account was held by a usage limit; sent when the first one resets. */
   private held: string[] = [];
   /** A turn a usage limit cut off; continued when the first limit resets. */
@@ -264,13 +263,14 @@ class Dispatcher {
         if (hasSpend(turn)) store.dispatcherSpent(turn);
         else store.changed();
       },
-      onTurnEnd: (r) => {
-        if (!r.internal || this.compactingFrom === null) return;
-        const from = this.compactingFrom;
-        this.compactingFrom = null;
-        this.statusText = '';
-        const kb = (n: number) => `${Math.round(n / 1000)}K`;
-        store.chat(r.isError ? 'error' : 'event', r.isError ? t('ev.compactFailed') : t('ev.compacted', { a: kb(from), b: kb(d.contextTokens) }));
+      // By hand, after a turn at 80% of the window, or by Claude Code mid-turn: all shown in the chat.
+      onCompact: (e) => {
+        if (e.phase === 'start') this.statusText = t('st.compacting');
+        else {
+          this.statusText = '';
+          store.chat(e.phase === 'done' ? 'event' : 'error', e.phase === 'done' ? t('ev.compacted', { a: kTokens(e.from), b: kTokens(e.to) }) : t('ev.compactFailed', { msg: oneLine(e.error, 200) }));
+        }
+        store.changed();
       },
       onStatus: (st, text) => {
         if (st === 'error') store.chat('error', t('err.dispatcher', { msg: text }));
@@ -344,8 +344,6 @@ class Dispatcher {
     if (!d.sessionId || d.date !== today()) return;
     const s = this.open();
     if (!s) throw new Error(accounts.list().length ? t('err.limitUntil', { time: limitResetText(accounts.nextFreeAt()) }) : t('err.noAccount'));
-    this.compactingFrom = d.contextTokens;
-    this.statusText = t('st.compacting');
     s.compact();
     store.changed();
   }

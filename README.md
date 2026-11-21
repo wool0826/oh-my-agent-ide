@@ -71,7 +71,7 @@ Build output goes to `dist/`, installers to `release/`.
 
 | Path | What it does |
 |---|---|
-| `src/main/agents/session.ts` | One Claude Code session: account failover, compaction at 250K, usage reading |
+| `src/main/agents/session.ts` | One Claude Code session: account failover, compaction (80% of a 250K window, and by Claude Code mid-turn), usage reading |
 | `src/main/agents/dispatcher.ts` | The Dispatcher session and its task-board MCP tools |
 | `src/main/agents/workers.ts` | Creating and assigning Workers, questions and permissions, results, tasks that wait for a merge |
 | `src/main/agents/advisor.ts` | Decides whether a Worker's question can be answered from memory |

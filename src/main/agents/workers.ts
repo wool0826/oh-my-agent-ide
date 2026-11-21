@@ -27,6 +27,7 @@ import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
 import { cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
+import { kTokens } from '../../shared/context';
 
 const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
 const LIMIT_RESET_MSG = 'The usage limit has reset. Continue the task where you left off.';
@@ -206,6 +207,17 @@ class WorkerManager {
         if (task) this.finalize(w, task, r.text, r.isError);
       },
       onLimited: () => this.pause(w, this.currentTask(w)),
+      // Shown in the Worker's conversation. A failed compaction leaves the task alone (it is retried later).
+      onCompact: (e) => {
+        if (e.phase === 'start') {
+          w.statusText = t('st.compacting');
+          store.log(w.id, 'event', t('log.compacting', { a: kTokens(e.tokens) }));
+        } else {
+          if (w.statusText === t('st.compacting')) w.statusText = '';
+          store.log(w.id, 'event', e.phase === 'done' ? t('log.compacted', { a: kTokens(e.from), b: kTokens(e.to) }) : t('log.compactFailed', { msg: oneLine(e.error, 200) }));
+        }
+        store.changed();
+      },
     });
     this.sessions.set(w.id, s);
     return s;

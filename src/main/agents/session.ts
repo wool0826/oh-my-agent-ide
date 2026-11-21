@@ -1,12 +1,17 @@
-import { query, type CanUseTool, type McpServerConfig, type Options, type PermissionMode, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { query, type CanUseTool, type McpServerConfig, type Options, type PermissionMode, type Query, type SDKMessage, type SDKStatusMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { accounts } from '../accounts';
 import { claudeExecutable, pluginPath } from '../runtime';
 import { log } from '../log';
 import { PushQueue } from '../util';
 import { SpendMeter, spendOf, type SessionSpend, type Spend } from '../../shared/spend';
+import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
 
-/** When a turn ends above this size, send /compact. */
-export const COMPACT_AT = 250_000;
+/** Compaction as the owner sees it: Claude Code's own (mid-turn) and the app's /compact alike. */
+export type CompactEvent =
+  | { phase: 'start'; tokens: number }
+  | { phase: 'done'; from: number; to: number }
+  /** limited: a usage limit stopped it. The account is held, and the compaction is retried on another account if one is free. */
+  | { phase: 'failed'; error: string; limited: boolean };
 
 export interface SessionConfig {
   label: string;
@@ -45,6 +50,8 @@ export interface SessionEvents {
   onAccount?(accountId: string | null): void;
   onStatus?(status: 'busy' | 'idle' | 'error', text: string): void;
   onLimited?(): void;
+  /** Compaction started or ended. A failed one never fails the turn: the conversation stays as it was. */
+  onCompact?(e: CompactEvent): void;
 }
 
 function userMsg(text: string): SDKUserMessage {
@@ -52,6 +59,11 @@ function userMsg(text: string): SDKUserMessage {
 }
 
 const LIMIT_RE = /rate.?limit|usage limit|limit reached|429|5-hour|weekly limit|out of extra usage/i;
+
+/** The session's flag settings plus the app's context window, so Claude Code compacts by itself before reaching it. */
+export function sessionSettings(settings: Options['settings']): Options['settings'] {
+  return typeof settings === 'string' ? settings : { ...settings, autoCompactWindow: CONTEXT_WINDOW };
+}
 
 /**
  * One Claude Code session. Input comes through a queue so the conversation stays open;
@@ -70,6 +82,10 @@ export class AgentSession {
   private internalTurn = false;
   private turnText: string[] = [];
   private failingOver = false;
+  /** A compaction in progress, with the context size it started from. */
+  private compacting: { from: number } | null = null;
+  /** Why a compaction failed during the current turn, until its result. */
+  private compactFailure: string | null = null;
   /** Kept across restarts of the query (failover, a dead process): the resumed session continues its totals. */
   private meter: SpendMeter;
 
@@ -112,7 +128,7 @@ export class AgentSession {
       additionalDirectories: this.cfg.additionalDirectories,
       hooks: this.cfg.hooks,
       tools: this.cfg.tools,
-      settings: this.cfg.settings,
+      settings: sessionSettings(this.cfg.settings),
       agents: this.cfg.agents,
       resume: this.sessionId ?? undefined,
       pathToClaudeCodeExecutable: claudeExecutable(),
@@ -141,8 +157,28 @@ export class AgentSession {
   compact() {
     if (this.closed) return;
     if (!this.q) this.start();
+    this.requestCompact();
+  }
+
+  private requestCompact() {
     this.ev.onStatus?.('busy', '');
+    this.beginCompact();
     this.sendInternal('/compact');
+  }
+
+  private beginCompact() {
+    this.compacting = { from: this.contextTokens };
+    this.ev.onCompact?.({ phase: 'start', tokens: this.contextTokens });
+  }
+
+  /** A usage limit also holds the account, so the turn's result can retry the compaction on another one. */
+  private failCompact(error: string) {
+    this.compacting = null;
+    this.compactFailure = error;
+    const limited = LIMIT_RE.test(error);
+    if (limited) accounts.markLimited(this.cfg.accountId);
+    log.warn(`[${this.cfg.label}] compaction failed`, error.slice(0, 300));
+    this.ev.onCompact?.({ phase: 'failed', error, limited });
   }
 
   /** Change the effort level, live if the session is running, otherwise for its next start. */
@@ -217,8 +253,20 @@ export class AgentSession {
           this.sessionId = m.session_id;
           this.ev.onInit?.(m.session_id);
         } else if (m.subtype === 'compact_boundary') {
-          this.contextTokens = (m as any).compact_metadata?.post_tokens ?? Math.round(this.contextTokens / 4);
+          const meta = m.compact_metadata;
+          const from = meta?.pre_tokens || this.compacting?.from || this.contextTokens;
+          this.compacting = null;
+          this.contextTokens = meta?.post_tokens ?? Math.round(this.contextTokens / 4);
           this.ev.onContext?.(this.contextTokens);
+          this.ev.onCompact?.({ phase: 'done', from, to: this.contextTokens });
+        } else if (m.subtype === 'status') {
+          // Claude Code reports its own compaction, and how any compaction ended, on status messages.
+          const st = m as SDKStatusMessage;
+          if (st.status === 'compacting' && !this.compacting) this.beginCompact();
+          else if (st.compact_result === 'failed') this.failCompact(st.compact_error || 'compaction failed');
+        } else if (m.subtype === 'local_command_output' && this.compacting && this.pendingInternal > 0) {
+          // The app's /compact may answer here; its text says why it failed.
+          this.turnText.push(m.content);
         }
         return;
       case 'rate_limit_event':
@@ -257,6 +305,14 @@ export class AgentSession {
         const finalText = this.turnText.length ? this.turnText[this.turnText.length - 1] : text;
         this.turnText = [];
         this.countSpend(m);
+        // A /compact that ends without a boundary did not compact. Claude Code says why in its text ("Error during compaction: ...").
+        if (internal && this.compacting) this.failCompact(finalText || text || 'compaction failed');
+        const compactLimited = internal && this.compactFailure !== null && LIMIT_RE.test(this.compactFailure);
+        this.compactFailure = null;
+        if (compactLimited) {
+          void this.failover(true);
+          return;
+        }
         if (isError && LIMIT_RE.test(text + ' ' + finalText)) {
           accounts.markLimited(this.cfg.accountId);
           void this.failover();
@@ -266,10 +322,12 @@ export class AgentSession {
         this.busy = queued > 0;
         this.ev.onTurnEnd?.({ text: finalText || text, isError, internal });
         void this.readPlanUsage();
-        if (!this.busy) this.ev.onStatus?.(isError ? 'error' : 'idle', isError ? text.slice(0, 300) : '');
-        if (!internal && !isError && this.contextTokens > COMPACT_AT && !this.busy) {
-          log.info(`[${this.cfg.label}] context ${this.contextTokens} > ${COMPACT_AT}, compacting`);
-          this.sendInternal('/compact');
+        // A failed /compact is not a failed turn: the session stays usable and its task goes on.
+        const failed = isError && !internal;
+        if (!this.busy) this.ev.onStatus?.(failed ? 'error' : 'idle', failed ? text.slice(0, 300) : '');
+        if (!internal && !isError && this.contextTokens >= COMPACT_AT && !this.busy) {
+          log.info(`[${this.cfg.label}] context ${this.contextTokens} >= ${COMPACT_AT}, compacting`);
+          this.requestCompact();
         }
         return;
       }
@@ -298,8 +356,8 @@ export class AgentSession {
     }
   }
 
-  /** The current account hit its limit: resume the same session on another account. */
-  private async failover() {
+  /** The current account hit its limit: resume the same session on another account. compact: retry the /compact the limit stopped. */
+  private async failover(compact = false) {
     if (this.failingOver || this.closed) return;
     this.failingOver = true;
     try {
@@ -312,12 +370,14 @@ export class AgentSession {
         // Every account is held by a limit: the owner picks this up again when the first one resets.
         this.busy = false;
         this.ev.onStatus?.('idle', '');
-        this.ev.onLimited?.();
+        // A failed compaction cut nothing off: it is tried again after a later turn, or by Claude Code mid-turn.
+        if (!compact) this.ev.onLimited?.();
         return;
       }
       log.info(`[${this.cfg.label}] failover ${old} -> ${next.id}`);
       this.cfg.accountId = next.id;
       this.start();
+      if (compact) return this.requestCompact();
       // The continued work should be visible, so this is not an internal turn.
       this.busy = true;
       this.input!.push(userMsg('This session was resumed on another account because of a usage limit. Continue the work where you left off.'));
