@@ -78,6 +78,9 @@ export function adoptSeen(owner: Pick<Task, 'seenCommentIds' | 'seenCiRuns' | 'c
   owner.seenCommentIds = [...new Set([...owner.seenCommentIds, ...all.flatMap((t) => t.seenCommentIds ?? [])])];
   const runs = [...new Set([...(owner.seenCiRuns ?? []), ...all.flatMap((t) => t.seenCiRuns ?? [])])];
   if (runs.length) owner.seenCiRuns = runs.slice(-200);
-  const attempts = Math.max(owner.ciFixAttempts ?? 0, ...all.map((t) => t.ciFixAttempts ?? 0));
-  if (attempts) owner.ciFixAttempts = attempts;
+  // Only while the owner has no count of its own: "Keep fixing" sets it to 0, and that must not be undone.
+  if (owner.ciFixAttempts == null) {
+    const attempts = Math.max(0, ...all.map((t) => t.ciFixAttempts ?? 0));
+    if (attempts) owner.ciFixAttempts = attempts;
+  }
 }

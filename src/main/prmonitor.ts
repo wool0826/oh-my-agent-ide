@@ -45,16 +45,21 @@ async function fetchComments(task: Task): Promise<Comment[] | null> {
   return out.filter((c) => !/\[bot\]$/.test(c.author));
 }
 
-/** The PR was merged or closed: finish every task on it, clean up each branch once, and announce it once. */
-async function settle(tasks: Task[], state: 'MERGED' | 'CLOSED', headRef: string, announce: boolean) {
+/**
+ * The PR was merged or closed: finish the tasks in review or being fixed, clean up each branch once, and announce it once.
+ * Every other task that recorded the PR (failed or cancelled later work, for one) gets the PR's state too.
+ */
+export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', headRef: string) {
   const merged = state === 'MERGED';
+  const { tasks } = watch;
   const first = tasks[0];
-  for (const task of tasks) {
+  const settling = watch.all.filter((x) => x.prState !== 'MERGED' && x.prState !== 'CLOSED');
+  for (const task of settling) {
     asking.get(task.id)?.abort.abort(); // the CI question no longer applies
     task.prState = state;
-    task.status = 'done';
     task.updatedAt = nowIso();
     if (merged) task.mergedAt = nowIso();
+    if (tasks.includes(task)) task.status = 'done';
   }
   // The PR's branch, plus a follow-up's own branch if it made one before pushing to the PR's.
   const cleaned = new Set<string>();
@@ -66,7 +71,7 @@ async function settle(tasks: Task[], state: 'MERGED' | 'CLOSED', headRef: string
     const w = task.workerId ? store.worker(task.workerId) : null;
     await cleanupBranch(repo, w?.repo === repo.name ? w.cwd : null, branch).catch((e) => log.warn('cleanup', e));
   }
-  if (announce) {
+  if (!watch.announced) {
     const text = merged ? t('ev.prMerged', { title: first.title }) : t('ev.prClosed', { title: first.title });
     store.chat('event', text);
     for (const id of new Set(tasks.map((x) => x.workerId))) if (id && store.worker(id)) store.log(id, 'event', text);
@@ -74,7 +79,8 @@ async function settle(tasks: Task[], state: 'MERGED' | 'CLOSED', headRef: string
     store.pushUpdate(`${first.id} "${first.title}" PR ${merged ? 'merged' : 'closed without merging'}${also}; branch cleaned up`);
     notifyInfo(merged ? t('noti.merged') : t('noti.closed'), first.title);
   }
-  for (const task of tasks) workers.onPrSettled(task, merged);
+  // Tasks waiting (after_task_id) on any of them start, or are cancelled if the PR was closed.
+  for (const task of settling) workers.onPrSettled(task, merged);
   store.changed();
 }
 
@@ -153,7 +159,7 @@ async function checkOne(watch: PrWatch<Task>) {
     state: 'OPEN' | 'MERGED' | 'CLOSED'; headRefName: string; headRefOid?: string;
     mergeable?: string; reviewDecision?: string; statusCheckRollup?: RollupItem[];
   };
-  if (j.state !== 'OPEN') return settle(watch.tasks, j.state, j.headRefName, !watch.announced);
+  if (j.state !== 'OPEN') return settle(watch, j.state, j.headRefName);
   const checks = parseChecks(j.statusCheckRollup);
   const ready = readiness(checks, j.mergeable, j.reviewDecision);
   for (const x of watch.tasks) {

@@ -74,13 +74,18 @@ test('prs: a PR another task already saw merged settles quietly, and a fully set
 });
 
 test('prs: the task that opened the PR takes over what a follow-up already handled', () => {
-  const first = opened({ seenCommentIds: ['c:1'], seenCiRuns: ['run:1'], ciFixAttempts: 1 });
+  const first = opened({ seenCommentIds: ['c:1'], seenCiRuns: ['run:1'] });
   const later = followup({ seenCommentIds: ['c:1', 'c:2'], seenCiRuns: ['run:2'], ciFixAttempts: 2 });
   adoptSeen(first, [first, later]);
   assert.deepEqual(first.seenCommentIds, ['c:1', 'c:2']);
   assert.deepEqual(first.seenCiRuns, ['run:1', 'run:2']);
   assert.equal(first.ciFixAttempts, 2);
   assert.deepEqual(later.seenCommentIds, ['c:1', 'c:2'], 'the follow-up is not changed');
+
+  // "Keep fixing" reset the owner's count; a follow-up's older count does not undo that.
+  first.ciFixAttempts = 0;
+  adoptSeen(first, [first, later]);
+  assert.equal(first.ciFixAttempts, 0);
 
   // Nothing handled yet: fields saved before CI tracking stay unset.
   const fresh = opened();
