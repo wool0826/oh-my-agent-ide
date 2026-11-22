@@ -165,6 +165,14 @@ export function glideSoon(animate: boolean) {
   });
 }
 
+/**
+ * Where each control's pill last was, by the control's name. A panel drawn again makes its controls anew (the right
+ * sidebar's tabs, "Daily / When a PR merges"), and a new control has no pill to slide from: it starts from here.
+ */
+const lastPill = new Map<string, number[]>();
+const pillName = (c: HTMLElement) => c.id || c.querySelector<HTMLElement>(':scope > input[type="hidden"]')?.id
+  || `${c.closest('[id]')?.id ?? ''}/${c.getAttribute('aria-label') ?? ''}`;
+
 export function glide(c: HTMLElement, animate: boolean) {
   const on = c.querySelector<HTMLElement>(':scope > button[aria-pressed="true"], :scope > button.on');
   if (!on || !c.offsetParent) {
@@ -179,7 +187,24 @@ export function glide(c: HTMLElement, animate: boolean) {
   const box = [on.offsetLeft, on.offsetTop, on.offsetWidth, on.offsetHeight];
   const key = box.join(',');
   if (c.dataset.glide === key) return;
-  const from = c.dataset.glide?.split(',').map(Number);
+  const name = pillName(c);
+  let from = c.dataset.glide?.split(',').map(Number);
+  if (!from && animate) {
+    // Drawn anew with another choice than the one before it had: put the pill where that one was, then let it travel.
+    const was = lastPill.get(name);
+    if (was && was.join(',') !== key) {
+      c.classList.remove('glide-ready', 'glide-move');
+      c.style.setProperty('--gx', `${was[0]}px`);
+      c.style.setProperty('--gy', `${was[1]}px`);
+      c.style.setProperty('--gw', `${was[2]}px`);
+      c.style.setProperty('--gh', `${was[3]}px`);
+      c.classList.add('glide-on');
+      void c.offsetWidth;
+      c.classList.add('glide-ready');
+      from = was;
+    }
+  }
+  lastPill.set(name, box);
   const slide = animate && !!from && c.classList.contains('glide-ready');
   c.dataset.glide = key;
   if (!slide) c.classList.remove('glide-ready', 'glide-move');

@@ -605,3 +605,7 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Small things:** nothing is under 11px; file-chip, reply-chip and font-list buttons, the switch and the toolbar's "register an account" link have a place to hit of 24px; Hangul words are not split (`:lang(ko)`); button labels are never the tertiary text color.
     - **The quick message box** follows the font and size settings and the type tokens, and its field is named in the app's language.
     - **Not done:** control heights of 26, 30 and 34 (the scale is 24, 28, 32), spacing of 5, 7 and 14px, and merging `.segc`/`.radios` and the three menus into one component each. Each changes how every screen looks or is built, and wants its own pass with pictures before and after.
+143. **A segmented control that is drawn anew still slides its pill** (asked for by the user: the right sidebar's tabs and "Daily / When a PR merges").
+    - **Why they did not:** the toolbar's control stays in the page, so its pill travels from where it was. The right sidebar is written whole on each draw, so its controls were new elements with no pill to start from, and the pill appeared in place.
+    - **How:** `glide` remembers where each control's pill last was, by the control's name (its id, its hidden input's id, or its panel and label). A new control whose choice differs starts its pill there and lets it travel, with the same motion as the toolbar.
+    - Nothing changes for a control drawn again with the same choice, or for one seen for the first time.
