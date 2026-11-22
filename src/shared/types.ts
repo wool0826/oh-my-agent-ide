@@ -80,6 +80,12 @@ export interface Worker {
   request?: OpenNote | null;
 }
 
+/** One step of a task's plan, as its Worker declared it; doneAt is set once the Worker reports it finished. */
+export interface TaskStep {
+  title: string;
+  doneAt: string | null;
+}
+
 /** A question or request between the Dispatcher and a Worker that still waits for its answer. */
 export interface OpenNote {
   text: string;
@@ -115,6 +121,8 @@ export interface Task {
   queueReason?: 'slot' | 'limit' | null;
   /** When it entered the queue (queued or blocked); cleared when it leaves. Set by stampQueued (shared/queue.ts). */
   queuedSince?: string | null;
+  /** The steps its Worker planned and which are done (shared/steps.ts). Unset or null: the Worker gave none. */
+  steps?: TaskStep[] | null;
   /** When the task began waiting for an answer, and whether it has since given its slot back (shared/slots.ts). */
   waitingSince?: string | null;
   slotReleased?: boolean;

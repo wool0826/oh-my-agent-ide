@@ -41,7 +41,8 @@ import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
 import { needsPlan, parseResult, taskStarted, workerPrompt } from './workerPrompt';
 import { clip, GO_ON_MSG, LIMIT_RESET_MSG, MAX_REQUEST_WAKES, planApproved, planNudge, planSummaryRule, question, QUESTION_TAG, REPLY_NOTE, RESUME_MSG, SHELL_OUTPUT_CHARS, SLOT_FREE_MSG, TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
-import { workerCodexTools, workerMemoryDir, workerTools } from './workerTools';
+import { workerCodexTools, workerMemoryDir, workerTools, type StepsOp } from './workerTools';
+import { markDone, mergeProgress, reopenSteps, setSteps, stepsLine, stepView } from '../../shared/steps';
 
 /** A Worker's session: Claude Code, or Codex for a ChatGPT model. The owner uses what the two have in common. */
 export type WorkerSession = AgentSession | CodexSession | FakeSession;
@@ -52,6 +53,7 @@ type FeedbackKind = 'review' | 'ci' | 'conflict';
  * never add up to the time after which a waiting task gives its slot back (sweepWaiting starts the new timer).
  */
 function setStatus(task: Task, status: TaskStatus) {
+  reopenSteps(task, status);
   if ((status === 'waiting') !== (task.status === 'waiting')) {
     task.waitingSince = null;
     task.slotReleased = false;
@@ -169,7 +171,7 @@ class WorkerManager {
       resume: w.sessionId,
       spent: w.sessionSpend,
       effort: loadSettings().workerEffort,
-      tools: workerCodexTools(loadSettings().claudeMemory ? memDir : null, (kind, text) => this.fromWorker(w, kind, text)),
+      tools: workerCodexTools(loadSettings().claudeMemory ? memDir : null, (kind, text) => this.fromWorker(w, kind, text), (op) => this.steps(w, op)),
       // Files in the worktree are the Worker's to change; anything past it (the network for a push, other folders) is asked.
       sandbox: 'workspace-write',
       approvalPolicy: 'on-request',
@@ -182,7 +184,7 @@ class WorkerManager {
       // One auto-memory per repository, shared with the user's own Claude Code sessions there (not one per worktree).
       // Off in Settings: no Claude Code auto-memory at all, rather than a separate one per worktree.
       settings: { ...(loadSettings().claudeMemory ? { autoMemoryDirectory: memDir } : { autoMemoryEnabled: false }), bashOutputMaxChars: SHELL_OUTPUT_CHARS },
-      mcpServers: { oma: workerTools(loadSettings().claudeMemory ? memDir : null, (kind, text) => this.fromWorker(w, kind, text)) },
+      mcpServers: { oma: workerTools(loadSettings().claudeMemory ? memDir : null, (kind, text) => this.fromWorker(w, kind, text), (op) => this.steps(w, op)) },
       disallowedTools: UNUSED_TOOLS,
       env: WORKER_ENV,
       // With its task finished, an idle Worker is compacted much earlier (see WORKER_IDLE_COMPACT).
@@ -612,6 +614,30 @@ class WorkerManager {
     }
     store.pushUpdate(`${w.id}${task ? ` (${task.id})` : ''} notes: ${clip(body, 1000)}`);
     return 'Noted. The Dispatcher reads it on its next turn.';
+  }
+
+  /**
+   * set_steps and step_done: the planned steps of the Worker's open task. A finished step reaches the Dispatcher as
+   * an update for its next turn, not a turn of its own; a newer one for the same task takes the older one's place.
+   */
+  steps(w: Worker, op: StepsOp): string {
+    const task = this.currentTask(w);
+    if (!task) return 'No task in progress: steps belong to a task.';
+    const before = stepView(task);
+    const err = op.kind === 'set' ? setSteps(task, op.steps) : markDone(task, op.step, nowIso());
+    if (err) return err;
+    const steps = task.steps!;
+    const v = stepView(task)!;
+    if (op.kind === 'set') {
+      store.log(w.id, 'event', t('log.steps', { list: steps.map((s, i) => `${i + 1}. ${s.title}`).join(', ') }));
+    } else if (v.done !== before?.done) {
+      const n = Number(op.step);
+      store.log(w.id, 'event', t('log.stepDone', { n, total: v.total, title: steps[n - 1].title }));
+      const prefix = `${w.id} (${task.id}) progress:`;
+      mergeProgress(store.data.pendingUpdates, prefix, `${prefix} step ${n}/${v.total} done "${steps[n - 1].title}"; ${v.allDone ? 'all steps done' : `next "${v.current}"`}.`);
+    }
+    store.changed();
+    return `${op.kind === 'set' ? `${steps.length} steps set. ` : ''}${stepsLine(steps)}`;
   }
 
   private fail(w: Worker, task: Task, text: string) {

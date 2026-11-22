@@ -365,7 +365,11 @@ export async function act(el: HTMLElement, e: Event) {
       await call('auto:correct', id, v, scope);
       break;
     }
-    case 'worker-stop': await call('worker:stop', id); break;
+    case 'worker-stop':
+      if (ui.stopping.has(id)) break;
+      ui.stopping.add(id); renderSidebar();
+      try { await call('worker:stop', id); } finally { ui.stopping.delete(id); renderSidebar(); }
+      break;
     case 'task-cancel': ui.cancelAsk = { ids: [id], all: false }; renderCancelDialog(); break;
     case 'queue-clear': ui.cancelAsk = { ids: [], all: true }; renderCancelDialog(); break;
     case 'cancel-dismiss': ui.cancelAsk = null; renderCancelDialog(); break;

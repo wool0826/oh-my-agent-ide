@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { workers } from '../src/main/agents/workers';
+import { workerCodexTools } from '../src/main/agents/workerTools';
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
@@ -645,6 +646,45 @@ test('a question whose turn fails or says nothing is reported as unanswered, so 
   assert.equal(w.ask, null);
   assert.deepEqual(store.data.pendingUpdates, [`${w.id} did not answer your question "Which file?" (It broke.). Ask again if you still need the answer.`]);
   assert.equal(wakes, 1);
+});
+
+test('steps: set and marked on the open task, the Dispatcher hears the latest one without a turn of its own', () => {
+  const { w, x } = talking();
+  assert.match(workers.steps(w, { kind: 'set', steps: ['Plan', 'Code', 'Test'] }), /^3 steps set\. Step 1\/3 now: Plan\./);
+  assert.deepEqual(store.data.pendingUpdates, []);
+  assert.match(workers.steps(w, { kind: 'done', step: 1 }), /Step 2\/3 now: Code/);
+  assert.match(workers.steps(w, { kind: 'done', step: 2 }), /Step 3\/3 now: Test/);
+  // Marking a step again tells nobody twice.
+  workers.steps(w, { kind: 'done', step: 2 });
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} (${x.id}) progress: step 2/3 done "Code"; next "Test".`]);
+  assert.match(workers.steps(w, { kind: 'done', step: 9 }), /no step 9/);
+  assert.equal(wakes, 0);
+  assert.deepEqual(x.steps!.map((s) => !!s.doneAt), [true, true, false]);
+  // Saved with the task, so a restart keeps them.
+  store.flush();
+  assert.equal(JSON.parse(fs.readFileSync(paths().state, 'utf8')).tasks.find((t: Task) => t.id === x.id).steps.length, 3);
+});
+
+test('steps: a Codex Worker has the same tools, with their input checked', () => {
+  const ops: unknown[] = [];
+  const tools = workerCodexTools(null, () => '', (op) => { ops.push(op); return 'ok'; });
+  const run = (name: string, a: unknown) => tools.find((t) => t.name === name)!.run(a as never);
+  assert.equal(run('set_steps', { steps: ['a', 'b'] }), 'ok');
+  assert.equal(run('step_done', { step: 2 }), 'ok');
+  assert.deepEqual(ops, [{ kind: 'set', steps: ['a', 'b'] }, { kind: 'done', step: 2 }]);
+});
+
+test('steps: a follow-up on a finished task starts without the old plan, even one left half marked', () => {
+  const { w, x } = talking(finished);
+  x.steps = [{ title: 'Code', doneAt: now }, { title: 'Test', doneAt: null }];
+  workers.send(w.id, 'dispatcher', 'Also fix the README.');
+  assert.equal(x.status, 'running');
+  assert.equal(x.steps, null);
+});
+
+test('steps: a Worker without an open task has none to set', () => {
+  const { w } = talking(finished);
+  assert.match(workers.steps(w, { kind: 'set', steps: ['a'] }), /^No task in progress/);
 });
 
 test('an answer nobody asked for and a note wait for the next Dispatcher turn; empty text is not sent', () => {
