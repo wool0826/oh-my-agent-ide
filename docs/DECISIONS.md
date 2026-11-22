@@ -423,3 +423,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **The branch does not move.** No commit is dropped and nothing is rewritten, so what was pushed stays valid and no force-push is ever needed; the restored files show as changes against the branch's last commit. Rewinding history was rejected: with a PR open it would diverge from the remote.
     - **The agent is told:** its conversation is not rewound, so its next message starts with a note that the files were put back and should be read again before editing.
     - **Not while it works:** going back is refused for a running Worker; stop it first.
+114. **A Summary tab for each Worker.**
+    - **Why:** seeing what a Worker did meant reading its conversation, or the one-line results in the right panel. Other tools gather an agent's plan, outputs and sources in one pane.
+    - **What it shows:** four totals over the Worker's tasks (tasks done, open and failed; PRs open and merged; result files; the spend estimate), then each task, newest first: its status, when it finished and how long it took, what was asked (folded), its report in full, its PR with the readiness badges and the Merge button, its files, and its spend.
+    - **Every Worker has it,** also one that works outside a repository, so the Worker view's tabs now always show (Conversation, Changes for a repository Worker, Summary).
+    - **No new data:** it is drawn from the tasks the app already keeps (`workerTotals`, `taskMinutes`). A PR several tasks worked on counts once; cancelled tasks are left out of the counts.

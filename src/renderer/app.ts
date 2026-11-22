@@ -16,6 +16,7 @@ import { lastLines } from '../shared/runOutput';
 import { ghRepoRef, issueMessage, type Issue } from '../shared/issues';
 import { parseTime } from '../shared/automations';
 import type { Checkpoint } from '../shared/checkpoints';
+import { taskMinutes, workerTotals } from '../shared/workerSummary';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -108,7 +109,7 @@ const ui = {
   version: '',
   claude: null as ClaudeInfo | null,
   accKind: 'token' as 'token' | 'login' | 'chatgpt',
-  wTab: 'chat' as 'chat' | 'changes',
+  wTab: 'chat' as 'chat' | 'changes' | 'summary',
   diffs: new Map<string, DiffView | 'loading' | null>(),
   diffOpen: new Set<string>(),
   /** Review comments not sent yet, per Worker, and the line a comment is being written for. */
@@ -1289,13 +1290,15 @@ function renderSession(force = false, older = false) {
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
   $('#ws-title').textContent = `${w.id} ${x?.title ?? w.title}`;
   $('#ws-sub').textContent = [w.repo ?? t('general'), x?.branch, modelLabel(w.model)].filter(Boolean).join(' · ');
-  const tabs = w.repo ? (['chat', 'changes'] as const) : (['chat'] as const);
-  if (!w.repo) ui.wTab = 'chat';
-  $('#ws-tabs').hidden = !w.repo;
-  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" aria-selected="${ui.wTab === v}" class="${ui.wTab === v ? 'on' : ''}" data-action="ws-tab" data-v="${v}">${t(v === 'chat' ? 'ws.tabChat' : 'ws.tabChanges')}</button>`).join('');
+  const tabs = w.repo ? (['chat', 'changes', 'summary'] as const) : (['chat', 'summary'] as const);
+  if (!w.repo && ui.wTab === 'changes') ui.wTab = 'chat';
+  $('#ws-tabs').hidden = false;
+  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" aria-selected="${ui.wTab === v}" class="${ui.wTab === v ? 'on' : ''}" data-action="ws-tab" data-v="${v}">${t(v === 'chat' ? 'ws.tabChat' : v === 'changes' ? 'ws.tabChanges' : 'ws.tabSummary')}</button>`).join('');
   $('#ws-thread').hidden = ui.wTab !== 'chat';
   $('#ws-diff').hidden = ui.wTab !== 'changes';
+  $('#ws-sum').hidden = ui.wTab !== 'summary';
   if (ui.wTab === 'changes') { if (force || !ui.diffs.has(w.id)) renderDiff(w); return; }
+  if (ui.wTab === 'summary') { renderSummary(w); return; }
   const log = ui.logs.get(w.id) ?? [];
   const th = $('#ws-thread');
   const nearBottom = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
@@ -1339,6 +1342,50 @@ function diffLines(wid: string, path: string, patch: string) {
     const box = draft === i ? `<div class="dnote edit"><textarea class="inp" id="dnote-in" data-keep="dnote-${key}-${i}" data-enter="diff-note-add" placeholder="${t('diff.note')}" aria-label="${t('diff.note')}"></textarea><div class="btns"><button class="btn" data-action="diff-note-cancel">${t('cancel')}</button><button class="btn def" data-action="diff-note-add">${t('diff.noteAdd')}</button></div></div>` : '';
     return line + said + box;
   }).join('');
+}
+
+/** "12m", "1h 5m": how long something took. */
+function tookText(mins: number) {
+  if (mins < 60) return t('time.min', { n: Math.max(1, mins) });
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return m ? `${t('time.hour', { n: h })} ${t('time.min', { n: m })}` : t('time.hour', { n: h });
+}
+
+/**
+ * The Summary tab: what the Worker has done without reading its conversation. Totals first (tasks, PRs, files,
+ * spend), then each task, newest first: what was asked, where it stands, its report in full, its PR and files.
+ */
+function renderSummary(w: Worker) {
+  const root = $('#ws-sum');
+  const tasks = w.taskIds.map((id) => task(id)).filter((x): x is Task => !!x);
+  if (!tasks.length) { root.innerHTML = `<div class="empty-view"><b>${t('sum.none')}</b></div>`; return; }
+  const tot = workerTotals(tasks);
+  const stat = (label: string, parts: string[]) => `<div class="sum-stat"><small>${label}</small><b>${parts.filter(Boolean).join(' · ') || '–'}</b></div>`;
+  const stats = [
+    stat(t('sum.tasks'), [tot.done ? t('sum.done', { n: tot.done }) : '', tot.open ? t('sum.open', { n: tot.open }) : '', tot.failed ? t('sum.failed', { n: tot.failed }) : '']),
+    stat(t('sum.prs'), [tot.prsOpen ? t('sum.prOpen', { n: tot.prsOpen }) : '', tot.prsMerged ? t('sum.prMerged', { n: tot.prsMerged }) : '']),
+    stat(t('sum.files'), [tot.files ? String(tot.files) : '']),
+    stat(t('sum.spend'), [hasSpend(tot.spend) ? t('spend.cost', spendVars(tot.spend)) : '']),
+  ].join('');
+  const cards = tasks.slice().reverse().map((x) => {
+    const mins = taskMinutes(x);
+    const meta = [x.finishedAt ? hhmm(x.finishedAt) : x.startedAt ? hhmm(x.startedAt) : '', mins !== null ? t('sum.took', { t: tookText(mins) }) : ''].filter(Boolean).join(' · ');
+    const links = resultLinks(x);
+    const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.status === 'pr_open' ? ' pr-open' : x.status === 'done' ? ' green' : '';
+    return `<article class="sum-task">
+      <header><b>${esc(x.id)} ${esc(x.title)}</b><span class="pill${cls}">${taskLabel(x)}</span></header>
+      ${meta ? `<small class="sum-meta">${esc(meta)}</small>` : ''}
+      <details class="sum-ask"><summary>${t('sum.asked')}</summary><div class="sum-prompt">${esc(x.prompt.trim())}</div></details>
+      ${x.summary ? `<div class="sum-report">${md(x.summary)}</div>` : ''}
+      ${links.length ? `<div class="sum-links">${links.join('')}</div>` : ''}
+      ${spendHtml(x.spend)}
+    </article>`;
+  }).join('');
+  keepScroll(root, () => {
+    const open = new Set([...root.querySelectorAll<HTMLDetailsElement>('details[open]')].map((d) => d.closest('article')?.querySelector('header b')?.textContent ?? ''));
+    root.innerHTML = `<div class="sum-stats">${stats}</div>${cards}`;
+    root.querySelectorAll<HTMLDetailsElement>('details').forEach((d) => { if (open.has(d.closest('article')?.querySelector('header b')?.textContent ?? '')) d.open = true; });
+  });
 }
 
 /** "Put the files back to 14:02?" under the Changes tab's header, once a checkpoint is picked. */

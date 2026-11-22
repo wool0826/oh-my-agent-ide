@@ -11,7 +11,7 @@ export interface Screen {
   /** Selected Worker (inspector), and whether its conversation is open. */
   wSel: string | null;
   wOpen: boolean;
-  wTab: 'chat' | 'changes';
+  wTab: 'chat' | 'changes' | 'summary';
   repoSel: string | null;
   memSel: string | null;
   wFilter: WorkerFilter | null;
