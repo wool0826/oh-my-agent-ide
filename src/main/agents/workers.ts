@@ -989,14 +989,16 @@ class WorkerManager {
     return 'sent';
   }
 
-  /** New review comments on a PR, or its failed CI checks. */
-  sendReview(task: Task, body: string, kind: 'review' | 'ci' = 'review') {
+  /** New review comments on a PR, its failed CI checks, or a conflict with its base. */
+  sendReview(task: Task, body: string, kind: 'review' | 'ci' | 'conflict' = 'review') {
     const w = task.workerId ? store.worker(task.workerId) : null;
     if (!w) return;
     if (w.status === 'archived') void this.unarchive(w);
     (kind === 'ci' ? this.ciFixing : this.reviewing).add(task.id);
-    store.log(w.id, 'event', t(kind === 'ci' ? 'log.ciFix' : 'log.review'));
-    const msg = kind === 'ci'
+    store.log(w.id, 'event', t(kind === 'ci' ? 'log.ciFix' : kind === 'conflict' ? 'log.conflictFix' : 'log.review'));
+    const msg = kind === 'conflict'
+      ? `[Merge conflict] ${task.prUrl} conflicts with its base branch and cannot be merged. Resolve it on the same branch (${task.branch}) and report what you resolved.\n\n${body}`
+      : kind === 'ci'
       ? `[CI failure] Checks failed on ${task.prUrl}. Fix them on the same branch (${task.branch}), push, and report what you changed. If a failure does not come from this branch (a flaky test, CI setup, a missing secret), do not change unrelated code; say so in the report.\n\n${body}`
       : `[Review comments] New comments on ${task.prUrl}. Address them on the same branch (${task.branch}), push, and report what you changed. If you leave a comment unaddressed, say why in the report.\n\n${body}`;
     if (!this.hasSlot(w)) return this.waitForSlot(w, task, msg);
