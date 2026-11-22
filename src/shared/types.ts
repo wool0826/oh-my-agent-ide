@@ -275,6 +275,8 @@ export interface SettingsView {
   askOff: string[];
   /** Look for a newer release on GitHub. */
   updateCheck: boolean;
+  /** System-wide shortcut for the quick message box, in Electron's spelling; empty = off. */
+  quickKey: string;
   /** UI font. Empty = system font. Several can be listed, separated by commas. */
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */

@@ -34,6 +34,8 @@ import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
 import { hasTray, showWindow, updateTray } from './tray';
 import { startUpdateCheck, checkUpdate, updateInfo } from './update';
 import { notifyInfo } from './notify';
+import { closeQuick, destroyQuick, openQuick, releaseQuickKey, syncQuickKey } from './quick';
+import { QUICK_ARG } from '../shared/quickKey';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -202,6 +204,10 @@ function registerIpc() {
   handle('state', () => snapshot());
   handle('chat:send', (text: string, files?: string[]) => dispatcher.send(text, files ?? []));
   handle('chat:stop', () => dispatcher.stop());
+  // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
+  handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), lang: loadSettings().language }));
+  handle('quick:send', (text: string) => dispatcher.send(String(text), []));
+  handle('quick:close', () => closeQuick());
   handle('dispatcher:compact', () => dispatcher.compact());
   handle('dispatcher:clear', () => dispatcher.clear());
   handle('chat:clear', (kind: 'result' | 'auto') => {
@@ -350,6 +356,7 @@ function registerIpc() {
     const checkOn = patch.updateCheck === true && !before.updateCheck;
     updateSettings(patch);
     if (checkOn) void checkUpdate(onUpdate);
+    const quickKeyOk = syncQuickKey(here);
     syncTray();
     syncLoginItem();
     if (langChanged) dispatcher.refreshContext();
@@ -358,7 +365,7 @@ function registerIpc() {
     // A higher limit starts tasks waiting for a slot now; a lower one stops nothing that runs.
     if (moreWorkers) workers.fillSlots();
     pushState(); // apply changed settings (language, font) right away
-    return { restart: homeChanged };
+    return { restart: homeChanged, quickKeyOk };
   });
   handle('repo:pickFolder', async () => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'] });
@@ -440,7 +447,8 @@ async function boot() {
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
 else {
-  app.on('second-instance', () => showWindow(win));
+  // A second launch shows the window; with --quick it opens the quick message box instead (for a launcher or a pinned shortcut).
+  app.on('second-instance', (_e, argv) => { if (argv.includes(QUICK_ARG)) openQuick(here); else showWindow(win); });
   app.whenReady().then(async () => {
     registerIpc();
     try {
@@ -452,11 +460,14 @@ else {
     createWindow();
     syncTray();
     syncLoginItem();
+    if (!syncQuickKey(here)) log.warn('quick key not available', loadSettings().quickKey);
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); else showWindow(win); });
   });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   app.on('before-quit', () => {
     quitting = true;
+    releaseQuickKey();
+    destroyQuick();
     runs.stopAll();
     automations.stop();
     workers.closeAll();

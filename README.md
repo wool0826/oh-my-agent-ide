@@ -32,6 +32,7 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 ## Using it
 
 - Say what needs doing in the chat. Use `@repo` to pick a repository.
+- Press Ctrl+Shift+Space (⌘⇧Space on macOS) anywhere to open a small box, type one line and press Enter: it goes to the Dispatcher like a chat message, without bringing the window up. Change the shortcut, or clear it to turn this off, in Settings → General. Starting the app again with `--quick` opens the same box.
 - Register repositories by asking, for example: "Clone github.company.com/payments/billing and register it. It runs the settlement batch."
 - Drag files or folders onto the chat (or onto an open Worker conversation) to attach their paths. Agents read them from where they are; nothing is copied.
 - When a follow-up needs a change that is still in an open PR, say so ("after that PR is merged, …"). The task waits and starts by itself once the PR is merged.

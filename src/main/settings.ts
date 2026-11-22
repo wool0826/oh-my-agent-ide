@@ -4,6 +4,7 @@ import path from 'node:path';
 import { readJson, writeJsonAtomic, uid } from './util';
 import type { AccountPlan, Provider, SettingsView, UsageWindow } from '../shared/types';
 import { cleanAskOff } from '../shared/grants';
+import { QUICK_KEY_DEFAULT, normalizeQuickKey } from '../shared/quickKey';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
 import { MAX_WORKERS_DEFAULT, WAIT_SLOT_DEFAULT, clampMaxWorkers, clampWaitSlot } from '../shared/slots';
 
@@ -57,6 +58,7 @@ export const DEFAULTS: SettingsView = {
   waitSlotMinutes: WAIT_SLOT_DEFAULT,
   askOff: [],
   updateCheck: true,
+  quickKey: QUICK_KEY_DEFAULT,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
   claudeRules: true,
@@ -93,6 +95,7 @@ function fix(s: SettingsView) {
   s.maxWorkers = clampMaxWorkers(s.maxWorkers);
   s.waitSlotMinutes = clampWaitSlot(s.waitSlotMinutes);
   s.askOff = cleanAskOff(s.askOff);
+  s.quickKey = normalizeQuickKey(String(s.quickKey ?? '')) ?? QUICK_KEY_DEFAULT;
 }
 
 function fixAccount(a: Partial<StoredAccount>): StoredAccount {

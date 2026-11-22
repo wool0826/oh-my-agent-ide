@@ -480,3 +480,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **What** (`shared/away.ts`): tasks that failed, tasks whose PR merged, tasks that finished, and decisions that came in and still wait, all since then. Nothing in the absence means no card.
     - **Where:** one section in the inbox under the waiting decisions: a line of counts, then up to six tasks (failures first), each opening its Worker. It stays until dismissed or the next absence replaces it.
     - **Not a chat message:** the chat is the conversation with the Dispatcher, and this is the app's own count, so it does not go there or into the Dispatcher's context.
+123. **A quick message box on a system-wide shortcut.**
+    - **Why:** handing the Dispatcher a task meant switching to the app's window. The work one wants to hand off usually comes up while doing something else.
+    - **What:** Ctrl+Shift+Space (⌘⇧Space on macOS) opens a small box near the top of the display the pointer is on. Type one line and press Enter: it is sent to the Dispatcher exactly as a chat message is, the box says "Sent" and goes away. Esc, or a click anywhere else, puts it away. The main window is not shown or focused.
+    - **The shortcut** is a setting in Settings → General, typed as text ("ctrl+alt+k"); empty turns it off. `normalizeQuickKey` refuses a key with no modifier besides Shift, which would take a plain key from every other app. If another app already holds the shortcut, saving says so and the field is marked.
+    - **`--quick`:** starting the app again with this argument opens the box in the running app, for a launcher or a pinned shortcut when a global key is not wanted.
+    - **One line, no files:** it is for handing work over quickly. Attachments, `@repo` completion and replies stay in the chat.

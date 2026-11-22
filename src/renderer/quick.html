@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Quick message</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  /* One floating field: the composer's look, alone on the desktop. */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font-family: var(--font-sans); font-size: 13px; color: var(--text-primary); -webkit-user-select: none; user-select: none; }
+  form { box-sizing: border-box; position: absolute; inset: 8px; display: flex; align-items: center; gap: var(--space-8); padding: 0 var(--space-6) 0 var(--space-16); border-radius: var(--radius-2xl); background: var(--surface-overlay-solid); box-shadow: var(--rim-strong), 0 6px 16px -6px rgba(0, 0, 0, .6); -webkit-app-region: drag; }
+  input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: 15px; -webkit-app-region: no-drag; -webkit-user-select: text; user-select: text; }
+  input::placeholder { color: var(--text-tertiary); }
+  button { flex: none; width: var(--control-lg); height: var(--control-lg); border: 0; border-radius: 50%; background: var(--accent-fill); box-shadow: var(--accent-rim); color: var(--text-on-accent); display: grid; place-items: center; cursor: pointer; -webkit-app-region: no-drag; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+  svg { width: 14px; height: 14px; }
+  form.sent input { color: var(--success-text); }
+</style>
+</head>
+<body>
+<form id="f" autocomplete="off">
+  <input id="q" type="text" spellcheck="false" aria-label="Message to the Dispatcher">
+  <button type="submit" id="go" aria-label="Send" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+</form>
+<script src="quick.js"></script>
+</body>
+</html>
