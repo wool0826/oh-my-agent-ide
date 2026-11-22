@@ -14,7 +14,7 @@ import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { addAuto, addFiles, addMemo, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, saveSug, setAway, spendHtml, updateSendButton, visibleAutos } from './ui/chat';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue } from './ui/controls';
-import { $, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, S, scrollQuietly, setS, shownOf, store, swapIn, t, takeReply, task, toast, ui, when, worker } from './ui/core';
+import { $, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, S, scrollQuietly, setS, shownOf, store, swapIn, t, takeReply, task, toast, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closePalette, Cmd, cmdk, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
@@ -523,6 +523,13 @@ export function bindDrop() {
 }
 
 export function init() {
+  // The panels a state update draws again. Each skips a write of what it already shows (ui/core.ts).
+  for (const id of ['side', 'usage', 'chat-ins', 'wk-list', 'wk-ins', 'repo-main', 'repo-ins']) {
+    const el = document.getElementById(id);
+    if (el) skipSameHtml(el);
+  }
+  // Anything the user does makes the next draw a real one. Capture, so it counts before the handlers run.
+  for (const type of ['click', 'keydown', 'input', 'change', 'drop', 'contextmenu']) document.addEventListener(type, userActed, true);
   document.body.classList.add(`platform-${ide.platform}`);
   // Before the first paint, so a sidebar that was put away does not animate shut at launch.
   applyPanels();

@@ -355,6 +355,39 @@ export function keepInputs(root: HTMLElement, render: () => void) {
   });
 }
 
+/* ---------- drawing only what changed (decision 140) ---------- */
+
+/** Goes up each time the user does something, so the next draw of every panel is a real one. */
+let drawTurn = 0;
+export function userActed() { drawTurn++; }
+
+/**
+ * Makes a panel skip a write of the HTML it already shows. Every state update draws every panel of the screen
+ * again by setting its innerHTML; most of the time a panel's HTML is the same as before, and writing it anyway
+ * threw away the focus, text selections, scroll positions and running animations inside it.
+ *
+ * The panel's own `innerHTML` setter is replaced, so the code that draws it stays as it is. A write is skipped
+ * only when the HTML is identical and the user has done nothing since the last write: after a click or a key,
+ * the next draw always goes through, since handlers change the page by hand (a disabled button, a class) and
+ * count on the draw to put it right.
+ */
+export function skipSameHtml(el: HTMLElement) {
+  const native = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+  if (!native?.get || !native.set) return;
+  let last: string | null = null;
+  let turn = -1;
+  Object.defineProperty(el, 'innerHTML', {
+    configurable: true,
+    get() { return native.get!.call(el) as string; },
+    set(html: string) {
+      if (html === last && turn === drawTurn) return;
+      last = html;
+      turn = drawTurn;
+      native.set!.call(el, html);
+    },
+  });
+}
+
 /* ---------- scrolling ---------- */
 
 /** How long a scrollbar stays up after its element's last scroll event. */
