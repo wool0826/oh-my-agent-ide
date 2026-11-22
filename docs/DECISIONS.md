@@ -83,7 +83,7 @@ What was agreed with the user during design was followed as is. Below are the ch
     - Decisions: the app's own sound, an OS notification, taskbar flash on Windows (Dock bounce on macOS), and a blinking sidebar.
     - Finished tasks: a silent notification, only while the window is in the background.
 27. **PR checks.**
-    - Every 3 minutes, `gh` checks open PRs.
+    - `gh` checks open PRs: every 20 seconds while one is open, every 3 minutes otherwise (decision 148).
     - New conversation, review or inline comments (bots excluded) are handed to the Worker that opened the PR to address and push.
 28. **The CLAUDE.md PR** is created only from the button shown when `repos/<repo>.md` is open in the Memory view. The Worker that has been working on that repository takes it if there is one.
 
@@ -121,7 +121,7 @@ What was agreed with the user during design was followed as is. Below are the ch
 40. **Accounts: at most 4, each marked Team or Enterprise.** The plan is a label the user picks; it does not change assignment. Accounts that report no usage window are scored as 0% and rely on rate-limit events, as before.
 41. **Decision sound.** Built-in sounds are synthesized with Web Audio (chime, bell, ping), so no audio files ship with the app. A custom file (mp3, wav, ogg, m4a, aac, flac, up to 8 MB) can be chosen. OS notifications are silent so the sound plays only once. Windows needs an AppUserModelID for toast notifications, so the app sets `dev.ohmyagent.ide` (same as `build.appId`).
 42. **Dropped files are passed as paths, not copied or uploaded.** The message gets an `[Attached files]` list of absolute paths. The Dispatcher puts those paths in the task prompt, and Workers may Read, Glob and Grep at or under them without a permission prompt. Other writes still follow the normal rules. Files dropped anywhere else in the window are ignored instead of opening in the window.
-43. **Tasks that wait for a merge.** `create_task` takes `after_task_id`. Such a task is assigned right away (the Worker shows "After merge") but starts only when the PR monitor sees that PR merged. If the PR is closed without merging, the waiting task is cancelled and the chat says so; the Dispatcher hears it with the next message. A merge also posts a silent notification, marks the result card "merged", and is checked again whenever the window comes to the front (at most once a minute) in addition to every 3 minutes.
+43. **Tasks that wait for a merge.** `create_task` takes `after_task_id`. Such a task is assigned right away (the Worker shows "After merge") but starts only when the PR monitor sees that PR merged. If the PR is closed without merging, the waiting task is cancelled and the chat says so; the Dispatcher hears it with the next message. A merge also posts a silent notification, marks the result card "merged", and is checked again whenever the window comes to the front (see decision 148 for the timing).
 44. **Font and text size** (from PR #1) are set in Settings → Display and stored as `fontFamily` (empty = system font) and `fontSize` (10–20 px, default 13) in `settings.json`.
     - The chosen font applies to all UI text, with the system fonts appended as fallbacks. Code and logs keep the monospace font.
     - Text size scales every font size relative to 13 px (`--ui-font-size`, `--px`); window and panel widths stay the same.
@@ -634,3 +634,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Archived Workers:** `send` and `ask` wait for the worktree (and fail with its error); review feedback and the slot queue wait too. A worktree that cannot be made again is said in the Worker's conversation, and a queued task waiting on it fails once instead of retrying at every fill.
     - **Waits:** starting or ending a wait clears the timer and released slot, and an answer sets the Worker running again only when none of its decisions is still open.
     - **A follow-up that reopens the last task** needs a free slot like a new task; without one it waits in the queue with the message. Questions reopen nothing and need none.
+148. **A merged PR shows within seconds** (T-0013). The board kept a merged PR as open, and its waiting tasks blocked, for up to 3 minutes plus the time to read every PR one by one. This replaces the timing in decision 43.
+    - **Every 20 seconds while a PR is open,** 3 minutes when there is none. A round reads the state of every watched PR in one GraphQL call per host (`gh api graphql`, one alias per PR), so a fast pace costs one call, not one per PR. A PR it cannot read gets the full check.
+    - **The full check** (CI, conflicts, review comments: one `gh pr view` or more per PR) runs every 2 minutes, 3 PRs at a time, and at once when asked for. It also notices a merge.
+    - **Errors back off:** a round whose state call fails, or that GitHub rate-limits, doubles the wait, up to 10 minutes. Rounds never overlap; one asked for during a round follows it.
+    - **At once:** coming back to the window (at most every 10 seconds), merging from the app, and "Check PRs now" in the command palette (a full round; listed while some PR is open). A PR recorded while the slow timer runs brings the next round to the fast pace.
+    - **A settled PR releases its waiting tasks first,** then cleans up the branch, which fetches and pushes. A follow-up started in the same worktree puts that cleanup off until the Worker is out of it (decision 146).
+    - **Not changed:** the Dispatcher still hears of a merge with its next message (no turn of its own), since the waiting tasks start by themselves and the user is told in the chat and by a notification.

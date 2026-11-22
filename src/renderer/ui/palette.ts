@@ -8,7 +8,7 @@ import { type View } from '../../shared/history';
 import { act, openWorker } from '../app';
 import { chatAll, renderChat, renderChatInspector } from './chat';
 import { closePop } from './controls';
-import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, task, taskLabel, ui, when, worker } from './core';
+import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, task, taskLabel, toast, ui, when, worker } from './core';
 import { go, nav } from './history';
 import { closeSettings, openSettings } from './settings';
 import { hideUsagePop, ms, togglePanel, workerIcon } from './sidebar';
@@ -53,6 +53,9 @@ export function paletteItems(): Cmd[] {
   for (const r of s.repos) out.push({ id: `repo:${r.name}`, group: t('nav.repo'), title: r.name, hint: r.description || undefined, icon: sym('s-box'), run: () => go({ view: 'repo', repoSel: r.name }) });
   const panes: [Pane, Key][] = [['accounts', 'set.accounts'], ['general', 'set.general'], ['display', 'set.display'], ['alerts', 'set.alerts'], ['memory', 'set.memory'], ['models', 'set.models']];
   panes.forEach(([pane, key], i) => out.push({ id: `set:${pane}`, group: t('set.title'), title: t(key), hint: t('set.title'), keys: i ? undefined : `${mod},`, icon: sym('s-gear'), run: () => openSettings(pane) }));
+  // A merge on GitHub shows within seconds anyway; this is for when it should show now.
+  if (s.tasks.some((x) => x.prUrl && x.prState !== 'MERGED' && x.prState !== 'CLOSED'))
+    out.push({ id: 'pr-refresh', group: t('side.prs'), title: t('pr.refresh'), icon: sym('s-pr'), run: () => void call('pr:refresh').then((ok) => { if (ok) toast(t('pr.refreshed')); }) });
   out.push({ id: 'side', group: t('cmdk.window'), title: t('cmdk.side'), keys: `${mod}B`, icon: sym('s-side-l'), run: () => togglePanel('side') });
   out.push({ id: 'ins', group: t('cmdk.window'), title: t('cmdk.ins'), keys: isMac ? '⌥⌘B' : 'Ctrl+Alt+B', icon: sym('s-side-r'), run: () => togglePanel('ins') });
   return out;

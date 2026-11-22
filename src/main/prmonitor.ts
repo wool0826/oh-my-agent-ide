@@ -12,6 +12,7 @@ import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readine
 import { adoptSeen, isBot, parsePages, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
 import { ciReason } from '../shared/askWhy';
 import { canMerge, conflictBody, mergeMethod, planConflictFix } from '../shared/prMerge';
+import { PR_POLL, eachLimited, isFullRound, isRateLimited, nextPollDelay, parsePrUrl, prStateQueries, readPrStates, type PrState } from '../shared/prPoll';
 import type { Decision, Task } from '../shared/types';
 
 /**
@@ -23,10 +24,7 @@ import type { Decision, Task } from '../shared/types';
  * - Each PR once, even when a follow-up task pushed to its branch and recorded the same URL.
  */
 
-function parsePr(url: string) {
-  const m = url.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-  return m ? { host: m[1], owner: m[2], repo: m[3], num: m[4] } : null;
-}
+const parsePr = parsePrUrl;
 
 interface Comment { id: string; author: string; body: string; where: string }
 
@@ -70,6 +68,19 @@ export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', h
     if (merged) task.mergedAt = nowIso();
     if (tasks.includes(task)) task.status = 'done';
   }
+  if (!watch.announced) {
+    const text = merged ? t('ev.prMerged', { title: first.title }) : t('ev.prClosed', { title: first.title });
+    store.chat('event', text);
+    for (const id of new Set(tasks.map((x) => x.workerId))) if (id && store.worker(id)) store.log(id, 'event', text);
+    const also = tasks.length > 1 ? ` (also recorded by ${tasks.slice(1).map((x) => x.id).join(', ')})` : '';
+    store.pushUpdate(`${first.id} "${first.title}" PR ${merged ? 'merged' : 'closed without merging'}${also}; branch cleaned up`);
+    notifyInfo(merged ? t('noti.merged') : t('noti.closed'), first.title);
+  }
+  // Tasks waiting (after_task_id) on any of them start, or are cancelled if the PR was closed. Before the branch
+  // cleanup below, which fetches and pushes: the board and the waiting tasks should not wait for the network.
+  // A follow-up started here in the same worktree puts that worktree's cleanup off (see inUse below).
+  for (const task of settling) workers.onPrSettled(task, merged);
+  store.changed();
   // The PR's branch, plus a follow-up's own branch if it made one before pushing to the PR's.
   const cleaned = new Set<string>();
   for (const task of tasks) {
@@ -83,17 +94,14 @@ export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', h
     if (w && worktree && workers.inUse(w.id)) { cleanupLater.push({ repo: repo.name, worktree, branch, workerId: w.id }); continue; }
     await cleanupBranch(repo, worktree, branch).catch((e) => log.warn('cleanup', e));
   }
-  if (!watch.announced) {
-    const text = merged ? t('ev.prMerged', { title: first.title }) : t('ev.prClosed', { title: first.title });
-    store.chat('event', text);
-    for (const id of new Set(tasks.map((x) => x.workerId))) if (id && store.worker(id)) store.log(id, 'event', text);
-    const also = tasks.length > 1 ? ` (also recorded by ${tasks.slice(1).map((x) => x.id).join(', ')})` : '';
-    store.pushUpdate(`${first.id} "${first.title}" PR ${merged ? 'merged' : 'closed without merging'}${also}; branch cleaned up`);
-    notifyInfo(merged ? t('noti.merged') : t('noti.closed'), first.title);
-  }
-  // Tasks waiting (after_task_id) on any of them start, or are cancelled if the PR was closed.
-  for (const task of settling) workers.onPrSettled(task, merged);
-  store.changed();
+}
+
+/** settle() one PR at a time: PRs checked side by side must not run git in the same repository at once. */
+let settleChain: Promise<unknown> = Promise.resolve();
+function settleInTurn(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', headRef: string) {
+  const p = settleChain.then(() => settle(watch, state, headRef));
+  settleChain = p.catch(() => {});
+  return p;
 }
 
 /** Hand new review comments to the Worker. True when some were sent. */
@@ -187,6 +195,7 @@ async function checkOne(watch: PrWatch<Task>) {
   const env = { ...ghEnv(), GH_HOST: p.host };
   const r = await run('gh', ['pr', 'view', task.prUrl!, '--json', 'state,headRefName,headRefOid,baseRefName,baseRefOid,mergeable,reviewDecision,statusCheckRollup'], { env, timeoutMs: 60_000 });
   if (r.code !== 0) {
+    if (isRateLimited(r.stderr)) roundFailed = true;
     log.warn('pr view failed', task.prUrl, r.stderr.trim().slice(0, 200));
     return;
   }
@@ -194,7 +203,7 @@ async function checkOne(watch: PrWatch<Task>) {
     state: 'OPEN' | 'MERGED' | 'CLOSED'; headRefName: string; headRefOid?: string; baseRefName?: string; baseRefOid?: string;
     mergeable?: string; reviewDecision?: string; statusCheckRollup?: RollupItem[];
   };
-  if (j.state !== 'OPEN') return settle(watch, j.state, j.headRefName);
+  if (j.state !== 'OPEN') return settleInTurn(watch, j.state, j.headRefName);
   const checks = parseChecks(j.statusCheckRollup);
   const ready = readiness(checks, j.mergeable, j.reviewDecision);
   for (const x of watch.tasks) {
@@ -232,7 +241,7 @@ export async function mergePr(taskId: string) {
   if (view.code !== 0) throw new Error(view.stderr.trim().split('\n')[0] || t('pr.err.merge'));
   const j = JSON.parse(view.stdout) as { state: string; mergeable?: string; reviewDecision?: string; statusCheckRollup?: RollupItem[] };
   if (j.state !== 'OPEN' || !canMerge(readiness(parseChecks(j.statusCheckRollup), j.mergeable, j.reviewDecision))) {
-    checkPrsSoon();
+    void checkPrs({ full: true });
     throw new Error(t('pr.err.notReady'));
   }
   const repo = await run('gh', ['repo', 'view', `${p.host}/${p.owner}/${p.repo}`, '--json', 'squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'], { env, timeoutMs: 60_000 });
@@ -266,28 +275,110 @@ let running = false;
 /** A round was asked for while one was under way: it may have read a PR before the change, so one more follows. */
 let again = false;
 let lastRun = 0;
-export async function checkPrs() {
+/** When the last full round (CI, conflicts, comments) ran, and whether one was asked for. */
+let lastFull = 0;
+let fullAsked = false;
+/** Rounds in a row that failed (the state query failed, or GitHub limited the calls): the next ones wait longer. */
+let failures = 0;
+let roundFailed = false;
+let timer: NodeJS.Timeout | null = null;
+/** When the timer is due (ms since epoch). */
+let dueAt = 0;
+let started = false;
+/** Callers waiting for the round in progress (and the one it asked for) to end. */
+const roundWaiters: (() => void)[] = [];
+
+/** The state of every watched PR in one call per host. Null when the call failed: nothing is known. */
+async function readStates(urls: string[]): Promise<Map<string, PrState> | null> {
+  const out = new Map<string, PrState>();
+  for (const q of prStateQueries(urls)) {
+    const r = await run('gh', ['api', 'graphql', '-f', `query=${q.query}`], { env: { ...ghEnv(), GH_HOST: q.host }, timeoutMs: 60_000 });
+    // A PR that is gone makes gh exit 1 while the others are still in the answer.
+    const got = readPrStates(r.stdout, q.keys);
+    if (r.code !== 0 && !got.size) {
+      log.warn('pr states failed', q.host, r.stderr.trim().slice(0, 200));
+      return null;
+    }
+    for (const [url, s] of got) out.set(url, s);
+  }
+  return out;
+}
+
+/**
+ * One round. Every round reads all watched PRs' states in one call and settles the merged and closed ones at once.
+ * A full round (asked for, or every PR_POLL.full) also reads CI, conflicts and review comments of the open ones,
+ * a few PRs at a time. A PR the state call could not read gets the full check in any round.
+ */
+export async function checkPrs(opts: { full?: boolean } = {}) {
+  if (opts.full) fullAsked = true;
   if (running) { again = true; return; }
   running = true;
   lastRun = Date.now();
+  roundFailed = false;
   try {
     await cleanUpLeft();
     // While a Worker is fixing review comments the task is "running"; still notice a merge.
-    for (const watch of prsToWatch(store.data.tasks)) {
-      try { await checkOne(watch); } catch (e) { log.warn('pr check', watch.url, (e as Error).message); }
+    const watches = prsToWatch(store.data.tasks);
+    const full = isFullRound(Date.now(), lastFull, fullAsked);
+    fullAsked = false;
+    if (full) lastFull = Date.now();
+    const states = watches.length ? await readStates(watches.map((x) => x.url)) : new Map<string, PrState>();
+    if (!states) roundFailed = true;
+    const rest: PrWatch<Task>[] = [];
+    for (const watch of watches) {
+      const s = states?.get(watch.url);
+      if (s && s.state !== 'OPEN') {
+        try { await settleInTurn(watch, s.state, s.headRefName); } catch (e) { log.warn('pr settle', watch.url, (e as Error).message); }
+      } else if (full || (states && !s)) rest.push(watch);
     }
+    await eachLimited(rest, PR_POLL.parallel, async (watch) => {
+      try { await checkOne(watch); } catch (e) { log.warn('pr check', watch.url, (e as Error).message); }
+    });
   } finally {
     running = false;
-    if (again) { again = false; void checkPrs(); }
+    failures = roundFailed ? failures + 1 : 0;
+    if (again) { again = false; void checkPrs(); } else {
+      for (const done of roundWaiters.splice(0)) done();
+      schedule();
+    }
   }
 }
 
-/** Check soon when the window comes back to the front, at most once a minute. */
+/** Set the next round: soon while a PR is watched, slowly otherwise, later after failures. */
+function schedule() {
+  if (!started) return;
+  if (timer) clearTimeout(timer);
+  const ms = nextPollDelay(prsToWatch(store.data.tasks).length > 0, failures);
+  dueAt = Date.now() + ms;
+  timer = setTimeout(() => { timer = null; void checkPrs(); }, ms);
+  timer.unref();
+}
+
+/** Check at once when the window comes back to the front, at most every PR_POLL.focus. */
 export function checkPrsSoon() {
-  if (Date.now() - lastRun > 60_000) void checkPrs();
+  if (Date.now() - lastRun > PR_POLL.focus) void checkPrs();
+}
+
+/** "Check PRs now": a full round at once, whenever the last one was. Resolves (true) once that round is over. */
+export function checkPrsNow(): Promise<boolean> {
+  return new Promise((done) => {
+    roundWaiters.push(() => done(true));
+    void checkPrs({ full: true });
+  });
+}
+
+/**
+ * On every state change: a PR to watch appeared while the slow timer runs, so the next round comes at the fast
+ * pace instead. A timer already due sooner is left alone (changes come often; resetting it would put it off).
+ */
+export function prWatchChanged() {
+  if (running || !timer || failures) return;
+  if (dueAt - Date.now() > PR_POLL.fast && prsToWatch(store.data.tasks).length) schedule();
 }
 
 export function startPrMonitor() {
-  setTimeout(() => void checkPrs(), 20_000).unref();
-  setInterval(() => void checkPrs(), 3 * 60_000).unref();
+  started = true;
+  dueAt = Date.now() + 20_000;
+  timer = setTimeout(() => { timer = null; void checkPrs({ full: true }); }, 20_000);
+  timer.unref();
 }

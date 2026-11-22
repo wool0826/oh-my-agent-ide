@@ -18,7 +18,7 @@ import { runs } from './runs';
 import { automations } from './automations';
 import { PICK_MESSAGE, canPick } from '../shared/compare';
 import type { AutoTrigger } from '../shared/types';
-import { startPrMonitor, checkPrs, checkPrsSoon, mergePr, resumeCiQuestion } from './prmonitor';
+import { startPrMonitor, checkPrs, checkPrsNow, checkPrsSoon, mergePr, prWatchChanged, resumeCiQuestion } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { notifyActions } from '../shared/notifyActions';
 import { attachmentBlock, registerAttachments } from './attachments';
@@ -290,6 +290,7 @@ function registerIpc() {
   handle('worker:checkpoints', (id: string) => workers.checkpoints(id));
   handle('worker:restore', (id: string, ref: string) => workers.restore(id, ref));
   handle('pr:merge', (taskId: string) => mergePr(taskId));
+  handle('pr:refresh', () => checkPrsNow());
   handle('repo:issues', (name: string) => listIssues(name));
   handle('task:revoke', (taskId: string, key: string) => workers.revokeGrant(taskId, key));
   handle('preflight:run', async () => { const r = await runPreflight(); pushState(); return r; });
@@ -464,11 +465,12 @@ async function boot() {
   await initMemory();
   installPlugin();
   store.on('changed', pushState);
+  store.on('changed', prWatchChanged);
   repoEvents.on('progress', pushState);
   // Hooks for the end-to-end tests (test/e2e), which have no button for them; the window does not call them.
   if (fakeMode()) {
     handle('diag:text', () => diagnostics());
-    handle('pr:check', () => checkPrs());
+    handle('pr:check', () => checkPrs({ full: true }));
   }
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);
