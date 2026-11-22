@@ -25,6 +25,11 @@ if (args[0] === 'pr' && args[1] === 'view') {
   out({ squashMergeAllowed: true, mergeCommitAllowed: true, rebaseMergeAllowed: true });
 } else if (args[0] === 'issue' && args[1] === 'list') {
   out(db.issues);
+} else if (args[0] === '--version') {
+  out('gh version 0.0.0 (stand-in)');
+} else if (args[0] === 'auth' && args[1] === 'status') {
+  const host = args[args.indexOf('--hostname') + 1];
+  if ((db.signedOut ?? []).includes(host)) { process.stderr.write(`You are not logged into any GitHub hosts on ${host}.`); code = 1; }
 } else if (args[0] === 'api') {
   out([]);
 } else {

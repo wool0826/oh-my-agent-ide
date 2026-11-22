@@ -344,6 +344,8 @@ export interface RunView {
 
 export interface AppState {
   ready: boolean;
+  /** How many of the launch checks failed (shared/preflight.ts); 0 before they have run. */
+  preflightFailed?: number;
   /** Fake agent mode is on: every agent follows a script, and the window says so. */
   fake?: boolean;
   /** A newer release than the one running, when the check found one. */

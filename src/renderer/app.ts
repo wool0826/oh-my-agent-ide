@@ -24,6 +24,7 @@ import { matchItems, stepIndex, type PaletteItem } from '../shared/palette';
 import { awayDigest, awayRows, type AwayDigest } from '../shared/away';
 import { bundleMergeOrder, openBundles } from '../shared/bundle';
 import { normalizeQuickKey, quickKeyLabel } from '../shared/quickKey';
+import { failedFirst, fixCommand, type Check } from '../shared/preflight';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -778,6 +779,8 @@ function applyPanels() {
   left.setAttribute('aria-expanded', String(!ui.sideMin));
   const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
   $('#fake-badge').hidden = !S?.fake;
+  // A failed check comes before a newer release: the gear's dot is red for it.
+  document.querySelector('.foot-btn[data-action="open-settings"]')?.classList.toggle('has-issue', !!S?.preflightFailed);
   // The gear carries a dot while a newer release waits.
   document.querySelector('.foot-btn[data-action="open-settings"]')?.classList.toggle('has-update', !!S?.update);
   const find = $('#cmdk-btn');
@@ -1771,6 +1774,33 @@ function grantsHtml(x: Task) {
   return `<span class="grants"><em>${t('grant.title')}</em>${x.grants.map((g) => `<i class="pill">${esc(g.label)}<button type="button" class="grant-x" data-action="grant-revoke" data-id="${esc(x.id)}" data-key="${esc(g.key)}" title="${t('grant.revoke')}" aria-label="${esc(`${t('grant.revoke')}: ${g.label}`)}"><svg aria-hidden="true"><use href="#s-x"/></svg></button></i>`).join('')}</span>`;
 }
 
+/* ---------- what the app needs on this computer (decision 131) ---------- */
+
+let preflight: undefined | 'loading' | Check[];
+
+async function loadPreflight() {
+  preflight = 'loading';
+  drawPreflight();
+  preflight = (await call<Check[]>('preflight:run')) ?? [];
+  drawPreflight();
+}
+
+/** The rows of the Status group: each check with what was found, and for a failed one what to do about it. */
+function preflightRows() {
+  if (preflight === undefined || preflight === 'loading') return `<div class="srow" role="status" aria-label="${t('pre.checking')}"><span class="skel pre"><i></i></span></div>`;
+  return failedFirst(preflight).map((c) => {
+    const name = c.id === 'ghAuth' ? t('pre.ghAuth', { host: c.host ?? '' }) : t(`pre.${c.id}` as Key);
+    const cmd = c.ok ? null : fixCommand(c);
+    const fix = c.ok ? '' : cmd ? `<code class="pre-cmd">${esc(cmd)}</code>` : `<span class="pre-fix">${t(`pre.fix.${c.id}` as Key)}</span>`;
+    return `<div class="srow"><span class="lbl">${esc(name)}</span><span class="pre-r"${c.detail ? ` title="${esc(c.detail)}"` : ''}>${fix}<i class="pill ${c.ok ? 'green' : 'red'}">${t(c.ok ? 'pre.ok' : 'pre.fail')}</i></span></div>`;
+  }).join('');
+}
+
+function drawPreflight() {
+  const el = document.getElementById('pre-rows');
+  if (el) el.innerHTML = preflightRows();
+}
+
 function renderRepos() {
   const s = S!;
   const main = $('#repo-main');
@@ -2301,7 +2331,7 @@ function settingsHtml() {
       ${row(t('acc.token'), 'acc-token', `<input class="inp w" id="acc-token" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">`, 'acc-token-row')}
       <div class="srow end"><button class="btn def" data-action="acc-add" id="acc-add-btn">${t('acc.addToken')}</button><button class="btn def" data-action="acc-add-login" id="acc-login-btn">${t('acc.addLogin')}</button><button class="btn def" data-action="acc-add-chatgpt" id="acc-chatgpt-btn">${t('acc.addChatgpt')}</button></div>`, t('acc.add'))}`;
 
-  const general = `${grp(`
+  const general = `${grp(`<div id="pre-rows">${preflightRows()}</div>`, `${t('pre.title')}<button class="clear-x always" data-action="preflight-run" title="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`)}${grp(`
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
       ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
@@ -2391,7 +2421,7 @@ let sheetTimer: number | undefined;
 function openSettings(pane?: Pane) {
   if (pane) ui.pane = pane;
   // Each time the window opens (button, shortcut or first run), not on every re-render.
-  if (!ui.settingsShown) { void loadClaudeInfo(); if (ui.pane === 'models') void loadModels('fresh'); }
+  if (!ui.settingsShown) { void loadClaudeInfo(); void loadPreflight(); if (ui.pane === 'models') void loadModels('fresh'); }
   closePop();
   const root = $('#sheet');
   const keep = new Map<string, string | boolean>();
@@ -2911,6 +2941,7 @@ async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'grant-revoke': await call('task:revoke', id, el.dataset.key); break;
+    case 'preflight-run': void loadPreflight(); break;
     case 'jira-token-clear': await call('jira:token', ''); jira = undefined; S!.settings.jiraTokenSet = false; openSettings(); break;
     case 'jira-refresh': void loadJira(); renderRepos(); break;
     case 'jira-assign': {
