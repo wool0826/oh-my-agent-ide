@@ -248,3 +248,32 @@ test('a task that could not be handed to a Worker fails with the error instead o
   assert.match(x.summary ?? '', /W-404/);
   assert.ok(store.data.chat.some((c) => c.kind === 'error' && c.ref === x.id && c.text.startsWith('Could not start "Lost"')));
 });
+
+test('a Dispatcher turn the user stopped shows as stopped, not as a red error; a real failure still does', async () => {
+  const end = () => (dispatcher.session as unknown as { handle(m: unknown): void }).handle({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Request was aborted.' });
+  const errors = () => store.data.chat.filter((c) => c.kind === 'error').map((c) => c.text);
+  dispatcher.send('Plan the week');
+  assert.equal(dispatcher.busy, true);
+  await dispatcher.stop();
+  end();
+  assert.deepEqual(errors(), []);
+  assert.deepEqual(events().slice(-1), ['Dispatcher stopped by user']);
+  // The next turn that fails is not taken for a Stop.
+  dispatcher.send('Again');
+  end();
+  assert.equal(errors().length, 1);
+});
+
+test('a Stop whose turn ended without a status does not mark the next turn as stopped', async () => {
+  const s = () => dispatcher.session as unknown as { busy: boolean; handle(m: unknown): void };
+  const errors = () => store.data.chat.filter((c) => c.kind === 'error').length;
+  dispatcher.send('Plan the week');
+  const before = errors();
+  // Stop while busy, but the turn goes quiet with no result.
+  const pending = dispatcher.stop();
+  s().busy = false;
+  await pending;
+  dispatcher.send('Again');
+  s().handle({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Boom.' });
+  assert.equal(errors(), before + 1);
+});

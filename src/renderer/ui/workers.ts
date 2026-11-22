@@ -8,14 +8,16 @@ import { patchLines } from '../../shared/diffComment';
 import { lastLines } from '../../shared/runOutput';
 import type { Checkpoint } from '../../shared/checkpoints';
 import { taskMinutes, workerTotals } from '../../shared/workerSummary';
-import { workerDecisions } from '../../shared/inbox';
+import { composerAnswers, workerDecisions } from '../../shared/inbox';
+import { canStop } from '../../shared/canStop';
+import { ALLOW, DENY } from '../../shared/types';
 import { CONTEXT_WINDOW } from '../../shared/context';
 import { PAGE, threadStart } from '../../shared/paging';
 import { type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
-import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml } from './chat';
+import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml, updateSendButton } from './chat';
 import { openPop } from './controls';
-import { $, acctLabel, ago, awaitsDispatcher, base, call, esc, finishedToday, hhmm, ic, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, acctLabel, ago, awaitsDispatcher, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go, show } from './history';
 import { grantsHtml } from './repos';
 import { ms, workerIcon } from './sidebar';
@@ -172,7 +174,7 @@ export function diffLines(wid: string, path: string, patch: string) {
     const c = l.kind === 'ctx' ? '' : l.kind;
     const line = l.kind === 'h'
       ? `<span class="dl h">${esc(l.text) || ' '}</span>`
-      : `<span class="dl ${c} can" data-action="diff-note" data-id="${key}" data-i="${i}" title="${t('diff.note')}">${esc(l.text) || ' '}</span>`;
+      : `<span class="dl ${c} can" role="button" tabindex="0" data-action="diff-note" data-id="${key}" data-i="${i}" title="${t('diff.note')}">${esc(l.text) || ' '}</span>`;
     const said = notes.filter((n) => n.at === i).map((n) => `<div class="dnote"><p>${esc(n.text)}</p><button class="clear-x" data-action="diff-note-del" data-id="${key}" data-i="${i}" title="${t('diff.noteDel')}" aria-label="${t('diff.noteDel')}"><svg><use href="#s-x"/></svg></button></div>`).join('');
     const box = draft === i ? `<div class="dnote edit"><textarea class="inp" id="dnote-in" data-keep="dnote-${key}-${i}" data-enter="diff-note-add" placeholder="${t('diff.note')}" aria-label="${t('diff.note')}"></textarea><div class="btns"><button class="btn" data-action="diff-note-cancel">${t('cancel')}</button><button class="btn def" data-action="diff-note-add">${t('diff.noteAdd')}</button></div></div>` : '';
     return line + said + box;
@@ -263,7 +265,9 @@ export function renderDiff(w: Worker) {
   if (v === undefined) { void loadDiff(w.id); }
   if (v === undefined || v === 'loading') { root.innerHTML = `<div class="skel-list" role="status" aria-label="${t('diff.loading')}">${skel(3, 'file')}</div>`; return; }
   if (v === null) { root.innerHTML = `<div class="empty-view"><span>${t('diff.noRepo')}</span></div>`; return; }
-  if (v.error) { root.innerHTML = `<div class="empty-view"><span>${t('diff.missing')}</span></div>`; return; }
+  if (v.error === 'missing') { root.innerHTML = `<div class="empty-view"><span>${t('diff.missing')}</span></div>`; return; }
+  // Any other failure says what went wrong, with a way to ask again (L17).
+  if (v.error) { root.innerHTML = `<div class="empty-view" role="alert"><span>${esc(t('diff.failed', { msg: v.error }))}</span><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('retry')}</button></div>`; return; }
   const add = v.files.reduce((n, f) => n + f.added, 0), del = v.files.reduce((n, f) => n + f.removed, 0);
   const nNotes = ui.diffNotes.get(w.id)?.length ?? 0;
   const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span>${nNotes ? `<button class="btn def" data-action="diff-notes-send">${t('diff.noteSend', { n: nNotes })}</button>` : ''}<button class="btn" data-action="ckpt-menu" data-id="${w.id}" aria-haspopup="listbox">${t('ckpt.title')}</button><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
@@ -283,8 +287,12 @@ export function renderDiff(w: Worker) {
 export async function loadDiff(id: string) {
   if (ui.diffs.get(id) === 'loading') return;
   ui.diffs.set(id, 'loading');
-  const v = await call<DiffView | null>('worker:diff', id);
-  ui.diffs.set(id, v ?? null);
+  try {
+    ui.diffs.set(id, (await ide.call<DiffView | null>('worker:diff', id)) ?? null);
+  } catch (e) {
+    // Kept as an error, not as "no repository" (L17).
+    ui.diffs.set(id, { base: '', branch: '', files: [], truncated: false, error: errText(e) || 'error' });
+  }
   const w = worker(id);
   if (w && ui.wSel === id && ui.wTab === 'changes') renderDiff(w);
 }
@@ -326,6 +334,8 @@ export function waitingCardsHtml(w: Worker) {
   return w.taskIds.map((id) => task(id)).filter((x): x is Task => !!x && isQueued(x)).map((x) => {
     const q = queueWhy(t, x, ctx);
     if (!q) return '';
+    // When it entered the queue; later updates of the task do not move it (L13).
+    const since = x.queuedSince ?? x.updatedAt;
     const dep = x.status === 'blocked' ? task(x.afterTaskId) : null;
     const followers = followersOf(ctx.tasks, x.id);
     // A request that only repeats the title says nothing new.
@@ -340,7 +350,7 @@ export function waitingCardsHtml(w: Worker) {
     const follow = followers.map((f) => `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(f.workerId ?? '')}"${f.workerId ? '' : ' disabled'}>${esc(f.id)} ${esc(oneLine(f.title, 60))}</button>`).join('<br>');
     return `<div class="ins-h"><b>${t('q.title')}</b><span class="pill orange">${x.status === 'blocked' ? t('st.afterMerge') : queuedLabel(x)}</span></div>
     <div class="group qcard">
-      <div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${esc([x.repo ?? t('general'), x.planFirst && !x.planApproved ? t('plan.badge') : ''].filter(Boolean).join(' · '))} · <time datetime="${esc(x.updatedAt)}" title="${esc(hhmm(x.updatedAt))}">${t('q.since', { t: Date.now() - Date.parse(x.updatedAt) < 60_000 ? t('time.now') : t('time.ago', { d: ago(x.updatedAt) }) })}</time></span></div>
+      <div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${esc([x.repo ?? t('general'), x.planFirst && !x.planApproved ? t('plan.badge') : ''].filter(Boolean).join(' · '))} · <time datetime="${esc(since)}" title="${esc(hhmm(since))}">${t('q.since', { t: Date.now() - Date.parse(since) < 60_000 ? t('time.now') : t('time.ago', { d: ago(since) }) })}</time></span></div>
       <dl class="plan-sum q-sum"><dt>${t('q.why')}</dt><dd>${esc(q.why)}</dd><dt>${t('q.starts')}</dt><dd${q.cancelled ? ' class="warn"' : ''}>${esc(q.starts)}</dd>${q.again ? `<dt></dt><dd>${esc(q.again)}</dd>` : ''}</dl>
       ${prompt ? `<div class="q-prompt${long && !open ? ' clip' : ''}" data-scroll="qp-${esc(x.id)}"><small>${t('q.prompt')}</small>${esc(prompt)}</div>` : ''}
       ${follow ? `<div class="q-follow"><small>${t('q.followers')}</small>${follow}</div>` : ''}
@@ -364,6 +374,48 @@ export function runHtml(w: Worker) {
     <div class="group run"><code class="run-cmd" title="${esc(repo.run)}">${esc(oneLine(repo.run, 80))}</code>${url}${out}<div class="ins-act">${btns}</div></div>`;
 }
 
+/**
+ * The strip above the Worker composer while a decision is open (M7): the question or plan the text answers, with a
+ * way to send a normal message instead. A permission is never answered by text: the strip offers Deny and Allow.
+ */
+export function renderComposerDecision() {
+  const el = $('#ws-dec');
+  const inp = $<HTMLTextAreaElement>('#ws-input');
+  const w = worker(ui.wSel);
+  const pending = new Set(S!.decisions.filter((d) => d.status === 'pending').map((d) => d.id));
+  for (const id of [...ui.decSeen]) if (!pending.has(id)) { ui.decSeen.delete(id); ui.decAsMessage.delete(id); }
+  const open = w ? workerDecisions(S!.decisions, w.id) : [];
+  // One that comes while something is being typed does not take that text over: it starts as a normal message.
+  for (const d of open) {
+    if (ui.decSeen.has(d.id)) continue;
+    ui.decSeen.add(d.id);
+    if (inp.value.trim()) ui.decAsMessage.add(d.id);
+  }
+  const target = composerAnswers(open, ui.decAsMessage);
+  // Enter answers the one named here, not whichever comes first by then.
+  ui.decShown = w && target ? { wid: w.id, id: target.id } : null;
+  const skipped = target ? null : open.find((d) => d.source !== 'permission') ?? null;
+  const perm = open.find((d) => d.source === 'permission') ?? null;
+  const q = (d: (typeof open)[number]) => esc(oneLine(d.summary?.what || d.title, 90));
+  let html = '';
+  let cls = 'cstrip';
+  if (target) {
+    cls += ' answers';
+    html = `${sym(target.source === 'plan' ? 's-doc' : 's-chat', target.source === 'plan' ? 'c-blue' : 'c-orange')}<span>${t('dec.answers', { q: q(target) })}</span><button type="button" class="linkbtn" data-action="dec-as-message" data-id="${esc(target.id)}">${t('dec.asMessage')}</button>`;
+  } else if (skipped) {
+    html = `${sym('s-chat', 'c-gray')}<span>${t('dec.openNote', { q: q(skipped) })}</span><button type="button" class="linkbtn" data-action="dec-answer-it" data-id="${esc(skipped.id)}">${t('dec.answerIt')}</button>`;
+  } else if (perm) {
+    html = `${sym('s-alert', 'c-red')}<span>${t('dec.permWaits', { q: q(perm) })}</span><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${DENY}">${t('deny')}</button><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${ALLOW}">${t('allow')}</button>`;
+  }
+  if (el.innerHTML !== html) el.innerHTML = html;
+  if (el.className !== cls) el.className = cls;
+  el.hidden = !html;
+  // The hint says how the text answers; with a normal message there is none.
+  const ph = target ? decisionHint(target) : '';
+  if (inp.placeholder !== ph) inp.placeholder = ph;
+  updateSendButton();
+}
+
 export function renderWorkerInspector() {
   const root = $('#wk-ins');
   const w = worker(ui.wSel);
@@ -374,12 +426,10 @@ export function renderWorkerInspector() {
   const tasks = w.taskIds.map((id) => task(id)).filter(Boolean).reverse() as Task[];
   const cur = tasks[0];
   const open = workerDecisions(S!.decisions, w.id);
-  // While one is open, the composer answers it (decision 93); its hint says how.
-  const ph = open[0] ? decisionHint(open[0]) : '';
-  const inp = $<HTMLTextAreaElement>('#ws-input');
-  if (inp.placeholder !== ph) inp.placeholder = ph;
+  renderComposerDecision();
   const asked = awaitsDispatcher(cur);
-  const pillCls = w.status === 'running' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : asked ? 'orange' : '';
+  // The same colours as the list's pill (statusPill): starting is blue too.
+  const pillCls = w.status === 'running' || w.status === 'starting' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : asked ? 'orange' : '';
   const stKey: Record<string, Key> = { running: 'st.running', starting: 'st.starting', waiting: 'st.waitingMe', idle: 'st.idle', error: 'st.error', archived: 'st.archived' };
   keepScroll(root, () => { root.innerHTML = `
     ${open.length ? `<div class="ins-h"><b>${t('ins.decisions')}</b><span class="count">${open.length}</span></div><div class="group">${open.map((d) => decisionHtml(d, true)).join('')}</div>` : ''}
@@ -401,7 +451,7 @@ export function renderWorkerInspector() {
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
     <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}${grantsHtml(x)}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
-      ${w.status === 'running' || w.status === 'waiting' || asked ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
+      ${canStop(w, cur) ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : workerBusy(w, tasks) ? '' : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
       <button class="btn def" data-action="worker-msg" data-id="${w.id}">${t('wk.message')}</button>
     </div>`; });

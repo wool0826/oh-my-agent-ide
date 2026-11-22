@@ -7,6 +7,7 @@ import { SEARCH_MIN, searchItems, type TextHit } from '../shared/textSearch';
 import { paths } from './paths';
 import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
 import { PAGE, itemsBefore, pageBefore } from '../shared/paging';
+import { stampQueued } from '../shared/queue';
 import type { Memo, Automation } from '../shared/types';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
 
@@ -105,6 +106,7 @@ class Store extends EventEmitter {
   private persist = debounce(() => writeJsonAtomic(paths().state, this.data), 300);
 
   changed() {
+    stampQueued(this.data.tasks);
     this.persist();
     this.emit('changed');
   }

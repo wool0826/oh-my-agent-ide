@@ -37,7 +37,6 @@
     <symbol id="s-plus" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 8h8M8 4v8"/></symbol>
     <symbol id="s-play" viewBox="0 0 16 16"><path d="M5 3.6v8.8a.6.6 0 0 0 .9.5l7-4.4a.6.6 0 0 0 0-1L5.9 3.1a.6.6 0 0 0-.9.5z" fill="currentColor"/></symbol>
     <symbol id="s-textsize" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 15.5L7 4.5l4.5 11M4.2 11.5h5.6M12.5 15.5l2.75-6.5 2.75 6.5M13.4 13.4h3.7"/></symbol>
-    <symbol id="s-back" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></symbol>
     <symbol id="s-more" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></symbol>
     <symbol id="s-speaker" viewBox="0 0 16 16" fill="currentColor"><path d="M2 6h2.5L8 3v10L4.5 10H2z"/></symbol>
     <symbol id="s-reply" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5L3.5 9l4 4M3.5 9h7a5 5 0 0 1 5 5v1"/></symbol>
@@ -61,29 +60,30 @@
 </svg>
 
 <div class="win" id="win" data-icons="line">
-  <nav class="sidebar" aria-label="Status">
+  <nav class="sidebar" aria-label="Status" data-i18n-aria="aria.status">
     <div class="lights drag"></div>
     <div class="side-scroll" id="side"></div>
     <div class="side-foot"><button class="foot-btn" data-action="open-settings" data-i18n-title="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button><button class="foot-btn" id="side-toggle" data-action="side-toggle" aria-controls="side"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button></div>
   </nav>
-  <div class="rz nodrag" id="rz-side" role="separator" aria-orientation="vertical" aria-controls="side" tabindex="0"></div>
+  <div class="rz nodrag" id="rz-side" role="separator" aria-label="Resize the sidebar" data-i18n-aria="aria.resize" aria-orientation="vertical" aria-controls="side" tabindex="0"></div>
 
   <header class="toolbar drag">
-    <span class="seg nodrag" role="group" aria-label="Views">
+    <span class="seg nodrag" role="group" aria-label="Views" data-i18n-aria="aria.views">
       <button data-v="chat" aria-pressed="true" data-i18n="nav.chat">Chat</button><button data-v="worker" aria-pressed="false">Worker</button><button data-v="repo" aria-pressed="false" data-i18n="nav.repo">Repositories</button><button data-v="memory" aria-pressed="false" data-i18n="nav.memory">Memory</button>
     </span>
     <span class="pill orange" id="fake-badge" title="OMA_FAKE_AGENT=1" hidden>Fake agents</span>
     <button class="tbtn nodrag" id="cmdk-btn" data-action="cmdk-open" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#s-search"/></svg></button>
-    <div class="usage nodrag" id="usage" tabindex="0" aria-label="Usage per account" aria-describedby="usage-pop"></div>
+    <div class="usage nodrag" id="usage" tabindex="0" role="img" aria-label="Usage per account" aria-describedby="usage-pop"></div>
   </header>
 
   <!-- chat -->
   <main class="content view" data-view="chat">
-    <div class="thread" id="chat-thread" aria-live="polite"></div>
+    <div class="thread" id="chat-thread"></div>
     <form class="composer" id="chat-form" autocomplete="off">
+      <div class="cerr" id="chat-err" role="alert" hidden></div>
       <div class="rchip" id="chat-reply" hidden></div>
       <div class="fchips" id="chat-files" hidden></div>
-      <textarea class="field input" id="chat-input" rows="1" aria-label="Message"></textarea>
+      <textarea class="field input" id="chat-input" rows="1" aria-label="Message" data-i18n-aria="aria.message"></textarea>
       <button type="button" class="ctx" id="chat-ctx" data-action="ctx-menu" aria-haspopup="menu" data-i18n-title="chat.ctxHint"></button>
       <button class="send" type="submit" id="chat-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
     </form>
@@ -103,10 +103,12 @@
       <div class="diffv" id="ws-diff" hidden></div>
       <div class="diffv" id="ws-sum" hidden></div>
       <form class="composer" id="ws-form" autocomplete="off">
+        <div class="cerr" id="ws-err" role="alert" hidden></div>
+        <div class="cstrip" id="ws-dec" hidden></div>
         <div class="rchip" id="ws-reply" hidden></div>
         <div class="fchips" id="ws-files" hidden></div>
-        <textarea class="field input" id="ws-input" rows="1" aria-label="Message to the Worker"></textarea>
-        <button class="send" type="submit" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
+        <textarea class="field input" id="ws-input" rows="1" aria-label="Message to the Worker" data-i18n-aria="aria.wsMessage"></textarea>
+        <button class="send" type="submit" id="ws-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
       </form>
     </div>
   </main>
@@ -119,11 +121,11 @@
   <!-- memory -->
   <main class="content view" data-view="memory" hidden>
     <div class="vhead"><b data-i18n="nav.memory">Memory</b><span class="vhead-r" id="mem-sync"></span></div>
-    <label class="searchbar"><svg class="sym" aria-hidden="true"><use href="#s-search"/></svg><input id="mem-q" type="search" data-i18n-ph="mem.search" aria-label="Search memory"></label>
+    <label class="searchbar"><svg class="sym" aria-hidden="true"><use href="#s-search"/></svg><input id="mem-q" type="search" data-i18n-ph="mem.search" aria-label="Search memory" data-i18n-aria="aria.memSearch"></label>
     <div class="lst scroll" id="mem-list"></div>
   </main>
   <aside class="inspector view" data-view="memory" id="mem-ins" hidden></aside>
-  <div class="rz nodrag" id="rz-ins" role="separator" aria-orientation="vertical" aria-controls="chat-ins wk-ins repo-ins mem-ins" tabindex="0"></div>
+  <div class="rz nodrag" id="rz-ins" role="separator" aria-label="Resize the sidebar" data-i18n-aria="aria.resize" aria-orientation="vertical" aria-controls="chat-ins wk-ins repo-ins mem-ins" tabindex="0"></div>
   <!-- After the right sidebars, so the keyboard reaches it after their content. -->
   <button class="tbtn" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
 </div>
@@ -134,6 +136,8 @@
 <div id="dlg" hidden></div>
 <div id="cmdk" hidden></div>
 <div class="toast" id="toast" role="status" hidden></div>
+<!-- New agent messages are read out from here; the threads themselves are not live regions (L14). -->
+<div class="sr-only" id="live" aria-live="polite"></div>
 
 <script src="app.js"></script>
 </body>

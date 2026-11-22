@@ -3,6 +3,7 @@ import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, M
 import { tr, type Key } from '../../shared/i18n';
 import { modelLabel as labelFor } from '../../shared/models';
 import { linkify } from '../../shared/linkify';
+import { mdHtml } from '../../shared/markdown';
 import { type DiffNote } from '../../shared/diffComment';
 import { type Issue } from '../../shared/issues';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../../shared/reply';
@@ -145,6 +146,14 @@ export const ui = {
   cancelAsk: null as { ids: string[]; all: boolean } | null,
   /** The in-app confirm dialog for archiving a Worker or removing a repository; no OK label: it only explains. */
   confirmAsk: null as { title: string; body: string; ok: string | null; action: 'archive' | 'repo-remove'; id: string } | null,
+  /** Open decisions the user chose to send a normal message past, and the ones the Worker composer has shown (M7). */
+  decAsMessage: new Set<string>(),
+  decSeen: new Set<string>(),
+  /** The decision the Worker composer's strip names right now, which a send answers. */
+  decShown: null as { wid: string; id: string } | null,
+  /** Why the last send from a composer, a new memo or a new automation failed; shown until it is dismissed or sent again (L8). */
+  sendErr: { chat: '', ws: '' } as Record<'chat' | 'ws', string>,
+  formErr: { memo: '', auto: '' } as Record<'memo' | 'auto', string>,
 };
 
 /* ---------- helpers ---------- */
@@ -174,27 +183,24 @@ export function renderReply(box: 'chat' | 'ws') {
   el.innerHTML = r ? `${sym('s-reply')}<b>${esc(r.who)}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" title="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
 }
 
-/** The text to send from a composer: with the quote on top while a reply is open, which this ends. */
-export function takeReply(box: 'chat' | 'ws', text: string) {
+/** The text to send from a composer, with the quote on top while a reply is open. The reply stays until the send succeeds. */
+export function replyText(box: 'chat' | 'ws', text: string) {
   const r = ui.reply[box];
-  if (!r) return text;
-  ui.reply[box] = null;
-  renderReply(box);
-  return withReply(r, text);
+  return r ? withReply(r, text) : text;
 }
 
-/** Tiny markdown: code blocks, inline code, headings, bold, links, line breaks */
+/** A composer's last send failed, or it went (''): the error line above its text, until dismissed (L8). */
+export function setSendErr(box: 'chat' | 'ws', msg: string) {
+  ui.sendErr[box] = msg;
+  const el = document.getElementById(box === 'chat' ? 'chat-err' : 'ws-err');
+  if (!el) return;
+  el.hidden = !msg;
+  el.innerHTML = msg ? `${sym('s-alert', 'c-red')}<span>${esc(t('err.notSent', { msg }))}</span><button type="button" data-action="send-err-x" data-box="${box}" title="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
+}
+
+/** Agent markdown: code blocks, headings, lists, tables, bold, italics, links, line breaks (shared/markdown.ts). */
 export function md(src: string) {
-  const parts = String(src ?? '').split(/```[\w-]*\n?/);
-  return parts.map((p, i) => {
-    if (i % 2 === 1) return `<pre>${esc(p.replace(/\n$/, ''))}</pre>`;
-    let h = esc(p);
-    h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    h = h.replace(/^#{1,6} +(.+)$\n?/gm, '<b class="mh">$1</b>');
-    h = h.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
-    h = linkify(h);
-    return h.split(/\n{2,}/).map((para) => para.trim() ? `<p>${para.trim().replace(/\n/g, '<br>')}</p>` : '').join('');
-  }).join('');
+  return mdHtml(src);
 }
 
 /** A user message: plain text, with the "[Attached files]" block shown as file chips. */
@@ -318,6 +324,8 @@ export function toast(text: string, err = false) {
   const el = $('#toast');
   el.textContent = text;
   el.classList.toggle('err', err);
+  // An error is announced at once; other news waits for the reader.
+  el.setAttribute('role', err ? 'alert' : 'status');
   el.classList.remove('out');
   el.hidden = false;
   clearTimeout(toastTimer);
@@ -327,12 +335,31 @@ export function toast(text: string, err = false) {
   }, err ? 6000 : 3000);
 }
 
+/** Reads a new agent message out to screen readers (#live), instead of making a whole thread a live region. */
+export function announce(text: string) {
+  const el = document.getElementById('live');
+  if (!el || !text.trim()) return;
+  el.textContent = '';
+  // A change a moment later is read even when the text is the same as before.
+  window.setTimeout(() => { el.textContent = oneLine(text, 300); }, 50);
+}
+
+/** The message of an error from the main process, without Electron's wrapping. */
+export const errText = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+
 export async function call<T = any>(ch: string, ...args: unknown[]): Promise<T | undefined> {
+  const r = await tryCall<T>(ch, ...args);
+  if (r.ok) return r.v;
+  toast(r.error, true);
+  return undefined;
+}
+
+/** Like call(), but the caller shows the error where it belongs (L8): next to the text that was not sent. */
+export async function tryCall<T = any>(ch: string, ...args: unknown[]): Promise<{ ok: true; v: T } | { ok: false; error: string }> {
   try {
-    return await ide.call<T>(ch, ...args);
+    return { ok: true, v: await ide.call<T>(ch, ...args) };
   } catch (e) {
-    toast((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), true);
-    return undefined;
+    return { ok: false, error: errText(e) };
   }
 }
 
@@ -540,6 +567,7 @@ export function applyStaticText() {
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n as Key); });
   document.querySelectorAll<HTMLElement>('[data-i18n-ph]').forEach((el) => { (el as HTMLInputElement).placeholder = t(el.dataset.i18nPh as Key); });
   document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((el) => { el.title = t(el.dataset.i18nTitle as Key); el.setAttribute('aria-label', el.title); });
+  document.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria as Key)); });
 }
 
 /* ---------- sound ---------- */

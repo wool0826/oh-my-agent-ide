@@ -14,15 +14,16 @@ import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { addAuto, addFiles, addMemo, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, saveSug, setAway, spendHtml, updateSendButton, visibleAutos } from './ui/chat';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue } from './ui/controls';
-import { $, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, S, scrollQuietly, setS, shownOf, store, swapIn, t, takeReply, task, toast, ui, when, worker, skipSameHtml, userActed } from './ui/core';
+import { $, announce, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closePalette, Cmd, cmdk, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
-import { applyPanels, hideUsagePop, hoverUsage, renderSidebar, renderUsage, showUsagePop, stoppable, togglePanel } from './ui/sidebar';
+import { applyPanels, hideUsagePop, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
-import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
+import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
+import { canStop } from '../shared/canStop';
 
 /** Shows a view tab. Navigation goes through go(), which calls this. */
 export function setView(v: View) {
@@ -88,6 +89,11 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : el.dataset.v === 'auto' ? 'auto' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
+    case 'send-err-x': { const box = el.dataset.box === 'ws' ? 'ws' : 'chat'; setSendErr(box, ''); $(box === 'chat' ? '#chat-input' : '#ws-input').focus(); break; }
+    case 'form-err-x': if (id === 'memo' || id === 'auto') { ui.formErr[id] = ''; renderChatInspector(); } break;
+    // The Worker composer: send a normal message past the open decision, or answer it after all (M7).
+    case 'dec-as-message': if (id) { ui.decAsMessage.add(id); renderComposerDecision(); $('#ws-input').focus(); } break;
+    case 'dec-answer-it': if (id) { ui.decAsMessage.delete(id); renderComposerDecision(); $('#ws-input').focus(); } break;
     case 'memo-add': await addMemo(); break;
     case 'auto-add': await addAuto(); break;
     case 'cmp-changes': if (id) go({ view: 'worker', wSel: id, wOpen: true, wTab: 'changes' }); break;
@@ -272,7 +278,9 @@ export async function act(el: HTMLElement, e: Event) {
       const msg = w ? reviewMessage(ui.diffNotes.get(w.id) ?? []) : '';
       if (!w || !msg) break;
       (el as HTMLButtonElement).disabled = true;
-      await call('worker:send', w.id, msg, []);
+      // A failed send keeps the notes to send again (L8).
+      const r = await tryCall('worker:send', w.id, msg, []);
+      if (!r.ok) { (el as HTMLButtonElement).disabled = false; toast(r.error, true); break; }
       ui.diffNotes.delete(w.id);
       ui.diffDraft = null;
       go({ wTab: 'chat' });
@@ -457,13 +465,33 @@ export async function act(el: HTMLElement, e: Event) {
   }
 }
 
+/** Shows the context menu at (x, y) and moves the focus into it; closing gives the focus back (L14). */
+let ctxReturn: HTMLElement | null = null;
+function openCtxMenu(x: number, y: number, h: number) {
+  const menu = $('#ctxmenu');
+  ctxReturn = document.activeElement as HTMLElement | null;
+  menu.style.left = `${Math.min(x, innerWidth - 200)}px`;
+  menu.style.top = `${Math.min(y, innerHeight - h)}px`;
+  menu.hidden = false;
+  menu.querySelector<HTMLElement>('button')?.focus();
+}
+export function closeCtxMenu(refocus = false) {
+  const menu = $('#ctxmenu');
+  if (menu.hidden) return;
+  menu.hidden = true;
+  if (refocus && ctxReturn?.isConnected) ctxReturn.focus();
+  ctxReturn = null;
+}
+
 /** The composer grows with its text up to half the window; past that it scrolls with no visible bar. */
 export function autosize(el: HTMLTextAreaElement) {
   el.style.height = 'auto';
   el.style.height = Math.min(Math.round(window.innerHeight * 0.5), el.scrollHeight) + 'px';
 }
 
-export function bindComposer(box: Box, formSel: string, inputSel: string, send: (text: string, files: string[]) => Promise<void> | void) {
+/** `send` resolves to null once the text went, or to why it did not; then the text, files and reply stay (L8). */
+export function bindComposer(box: Box, formSel: string, inputSel: string, send: (text: string, files: string[]) => Promise<string | null>) {
+  let sending = false;
   const form = $<HTMLFormElement>(formSel);
   const input = $<HTMLTextAreaElement>(inputSel);
   // The composer floats over the end of its thread, so the thread keeps that much room below the last message.
@@ -485,15 +513,28 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (sending) return;
     const files = [...ui.attach[box]];
-    const text = input.value.trim() || (files.length ? t('attach.defaultText') : '');
+    const typed = input.value;
+    const text = typed.trim() || (files.length ? t('attach.defaultText') : '');
     if (!text) return;
-    input.value = '';
-    ui.attach[box] = [];
+    // The Worker composer is shared: what comes after the send belongs to the Worker it went to.
+    const target = box === 'ws' ? ui.wSel : null;
+    const reply = ui.reply[box];
+    sending = true;
+    const err = await send(text, files);
+    sending = false;
+    if (box === 'ws' && ui.wSel !== target) { if (err) toast(err, true); return; }
+    setSendErr(box, err ?? '');
+    if (err) return;
+    if (ui.reply[box] === reply) { ui.reply[box] = null; renderReply(box); }
+    // What was typed while it went stays.
+    if (input.value === typed) input.value = '';
+    ui.attach[box] = ui.attach[box].filter((f) => !files.includes(f));
     renderChips(box);
     autosize(input);
     updateSendButton();
-    await send(text, files);
+    if (box === 'ws') renderComposerDecision();
   });
 }
 
@@ -628,9 +669,11 @@ export function init() {
     if (cmdk.open) { paletteKeys(e); return; }
     // A dialog that asks keeps the keyboard inside it: Tab goes round its own controls.
     if (e.key === 'Tab') {
-      const dlg = [...document.querySelectorAll<HTMLElement>('.dlg[aria-modal="true"]')].find((d) => d.getClientRects().length);
+      // A dialog over the Settings sheet first, then the sheet itself (L14).
+      const shown = (d: HTMLElement) => !!d.getClientRects().length;
+      const dlg = [...document.querySelectorAll<HTMLElement>('.dlg[aria-modal="true"]')].find(shown) ?? [...document.querySelectorAll<HTMLElement>('#sheet[aria-modal="true"]')].find((d) => !d.hidden && shown(d));
       if (dlg) {
-        const stops = [...dlg.querySelectorAll<HTMLElement>('button:not(:disabled), input, textarea, [tabindex="0"]')];
+        const stops = [...dlg.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(shown);
         const at = stops.indexOf(document.activeElement as HTMLElement);
         e.preventDefault();
         stops[(at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length]?.focus();
@@ -639,7 +682,7 @@ export function init() {
     }
     if (popKeys(e)) return;
     // A row that acts on a click does the same on Enter or Space; a link does on Enter.
-    if ((e.key === 'Enter' || e.key === ' ') && !e.isComposing && el.matches?.('div[data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
+    if ((e.key === 'Enter' || e.key === ' ') && !e.isComposing && el.matches?.('div[data-action][tabindex], span[role="button"][data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
     if (e.key === 'Enter' && !e.isComposing && el.matches?.('a[data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
     // Ctrl/Cmd+B puts the left sidebar away, with Alt the right one. Not while Settings covers them.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyB' && !ui.settingsShown) { e.preventDefault(); togglePanel(e.altKey ? 'ins' : 'side'); return; }
@@ -668,19 +711,20 @@ export function init() {
       void act(Object.assign(document.createElement('button'), { dataset: { action: 'acc-rename-save', id: el.dataset.id } }) as HTMLElement, e);
       return;
     }
+    // Escape closes one layer at a time, the top one first (L14).
     if (e.key === 'Escape') {
       if (pop.el) { closePop(true); return; }
-      hideUsagePop();
-      if (ui.memoDel) askMemoDel(null);
-      if (ui.mergeAsk) { ui.mergeAsk = null; renderAll(true); }
-      if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }
+      if (!$('#ctxmenu').hidden) { closeCtxMenu(true); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); return; }
+      if (usagePop.shown) { hideUsagePop(); return; }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
-      if (ui.settingsShown) closeSettings();
-      $('#ctxmenu').hidden = true;
-      if (ui.aaEdit) { ui.aaEdit = null; renderChatInspector(); }
-      if (ui.sugEdit) { ui.sugEdit = null; renderChatInspector(); }
+      if (ui.settingsShown) { closeSettings(); return; }
+      if (ui.memoDel) { askMemoDel(null); return; }
+      if (ui.mergeAsk) { ui.mergeAsk = null; renderAll(true); return; }
+      if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }
+      if (ui.aaEdit) { ui.aaEdit = null; renderChatInspector(); return; }
+      if (ui.sugEdit) { ui.sugEdit = null; renderChatInspector(); return; }
     }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
@@ -688,8 +732,11 @@ export function init() {
       const u = ui.undo.pop();
       if (u) { e.preventDefault(); void call('chat:unclear', u.kind, u.ids); toast(t('toast.undone')); }
     }
-    if (mod && e.key === ',') { e.preventDefault(); openSettings(); }
-    if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); go({ view: (['chat', 'worker', 'repo', 'memory'] as const)[Number(e.key) - 1] }); }
+    // Under an open dialog or the Settings sheet, the view does not change behind it (L14).
+    const covered = ui.settingsShown || !$('#dlg').hidden;
+    if (mod && e.key === ',') { e.preventDefault(); if ($('#dlg').hidden) openSettings(); }
+    if (mod && /^[1-4]$/.test(e.key) && covered) e.preventDefault();
+    else if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); go({ view: (['chat', 'worker', 'repo', 'memory'] as const)[Number(e.key) - 1] }); }
     const dir = navKey(e);
     if (dir) { e.preventDefault(); navStep(dir, 'key'); }
   });
@@ -701,29 +748,47 @@ export function init() {
     if (!el) { menu.hidden = true; return; }
     e.preventDefault();
     const id = el.dataset.id!;
+    // Opened from the keyboard (the Menu key, Shift+F10), it shows at the row instead of at the pointer.
+    const r = el.getBoundingClientRect();
+    const x = e.clientX || r.left + 16, y = e.clientY || r.bottom;
     if (el.dataset.ctx === 'worker') {
       const w = worker(id);
+      const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
       menu.dataset.for = 'worker';
-      menu.innerHTML = `<button data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && stoppable(w) ? `<button data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
-      menu.style.left = `${Math.min(e.clientX, innerWidth - 200)}px`;
-      menu.style.top = `${Math.min(e.clientY, innerHeight - 70)}px`;
-      menu.hidden = false;
+      menu.innerHTML = `<button role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && canStop(w, cur) ? `<button role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
+      openCtxMenu(x, y, 70);
       return;
     }
     menu.dataset.for = 'aa';
-    menu.innerHTML = `<button data-action="aa-edit" data-id="${id}">${t('aa.correct')}…</button><button data-action="view" data-v="memory">${t('aa.viewMemory')}</button>`;
-    menu.style.left = `${Math.min(e.clientX, innerWidth - 200)}px`;
-    menu.style.top = `${Math.min(e.clientY, innerHeight - 90)}px`;
-    menu.hidden = false;
+    menu.innerHTML = `<button role="menuitem" data-action="aa-edit" data-id="${id}">${t('aa.correct')}…</button><button role="menuitem" data-action="view" data-v="memory">${t('aa.viewMemory')}</button>`;
+    openCtxMenu(x, y, 90);
+  });
+  // The menu keeps the keyboard: arrows move between its items, Tab closes it (L14).
+  $('#ctxmenu').addEventListener('keydown', (e) => {
+    const items = [...$('#ctxmenu').querySelectorAll<HTMLElement>('button')];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeCtxMenu(true); }
   });
 
-  bindComposer('chat', '#chat-form', '#chat-input', async (text, files) => { await call('chat:send', takeReply('chat', text), files); });
+  bindComposer('chat', '#chat-form', '#chat-input', async (text, files) => {
+    const r = await tryCall('chat:send', replyText('chat', text), files);
+    return r.ok ? null : r.error;
+  });
   $('#chat-send').addEventListener('click', (e) => {
     if ($('#chat-send').classList.contains('stop')) { e.preventDefault(); void call('chat:stop'); }
   });
   bindComposer('ws', '#ws-form', '#ws-input', async (text, files) => {
-    if (!ui.wSel) return;
-    await call('worker:send', ui.wSel, takeReply('ws', text), files);
+    if (!ui.wSel) return null;
+    // The decision the strip above the text names, if any; otherwise a normal message (M7). Main answers it only
+    // while it is still open.
+    const answers = ui.decShown?.wid === ui.wSel ? ui.decShown.id : null;
+    const r = await tryCall('worker:send', ui.wSel, replyText('ws', text), files, answers);
+    return r.ok ? null : r.error;
+  });
+  // The same button as the chat's: with nothing typed, it stops the Worker (L3).
+  $('#ws-send').addEventListener('click', (e) => {
+    if ($('#ws-send').classList.contains('stop') && ui.wSel) { e.preventDefault(); void call('worker:stop', ui.wSel); }
   });
   bindDrop();
 
@@ -753,6 +818,8 @@ export function init() {
   ide.onWorkerLog((id, item) => {
     const l = ui.logs.get(id);
     if (l) l.push(item);
+    // The open Worker's new messages are read out; its thread is not a live region (L14).
+    if (ui.view === 'worker' && ui.wOpen && ui.wSel === id && item.from !== 'user') announce(item.text);
     if (ui.view === 'worker' && ui.wSel === id) renderSession();
   });
   ide.onDecisionAlert((loud) => {

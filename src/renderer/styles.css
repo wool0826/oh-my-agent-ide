@@ -581,13 +581,6 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .fprev .me { align-self: flex-end; background: var(--accent-fill); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22); color: var(--text-on-accent); }
 .fprev .ai { align-self: flex-start; background: var(--surface-raised); box-shadow: var(--rim); }
 
-@media (max-width: 760px) {
-  .sbody { flex-direction: column; }
-  .snav { width: auto; margin: 0 var(--panel-inset) var(--panel-inset); flex-direction: row; flex-wrap: wrap; }
-  .ssearch { flex: 1 1 100%; }
-  .snav .ver { display: none; }
-  .spanes { padding: var(--space-20) var(--space-16) var(--space-32); }
-}
 
 /* popover list */
 .pop { position: fixed; z-index: var(--z-popover); padding: var(--space-6); border-radius: var(--radius-lg); overflow-y: auto; background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-4); display: flex; flex-direction: column; animation: pop-in var(--dur-fast) var(--ease-out); }
@@ -889,7 +882,8 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .ckpt-ask .btn { flex: none; }
 
 /* ---------- a Worker's Summary tab ---------- */
-.sum-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-8); }
+/* Four in a row when there is room, two by two in a narrow middle column (L18). */
+.sum-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-8); }
 .sum-stat { padding: var(--space-10) var(--space-12); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .sum-stat small { font-size: var(--fs-caption2); color: var(--text-secondary); }
 .sum-stat b { font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1069,3 +1063,36 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .usage-empty a { display: inline-flex; align-items: center; min-height: var(--control-sm); }
 /* A green pill on a chosen row sits on the card's solid color, so its words keep 4.5:1 on the darker row. */
 .li.sel .pill:is(.green, .pr-open), .li:hover .pill:is(.green, .pr-open) { background: linear-gradient(var(--success-soft), var(--success-soft)), var(--surface-card-solid); }
+
+/* Markdown lists and tables in agent text (shared/markdown.ts). */
+.bub li.sub, .sum-report li.sub, .plan-md li.sub { margin-left: var(--space-16); }
+.md-table { max-width: 100%; overflow-x: auto; margin: var(--space-4) 0 var(--space-6); }
+.md-table table { border-collapse: collapse; font-size: var(--fs-caption); line-height: var(--lh-body); }
+.md-table th, .md-table td { padding: var(--space-2) var(--space-8); border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: top; }
+.md-table th { font-weight: 600; border-bottom-color: var(--border-default); white-space: nowrap; }
+
+/* A sidebar row with buttons of its own (L14): the row's button fills it, its actions sit beside it. */
+.row.split { padding: 0 var(--space-8) 0 0; gap: var(--space-4); }
+.row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-8); padding: var(--space-6) 0 var(--space-6) var(--space-8); border: 0; border-radius: inherit; background: none; font: inherit; color: inherit; text-align: left; cursor: default; }
+.row-main:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+
+/* Above a composer's text: what it answers while a decision is open (M7), and why the last send failed (L8). */
+.cstrip, .cerr { flex: 1 1 100%; display: flex; align-items: center; gap: var(--space-8); margin: var(--space-2) var(--space-2) 0 -6px; padding: 5px var(--space-10); border-radius: var(--radius-lg); background: var(--surface-sunken); box-shadow: var(--well); font-size: var(--fs-caption); min-width: 0; animation: rise-in var(--dur-base) var(--ease-out); }
+.cstrip[hidden], .cerr[hidden] { display: none; }
+.cstrip > .sym, .cerr > .sym { flex: none; font-size: var(--icon-sm); }
+.cstrip > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cstrip.answers { background: var(--accent-soft); }
+.cstrip .linkbtn { flex: none; font-size: var(--fs-caption); }
+.cerr > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cerr button { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+.cerr button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.cerr button svg { width: 8px; height: 8px; }
+.ferr { display: flex; align-items: flex-start; gap: var(--space-8); margin: var(--space-6) 0; padding: var(--space-6) var(--space-8); border-radius: var(--radius-md); background: var(--danger-soft); color: var(--text-primary); font-size: var(--fs-caption); }
+.ferr > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+/* Diff lines take the keyboard as well as a click (L14). */
+.dl.can:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+
+/* Read by screen readers only. */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.mini .err { color: var(--danger-text); overflow-wrap: anywhere; white-space: normal; }
