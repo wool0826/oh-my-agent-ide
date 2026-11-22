@@ -442,3 +442,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **It only goes to places.** It does not start, stop, merge or delete anything: those keep their buttons and their confirmations.
     - **Opening:** Ctrl/Cmd+K from anywhere, including over Settings, or the search button in the toolbar. Arrow keys go round, Enter runs, Esc or a click outside closes and gives the focus back. While it is open the window's other shortcuts wait.
     - **With it:** links (`<a data-action>`) take the Tab key and Enter; lists being read (issues, a Worker's changes) show placeholder rows instead of a sentence; a failed issue read says so in the app's words with `gh`'s message in the tooltip; and an attempt's cost in Compare has its own line so the row does not wrap at the minimum window width.
+117. **The app keeps running with its window closed.**
+    - **Why:** closing the window quit the app on Windows, which stopped every Worker, the automations and the PR watch. The point of the app is to hand work over and leave it.
+    - **Closing hides:** with "Keep running when the window is closed" on (the default), the close button hides the window and everything goes on. A tray icon brings it back with a click; its tooltip and menu say what is going on (decisions waiting, Workers at work, tasks queued) and hold Open and Quit. The first time the window is hidden in a run, a notification says the app is still running.
+    - **Quitting** is the tray's Quit, Cmd+Q, or the OS shutting down. `closeAction` in `shared/tray.ts` is the rule. If the desktop gives no tray icon, closing quits as before, so the app can never be left running with no way to reach it.
+    - **Start at sign-in** is a separate setting, off by default. The OS starts the app with `--hidden`, so it sits in the tray until opened. Only the installed app registers itself, not a development run.
+    - **macOS:** the Dock badge shows the number of waiting decisions.

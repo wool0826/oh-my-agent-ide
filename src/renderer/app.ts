@@ -2193,7 +2193,9 @@ function settingsHtml() {
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
       ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
-      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 1, 90, t('set.archive')))}`);
+      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 1, 90, t('set.archive')))}
+      ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
+      ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}`);
 
   const display = `${grp(`
       ${row(t('set.font'), 'set-font', `<span class="combo"><input class="inp" id="set-font" value="${esc(st.fontFamily)}" placeholder="${t('set.fontSystem')}" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"><button type="button" class="combo-btn" data-combo="set-font" tabindex="-1" aria-label="${t('set.font')}">${sym('s-updown')}</button></span>`)}
@@ -2411,6 +2413,8 @@ function readSettingsForm() {
     githubHost: hostOnly(v('set-gh')),
     archiveDays: Math.max(1, Number(v('set-arch')) || 7),
     notifications: ($('#set-noti') as HTMLInputElement).checked,
+    background: ($('#set-bg') as HTMLInputElement).checked,
+    openAtLogin: ($('#set-login') as HTMLInputElement).checked,
     sound: v('set-sound') as SoundName,
     customSound: v('set-sfile'),
     soundVolume: Number(v('set-vol')),

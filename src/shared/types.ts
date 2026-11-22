@@ -274,6 +274,10 @@ export interface SettingsView {
   claudeMemory: boolean;
   /** Offer to remember reusable facts from decision answers and corrections. */
   memorySuggest: boolean;
+  /** Closing the window leaves the app working, with an icon in the tray. */
+  background: boolean;
+  /** Start with the window hidden when the user signs in to the OS. */
+  openAtLogin: boolean;
 }
 
 /** What Settings shows about the user's Claude Code setup. */

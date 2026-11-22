@@ -58,6 +58,8 @@ export const DEFAULTS: SettingsView = {
   claudeRules: true,
   claudeMemory: true,
   memorySuggest: true,
+  background: true,
+  openAtLogin: false,
 };
 
 /**
