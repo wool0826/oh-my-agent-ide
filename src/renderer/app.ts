@@ -777,6 +777,7 @@ function applyPanels() {
   left.setAttribute('aria-label', leftTip);
   left.setAttribute('aria-expanded', String(!ui.sideMin));
   const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
+  $('#fake-badge').hidden = !S?.fake;
   // The gear carries a dot while a newer release waits.
   document.querySelector('.foot-btn[data-action="open-settings"]')?.classList.toggle('has-update', !!S?.update);
   const find = $('#cmdk-btn');

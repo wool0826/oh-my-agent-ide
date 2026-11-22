@@ -3,6 +3,7 @@
 import { app } from 'electron';
 import { loadSettings } from './settings';
 import { log } from './log';
+import { fakeMode } from './fake';
 import { RELEASE_API, updateFrom, type UpdateInfo } from '../shared/update';
 
 let found: UpdateInfo | null = null;
@@ -12,7 +13,7 @@ export const updateInfo = () => (loadSettings().updateCheck ? found : null);
 
 /** One anonymous GET of the public repository's latest release. Nothing about the user or the app's data is sent. */
 export async function checkUpdate(onChange: (u: UpdateInfo) => void) {
-  if (!loadSettings().updateCheck) return;
+  if (fakeMode() || !loadSettings().updateCheck) return;
   try {
     const res = await fetch(RELEASE_API, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'oh-my-agent-ide' }, signal: AbortSignal.timeout(15_000) });
     if (!res.ok) return; // 404 while there are no releases yet, 403 when rate-limited

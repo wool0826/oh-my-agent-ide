@@ -1,3 +1,4 @@
+import { fakeMode } from '../fake';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { safeJson } from './advisor';
 import { accounts } from '../accounts';
@@ -34,7 +35,7 @@ interface Source {
 const busy = new Set<string>();
 
 export function suggestFromDecision(d: Decision) {
-  if (!answerWorthChecking(d.answer)) return;
+  if (fakeMode() || !answerWorthChecking(d.answer)) return;
   const task = d.taskId ? store.task(d.taskId) : null;
   void consider({
     key: d.taskId ?? d.id, taskId: d.taskId, workerId: d.workerId, kind: 'decision', id: d.id,
@@ -53,7 +54,7 @@ export function suggestFromDecision(d: Decision) {
 
 export function suggestFromCorrection(a: AutoAnswer) {
   // Fixing the preference already saved it.
-  if (!a.corrected || a.corrected.scope === 'preference') return;
+  if (fakeMode() || !a.corrected || a.corrected.scope === 'preference') return;
   const w = store.worker(a.workerId);
   const tasks = (w?.taskIds ?? []).map((id) => store.task(id)).filter((x) => !!x && x.createdAt <= a.createdAt);
   const taskId = tasks.length ? tasks[tasks.length - 1]!.id : null;

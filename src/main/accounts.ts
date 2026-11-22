@@ -1,3 +1,4 @@
+import { fakeMode } from './fake';
 import { EventEmitter } from 'node:events';
 import { loadSettings, saveSettings, encryptToken, decryptToken, type StoredAccount } from './settings';
 import { log } from './log';
@@ -108,6 +109,7 @@ class Accounts extends EventEmitter {
 
   /** Read the ChatGPT account's usage from Codex. Starts the Codex process if it is not running. */
   async refreshCodex() {
+    if (fakeMode()) return;
     const a = this.chatgpt();
     if (!a) return;
     try {
@@ -245,6 +247,7 @@ class Accounts extends EventEmitter {
 
   /** Read 5h/7d usage for token accounts from the usage endpoint Claude Code uses. */
   async refresh(id?: string) {
+    if (fakeMode()) return;
     for (const a of this.list()) {
       if (id && a.id !== id) continue;
       if (a.kind !== 'token' || a.provider !== 'claude') continue;
@@ -290,6 +293,7 @@ class Accounts extends EventEmitter {
   }
 
   startPolling() {
+    if (fakeMode()) return; // no usage to read, and no Codex CLI to start
     void this.refresh();
     void this.refreshCodex();
     // Codex also reports the usage as it changes during a turn.

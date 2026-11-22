@@ -911,7 +911,8 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 
 /* ---------- command palette ---------- */
 /* Floating glass over a scrim, a third of the way down: a field, then the list. The highlighted row is the menu's. */
-.toolbar > #cmdk-btn { margin-left: auto; }
+.toolbar > #fake-badge:not([hidden]) { margin-left: auto; }
+.toolbar > #fake-badge[hidden] + #cmdk-btn { margin-left: auto; }
 .toolbar > #cmdk-btn + .usage { margin-left: 0; }
 .cmdk { position: fixed; z-index: var(--z-dialog); left: 0; right: 0; top: 16vh; margin-inline: auto; width: 560px; max-width: calc(100% - 32px); max-height: min(440px, 68vh); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-xl); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-5); }
 .cmdk-in { flex: none; display: flex; align-items: center; gap: var(--space-10); min-height: var(--row-min); padding: 0 var(--space-16); border-bottom: .5px solid var(--border-subtle); color: var(--text-secondary); }

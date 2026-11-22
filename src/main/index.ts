@@ -37,6 +37,7 @@ import { notifyInfo } from './notify';
 import { closeQuick, destroyQuick, openQuick, releaseQuickKey, syncQuickKey } from './quick';
 import { QUICK_ARG } from '../shared/quickKey';
 import { listJiraIssues, setJiraToken } from './jira';
+import { fakeMode } from './fake';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -82,7 +83,8 @@ function snapshot(): AppState {
   const d = store.data;
   return {
     ready: true,
-    setupNeeded: accounts.list().length === 0,
+    // Fake agents need no account.
+    setupNeeded: !fakeMode() && accounts.list().length === 0,
     settings: settingsView(),
     accounts: accounts.views(),
     repos: d.repos,
@@ -99,6 +101,7 @@ function snapshot(): AppState {
     runs: runs.views(),
     memorySync: memorySync(),
     update: updateInfo(),
+    fake: fakeMode(),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }

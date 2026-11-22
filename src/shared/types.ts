@@ -342,6 +342,8 @@ export interface RunView {
 
 export interface AppState {
   ready: boolean;
+  /** Fake agent mode is on: every agent follows a script, and the window says so. */
+  fake?: boolean;
   /** A newer release than the one running, when the check found one. */
   update?: { version: string; url: string } | null;
   setupNeeded: boolean;
