@@ -9,6 +9,7 @@ import { ask } from './decisions';
 import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readiness, runsOf, type Check, type RollupItem } from './prchecks';
 import { adoptSeen, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
 import { ciReason } from '../shared/askWhy';
+import { canMerge, conflictBody, mergeMethod, planConflictFix } from '../shared/prMerge';
 import type { Task } from '../shared/types';
 
 /**
@@ -16,7 +17,7 @@ import type { Task } from '../shared/types';
  * - Merged or closed: delete the branch (local and remote), finish the task,
  *   notify, and start tasks that were waiting for this merge.
  * - Keep the merge readiness (CI, conflicts, review) on the task for the UI.
- * - New review comments, then failed CI: hand them to the Worker that opened the PR.
+ * - New review comments, then a conflict with the base, then failed CI: hand them to the Worker that opened the PR.
  * - Each PR once, even when a follow-up task pushed to its branch and recorded the same URL.
  */
 
@@ -152,13 +153,13 @@ async function checkOne(watch: PrWatch<Task>) {
   const p = parsePr(task.prUrl!);
   if (!p) return;
   const env = { ...ghEnv(), GH_HOST: p.host };
-  const r = await run('gh', ['pr', 'view', task.prUrl!, '--json', 'state,headRefName,headRefOid,mergeable,reviewDecision,statusCheckRollup'], { env, timeoutMs: 60_000 });
+  const r = await run('gh', ['pr', 'view', task.prUrl!, '--json', 'state,headRefName,headRefOid,baseRefName,baseRefOid,mergeable,reviewDecision,statusCheckRollup'], { env, timeoutMs: 60_000 });
   if (r.code !== 0) {
     log.warn('pr view failed', task.prUrl, r.stderr.trim().slice(0, 200));
     return;
   }
   const j = JSON.parse(r.stdout) as {
-    state: 'OPEN' | 'MERGED' | 'CLOSED'; headRefName: string; headRefOid?: string;
+    state: 'OPEN' | 'MERGED' | 'CLOSED'; headRefName: string; headRefOid?: string; baseRefName?: string; baseRefOid?: string;
     mergeable?: string; reviewDecision?: string; statusCheckRollup?: RollupItem[];
   };
   if (j.state !== 'OPEN') return settle(watch, j.state, j.headRefName);
@@ -174,7 +175,40 @@ async function checkOne(watch: PrWatch<Task>) {
   // Comments and CI go to the task that opened the PR; it is told about anything a follow-up on the PR already handled.
   adoptSeen(task, watch.all);
   if (await sendComments(task)) return;
+  // A conflict comes before CI: checks on a branch that cannot merge say little, and the merge starts them again.
+  if (planConflictFix(task, ready.conflicts, j.headRefOid ?? '', j.baseRefOid ?? '')) {
+    store.chat('event', t('ev.conflictFixing', { id: task.workerId ?? '', title: task.title }));
+    workers.sendReview(task, conflictBody(j.baseRefName || 'main'), 'conflict');
+    store.changed();
+    return;
+  }
   await fixCi(task, env, checks, j.headRefOid ?? '');
+}
+
+/**
+ * Merge a task's PR on the user's click, the way its repository allows (squash first). The state is read again
+ * first, so a PR that stopped being ready since the window last showed it is not merged.
+ */
+export async function mergePr(taskId: string) {
+  const task = store.task(taskId);
+  const p = task?.prUrl ? parsePr(task.prUrl) : null;
+  if (!task || !p) throw new Error(t('pr.err.noPr'));
+  const env = { ...ghEnv(), GH_HOST: p.host };
+  const view = await run('gh', ['pr', 'view', task.prUrl!, '--json', 'state,mergeable,reviewDecision,statusCheckRollup'], { env, timeoutMs: 60_000 });
+  if (view.code !== 0) throw new Error(view.stderr.trim().split('\n')[0] || t('pr.err.merge'));
+  const j = JSON.parse(view.stdout) as { state: string; mergeable?: string; reviewDecision?: string; statusCheckRollup?: RollupItem[] };
+  if (j.state !== 'OPEN' || !canMerge(readiness(parseChecks(j.statusCheckRollup), j.mergeable, j.reviewDecision))) {
+    checkPrsSoon();
+    throw new Error(t('pr.err.notReady'));
+  }
+  const repo = await run('gh', ['repo', 'view', `${p.host}/${p.owner}/${p.repo}`, '--json', 'squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'], { env, timeoutMs: 60_000 });
+  let allowed: Parameters<typeof mergeMethod>[0] = null;
+  try { if (repo.code === 0) allowed = JSON.parse(repo.stdout); } catch { /* squash */ }
+  const method = mergeMethod(allowed);
+  const r = await run('gh', ['pr', 'merge', task.prUrl!, `--${method}`], { env, timeoutMs: 120_000 });
+  if (r.code !== 0) throw new Error(r.stderr.trim().split('\n')[0] || t('pr.err.merge'));
+  log.info('merged from the app', task.prUrl, method);
+  checkPrsSoon();
 }
 
 let running = false;

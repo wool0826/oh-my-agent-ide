@@ -11,6 +11,7 @@ import { reasonText } from '../shared/askWhy';
 import { linkify } from '../shared/linkify';
 import { RING, ringArc, untilReset } from '../shared/usageRing';
 import { patchLines, reviewMessage, type DiffNote } from '../shared/diffComment';
+import { canMerge } from '../shared/prMerge';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -109,6 +110,9 @@ const ui = {
   /** Review comments not sent yet, per Worker, and the line a comment is being written for. */
   diffNotes: new Map<string, DiffNote[]>(),
   diffDraft: null as { wid: string; path: string; at: number } | null,
+  /** The task whose Merge button is asking "Merge it?", and the tasks being merged. */
+  mergeAsk: null as string | null,
+  merging: new Set<string>(),
   /** Plan cards whose full plan is unfolded below the summary, by decision id. */
   planOpen: new Set<string>(),
   /** Queued tasks whose request is shown in full on the Worker view's waiting card. */
@@ -785,6 +789,11 @@ function prBadges(x: Task) {
   if (c.conflicts) b.push(`<i class="bad">${t('pr.conflicts')}</i>`);
   const rv = c.review ? REVIEW_BADGE[c.review] : null;
   if (rv) b.push(`<i class="${rv[0]}">${t(rv[1])}</i>`);
+  // Ready to merge: a button, asked once before it merges.
+  if (canMerge(c)) {
+    const busy = ui.merging.has(x.id), sure = ui.mergeAsk === x.id;
+    b.push(`<button type="button" class="prmerge${sure ? ' sure' : ''}" data-action="pr-merge" data-id="${esc(x.id)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'pr.mergeSure' : 'pr.merge')}</button>`);
+  }
   return b.length ? `<span class="prst">${b.join('')}</span>` : '';
 }
 
@@ -2445,6 +2454,17 @@ async function act(el: HTMLElement, e: Event) {
     case 'close-session': go({ wOpen: false }); break;
     case 'ws-tab': go({ wTab: el.dataset.v as Screen['wTab'] }); break;
     case 'diff-refresh': ui.diffs.delete(id); renderSession(true); break;
+    case 'pr-merge': {
+      if (!id) break;
+      if (ui.mergeAsk !== id) { ui.mergeAsk = id; renderAll(true); break; }
+      ui.mergeAsk = null;
+      ui.merging.add(id);
+      renderAll(true);
+      await call('pr:merge', id);
+      ui.merging.delete(id);
+      renderAll(true);
+      break;
+    }
     case 'diff-note': {
       // Selecting text in the diff is not a click on its line.
       if (String(getSelection() ?? '')) break;
@@ -2742,6 +2762,7 @@ function init() {
     if (step) { stepValue(step.dataset.for!, Number(step.dataset.step)); return; }
     if (pop.el && !pop.el.contains(tgt) && tgt !== pop.owner) closePop();
     if (ui.memoDel && !tgt.closest('.mact.del.sure')) askMemoDel(null);
+    if (ui.mergeAsk && !tgt.closest('.prmerge.sure')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
     if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
@@ -2828,6 +2849,7 @@ function init() {
       if (pop.el) { closePop(true); return; }
       hideUsagePop();
       if (ui.memoDel) askMemoDel(null);
+      if (ui.mergeAsk) { ui.mergeAsk = null; renderAll(true); }
       if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }

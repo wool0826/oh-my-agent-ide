@@ -817,3 +817,12 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .dnote .clear-x { opacity: 1; margin-top: 1px; }
 .dnote.edit { flex-direction: column; align-items: stretch; box-shadow: var(--rim); }
 .dnote.edit textarea.inp { min-height: 52px; }
+
+/* ---------- merge from the app ---------- */
+/* Among a ready PR's badges: a small filled button; asked once, it says "Merge it?". */
+.prmerge { font: inherit; font-size: var(--fs-caption2); font-weight: 600; line-height: 1.5; padding: 0 9px; border: 0; border-radius: var(--radius-full); background: var(--accent-solid); color: var(--text-on-accent); cursor: pointer; white-space: nowrap; transition: background var(--dur-fast) var(--ease-standard), scale var(--dur-instant) var(--ease-out); }
+.prmerge:hover:not(:disabled) { filter: brightness(1.1); }
+.prmerge:active:not(:disabled) { scale: .95; }
+.prmerge.sure { background: var(--success-solid, var(--meter-ok)); color: var(--text-on-solid); }
+.prmerge:disabled { opacity: .6; cursor: default; }
+.prmerge:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
