@@ -38,6 +38,8 @@ import { closeQuick, destroyQuick, openQuick, releaseQuickKey, syncQuickKey } fr
 import { QUICK_ARG } from '../shared/quickKey';
 import { listJiraIssues, setJiraToken } from './jira';
 import { fakeMode } from './fake';
+import { lastPreflight, runPreflight } from './preflight';
+import { failedCount } from '../shared/preflight';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -102,6 +104,7 @@ function snapshot(): AppState {
     memorySync: memorySync(),
     update: updateInfo(),
     fake: fakeMode(),
+    preflightFailed: failedCount(lastPreflight() ?? []),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }
@@ -273,6 +276,7 @@ function registerIpc() {
   handle('pr:merge', (taskId: string) => mergePr(taskId));
   handle('repo:issues', (name: string) => listIssues(name));
   handle('task:revoke', (taskId: string, key: string) => workers.revokeGrant(taskId, key));
+  handle('preflight:run', async () => { const r = await runPreflight(); pushState(); return r; });
   handle('jira:issues', () => listJiraIssues());
   handle('jira:token', (token: string) => { setJiraToken(String(token ?? '')); pushState(); });
   // The user picked one of two attempts: it is told to open its PR, and the comparison is closed for both.
@@ -451,6 +455,8 @@ async function boot() {
   // A Worker that waits too long for an answer gives its slot to the queue (decision 118).
   setInterval(() => workers.sweepWaiting(), 30_000);
   startUpdateCheck(onUpdate);
+  // What the app needs on this computer: checked once the window is up, so a missing tool shows before a task fails on it.
+  setTimeout(() => void runPreflight().then(() => pushState()).catch((e) => log.warn('preflight', e)), 3_000);
   automations.start((text) => dispatcher.send(text));
   setInterval(retryAfterLimits, 2 * 60_000).unref();
   scheduleLimitRetry();

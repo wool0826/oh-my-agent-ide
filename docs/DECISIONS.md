@@ -531,3 +531,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Kept on the task:** `Task.grants` holds each allowed kind with the words shown for it, so it is saved with the state and outlasts a restart. It still ends with the task: a finished task's allowances allow nothing.
     - **Shown where the task is:** in the Worker view, under a task still in progress, "Allowed for this task" lists them, each with a small button that takes it back. The next action of that kind asks again, and the Worker's conversation notes it.
     - **Nothing wider:** there is still no allowance across tasks or for good. One that outlived its task would be a standing permission, which is what the always-ask rules and auto mode are there to decide.
+131. **The app checks what it needs on this computer and says what is missing.**
+    - **Why:** a missing `gh`, an expired GitHub sign-in or an unwritable home folder showed only when a task failed on it, as that tool's own error in a Worker's conversation.
+    - **What is checked** (`main/preflight.ts`, plan in `shared/preflight.ts`): `git`; the GitHub CLI; its sign-in for github.com and for the company host when one is set; at least one agent account; the Codex CLI when a ChatGPT account or model is in use; and that the IDE home folder can be written to. In fake agent mode there is no account or Codex to check.
+    - **When:** three seconds after launch, and each time Settings opens or its refresh button is pressed.
+    - **Where it shows:** a Status group at the top of Settings → General, failed checks first. A failed sign-in shows the command that fixes it, to copy; the others say what to do in a sentence. The tool's own words are in the row's tooltip. A failed check puts a red dot on the gear, so it is seen without opening Settings.
+    - **It only reports.** The app does not install tools or sign in for the user, and a failed check stops nothing: a task that does not need GitHub still runs.
+    - **Not checked:** Jira (it reports its own error where its issues are listed), and whether an account's token still works (the usage reading already shows that per account).

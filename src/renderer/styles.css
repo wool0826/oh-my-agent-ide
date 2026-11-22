@@ -1008,3 +1008,14 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .grant-x svg { width: 7px; height: 7px; }
 .grant-x:hover { background: var(--danger-solid); color: var(--text-on-solid); }
 .grant-x:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
+
+/* ---------- status: what the app needs on this computer ---------- */
+.scap .clear-x { display: inline-grid; vertical-align: middle; margin-left: var(--space-8); }
+#pre-rows > * + * { border-top: .5px solid var(--border-subtle); }
+.pre-r { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-10); min-width: 0; }
+.pre-r .pill { font-style: normal; flex: none; }
+.pre-cmd { font-size: var(--fs-code); user-select: text; overflow-wrap: anywhere; }
+.pre-fix { font-size: var(--fs-caption); color: var(--text-secondary); text-align: right; }
+.skel.pre { flex: 1; }
+.skel.pre i { width: 40%; }
+.foot-btn.has-issue::after { content: ""; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg-canvas); }
