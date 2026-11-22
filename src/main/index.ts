@@ -26,6 +26,7 @@ import { t } from './i18n';
 import { claudeHome, ruleFiles } from './claudeContext';
 import { listModels, setSessionModelSource } from './models';
 import { log } from './log';
+import { windowIconFile } from '../shared/appIcon';
 import { month, nowIso, oneLine, uid } from './util';
 import { cleanMemo } from '../shared/memos';
 import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
@@ -94,7 +95,8 @@ function syncLoginItem() {
 // Tests or a second profile: keep settings and data in another folder.
 if (process.env.OMA_DATA_DIR) app.setPath('userData', path.resolve(process.env.OMA_DATA_DIR));
 // Windows shows toast notifications only for an app with an AppUserModelID (same as build.appId).
-if (process.platform === 'win32') app.setAppUserModelId('dev.ohmyagent.ide');
+const APP_ID = 'dev.ohmyagent.ide';
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 // The decision sound must play even before the user has clicked anything.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -169,6 +171,8 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 640,
     title: 'Oh My Agent IDE',
+    // Without it Windows has no icon for the taskbar button (a blank page under `electron .`).
+    icon: mac ? undefined : windowIconFile({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }, process.platform),
     // Started by the OS at sign-in: stay in the tray until asked for.
     show: !(process.argv.includes(HIDDEN_ARG) && loadSettings().background),
     // Matches --bg-canvas, so nothing flashes before the page paints its backdrop.
@@ -186,6 +190,8 @@ function createWindow() {
     },
   });
   setWindow(win);
+  // The AppUserModelID has no Start-menu shortcut when run with `electron .`, so the taskbar gets the icon and name from the window.
+  if (process.platform === 'win32') win.setAppDetails({ appId: APP_ID, appIconPath: windowIconFile({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }, 'win32'), relaunchDisplayName: 'Oh My Agent IDE' });
   win.loadFile(path.join(here, 'renderer', 'index.html'));
   win.on('focus', () => { win?.flashFrame(false); checkPrsSoon(); });
   // With "keep running" on, closing the window hides it and the work goes on; the tray icon brings it back.

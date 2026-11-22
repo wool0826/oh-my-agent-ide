@@ -50,6 +50,10 @@
       {
         "from": "build/icon.png",
         "to": "tray.png"
+      },
+      {
+        "from": "build/icon.ico",
+        "to": "app.ico"
       }
     ],
     "asarUnpack": [
