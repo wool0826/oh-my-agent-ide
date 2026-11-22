@@ -8,6 +8,7 @@ import { nowIso, run, runOk, slug, ensureDir } from './util';
 import { t } from './i18n';
 import { log } from './log';
 import type { Repo } from '../shared/types';
+import { ghRepoRef, parseIssues, type Issue } from '../shared/issues';
 
 /** Point gh at the company GitHub host via GH_HOST. */
 export function ghEnv(): NodeJS.ProcessEnv {
@@ -62,6 +63,16 @@ export async function registerRepo(input: { url: string; name?: string; descript
 export function removeRepo(name: string) {
   store.data.repos = store.data.repos.filter((r) => r.name !== name);
   store.changed();
+}
+
+/** A repository's open issues, the most recently updated first. Null when it is not on GitHub (a local folder). */
+export async function listIssues(name: string): Promise<Issue[] | null> {
+  const repo = store.repo(name);
+  const ref = repo ? ghRepoRef(repo.url) : null;
+  if (!ref) return null;
+  const r = await run('gh', ['issue', 'list', '-R', `${ref.host}/${ref.slug}`, '--state', 'open', '--limit', '50', '--json', 'number,title,url,labels,updatedAt'], { env: { ...ghEnv(), GH_HOST: ref.host }, timeoutMs: 60_000 });
+  if (r.code !== 0) throw new Error(r.stderr.trim().split('\n')[0] || t('issue.err'));
+  return parseIssues(r.stdout);
 }
 
 export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description' | 'setup' | 'run'>>) {

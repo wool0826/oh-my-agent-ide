@@ -1,4 +1,4 @@
-import type { Memo } from '../shared/types';
+import type { Memo, Repo } from '../shared/types';
 import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, LogPage, MemoryFile, MemoryHit, MemoryHits, MemorySuggestion, ModelList, PlanSummary, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
@@ -13,6 +13,7 @@ import { RING, ringArc, untilReset } from '../shared/usageRing';
 import { patchLines, reviewMessage, type DiffNote } from '../shared/diffComment';
 import { canMerge } from '../shared/prMerge';
 import { lastLines } from '../shared/runOutput';
+import { ghRepoRef, issueMessage, type Issue } from '../shared/issues';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -112,6 +113,8 @@ const ui = {
   diffNotes: new Map<string, DiffNote[]>(),
   diffDraft: null as { wid: string; path: string; at: number } | null,
   /** The task whose Merge button is asking "Merge it?", and the tasks being merged. */
+  /** Open issues per repository, read when its inspector first shows them. */
+  issues: new Map<string, Issue[] | 'loading' | { error: string }>(),
   mergeAsk: null as string | null,
   merging: new Set<string>(),
   /** Plan cards whose full plan is unfolded below the summary, by decision id. */
@@ -1548,10 +1551,37 @@ function renderRepos() {
       <div class="ins-h"><b>${t('repo.run')}</b></div>
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-run-${esc(r.name)}" data-scroll="repo-run-${esc(r.name)}" id="repo-run" placeholder="${esc(t('repo.runPh'))}">${esc(r.run ?? '')}</textarea>
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
+      ${issuesHtml(r)}
       <div class="ins-h"><b>${t('wk.tasks')}</b><small>${all.length}</small></div>
       <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
       <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
+}
+
+/** A GitHub repository's open issues, each with a button that hands it to the Dispatcher as a task. */
+function issuesHtml(r: Repo) {
+  if (!ghRepoRef(r.url)) return '';
+  const v = ui.issues.get(r.name);
+  if (v === undefined) { void loadIssues(r.name); }
+  const refresh = `<button class="clear-x always" data-action="issues-refresh" data-id="${esc(r.name)}" title="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
+  const head = (n: string) => `<div class="ins-h"><b>${t('issue.title')}</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
+  if (v === undefined || v === 'loading') return `${head('')}<div class="group"><div class="mini"><span>${t('issue.loading')}</span></div></div>`;
+  if (!Array.isArray(v)) return `${head('')}<div class="group"><div class="mini"><span class="err">${esc(v.error)}</span></div></div>`;
+  if (!v.length) return `${head('0')}<div class="group"><div class="mini"><span>${t('issue.none')}</span></div></div>`;
+  const list = paged(`issues:${r.name}`, v, 6);
+  return `${head(String(v.length))}<div class="group">${list.items.map((i) => `<div class="mini issue"><b><a data-action="open-url" data-href="${esc(i.url)}">#${i.number}</a> ${esc(i.title)}</b>
+    <span class="issue-f"><span class="lbls">${i.labels.slice(0, 3).map((l) => `<i class="pill">${esc(l)}</i>`).join('')}</span><button class="btn" data-action="issue-assign" data-id="${esc(r.name)}" data-n="${i.number}">${t('issue.assign')}</button></span></div>`).join('')}${list.more}</div>`;
+}
+
+async function loadIssues(name: string) {
+  ui.issues.set(name, 'loading');
+  try {
+    const v = await ide.call<Issue[] | null>('repo:issues', name);
+    ui.issues.set(name, v ?? []);
+  } catch (e) {
+    ui.issues.set(name, { error: (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') || t('issue.err') });
+  }
+  if (ui.view === 'repo') renderRepos();
 }
 
 /** The add form: what to register (cloned unless it is a local folder) and its description, sent to repo:add. */
@@ -2473,6 +2503,17 @@ async function act(el: HTMLElement, e: Event) {
     case 'close-session': go({ wOpen: false }); break;
     case 'ws-tab': go({ wTab: el.dataset.v as Screen['wTab'] }); break;
     case 'diff-refresh': ui.diffs.delete(id); renderSession(true); break;
+    case 'issues-refresh': if (id) { ui.issues.delete(id); renderRepos(); } break;
+    case 'issue-assign': {
+      const list = id ? ui.issues.get(id) : undefined;
+      const issue = Array.isArray(list) ? list.find((i) => i.number === Number(el.dataset.n)) : undefined;
+      if (!id || !issue) break;
+      (el as HTMLButtonElement).disabled = true;
+      await call('chat:send', issueMessage(id, issue), []);
+      toast(t('issue.sent', { n: issue.number }));
+      go({ view: 'chat' });
+      break;
+    }
     case 'run-start': await call('run:start', id); break;
     case 'run-stop': await call('run:stop', id); break;
     case 'run-clear': await call('run:clear', id); break;

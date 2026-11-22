@@ -833,3 +833,14 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .run-url { font-size: var(--fs-caption); color: var(--text-link); cursor: pointer; overflow-wrap: anywhere; }
 .run-url:hover { text-decoration: underline; }
 .run-out { margin: 0; padding: var(--space-8) var(--space-10); max-height: 190px; overflow: auto; border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: var(--well); font-family: var(--font-mono); font-size: var(--fs-caption2); line-height: var(--lh-code); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--text-secondary); }
+
+/* ---------- a repository's open issues ---------- */
+.mini.issue { gap: var(--space-6); }
+.mini.issue b a { color: var(--text-link); cursor: pointer; font-variant-numeric: tabular-nums; }
+.mini .issue-f { display: flex; align-items: center; gap: var(--space-8); }
+.mini .issue-f .pill { font-style: normal; flex: none; }
+.mini .issue-f .lbls { flex: 1; min-width: 0; display: flex; gap: var(--space-4); overflow: hidden; }
+.mini .issue-f .btn { flex: none; font-size: var(--fs-caption2); padding: 2px 10px; color: var(--text-primary); }
+.mini span.err { color: var(--danger-text); }
+.clear-x.always { opacity: 1; }
+.clear-x.always svg { width: 10px; height: 10px; }
