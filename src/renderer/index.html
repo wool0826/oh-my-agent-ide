@@ -66,6 +66,7 @@
     <div class="side-scroll" id="side"></div>
     <div class="side-foot"><button class="foot-btn" data-action="open-settings" data-i18n-title="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button><button class="foot-btn" id="side-toggle" data-action="side-toggle" aria-controls="side"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button></div>
   </nav>
+  <div class="rz nodrag" id="rz-side" role="separator" aria-orientation="vertical" aria-controls="side" tabindex="0"></div>
 
   <header class="toolbar drag">
     <span class="seg nodrag" role="group" aria-label="Views">
@@ -122,6 +123,7 @@
     <div class="lst scroll" id="mem-list"></div>
   </main>
   <aside class="inspector view" data-view="memory" id="mem-ins" hidden></aside>
+  <div class="rz nodrag" id="rz-ins" role="separator" aria-orientation="vertical" tabindex="0"></div>
   <!-- After the right sidebars, so the keyboard reaches it after their content. -->
   <button class="tbtn" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
 </div>

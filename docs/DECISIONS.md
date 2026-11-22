@@ -612,3 +612,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 144. **The usage popover is drawn once when it opens; moving between the rings only moves the mark** (reported by the user: the bars kept filling again).
     - **Why they did:** every pointer move over the rings wrote the popover again, and cleared the timer that ends its opening motion, so each new write played the bars' fill.
     - **Now:** an open popover is left alone by the pointer. New numbers from a state update are written in place, without the opening motion, and only when something changed.
+145. **Both sidebars can be resized by dragging their inner edge** (asked for by the user).
+    - **Limits:** the left one 200-480px (default 272), the right one 320-640px (default 344). Below 320 the right sidebar's Inbox, Memos and Automations tabs wrap to two lines. The middle keeps at least 420px: on a narrower window the right sidebar gives way first, then the left, never below their minimums. The chosen widths are kept, so a wider window shows them again.
+    - **Kept in** the window's localStorage (`oma.sideW`, `oma.insW`), like whether each sidebar is collapsed, not in settings.json: it is how this window looks, not a setting.
+    - **Keys:** the handle is a focusable `separator`; the arrows move it 16px (64 with Shift), so on the right sidebar's handle Left widens it. Home and End go to the limits; double-click restores the default.
+    - The rules are in `shared/panelWidth.ts` (tested); `ui/resize.ts` handles the pointer, with pointer capture so the drag goes on outside the handle.
