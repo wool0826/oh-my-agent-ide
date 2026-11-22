@@ -28,11 +28,12 @@ import { isAttached, readPath } from '../attachments';
 import { t, langName, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
-import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
+import { ALLOW, ALLOW_TASK, DENY, type Task, type Worker } from '../../shared/types';
 import { afterDependency, cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
+import { grantScope, type GrantScope } from '../../shared/grants';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
@@ -360,6 +361,27 @@ class WorkerManager {
     };
   }
 
+  /** Kinds of action the user allowed for the length of a task, by task id. Kept in memory: a restart asks again. */
+  private grants = new Map<string, Set<string>>();
+
+  /**
+   * What "Allow for this task" would cover for this call, or null when it is not offered: an always-ask
+   * rule is asked every time, and so is a call whose kind cannot be named.
+   */
+  private taskScope(task: Task | null, tool: string, input: unknown): GrantScope | null {
+    if (!task || alwaysAskRule(tool, input, loadSettings().askOff)) return null;
+    return grantScope(tool, input);
+  }
+
+  /** The permission's buttons: Allow and Deny, and "Allow for this task" with what it covers when offered. */
+  private permOptions(scope: GrantScope | null) {
+    return [{ label: ALLOW }, { label: DENY }, ...(scope ? [{ label: ALLOW_TASK, description: scope.label }] : [])];
+  }
+
+  private answerLabel(ans: string) {
+    return ans === ALLOW ? t('allow') : ans === ALLOW_TASK ? t('allowTask') : ans === DENY ? t('deny') : ans;
+  }
+
   /** A command or a file change a Codex Worker needs a yes for: the same decision card a Claude Worker's permission gets. */
   private codexApproval(w: Worker) {
     return async (req: CodexApproval): Promise<CodexDecision> => {
@@ -371,18 +393,28 @@ class WorkerManager {
       const tool = req.kind === 'command' ? 'Bash' : 'Edit';
       const input = req.kind === 'command' ? { command: req.command } : { file_path: req.files.join(', ') };
       const code = (req.kind === 'command' ? `$ ${req.command}` : req.files.join('\n')).slice(0, 1200);
+      // One file names a folder; several files are asked about each time.
+      const scope = this.taskScope(task, tool, req.kind === 'command' ? input : req.files.length === 1 ? { file_path: req.files[0] } : {});
+      if (task && scope && this.grants.get(task.id)?.has(scope.key)) {
+        if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
+        if (task.status === 'waiting') task.status = 'running';
+        store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
+        store.changed();
+        return 'accept';
+      }
       try {
         const ans = await ask({
           source: 'permission', workerId: w.id, taskId: task?.id ?? null,
           title: req.kind === 'command' ? t('perm.bash') : t('perm.files'),
           detail: '',
           code,
-          options: [{ label: ALLOW }, { label: DENY }],
+          options: this.permOptions(scope),
           questionKey: null,
-          reason: permissionReason(t, { who: w.id, task, tool, input, rule: alwaysAskRule(tool, input), decisionReason: req.reason }),
+          reason: permissionReason(t, { who: w.id, task, tool, input, rule: alwaysAskRule(tool, input, loadSettings().askOff), decisionReason: req.reason }),
         });
-        store.log(w.id, 'user', `${oneLine(code, 140)} → ${ans === ALLOW ? t('allow') : ans === DENY ? t('deny') : ans}`);
-        return ans === ALLOW ? 'accept' : 'decline';
+        store.log(w.id, 'user', `${oneLine(code, 140)} → ${this.answerLabel(ans)}`);
+        if (ans === ALLOW_TASK && task && scope) this.grants.set(task.id, (this.grants.get(task.id) ?? new Set()).add(scope.key));
+        return ans === ALLOW || ans === ALLOW_TASK ? 'accept' : 'decline';
       } catch {
         return 'decline';
       } finally {
@@ -403,6 +435,12 @@ class WorkerManager {
       const rp = readPath(toolName, input);
       if (rp && isAttached(rp)) return { behavior: 'allow', updatedInput: input };
       const task = this.currentTask(w);
+      // Allowed for this task already: the same kind of action goes ahead, with a line in the conversation.
+      const scope = this.taskScope(task, toolName, input);
+      if (task && scope && this.grants.get(task.id)?.has(scope.key)) {
+        store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
+        return { behavior: 'allow', updatedInput: input };
+      }
       const prev = w.status;
       w.status = 'waiting';
       if (task) task.status = 'waiting';
@@ -415,12 +453,13 @@ class WorkerManager {
           title: toolName === 'Bash' ? t('perm.bash') : t('perm.tool', { tool: toolName.replace(/^mcp__\w+__/, '') }),
           detail: '',
           code: summarizeTool(toolName, input, 1200),
-          options: [{ label: ALLOW }, { label: DENY }],
+          options: this.permOptions(scope),
           questionKey: null,
-          reason: permissionReason(t, { who: w.id, task, tool: toolName, input, rule: alwaysAskRule(toolName, input), blockedPath: opts.blockedPath, decisionReason: cc, impact: opts.description }),
+          reason: permissionReason(t, { who: w.id, task, tool: toolName, input, rule: alwaysAskRule(toolName, input, loadSettings().askOff), blockedPath: opts.blockedPath, decisionReason: cc, impact: opts.description }),
         }, opts.signal);
-        store.log(w.id, 'user', `${summarizeTool(toolName, input)} → ${ans === ALLOW ? t('allow') : ans === DENY ? t('deny') : ans}`);
-        if (ans === ALLOW) return { behavior: 'allow', updatedInput: input };
+        store.log(w.id, 'user', `${summarizeTool(toolName, input)} → ${this.answerLabel(ans)}`);
+        if (ans === ALLOW_TASK && task && scope) this.grants.set(task.id, (this.grants.get(task.id) ?? new Set()).add(scope.key));
+        if (ans === ALLOW || ans === ALLOW_TASK) return { behavior: 'allow', updatedInput: input };
         return { behavior: 'deny', message: ans === DENY ? 'The user denied this action. Find another way, or skip it if it is not needed.' : `The user denied this and said: ${ans}` };
       } catch {
         return { behavior: 'deny', message: 'The request was cancelled.' };

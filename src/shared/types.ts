@@ -192,6 +192,8 @@ export interface PlanSummary {
 /** Answer values for permission decisions. The renderer shows localized labels. */
 export const ALLOW = 'allow';
 export const DENY = 'deny';
+/** Allow, and do not ask again for the same kind of action until this task ends (shared/grants.ts). */
+export const ALLOW_TASK = 'allow-task';
 
 export interface AutoAnswer {
   id: string;
@@ -269,6 +271,8 @@ export interface SettingsView {
   maxWorkers: number;
   /** Minutes a Worker waiting for an answer keeps its slot; 0 = for as long as it waits. */
   waitSlotMinutes: number;
+  /** Always-ask rules the user switched off (keys of shared/grants.ts ASK_RULES). */
+  askOff: string[];
   /** UI font. Empty = system font. Several can be listed, separated by commas. */
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */
