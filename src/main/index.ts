@@ -42,6 +42,7 @@ import { QUICK_ARG } from '../shared/quickKey';
 import { listJiraIssues, setJiraToken } from './jira';
 import { fakeMode } from './fake';
 import { lastPreflight, runPreflight } from './preflight';
+import { fixToolPath } from './toolpath';
 import { failedCount } from '../shared/preflight';
 import { diagnostics, exportDiagnostics } from './diagnostics';
 import { effectiveTheme, windowColors } from '../shared/theme';
@@ -459,6 +460,8 @@ async function boot() {
   loadSettings();
   ensureHome();
   log.info('boot', paths().home);
+  // Before anything runs gh, git, codex or claude: an app opened from the macOS Dock lacks the shell's PATH.
+  await fixToolPath();
   store.load();
   // The state file was unreadable: say what was done about it, once, where the user will see it.
   if (store.restoredFrom) {

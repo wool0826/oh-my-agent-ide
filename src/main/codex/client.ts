@@ -1,3 +1,4 @@
+import { toolCommand } from '../toolpath';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { JsonRpc } from './rpc';
@@ -71,7 +72,7 @@ export class CodexClient extends EventEmitter implements CodexLink {
   private async launch() {
     const command = this.opts.command?.trim() || 'codex';
     // On Windows the CLI is a .cmd shim, which only a shell can start. The arguments are fixed, never user text.
-    const child = spawn(command, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32', windowsHide: true });
+    const child = spawn(toolCommand(command), ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32', windowsHide: true });
     this.child = child;
     const rpc = new JsonRpc((line) => { try { child.stdin?.write(line); } catch { /* exiting */ } }, {
       onNotify: (method, params) => this.onNotify(method, params),

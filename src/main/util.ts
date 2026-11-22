@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { toolCommand } from './toolpath';
+import { notFoundMessage } from '../shared/toolpath';
 
 export const nowIso = () => new Date().toISOString();
 export const uid = () => crypto.randomUUID();
@@ -11,7 +13,8 @@ export const today = () => {
 };
 export const month = () => today().slice(0, 7);
 
-export interface RunResult { code: number; stdout: string; stderr: string }
+/** `missing`: the program itself was not found (ENOENT), as opposed to running and failing. */
+export interface RunResult { code: number; stdout: string; stderr: string; missing?: boolean }
 
 /** Run a program without a shell. Never throws; reports failure through `code`. */
 export function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}): Promise<RunResult> {
@@ -22,6 +25,8 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Nod
     cmd = process.execPath;
     env = { ...env, ELECTRON_RUN_AS_NODE: '1' };
   }
+  const name = cmd;
+  cmd = toolCommand(cmd);
   return new Promise((resolve) => {
     execFile(cmd, args, {
       cwd: opts.cwd,
@@ -31,6 +36,9 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Nod
       windowsHide: true,
     }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as any).code === 'number' ? (err as any).code : 1) : 0;
+      // "spawn gh ENOENT" says nothing to the user: name what was searched and how to install it instead.
+      // Not on Windows, where .cmd shims also fail this way while installed and the message there stays as it was.
+      if ((err as any)?.code === 'ENOENT' && process.platform !== 'win32' && (!opts.cwd || fs.existsSync(opts.cwd))) return resolve({ code, stdout: '', stderr: notFoundMessage(name, String(env.PATH ?? '')), missing: true });
       resolve({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') + (err && !stderr ? String(err.message) : '') });
     });
   });

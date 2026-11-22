@@ -64,8 +64,11 @@ export function preflightRows() {
   if (preflight === undefined || preflight === 'loading') return `<div class="srow" role="status" aria-label="${t('pre.checking')}"><span class="skel pre"><i></i></span></div>`;
   return failedFirst(preflight).map((c) => {
     const name = c.id === 'ghAuth' ? t('pre.ghAuth', { host: c.host ?? '' }) : t(`pre.${c.id}` as Key);
-    const cmd = c.ok ? null : fixCommand(c);
-    const fix = c.ok ? '' : cmd ? `<code class="pre-cmd">${esc(cmd)}</code>` : `<span class="pre-fix">${t(`pre.fix.${c.id}` as Key)}</span>`;
+    // The main process names the command for this OS (c.cmd); fixCommand covers results from before it did.
+    const cmd = c.ok ? null : (c.cmd ?? fixCommand(c));
+    // A missing tool and a tool that is there but not signed in read differently (gh: not installed vs `gh auth login`).
+    const why = c.ok ? '' : c.missing ? t('pre.missing') : c.id === 'ghAuth' ? t('pre.fix.ghAuth') : cmd ? '' : t(`pre.fix.${c.id}` as Key);
+    const fix = (why ? `<span class="pre-fix">${esc(why)}</span>` : '') + (cmd ? `<code class="pre-cmd">${esc(cmd)}</code>` : c.missing ? `<span class="pre-fix">${t(`pre.fix.${c.id}` as Key)}</span>` : '');
     return `<div class="srow"><span class="lbl">${esc(name)}</span><span class="pre-r"${c.detail ? ` title="${esc(c.detail)}"` : ''}>${fix}<i class="pill ${c.ok ? 'green' : 'red'}">${t(c.ok ? 'pre.ok' : 'pre.fail')}</i></span></div>`;
   }).join('');
 }
