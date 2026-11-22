@@ -20,6 +20,7 @@ import type { Checkpoint } from '../shared/checkpoints';
 import { taskMinutes, workerTotals } from '../shared/workerSummary';
 import { canPick, openComparisons } from '../shared/compare';
 import { matchItems, stepIndex, type PaletteItem } from '../shared/palette';
+import { awayDigest, awayRows, type AwayDigest } from '../shared/away';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -1076,6 +1077,41 @@ async function saveSug(id: string) {
   await call('suggest:save', id, v);
 }
 
+/* ---------- while you were away (decision 122) ---------- */
+
+const SEEN_KEY = 'oma.lastSeen';
+let away: AwayDigest | null = null;
+
+/** The user is looking now: remember when, for the next absence. */
+function markSeen() {
+  try { localStorage.setItem(SEEN_KEY, new Date().toISOString()); } catch { /* not kept */ }
+}
+
+/** The window came back (or the app started): if enough happened since the user last looked, the inbox says what. */
+function checkAway() {
+  if (!S) return;
+  let since: string | null = null;
+  try { since = localStorage.getItem(SEEN_KEY); } catch { /* none */ }
+  const d = awayDigest(S, since, Date.now());
+  markSeen();
+  if (!d) return;
+  away = d;
+  if (ui.view === 'chat') renderChatInspector();
+}
+
+function awayHtml() {
+  if (!away) return '';
+  const d = away;
+  const span = d.minutes >= 60 * 24 ? t('away.since', { t: when(d.since) }) : tookText(d.minutes);
+  const counts = [d.failed.length ? t('away.failed', { n: d.failed.length }) : '', d.finished.length ? t('away.finished', { n: d.finished.length }) : '',
+    d.merged.length ? t('away.merged', { n: d.merged.length }) : '', d.waiting ? t('away.waiting', { n: d.waiting }) : ''].filter(Boolean).join(' · ');
+  const rows = awayRows(d);
+  const total = new Set([...d.failed, ...d.merged, ...d.finished].map((x) => x.id)).size;
+  const pill = { failed: ['red', taskStatus('failed')], merged: ['purple', t('pr.merged')], finished: ['green', taskStatus('done')] } as const;
+  return `<div class="sect" id="sec-away"><div class="ins-h"><b>${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" title="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
+    <div class="group"><div class="mini"><span>${esc(counts)}</span></div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill ${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
+}
+
 function renderChatInspector() {
   const s = S!;
   const root = $('#chat-ins');
@@ -1091,6 +1127,8 @@ function renderChatInspector() {
     const autos = paged('autos', visibleAutos(), PAGE.autos);
     let html = '';
     if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map((d) => decisionHtml(d)).join('')}</div></div>`;
+    // Decisions stay on top; what happened meanwhile comes right under them.
+    html += awayHtml();
     html += comparisonsHtml();
     if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" title="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.items.length) {
@@ -2742,6 +2780,7 @@ async function act(el: HTMLElement, e: Event) {
     case 'memo-remove': if (ui.memoDel === id) await removeMemo(id!); else askMemoDel(id ?? null); break;
     case 'done-toggle': ui.doneOpen = !ui.doneOpen; store('oma.doneOpen', ui.doneOpen); renderSidebar(); break;
     case 'ins-toggle': togglePanel('ins'); break;
+    case 'away-dismiss': away = null; renderChatInspector(); break;
     case 'cmdk-open': openPalette(); break;
     case 'cmdk-close': closePalette(); break;
     case 'cmdk-run': runPalette(Number(el.dataset.i)); break;
@@ -3280,7 +3319,10 @@ function init() {
     const firstSetup = !S && s.setupNeeded;
     const langChanged = S && S.settings.language !== s.settings.language;
     if (S) ui.chatOlder = slideOlder(ui.chatOlder, S.chat, s.chat, ui.chatFrom);
+    const first = !S;
     S = s;
+    // At launch: what happened since the app was last looked at, a quit included.
+    if (first) checkAway();
     renderAll();
     // The settings sheet only depends on accounts; re-render it only when they change.
     const accKey = JSON.stringify(s.accounts) + s.setupNeeded;
@@ -3305,7 +3347,10 @@ function init() {
     badge.classList.add('pulse');
     setTimeout(() => { document.querySelector('.sec-dec')?.classList.remove('blink'); }, 3500);
   });
-  window.addEventListener('focus', () => renderAll());
+  window.addEventListener('focus', () => { checkAway(); renderAll(); });
+  // Looking away starts the clock; while the window has the focus it is kept current.
+  window.addEventListener('blur', markSeen);
+  setInterval(() => { if (document.hasFocus()) markSeen(); }, 60_000);
   setInterval(() => { if (S) { renderSidebar(); if (ui.view === 'worker') renderWorkerList(); } }, 60_000);
 
   void ide.call<AppState>('state').then((s) => {

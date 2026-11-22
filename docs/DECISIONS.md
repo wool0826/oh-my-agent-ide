@@ -474,3 +474,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **What:** every task is in the palette (decision 116) with its id and title, and a meta line of its Worker, status, PR number and the start of its report, all of which are searched. Typing "#24", a word of the title or a word of the report finds it. Enter opens its Worker on the Summary tab, where the task's request, report and PR are.
     - **Only when typing:** tasks are left out of the list shown before anything is typed, so the places to go stay on top.
     - **Not searched:** the chat's own messages. They are paged from disk and would need a search in the main process; a task's report covers most of what one looks for.
+122. **"While you were away" in the inbox.**
+    - **Why:** coming back to the app meant reading the results list and the sidebar to work out what had happened. With the app now running in the background (decision 117) that is the normal way to use it.
+    - **When:** the window gets the focus again, or the app starts, at least five minutes after the user last looked. The time last looked is kept in the page's local storage, so a quit and a restart count as an absence too.
+    - **What** (`shared/away.ts`): tasks that failed, tasks whose PR merged, tasks that finished, and decisions that came in and still wait, all since then. Nothing in the absence means no card.
+    - **Where:** one section in the inbox under the waiting decisions: a line of counts, then up to six tasks (failures first), each opening its Worker. It stays until dismissed or the next absence replaces it.
+    - **Not a chat message:** the chat is the conversation with the Dispatcher, and this is the app's own count, so it does not go there or into the Dispatcher's context.
