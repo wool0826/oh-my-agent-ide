@@ -264,11 +264,8 @@ function registerIpc() {
     a.corrected = { answer: newAnswer, scope, at: nowIso() };
     store.chat('event', t(scope === 'preference' ? 'ev.correctedPref' : 'ev.corrected', { q: oneLine(a.question, 60), a: newAnswer }));
     if (scope === 'preference') revisePreference(a.basis, `${oneLine(a.question, 120)} → ${newAnswer}`);
-    try {
-      workers.send(a.workerId, 'user', `[Correction] For "${a.question}" the Dispatcher answered "${a.answer}" on the user's behalf, but the user corrected it to "${newAnswer}". Adjust anything you already did accordingly.`);
-    } catch (e) {
-      store.chat('error', t('err.correction', { id: a.workerId, msg: (e as Error).message }));
-    }
+    workers.send(a.workerId, 'user', `[Correction] For "${a.question}" the Dispatcher answered "${a.answer}" on the user's behalf, but the user corrected it to "${newAnswer}". Adjust anything you already did accordingly.`)
+      .catch((e) => store.chat('error', t('err.correction', { id: a.workerId, msg: (e as Error).message })));
     store.changed();
     suggestFromCorrection(a);
   });
@@ -485,7 +482,7 @@ async function boot() {
   });
   onLateAnswer((d) => {
     if (d.workerId) {
-      try { workers.send(d.workerId, 'user', `[User answer] Question: ${d.title}\nAnswer: ${d.answer}`); } catch (e) { log.warn('late answer', e); }
+      workers.send(d.workerId, 'user', `[User answer] Question: ${d.title}\nAnswer: ${d.answer}`).catch((e) => log.warn('late answer', e));
     }
   });
   accounts.startPolling();

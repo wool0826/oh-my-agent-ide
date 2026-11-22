@@ -58,6 +58,8 @@ export interface SessionEvents {
   onAccount?(accountId: string | null): void;
   onStatus?(status: 'busy' | 'idle' | 'error', text: string): void;
   onLimited?(): void;
+  /** Sent after Stop, while the stopped turn was ending: the input queue was dropped, so the owner sends them again. */
+  onResend?(texts: string[]): void;
   /** Compaction started or ended. A failed one never fails the turn: the conversation stays as it was. */
   onCompact?(e: CompactEvent): void;
 }
@@ -66,7 +68,15 @@ function userMsg(text: string): SDKUserMessage {
   return { type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null };
 }
 
-const LIMIT_RE = /rate.?limit|usage limit|limit reached|429|5-hour|weekly limit|out of extra usage/i;
+/**
+ * Error text that says a usage limit stopped the request. Matched only against what Claude Code reports as the error
+ * (a result's error text, a failed compaction, the process's own error), never the assistant's words: its work may
+ * well mention issue #429 or a rate limiter.
+ */
+export const LIMIT_RE = /rate.?limit|usage limit|limit reached|\b429\b|5-hour|weekly limit|out of extra usage/i;
+
+/** Turn ends Claude Code reports for a turn that was interrupted. */
+const ABORTED = new Set(['aborted_streaming', 'aborted_tools']);
 
 /** The session's flag settings plus the app's context window, so Claude Code compacts by itself before reaching it. */
 export function sessionSettings(settings: Options['settings']): Options['settings'] {
@@ -91,6 +101,12 @@ export class AgentSession {
   private pendingInternal = 0;
   private internalTurn = false;
   private turnText: string[] = [];
+  /** This turn's assistant said a usage limit rejected it (the SDK's own error, not its text). */
+  private limitHit = false;
+  /** interrupt() was called during this turn: its error is the Stop, and input queued after it is dropped with it. */
+  private interrupted = false;
+  /** Sent after interrupt(), before the stopped turn ended: kept when the queue is dropped. */
+  private afterStop: string[] = [];
   private failingOver = false;
   /** A compaction in progress, with the context size it started from. */
   private compacting: { from: number } | null = null;
@@ -130,6 +146,8 @@ export class AgentSession {
     this.input = new PushQueue<SDKUserMessage>();
     // Background work belongs to the process; a new one starts with none.
     this.background = 0;
+    this.interrupted = false;
+    this.limitHit = false;
     const options: Options = {
       model: this.cfg.model,
       cwd: this.cfg.cwd,
@@ -160,8 +178,11 @@ export class AgentSession {
   send(text: string) {
     if (this.closed) throw new Error('Session is closed.');
     if (!this.q) this.start();
+    // A Stop that came after its turn had ended stops nothing later.
+    if (!this.busy) this.interrupted = false;
     this.busy = true;
     this.ev.onStatus?.('busy', '');
+    if (this.interrupted) this.afterStop.push(text);
     this.input!.push(userMsg(text));
   }
 
@@ -216,6 +237,7 @@ export class AgentSession {
   }
 
   async interrupt() {
+    if (this.busy) this.interrupted = true;
     try { await this.q?.interrupt(); } catch { /* already finished */ }
   }
 
@@ -305,6 +327,7 @@ export class AgentSession {
         }
         if (m.error === 'rate_limit') {
           accounts.markLimited(this.cfg.accountId);
+          this.limitHit = true;
           return;
         }
         const u: any = m.message.usage;
@@ -343,14 +366,34 @@ export class AgentSession {
           void this.failover(true);
           return;
         }
-        if (isError && LIMIT_RE.test(text + ' ' + finalText)) {
+        // A turn the user stopped ended for that reason, whatever it said; one a limit cut off says so in its error
+        // (with is_error, a success result's text is the error), never in what the assistant wrote.
+        const userStop = this.interrupted;
+        const stopped = userStop || ABORTED.has((m as any).terminal_reason);
+        const limitHit = this.limitHit;
+        this.interrupted = false;
+        this.limitHit = false;
+        if (isError && !stopped && (limitHit || (m as any).api_error_status === 429 || LIMIT_RE.test(text))) {
           accounts.markLimited(this.cfg.accountId);
           void this.failover();
           return;
         }
-        const queued = (m as any).queued_turn_count ?? 0;
-        this.busy = queued > 0;
-        this.ev.onTurnEnd?.({ text: finalText || text, isError, internal, queued: queued > 0, background: this.background > 0 });
+        let queued = ((m as any).queued_turn_count ?? 0) > 0;
+        // Stop means stop: what was sent after the stopped turn would start the next one, so it goes with it.
+        const resend = this.afterStop;
+        this.afterStop = [];
+        if (queued && userStop) { this.dropQueued(); queued = false; }
+        this.busy = queued;
+        this.ev.onTurnEnd?.({ text: finalText || text, isError, internal, queued, background: this.background > 0 });
+        // What was sent once Stop was pressed is new work, not part of the stopped turn: it goes out after the
+        // stopped turn has settled.
+        if (resend.length && !this.q) {
+          setImmediate(() => {
+            if (this.closed) return;
+            if (this.ev.onResend) this.ev.onResend(resend);
+            else resend.forEach((r) => this.send(r));
+          });
+        }
         void this.readPlanUsage();
         // A failed /compact is not a failed turn: the session stays usable and its task goes on.
         const failed = isError && !internal;
@@ -388,6 +431,18 @@ export class AgentSession {
     } catch (e) {
       log.warn(`[${this.cfg.label}] usage read`, (e as Error).message);
     }
+  }
+
+  /**
+   * Throw away input the session has not started on: the process (and its queue) is closed, and the next send
+   * resumes the same conversation in a new one.
+   */
+  private dropQueued() {
+    log.info(`[${this.cfg.label}] stopped; queued input dropped`);
+    this.input?.close();
+    try { this.q?.close(); } catch { /* ignore */ }
+    this.q = null;
+    this.input = null;
   }
 
   /** The current account hit its limit: resume the same session on another account. compact: retry the /compact the limit stopped. */

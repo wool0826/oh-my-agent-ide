@@ -734,6 +734,8 @@ const en = {
   'log.limitCleared': 'The usage limit reset; continuing.',
   'log.slotWait': 'Every Worker slot is in use ({n}/{max}). Starts when one frees up.',
   'log.slotHeld': 'This task waits for a Worker slot. The message goes out when it starts.',
+  'log.feedbackHeld': 'PR feedback for {id} waits until {other} is settled.',
+  'log.unarchiveFailed': 'Could not restore the worktree: {msg}',
   'log.slotFree': 'A Worker slot is free; starting.',
   'log.restarted': 'The app restarted; continuing.',
 
@@ -1483,6 +1485,8 @@ const ko: Record<Key, string> = {
   'log.limitCleared': '사용량 한도가 풀려 이어서 해요.',
   'log.slotWait': '동시 실행 Worker 자리가 모두 찼어요({n}/{max}). 자리가 나면 시작해요.',
   'log.slotHeld': '이 작업은 Worker 자리를 기다리고 있어요. 시작할 때 메시지를 보낼게요.',
+  'log.feedbackHeld': '{id}의 PR 피드백은 {other}이(가) 끝날 때까지 기다려요.',
+  'log.unarchiveFailed': '작업 폴더를 되살리지 못했어요: {msg}',
   'log.slotFree': 'Worker 자리가 나서 시작해요.',
   'log.restarted': '앱이 다시 시작돼 이어서 진행해요.',
 
