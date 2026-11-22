@@ -1,0 +1,527 @@
+// The chat with the Dispatcher and its right sidebar: decisions, comparisons, bundles, results, memos, automations, and attachments.
+import type { Automation, Memo } from '../../shared/types';
+import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, Task, Worker } from '../../shared/types';
+import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
+import { type Key } from '../../shared/i18n';
+import { hasSpend, spendVars, type Spend } from '../../shared/spend';
+import { linkify } from '../../shared/linkify';
+import { canMerge } from '../../shared/prMerge';
+import { parseTime } from '../../shared/automations';
+import { canPick, openComparisons } from '../../shared/compare';
+import { awayDigest, awayRows, type AwayDigest } from '../../shared/away';
+import { bundleMergeOrder, openBundles } from '../../shared/bundle';
+import { memoSections } from '../../shared/memos';
+import { CONTEXT_WINDOW } from '../../shared/context';
+import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
+import { act } from '../app';
+import { $, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { go } from './history';
+import { segc, syncSegs } from './settings';
+import { ms } from './sidebar';
+import { tookText } from './workers';
+
+export const CI_BADGE: Record<string, [string, Key]> = { passing: ['ok', 'pr.ciPassing'], failing: ['bad', 'pr.ciFailing'], pending: ['run', 'pr.ciPending'] };
+
+export const REVIEW_BADGE: Record<string, [string, Key]> = { approved: ['ok', 'pr.approved'], changes: ['warn', 'pr.changes'], required: ['', 'pr.reviewNeeded'] };
+
+/** Is an open PR ready to merge: CI, conflicts, review. */
+export function prBadges(x: Task) {
+  const c = x.prChecks;
+  if (!c || x.prState !== 'OPEN') return '';
+  const b: string[] = [];
+  const ci = CI_BADGE[c.ci];
+  if (ci) b.push(`<i class="${ci[0]}"${c.failed.length ? ` title="${esc(c.failed.join(', '))}"` : ''}>${t(ci[1])}</i>`);
+  if (c.conflicts) b.push(`<i class="bad">${t('pr.conflicts')}</i>`);
+  const rv = c.review ? REVIEW_BADGE[c.review] : null;
+  if (rv) b.push(`<i class="${rv[0]}">${t(rv[1])}</i>`);
+  // Ready to merge: a button, asked once before it merges.
+  if (canMerge(c)) {
+    const busy = ui.merging.has(x.id), sure = ui.mergeAsk === x.id;
+    b.push(`<button type="button" class="prmerge${sure ? ' sure' : ''}" data-action="pr-merge" data-id="${esc(x.id)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'pr.mergeSure' : 'pr.merge')}</button>`);
+  }
+  return b.length ? `<span class="prst">${b.join('')}</span>` : '';
+}
+
+export function resultLinks(x: Task | null) {
+  const links: string[] = [];
+  if (x?.prUrl) {
+    const st = x.prState === 'MERGED' ? ` · ${t('pr.merged')}` : x.prState === 'CLOSED' ? ` · ${t('pr.closed')}` : '';
+    links.push(`<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${st}</a>`);
+    const badges = prBadges(x);
+    if (badges) links.push(badges);
+  }
+  for (const f of x?.files ?? []) links.push(`<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${esc(base(f))}</a>`);
+  return links;
+}
+
+/** A task's spend, labeled as an API-equivalent estimate. Short: the cost only, tokens on hover. */
+export function spendHtml(s: Spend | null | undefined, short = false) {
+  if (!hasSpend(s)) return '';
+  const v = spendVars(s);
+  const text = short ? t('spend.cost', v) : `${t('spend.cost', v)} · ${t('spend.tokens', v)}`;
+  const tip = short ? `${t('spend.tokens', v)}\n${t('spend.tip', v)}` : t('spend.tip', v);
+  return `<span class="spend" title="${esc(tip)}">${esc(text)}</span>`;
+}
+
+export function resultGlyph(x: Task | null, err = false) {
+  if (err) return sym('s-alert', 'c-red');
+  if (stoppedTask(x)) return sym('s-stop', 'c-gray');
+  if (x?.prState === 'MERGED') return sym('s-merge', 'c-pr-merged');
+  return x?.prUrl ? sym('s-pr', x.prState === 'CLOSED' ? 'c-pr-closed' : 'c-pr-open') : x?.files.length ? sym('s-doc', 'c-teal') : sym('s-check', 'c-green');
+}
+
+export function chatItemHtml(c: ChatItem) {
+  switch (c.kind) {
+    case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
+    case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text);
+    case 'event': return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
+    case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
+    case 'error': return `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
+    case 'auto': {
+      const a = S!.autoAnswers.find((x) => x.id === c.ref);
+      return `<button class="event self" data-action="aa-select" data-id="${c.ref ?? ''}" title="${t('chat.showRight')}">${sym('s-check', 'c-green')}<span><b>${a?.corrected ? t('chat.autoCorrected') : t('chat.auto')}</b> ${esc(c.text)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
+    }
+    case 'result': {
+      const x = task(c.ref);
+      const links = resultLinks(x);
+      if (x?.workerId) links.push(`<a tabindex="0" role="link" data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
+      return `<div class="attach"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${inline(c.text)}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
+    }
+  }
+}
+
+/** The chat items held: pages loaded with chat:page, then the state's snapshot. */
+export function chatAll(): ChatItem[] {
+  return ui.chatOlder.length ? [...ui.chatOlder, ...S!.chat] : S!.chat;
+}
+
+/** Whether the store has chat items before the first one held (the snapshot is full, and no answer said none). */
+export function chatHasEarlier(all: ChatItem[]) {
+  return S!.chat.length >= CHAT_SNAPSHOT && !!all[0] && all[0].id !== ui.chatEndAt;
+}
+
+/**
+ * The thread shows its last page and, once the reader scrolls up, from the first item shown on (ui.chatFrom).
+ * `older`: a page went in above, so the reader's place is kept from the end.
+ */
+
+export function renderChat(force = false, older = false) {
+  const s = S!;
+  const th = $('#chat-thread');
+  const nearBottom = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
+  const all = chatAll();
+  const from = threadStart(all.length, all.findIndex((c) => c.id === ui.chatFrom), PAGE.chat, (nearBottom || force) && !older);
+  ui.chatFrom = all[from]?.id ?? null;
+  // Pages no longer shown are let go; scrolling up loads them again.
+  if (ui.chatOlder.length && from >= ui.chatOlder.length) ui.chatOlder = [];
+  const earlier = from > 0 || chatHasEarlier(all);
+  const key = `${lang()}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
+  if (!force && !older && key === ui.lastChatKey) return;
+  ui.lastChatKey = key;
+  let html = earlier ? olderBtn('chat', ui.loadingOlder.has('chat')) : '';
+  let last = 0;
+  // The same error said again right after itself (e.g. every account at its limit) shows once with a count.
+  const items: { c: ChatItem; n: number }[] = [];
+  for (const c of all.slice(from)) {
+    const prev = items[items.length - 1];
+    if (prev && c.kind === 'error' && prev.c.kind === 'error' && prev.c.text === c.text && !c.ref && !prev.c.ref) { prev.n++; continue; }
+    items.push({ c, n: 1 });
+  }
+  // What arrived since the last render comes in with a short rise: everything after the marker (styles.css, .new-from).
+  const seenAt = older ? -1 : items.findIndex(({ c }) => c.id === ui.chatSeen);
+  const tail = items[items.length - 1]?.c.id ?? null;
+  for (const [i, { c, n }] of items.entries()) {
+    if (seenAt >= 0 && i === seenAt + 1) html += NEW_FROM;
+    const ts = Date.parse(c.ts);
+    if (ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
+    last = ts;
+    html += n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
+  }
+  if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b></div>`;
+  if (s.dispatcher.busy) html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(s.dispatcher.statusText ? oneLine(s.dispatcher.statusText, 80) : '')}</div>`;
+  ui.chatSeen = tail;
+  setThread(th, html, nearBottom || force, older);
+  watchTop(th, () => void olderChat());
+  const ctx = s.dispatcher.contextTokens;
+  $('#chat-ctx').innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${k(ctx)} / ${k(CONTEXT_WINDOW)}`;
+  $<HTMLButtonElement>('#chat-ctx').disabled = !!s.dispatcher.busy;
+  updateSendButton();
+}
+
+/** Show the chat page before the first one shown: from the items held, else from the store (chat:page). */
+export async function olderChat() {
+  if (!S || ui.loadingOlder.has('chat')) return;
+  const all = chatAll();
+  const from = all.findIndex((c) => c.id === ui.chatFrom);
+  if (from > 0) {
+    ui.chatFrom = all[Math.max(0, from - PAGE.chat)].id;
+    renderChat(false, true);
+    return;
+  }
+  if (from < 0 || !chatHasEarlier(all)) return;
+  const first = all[0].id;
+  ui.loadingOlder.add('chat');
+  markLoading($('#chat-thread'));
+  const r = await call<{ items: ChatItem[]; more: boolean }>('chat:page', first, PAGE.chat);
+  ui.loadingOlder.delete('chat');
+  // No answer (the error is a toast): the button stays and asks again on the next scroll or state push, but
+  // nothing renders now, since a render would re-watch the button and ask again at once.
+  if (!r) { unmarkLoading($('#chat-thread')); return; }
+  // The items held changed meanwhile (the snapshot slid past them); scrolling up asks again.
+  if (chatAll()[0]?.id === first) {
+    if (r.items.length) {
+      ui.chatOlder = [...r.items, ...ui.chatOlder];
+      ui.chatFrom = r.items[0].id;
+    }
+    // None left: stop asking from this item.
+    if (!r.more) ui.chatEndAt = r.items[0]?.id ?? first;
+  }
+  if (ui.view === 'chat') renderChat(false, true);
+}
+
+export function updateSendButton() {
+  const btn = $<HTMLButtonElement>('#chat-send');
+  const empty = !$<HTMLTextAreaElement>('#chat-input').value.trim() && !ui.attach.chat.length;
+  const stop = !!S?.dispatcher.busy && empty;
+  btn.classList.toggle('stop', stop);
+  btn.innerHTML = sym(stop ? 's-stop' : 's-up');
+  btn.setAttribute('aria-label', stop ? t('chat.stop') : t('send'));
+  btn.title = stop ? t('chat.stop') : '';
+}
+
+/** The free-text hint of a decision: it denies with a reason, asks for plan changes, or gives another answer. */
+export function decisionHint(d: Decision) {
+  return t(d.source === 'permission' ? 'dec.denyWhy' : d.source === 'plan' ? 'plan.revise' : 'dec.other');
+}
+
+/** inWorker: in its Worker's panel, where the Worker's composer is the text field (decision 93). */
+export function decisionHtml(d: Decision, inWorker = false) {
+  const x = task(d.taskId);
+  const src = [d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', ');
+  const icon = d.source === 'permission' ? sym('s-alert', 'c-red') : d.source === 'plan' ? sym('s-doc', 'c-blue') : sym('s-chat', 'c-orange');
+  let buttons: string;
+  if (d.source === 'plan') {
+    buttons = `<div class="btns"><button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}</button></div>`;
+  } else if (d.source === 'permission') {
+    // "Allow for this task" is there when the action's kind can be named; its tooltip says what the yes covers.
+    const scope = d.options.find((o) => o.label === ALLOW_TASK);
+    buttons = `<div class="btns"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}" title="${esc(scope.description ?? '')}">${t('allowTask')}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}</button></div>`;
+  } else {
+    const col = d.options.length > 2 || d.options.some((o) => o.description);
+    buttons = `<div class="btns${col ? ' col' : ''}">${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${esc(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
+  }
+  const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${decisionHint(d)}">`;
+  const sum = d.source === 'plan' ? d.summary : null;
+  return `<div class="dec" id="${inWorker ? 'wdec' : 'dec'}-${d.id}">
+    <div class="src">${icon}<span>${esc(src)}</span></div>
+    <div class="q">${esc(d.title)}</div>
+    ${d.reason ? `<div class="reason"><span>${esc(d.reason.what)}</span> ${esc(d.reason.why)}</div>` : ''}
+    ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
+    ${sum ? planSummaryHtml(d, sum, inWorker) : d.code ? (d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
+    ${buttons}${custom}
+  </div>`;
+}
+
+/** A plan card's WHAT / HOW / OUTPUT lines, with the full plan folded below them and a way to the Worker's conversation. */
+export function planSummaryHtml(d: Decision, sum: PlanSummary, inWorker = false) {
+  const open = ui.planOpen.has(d.id);
+  const row = (key: Key, v: string) => v ? `<dt>${t(key)}</dt><dd>${inline(v)}</dd>` : '';
+  const links = [
+    d.code ? `<button data-action="plan-toggle" data-id="${d.id}" aria-expanded="${open}">${t(open ? 'plan.hide' : 'plan.details')}<span aria-hidden="true">${open ? '▴' : '▾'}</span></button>` : '',
+    d.workerId && !inWorker ? `<button data-action="open-worker" data-id="${esc(d.workerId)}">${t('plan.open')}<span aria-hidden="true">→</span></button>` : '',
+  ].join('');
+  return `<dl class="plan-sum">${row('plan.what', sum.what)}${row('plan.how', sum.how)}${row('plan.output', sum.output)}</dl>
+    ${sum.auto ? `<div class="plan-auto" title="${esc(t('plan.autoHint'))}">${t('plan.auto')}</div>` : ''}
+    ${links ? `<div class="plan-links">${links}</div>` : ''}
+    ${open && d.code ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : ''}`;
+}
+
+export function aaHtml(a: AutoAnswer) {
+  const sel = ui.aaSel === a.id ? ' sel' : '';
+  const editing = ui.aaEdit === a.id;
+  const corrected = a.corrected ? ' corrected' : '';
+  const q = `${esc(oneLine(a.question, 140))} → <em>${esc(a.answer)}</em>${a.corrected ? ` <ins>${esc(a.corrected.answer)}</ins>` : ''}`;
+  const fix = editing ? `<div class="fix">
+      <input class="inp" data-keep="aa-${a.id}" data-enter="aa-send" data-id="${a.id}" placeholder="${t('aa.placeholder')}">
+      <div class="radios" role="radiogroup" aria-label="${t('aa.scope')}">
+        <label><input type="radio" name="scope-${a.id}" value="once" checked>${t('aa.once')}</label>
+        <label><input type="radio" name="scope-${a.id}" value="preference">${t('aa.pref')}</label>
+      </div>
+      <div class="btns"><button class="btn" data-action="aa-cancel">${t('cancel')}</button><button class="btn def" data-action="aa-send" data-id="${a.id}">${t('aa.send')}</button></div>
+    </div>` : '';
+  return `<div class="aa${sel}${editing ? ' editing' : ''}${corrected}" id="aa-${a.id}" data-ctx="aa" data-id="${a.id}">
+    <div class="src">${sym('s-check', 'c-green')}<span>${esc(a.workerId)}, ${hhmm(a.createdAt)}</span></div>
+    <div class="q">${q}</div>
+    <div class="why">${esc(a.basis)}</div>
+    ${a.corrected ? `<div class="fixed">${a.corrected.scope === 'preference' ? t('aa.fixedPref') : t('aa.fixedOnce')}</div>` : ''}
+    ${fix}
+    <button class="hov" data-action="aa-edit" data-id="${a.id}" title="${t('aa.correct')}" aria-label="${t('aa.correct')}"><svg><use href="#s-pencil"/></svg></button>
+  </div>`;
+}
+
+/** A "Remember this?" card: save as is, edit then save, or dismiss. */
+export function sugHtml(sg: MemorySuggestion) {
+  const editing = ui.sugEdit === sg.id;
+  const where = sg.scope === 'repo' && sg.repo ? t('sug.repo', { name: sg.repo }) : t('sug.pref');
+  const src = [where, sg.taskId ?? sg.workerId].filter(Boolean).join(', ');
+  const body = editing
+    ? `<input class="inp" data-keep="sug-${sg.id}" data-enter="sug-save" data-id="${sg.id}" value="${esc(sg.text)}" placeholder="${t('sug.placeholder')}" aria-label="${t('sug.placeholder')}">`
+    : `<div class="q">${esc(sg.text)}</div>`;
+  const save = `<button class="btn def" data-action="sug-save" data-id="${sg.id}">${t('save')}</button>`;
+  const btns = editing
+    ? `<button class="btn" data-action="sug-cancel">${t('cancel')}</button>${save}`
+    : `<button class="btn" data-action="sug-dismiss" data-id="${sg.id}">${t('sug.dismiss')}</button><button class="btn" data-action="sug-edit" data-id="${sg.id}">${t('sug.edit')}</button>${save}`;
+  return `<div class="dec sug" id="sug-${sg.id}">
+    <div class="src">${sym('s-sparkle', 'c-purple')}<span>${esc(src)}</span></div>
+    ${body}
+    ${sg.reason ? `<div class="d">${esc(sg.reason)}</div>` : ''}
+    <div class="btns">${btns}</div>
+  </div>`;
+}
+
+/** Auto-answers not cleared from the inspector, newest first. */
+export function visibleAutos() {
+  return S!.autoAnswers.filter((a) => !a.cleared).reverse();
+}
+
+export async function saveSug(id: string) {
+  const inp = document.querySelector<HTMLInputElement>(`[data-keep="sug-${id}"]`);
+  const v = inp?.value.trim();
+  if (inp && !v) { inp.focus(); return; }
+  document.getElementById(`sug-${id}`)?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+  ui.sugEdit = null;
+  await call('suggest:save', id, v);
+}
+
+/* ---------- while you were away (decision 122) ---------- */
+
+export const SEEN_KEY = 'oma.lastSeen';
+
+export let away: AwayDigest | null = null;
+
+/** Sets `away` from another module, which cannot assign to an import. */
+export function setAway(v: AwayDigest | null) { away = v; }
+
+/** The user is looking now: remember when, for the next absence. */
+export function markSeen() {
+  try { localStorage.setItem(SEEN_KEY, new Date().toISOString()); } catch { /* not kept */ }
+}
+
+/** The window came back (or the app started): if enough happened since the user last looked, the inbox says what. */
+export function checkAway() {
+  if (!S) return;
+  let since: string | null = null;
+  try { since = localStorage.getItem(SEEN_KEY); } catch { /* none */ }
+  const d = awayDigest(S, since, Date.now());
+  markSeen();
+  if (!d) return;
+  away = d;
+  if (ui.view === 'chat') renderChatInspector();
+}
+
+export function awayHtml() {
+  if (!away) return '';
+  const d = away;
+  const span = d.minutes >= 60 * 24 ? t('away.since', { t: when(d.since) }) : tookText(d.minutes);
+  const counts = [d.failed.length ? t('away.failed', { n: d.failed.length }) : '', d.finished.length ? t('away.finished', { n: d.finished.length }) : '',
+    d.merged.length ? t('away.merged', { n: d.merged.length }) : '', d.waiting ? t('away.waiting', { n: d.waiting }) : ''].filter(Boolean).join(' · ');
+  const rows = awayRows(d);
+  const total = new Set([...d.failed, ...d.merged, ...d.finished].map((x) => x.id)).size;
+  const pill = { failed: ['red', taskStatus('failed')], merged: ['purple', t('pr.merged')], finished: ['green', taskStatus('done')] } as const;
+  return `<div class="sect" id="sec-away"><div class="ins-h"><b>${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" title="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
+    <div class="group"><div class="mini"><span>${esc(counts)}</span></div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill ${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
+}
+
+export function renderChatInspector() {
+  const s = S!;
+  const root = $('#chat-ins');
+  keepInputs(root, () => {
+    const pending = s.decisions.filter((d) => d.status === 'pending');
+    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${label}${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
+    const tabs = `<div class="segc ins-tabs" role="tablist" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), pending.length)}${tab('memo', t('ins.tabMemo'))}${tab('auto', t('ins.tabAuto'))}</div>`;
+    if (ui.insTab === 'memo') { root.innerHTML = tabs + memosHtml(); return; }
+    if (ui.insTab === 'auto') { root.innerHTML = tabs + autosHtml(); return; }
+    // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
+    const results = paged('results', s.results.slice().reverse(), PAGE.results);
+    const autos = paged('autos', visibleAutos(), PAGE.autos);
+    let html = '';
+    if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map((d) => decisionHtml(d)).join('')}</div></div>`;
+    // Decisions stay on top; what happened meanwhile comes right under them.
+    html += awayHtml();
+    html += comparisonsHtml();
+    html += bundlesHtml();
+    if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" title="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
+    if (results.items.length) {
+      html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
+        const x = task(c.ref);
+        const lk = resultLinks(x);
+        return `<div class="res"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" title="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}<span>${inline(oneLine(c.text, 140))}</span>${spendHtml(x?.spend, true)}</span></div>`;
+      }).join('')}${results.more}</div></div>`;
+    }
+    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
+    if (!html) {
+      const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
+      html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
+    }
+    root.innerHTML = tabs + html;
+  });
+  syncSegs(root);
+}
+
+/** One memo: its text, when it changed, and Share / Edit / Delete, shown while it is hovered or focused. */
+export function memoHtml(m: Memo) {
+  if (ui.memoEdit === m.id) {
+    return `<div class="memo"><textarea class="inp" data-keep="memo-${m.id}" aria-label="${t('memo.edit')}">${esc(m.text)}</textarea>
+      <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn def" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
+  }
+  const act = (action: string, icon: string, label: string, cls = '') => `<button class="mact${cls}" data-action="${action}" data-id="${m.id}" title="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
+  // One button for both steps, so asking is a change of its width and colour, not a new element.
+  const sure = ui.memoDel === m.id;
+  const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="memo-remove" data-id="${m.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
+  return `<div class="memo" data-memo="${m.id}"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
+    <span class="acts">${act('memo-share', 's-pin', t(m.shared ? 'memo.unshare' : 'memo.share'), m.shared ? ' on' : '')}${act('memo-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
+}
+
+/**
+ * Two attempts at one task, side by side in the inbox: each with its Worker and model, where it stands and its
+ * report, a way to its changes, and "Use this one" once it has finished. Picking closes the comparison.
+ */
+
+export function comparisonsHtml() {
+  const groups = openComparisons(S!.tasks);
+  if (!groups.length) return '';
+  const cards = groups.map((g) => `<div class="cmp">${g.tasks.map((x) => {
+    const w = worker(x.workerId);
+    const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.status === 'done' ? ' green' : '';
+    return `<div class="cmp-side"><div class="cmp-h"><b>${esc(x.workerId ?? '')}</b><small>${esc(w ? modelLabel(w.model) : '')}</small><span class="pill${cls}">${taskLabel(x)}</span></div>
+      ${x.summary ? `<p>${inline(oneLine(x.summary, 220))}</p>` : ''}${spendHtml(x.spend, true)}
+      <div class="cmp-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="cmp-changes" data-id="${esc(x.workerId)}">${t('cmp.changes')}</button>` : ''}<span class="gap"></span><button class="btn def" data-action="cmp-pick" data-id="${esc(x.id)}"${canPick(x) ? '' : ' disabled'}>${t('cmp.pick')}</button></div></div>`;
+  }).join('')}</div>`).join('');
+  const title = (g: (typeof groups)[number]) => esc(g.tasks[0].title.replace(/ \([^()]*\)$/, ''));
+  return `<div class="sect"><div class="ins-h"><b>${t('cmp.title')}</b><small>${groups.length === 1 ? title(groups[0]) : groups.length}</small></div><div class="group">${cards}</div></div>`;
+}
+
+/**
+ * A request that spans repositories, in the inbox: its tasks in merge order, each with its repository, where it
+ * stands and its PR, and one button that merges the PRs in that order once every one is ready.
+ */
+
+export function bundlesHtml() {
+  const bundles = openBundles(S!.tasks);
+  if (!bundles.length) return '';
+  return bundles.map((b) => {
+    const key = `b:${b.name}`;
+    const busy = ui.merging.has(key), sure = ui.mergeAsk === key;
+    const n = bundleMergeOrder(b).length;
+    const rows = b.tasks.map((x, i) => {
+      const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.prState === 'MERGED' ? ' purple' : x.status === 'pr_open' ? ' pr-open' : x.status === 'done' ? ' green' : '';
+      const label = x.prState === 'MERGED' ? t('pr.merged') : taskLabel(x);
+      return `<div class="mini bnd"><b><span class="bnd-n">${i + 1}</span>${esc(x.repo ?? t('general'))}</b><span>${esc(x.title)}</span>
+        <span class="bnd-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(x.workerId)}">${esc(x.workerId)}</button>` : ''}${x.prUrl ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}<span class="gap"></span><i class="pill${cls}">${label}</i></span></div>`;
+    }).join('');
+    const btn = b.ready || busy ? `<div class="mini bnd-act"><button class="btn def" data-action="bundle-merge" data-id="${esc(b.name)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'bundle.mergeSure' : 'bundle.merge', { n })}</button></div>` : '';
+    return `<div class="sect"><div class="ins-h"><b>${t('bundle.title')}</b><small>${esc(b.name)}</small></div><div class="group">${rows}${btn}</div></div>`;
+  }).join('');
+}
+
+/** "Daily 09:00", "Weekdays 09:00", "When a PR merges". */
+export function triggerLabel(a: Automation) {
+  return a.trigger.kind === 'merged' ? t('auto.merged') : t(a.trigger.weekdays ? 'auto.weekdaysAt' : 'auto.dailyAt', { t: a.trigger.time });
+}
+
+/** The Automations tab: what to hand the Dispatcher and when, then the ones set up, each with its switch. */
+export function autosHtml() {
+  const daily = ui.autoKind === 'daily';
+  const add = `<div class="auto-add"><textarea class="inp" id="auto-prompt" data-keep="auto-prompt" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}"></textarea>
+    <div class="auto-when">${segc('auto-kind', ui.autoKind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}${daily ? `<input class="inp" id="auto-time" data-keep="auto-time" value="09:00" inputmode="numeric" aria-label="${t('auto.time')}">` : ''}</div>
+    <div class="auto-when">${daily ? `<label class="auto-wk">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label>` : ''}<span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>`;
+  const list = S!.automations;
+  if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
+  const rows = list.map((a) => {
+    const sure = ui.memoDel === a.id;
+    const next = a.enabled && a.nextRunAt ? ` · ${t('auto.next', { t: when(a.nextRunAt) })}` : '';
+    return `<div class="memo auto${a.enabled ? '' : ' off'}"><p title="${esc(a.prompt)}">${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${esc(next)}</span>
+      <span class="acts"><input class="switch" type="checkbox" data-change="auto-toggle" data-id="${a.id}"${a.enabled ? ' checked' : ''} aria-label="${esc(`${t('auto.on')}: ${a.title}`)}"><button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button></span></span></div>`;
+  }).join('');
+  return `${add}<div class="sect"><div class="ins-h"><b>${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${rows}</div></div>`;
+}
+
+export async function addAuto() {
+  const inp = $<HTMLTextAreaElement>('#auto-prompt');
+  const prompt = inp?.value.trim();
+  if (!prompt) { inp?.focus(); return; }
+  let trigger: Automation['trigger'] = { kind: 'merged' };
+  if (ui.autoKind === 'daily') {
+    const time = parseTime($<HTMLInputElement>('#auto-time')?.value ?? '');
+    if (!time) { toast(t('auto.badTime'), true); $<HTMLInputElement>('#auto-time')?.focus(); return; }
+    trigger = { kind: 'daily', time, weekdays: ui.autoWk };
+  }
+  inp.value = '';
+  await call('auto:add', prompt, trigger);
+}
+
+/** The Memos tab: a field to add one, then the memos shared with agents and the user's own. */
+export function memosHtml() {
+  const { shared, mine } = memoSections(S!.memos);
+  const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b>${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoHtml).join('')}</div></div>` : '';
+  const add = `<div class="memo-add"><input class="inp" id="memo-new" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"><button class="btn" data-action="memo-add" title="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
+  const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
+  return add + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
+}
+
+/** Which memo's Delete is asking "Delete it?" (null: none). Changed in place, so the button can animate. */
+export function askMemoDel(id: string | null) {
+  ui.memoDel = id;
+  document.querySelectorAll<HTMLElement>('.mact.del').forEach((b) => {
+    const on = b.dataset.id === id;
+    b.classList.toggle('sure', on);
+    b.setAttribute('aria-label', t(on ? 'memo.removeSure' : 'memo.remove'));
+  });
+}
+
+/** Delete a memo: its row closes up first, then it goes. */
+export async function removeMemo(id: string) {
+  ui.memoDel = null;
+  const row = document.querySelector<HTMLElement>(`.memo[data-memo="${CSS.escape(id)}"]`);
+  const d = ms('--dur-base');
+  if (row && d) {
+    row.style.overflow = 'hidden';
+    const h = `${row.offsetHeight}px`;
+    row.animate([{ height: h, opacity: 1 }, { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px' }], { duration: d, easing: 'cubic-bezier(.2, 0, 0, 1)', fill: 'forwards' });
+    // A timer, not the animation's `finished`: that never settles while the window is hidden.
+    await new Promise((r) => setTimeout(r, d));
+  }
+  await call('memo:remove', id);
+}
+
+export async function addMemo() {
+  const inp = $<HTMLInputElement>('#memo-new');
+  const text = inp?.value.trim();
+  if (!text) { inp?.focus(); return; }
+  inp.value = '';
+  await call('memo:add', text);
+  $<HTMLInputElement>('#memo-new')?.focus();
+}
+
+/* ---------- attachments ---------- */
+
+export type Box = 'chat' | 'ws';
+
+export function renderChips(box: Box) {
+  const el = $(box === 'chat' ? '#chat-files' : '#ws-files');
+  const files = ui.attach[box];
+  el.hidden = !files.length;
+  el.innerHTML = files.map((f, i) => `<span class="fchip" title="${esc(f)}">${sym('s-doc')}<span>${esc(base(f))}</span><button type="button" data-action="unattach" data-box="${box}" data-i="${i}" aria-label="${t('remove')}"><svg><use href="#s-x"/></svg></button></span>`).join('');
+  if (box === 'chat') updateSendButton();
+}
+
+export function addFiles(box: Box, list: FileList | null) {
+  if (!list?.length) return;
+  for (const f of Array.from(list)) {
+    let p = '';
+    try { p = ide.pathForFile(f); } catch { /* not a local file */ }
+    if (p && !ui.attach[box].includes(p)) ui.attach[box].push(p);
+  }
+  renderChips(box);
+}
