@@ -3,7 +3,7 @@ import fs from 'node:fs';
 
 const watch = process.argv.includes('--watch');
 fs.mkdirSync('dist/renderer', { recursive: true });
-for (const f of ['index.html', 'tokens.css', 'styles.css', 'quick.html', 'quick.js']) fs.copyFileSync(`src/renderer/${f}`, `dist/renderer/${f}`);
+for (const f of ['index.html', 'tokens.css', 'styles.css', 'quick.html']) fs.copyFileSync(`src/renderer/${f}`, `dist/renderer/${f}`);
 
 const common = { bundle: true, sourcemap: true, logLevel: 'info' };
 const configs = [
@@ -19,6 +19,7 @@ const configs = [
   },
   { ...common, entryPoints: ['src/preload/index.ts'], outfile: 'dist/preload.cjs', platform: 'node', format: 'cjs', external: ['electron'] },
   { ...common, entryPoints: ['src/renderer/app.ts'], outfile: 'dist/renderer/app.js', platform: 'browser', format: 'iife', target: 'chrome130' },
+  { ...common, entryPoints: ['src/renderer/quick.ts'], outfile: 'dist/renderer/quick.js', platform: 'browser', format: 'iife', target: 'chrome130' },
 ];
 
 if (watch) {

@@ -11,16 +11,25 @@
   form { box-sizing: border-box; position: absolute; inset: 8px; display: flex; align-items: center; gap: var(--space-8); padding: 0 var(--space-6) 0 var(--space-16); border-radius: var(--radius-2xl); background: var(--surface-overlay-solid); box-shadow: var(--rim-strong), 0 6px 16px -6px rgba(0, 0, 0, .6); -webkit-app-region: drag; }
   input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: 15px; -webkit-app-region: no-drag; -webkit-user-select: text; user-select: text; }
   input::placeholder { color: var(--text-tertiary); }
-  button { flex: none; width: var(--control-lg); height: var(--control-lg); border: 0; border-radius: 50%; background: var(--accent-fill); box-shadow: var(--accent-rim); color: var(--text-on-accent); display: grid; place-items: center; cursor: pointer; -webkit-app-region: no-drag; }
-  button:disabled { opacity: .45; cursor: default; }
+  #go { flex: none; width: var(--control-lg); height: var(--control-lg); border: 0; border-radius: 50%; background: var(--accent-fill); box-shadow: var(--accent-rim); color: var(--text-on-accent); display: grid; place-items: center; cursor: pointer; -webkit-app-region: no-drag; }
+  #go:disabled { opacity: .45; cursor: default; }
   button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
   svg { width: 14px; height: 14px; }
   form.sent input { color: var(--success-text); }
+  form.drop { box-shadow: var(--rim-strong), 0 0 0 2px var(--accent), 0 6px 16px -6px rgba(0, 0, 0, .6); }
+  /* What Tab would complete, and the files that go with the message. */
+  #hint, #files { flex: none; height: var(--control-sm); padding: 0 var(--space-8); border-radius: var(--radius-full); font: inherit; font-size: 11px; font-weight: 600; line-height: var(--control-sm); white-space: nowrap; -webkit-app-region: no-drag; }
+  #hint { background: var(--neutral-soft); color: var(--text-secondary); }
+  #hint::after { content: "Tab"; margin-left: var(--space-6); font-weight: 500; color: var(--text-tertiary); }
+  #files { width: auto; border: 0; background: var(--accent-soft); color: var(--accent-text); box-shadow: none; display: block; cursor: pointer; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <form id="f" autocomplete="off">
   <input id="q" type="text" spellcheck="false" aria-label="Message to the Dispatcher">
+  <span id="hint" hidden></span>
+  <button type="button" id="files" hidden></button>
   <button type="submit" id="go" aria-label="Send" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 </form>
 <script src="quick.js"></script>

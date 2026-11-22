@@ -111,6 +111,40 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
     }
   }
 
+  /** A second page of the app (the quick message box), with the same ways of driving it. */
+  let quick = null;
+  async function attach(url) {
+    const sock = new WebSocket(url);
+    await new Promise((r, j) => { sock.addEventListener('open', r); sock.addEventListener('error', j); });
+    let n = 0;
+    const open = new Map();
+    sock.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.id && open.has(m.id)) { open.get(m.id)(m); open.delete(m.id); } });
+    const ask = (method, params = {}) => new Promise((r) => { const i = ++n; open.set(i, r); sock.send(JSON.stringify({ id: i, method, params })); });
+    const run = async (js) => {
+      const expression = /\b(await|return)\b/.test(js) ? `(async () => { ${js} })()` : js;
+      const m = await ask('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+      if (m.result?.exceptionDetails) throw new Error(`In the page: ${m.result.exceptionDetails.exception?.description ?? m.result.exceptionDetails.text}\n${js}`);
+      return m.result?.result?.value;
+    };
+    return {
+      evaluate: run,
+      async until(js, what = js, timeoutMs = 15_000) {
+        const end = Date.now() + timeoutMs;
+        for (;;) {
+          const v = await run(js);
+          if (v) return v;
+          if (Date.now() > end) throw new Error(`Timed out waiting for: ${what}`);
+          await sleep(120);
+        }
+      },
+      async shot(file) {
+        const m = await ask('Page.captureScreenshot', { format: 'png' });
+        fs.writeFileSync(file, Buffer.from(m.result.data, 'base64'));
+      },
+      close: () => sock.close(),
+    };
+  }
+
   // The first state has arrived and the window is drawn. If it never is, the app must not be left running:
   // a child still alive keeps the test process from ending.
   try {
@@ -137,7 +171,27 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
       const m = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(file, Buffer.from(m.result.data, 'base64'));
     },
+    /**
+     * Opens the quick message box the way a launcher would: a second launch with --quick, which the running app
+     * takes over. Returns the box's own page to evaluate in, wait on and take a picture of.
+     */
+    async openQuick() {
+      const env = { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile };
+      const second = spawn(electron, ['.', '--quick'], { cwd: root, stdio: 'ignore', env });
+      await new Promise((r) => { second.once('exit', r); setTimeout(() => { second.kill('SIGKILL'); r(); }, 15_000); });
+      const end = Date.now() + 15_000;
+      for (;;) {
+        const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+        const page = pages.find((p) => p.type === 'page' && p.url.endsWith('quick.html'));
+        if (page) { quick = await attach(page.webSocketDebuggerUrl); break; }
+        if (Date.now() > end) throw new Error('The quick message box did not open.');
+        await sleep(200);
+      }
+      await quick.until("!!document.getElementById('q') && document.getElementById('q').placeholder !== ''", 'the quick box with its texts');
+      return quick;
+    },
     async stop() {
+      try { quick?.close(); } catch { /* closed */ }
       try { ws.close(); } catch { /* closed */ }
       child.kill();
       // A quit that hangs is ended for good, so nothing outlives the test.

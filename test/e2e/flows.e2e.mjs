@@ -273,3 +273,22 @@ flow('the palette finds something said and shows the chat from that message', {}
   // The thread now starts at that message: what was said before it is above, not shown.
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Please remember the pineapple rule')"), false);
 });
+
+flow('the quick message box completes a repository name, sends to the Dispatcher and remembers the line', { repos: ['billing', 'docs'] }, async (app) => {
+  const box = await app.openQuick();
+  const type = (v) => box.evaluate(`const q = document.getElementById('q'); q.focus(); q.value = ${JSON.stringify(v)}; q.setSelectionRange(q.value.length, q.value.length); q.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  const key = (k) => box.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, bubbles: true, cancelable: true })); return document.getElementById('q').value;`);
+  await type('update the guide in @do');
+  assert.equal(await box.evaluate("document.getElementById('hint').hidden ? '' : document.getElementById('hint').textContent"), '@docs');
+  assert.equal(await key('Tab'), 'update the guide in @docs ');
+  await type('update the guide in @docs\n@fake say Guide noted.'.split('\n')[0]);
+  await box.evaluate("document.getElementById('f').requestSubmit(); return 1;");
+  await box.until("document.getElementById('f').classList.contains('sent')", 'the box saying it was sent');
+  // The line is in the chat, as if typed there.
+  await app.until("document.querySelector('#chat-thread').innerText.includes('update the guide in @docs')", 'the line in the chat');
+  // Opened again: empty, and Up brings the line back.
+  const again = await app.openQuick();
+  await again.evaluate("window.dispatchEvent(new Event('focus')); return 1;");
+  assert.equal(await again.evaluate("document.getElementById('q').value"), '');
+  assert.equal(await again.evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true })); return document.getElementById('q').value;"), 'update the guide in @docs');
+});
