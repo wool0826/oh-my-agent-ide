@@ -39,6 +39,7 @@
     <symbol id="s-back" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></symbol>
     <symbol id="s-more" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></symbol>
     <symbol id="s-speaker" viewBox="0 0 16 16" fill="currentColor"><path d="M2 6h2.5L8 3v10L4.5 10H2z"/></symbol>
+    <symbol id="s-reply" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5L3.5 9l4 4M3.5 9h7a5 5 0 0 1 5 5v1"/></symbol>
     <symbol id="s-pin" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12.5V17M6.5 12.5h7l-1-4.5V4.5h-5V8z"/></symbol>
     <symbol id="s-side-l" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.8" y="4" width="14.4" height="12" rx="2.5"/><path d="M7.6 4v12"/></symbol>
     <symbol id="s-side-r" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.8" y="4" width="14.4" height="12" rx="2.5"/><path d="M12.4 4v12"/></symbol>
@@ -77,6 +78,7 @@
   <main class="content view" data-view="chat">
     <div class="thread" id="chat-thread" aria-live="polite"></div>
     <form class="composer" id="chat-form" autocomplete="off">
+      <div class="rchip" id="chat-reply" hidden></div>
       <div class="fchips" id="chat-files" hidden></div>
       <textarea class="field input" id="chat-input" rows="1" aria-label="Message"></textarea>
       <button type="button" class="ctx" id="chat-ctx" data-action="ctx-menu" aria-haspopup="menu" data-i18n-title="chat.ctxHint"></button>
@@ -97,6 +99,7 @@
       <div class="thread" id="ws-thread"></div>
       <div class="diffv" id="ws-diff" hidden></div>
       <form class="composer" id="ws-form" autocomplete="off">
+        <div class="rchip" id="ws-reply" hidden></div>
         <div class="fchips" id="ws-files" hidden></div>
         <textarea class="field input" id="ws-input" rows="1" aria-label="Message to the Worker"></textarea>
         <button class="send" type="submit" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>

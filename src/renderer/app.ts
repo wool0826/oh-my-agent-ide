@@ -12,6 +12,7 @@ import { linkify } from '../shared/linkify';
 import { RING, ringArc } from '../shared/usageRing';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
+import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
 import { workerDecisions } from '../shared/inbox';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
@@ -117,6 +118,8 @@ const ui = {
   /** "Done today" in the sidebar shows its latest tasks (kept across launches). */
   doneOpen: stored('oma.doneOpen'),
   /** The chat view's right sidebar shows the inbox or the memos; the memo being edited, and the one asked about before deleting. */
+  /** The message being answered in each composer; the Worker's is dropped when another Worker is opened. */
+  reply: { chat: null as Reply | null, ws: null as (Reply & { wid: string }) | null },
   insTab: 'inbox' as 'inbox' | 'memo',
   memoEdit: null as string | null,
   memoDel: null as string | null,
@@ -135,6 +138,31 @@ function inline(s: unknown) {
   return esc(s).replace(/`([^`\n]+)`/g, '<code>$1</code>');
 }
 
+/** An agent's bubble with the Reply button beside it. `box` is the composer the reply is written in. */
+function replyable(bubble: string, box: 'chat' | 'ws', who: string, text: string) {
+  const quote = replyExcerpt(text);
+  if (!quote) return bubble;
+  return `<div class="bline">${bubble}<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}" title="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button></div>`;
+}
+
+/** The chip above a composer's text: whose message is being answered, its first words, and a way out. */
+function renderReply(box: 'chat' | 'ws') {
+  if (box === 'ws' && ui.reply.ws && ui.reply.ws.wid !== ui.wSel) ui.reply.ws = null;
+  const r = ui.reply[box];
+  const el = $(box === 'chat' ? '#chat-reply' : '#ws-reply');
+  el.hidden = !r;
+  el.innerHTML = r ? `${sym('s-reply')}<b>${esc(r.who)}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" title="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
+}
+
+/** The text to send from a composer: with the quote on top while a reply is open, which this ends. */
+function takeReply(box: 'chat' | 'ws', text: string) {
+  const r = ui.reply[box];
+  if (!r) return text;
+  ui.reply[box] = null;
+  renderReply(box);
+  return withReply(r, text);
+}
+
 /** Tiny markdown: code blocks, inline code, headings, bold, links, line breaks */
 function md(src: string) {
   const parts = String(src ?? '').split(/```[\w-]*\n?/);
@@ -150,7 +178,9 @@ function md(src: string) {
 }
 
 /** A user message: plain text, with the "[Attached files]" block shown as file chips. */
-function userText(text: string) {
+function userText(text: string): string {
+  const reply = parseReply(text);
+  if (reply) return `<span class="quote"><b>${esc(reply.who)}</b><span>${esc(reply.quote)}</span></span>${userText(reply.body)}`;
   const i = text.indexOf('\n\n[Attached files]\n');
   if (i < 0) return linkify(esc(text));
   const files = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
@@ -682,7 +712,7 @@ function resultGlyph(x: Task | null, err = false) {
 function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
     case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
-    case 'dispatcher': return `<div class="bub ai">${md(c.text)}</div>`;
+    case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text);
     case 'event': return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
     case 'error': return `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
@@ -1047,8 +1077,8 @@ function workerReport(text: string) {
 
 function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem | null) {
   switch (it.from) {
-    case 'dispatcher': return `${prev?.from === 'dispatcher' ? '' : '<span class="who">Dispatcher</span>'}<div class="bub ai">${md(it.text)}</div>`;
-    case 'worker': return `${prev?.from === 'worker' ? '' : `<span class="who">${esc(wid)}</span>`}<div class="bub wk">${workerReport(it.text)}</div>`;
+    case 'dispatcher': return `${prev?.from === 'dispatcher' ? '' : '<span class="who">Dispatcher</span>'}${replyable(`<div class="bub ai">${md(it.text)}</div>`, 'ws', 'Dispatcher', it.text)}`;
+    case 'worker': return `${prev?.from === 'worker' ? '' : `<span class="who">${esc(wid)}</span>`}${replyable(`<div class="bub wk">${workerReport(it.text)}</div>`, 'ws', wid, it.text)}`;
     case 'user': return `<div class="bub me">${userText(it.text)}</div>`;
     case 'auto': return `<span class="event self">${sym('s-check', 'c-green')}<span>${esc(it.text)}</span></span>`;
     default: return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${esc(it.text)}</span></span>`;
@@ -1058,6 +1088,7 @@ function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem | null)
 /** `older`: a page of the conversation went in above, so the reader's place is kept from the end. */
 function renderSession(force = false, older = false) {
   const w = worker(ui.wSel);
+  renderReply('ws');
   $('#wk-list').hidden = ui.wOpen && !!w;
   $('#wk-session').hidden = !(ui.wOpen && w);
   if (!ui.wOpen || !w) return;
@@ -2159,6 +2190,21 @@ async function act(el: HTMLElement, e: Event) {
     case 'worker-filter': go({ view: 'worker', wOpen: false, wFilter: (el.dataset.v || null) as WorkerFilter | null }); break;
     case 'open-settings': openSettings(); break;
     case 'side-toggle': togglePanel('side'); break;
+    case 'reply': {
+      const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
+      const r = { who: el.dataset.who ?? '', quote: el.dataset.quote ?? '' };
+      if (box === 'ws') ui.reply.ws = { ...r, wid: ui.wSel ?? '' }; else ui.reply.chat = r;
+      renderReply(box);
+      $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
+      break;
+    }
+    case 'reply-cancel': {
+      const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
+      ui.reply[box] = null;
+      renderReply(box);
+      $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
+      break;
+    }
     case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); break;
     case 'memo-add': await addMemo(); break;
     case 'memo-share': { const m = S!.memos.find((x) => x.id === id); if (m) await call('memo:update', id, { shared: !m.shared }); break; }
@@ -2588,13 +2634,13 @@ function init() {
     menu.hidden = false;
   });
 
-  bindComposer('chat', '#chat-form', '#chat-input', async (text, files) => { await call('chat:send', text, files); });
+  bindComposer('chat', '#chat-form', '#chat-input', async (text, files) => { await call('chat:send', takeReply('chat', text), files); });
   $('#chat-send').addEventListener('click', (e) => {
     if ($('#chat-send').classList.contains('stop')) { e.preventDefault(); void call('chat:stop'); }
   });
   bindComposer('ws', '#ws-form', '#ws-input', async (text, files) => {
     if (!ui.wSel) return;
-    await call('worker:send', ui.wSel, text, files);
+    await call('worker:send', ui.wSel, takeReply('ws', text), files);
   });
   bindDrop();
 
