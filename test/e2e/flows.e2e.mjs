@@ -356,3 +356,23 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
   await app.until("document.querySelector('#chat-thread').innerText.includes('Something new')", 'the new message');
   assert.equal(await app.evaluate("document.activeElement?.dataset?.action + ':' + document.activeElement?.dataset?.id?.length"), 'answer:' + (await app.evaluate("document.querySelector('#chat-ins [data-action=\"answer\"]').dataset.id.length")));
 });
+
+flow('a state update that changes nothing in a panel leaves the panel as it is', {}, async (app) => {
+  await app.say('@fake task - Something to list\n@@fake result Done.');
+  await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
+  // Mark the elements now on screen. A redraw would replace them with new ones without the mark.
+  const mark = "for (const id of ['side', 'chat-ins']) document.getElementById(id).firstElementChild.dataset.kept = '1'; return 1;";
+  const kept = "['side', 'chat-ins'].map((id) => document.getElementById(id).firstElementChild?.dataset.kept === '1')";
+  await app.evaluate(mark);
+  // A state update with nothing new for these panels: the launch checks are run again, which pushes the state.
+  await app.evaluate("await window.ide.call('preflight:run'); await new Promise((r) => setTimeout(r, 500)); return 1;");
+  assert.deepEqual(await app.evaluate(kept), [true, true]);
+  // Something new for both: they are drawn again.
+  await app.say('@fake task - One more\n@@fake result Done too.');
+  await app.until("document.querySelectorAll('#chat-ins .res').length === 2", 'the second result card');
+  assert.deepEqual(await app.evaluate(kept), [false, false]);
+  // After the user does something, the next draw is a real one even with the same HTML.
+  await app.evaluate(mark);
+  await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })); await window.ide.call('preflight:run'); await new Promise((r) => setTimeout(r, 500)); return 1;");
+  assert.deepEqual(await app.evaluate(kept), [false, false]);
+});
