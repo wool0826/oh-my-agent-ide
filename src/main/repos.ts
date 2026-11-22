@@ -6,6 +6,7 @@ import { paths } from './paths';
 import { loadSettings } from './settings';
 import { store } from './store';
 import { nowIso, run, runOk, slug, ensureDir, uid } from './util';
+import { toolCommand } from './toolpath';
 import { t } from './i18n';
 import { log } from './log';
 import type { Repo } from '../shared/types';
@@ -55,7 +56,7 @@ export function cloneProgress(chunk: string): string | null {
 /** git clone into `dir`, with progress for the window. Rejects when it fails, times out or is cancelled. */
 function clone(url: string, dir: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const p = spawn('git', ['clone', '--progress', url, dir], { env: ghEnv(), windowsHide: true });
+    const p = spawn(toolCommand('git'), ['clone', '--progress', url, dir], { env: ghEnv(), windowsHide: true });
     if (adding) adding.child = p;
     let tail = '';
     p.stderr.on('data', (d: Buffer) => {
