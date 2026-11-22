@@ -564,3 +564,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Sent lines:** the last ten lines sent from the box are kept by its page. Up and Down go through them and come back to the line being typed.
     - **Still one line.** A multi-line request, a reply to a message or a look at the answer belongs in the window.
     - **Built with the app:** the box's script is now TypeScript bundled like the main page (`src/renderer/quick.ts`), so it shares rules with the rest and is type-checked.
+136. **Notifications can be kept quiet: do-not-disturb hours, results off, and one sound per burst.**
+    - **Why:** with the app running in the background all day (decision 117), every decision sounded and every finished task notified, at any hour, and a Worker that asked three things in a row made three sounds.
+    - **Do not disturb** (Settings → Notifications, rule in `shared/notifyRules.ts`): two times, from and until, which may pass midnight. Inside them there is no sound and no OS notification. Nothing is lost: the decision is in the inbox, the tray counts it and the taskbar flashes. Both times empty turns it off.
+    - **"Notify when a task ends"** can be switched off, leaving notifications for what needs an answer.
+    - **Bursts:** notifications of one source (a Worker, or the Dispatcher) less than 20 seconds apart are one burst. The first sounds and notifies; the rest show in the inbox only. The window restarts with each one, so a Worker that keeps asking stays quiet until it has paused.
+    - **Not held back:** a decision is never delayed or dropped by any of this, and its notification buttons (decision 118) are simply not there when the notification is not shown.

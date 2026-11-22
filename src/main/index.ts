@@ -459,7 +459,7 @@ async function boot() {
   onDecisionCreated((d) => {
     // Simple decisions carry their answers as buttons on the notification.
     const actions = notifyActions(d).map((a) => ({ text: 'key' in a.label ? t(a.label.key) : a.label.text, run: () => answerByUser(d.id, a.answer) }));
-    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d), actions);
+    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d), actions, d.workerId ?? 'dispatcher');
   });
   onLateAnswer((d) => {
     if (d.workerId) {
