@@ -5,6 +5,7 @@ import { readJson, writeJsonAtomic, uid } from './util';
 import type { AccountPlan, Provider, SettingsView, UsageWindow } from '../shared/types';
 import { cleanAskOff } from '../shared/grants';
 import { cleanTheme } from '../shared/theme';
+import { cleanTime } from '../shared/notifyRules';
 import { QUICK_KEY_DEFAULT, normalizeQuickKey } from '../shared/quickKey';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
 import { MAX_WORKERS_DEFAULT, WAIT_SLOT_DEFAULT, clampMaxWorkers, clampWaitSlot } from '../shared/slots';
@@ -45,6 +46,9 @@ export const DEFAULTS: SettingsView = {
   home: path.join(os.homedir(), 'oh-my-agent-ide'),
   githubHost: '',
   notifications: true,
+  notifyResults: true,
+  quietFrom: '',
+  quietTo: '',
   sound: 'chime',
   soundVolume: 70,
   customSound: '',
@@ -103,6 +107,8 @@ function fix(s: SettingsView) {
   s.waitSlotMinutes = clampWaitSlot(s.waitSlotMinutes);
   s.askOff = cleanAskOff(s.askOff);
   s.theme = cleanTheme(s.theme);
+  s.quietFrom = cleanTime(s.quietFrom);
+  s.quietTo = cleanTime(s.quietTo);
   s.quickKey = normalizeQuickKey(String(s.quickKey ?? '')) ?? QUICK_KEY_DEFAULT;
 }
 

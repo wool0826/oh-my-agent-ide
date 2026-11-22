@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow, Notification, app } from 'electron';
 import { loadSettings } from './settings';
+import { Burst, inQuietHours } from '../shared/notifyRules';
 
 let win: BrowserWindow | null = null;
 export function setWindow(w: BrowserWindow) { win = w; }
@@ -14,13 +15,23 @@ const live = new Set<Notification>();
  * then an OS notification, taskbar flash (Windows) or Dock bounce (macOS).
  * The OS notification is silent because the app plays its own sound.
  */
-export function notifyDecision(title: string, body: string, actions: { text: string; run: () => void }[] = []) {
-  win?.webContents.send('decision-alert');
+const bursts = new Burst();
+/** Do-not-disturb hours are on now: no sound and no OS notification. The inbox, the tray and the taskbar still show it. */
+const quiet = () => { const s = loadSettings(); return inQuietHours(s.quietFrom, s.quietTo, new Date()); };
+
+/**
+ * `source` is who asks (a Worker's id, or the Dispatcher). Several decisions from one source within a few seconds
+ * are one burst: the first sounds and notifies, the rest only show in the inbox.
+ */
+export function notifyDecision(title: string, body: string, actions: { text: string; run: () => void }[] = [], source = 'dispatcher') {
+  const loud = !quiet() && bursts.allow(`decision:${source}`, Date.now());
+  // The sidebar blinks either way; the sound plays only when this one may be loud.
+  win?.webContents.send('decision-alert', loud);
   if (win && !win.isFocused()) {
     win.flashFrame(true);
-    if (process.platform === 'darwin') app.dock?.bounce('informational');
+    if (loud && process.platform === 'darwin') app.dock?.bounce('informational');
   }
-  if (!loadSettings().notifications || !Notification.isSupported()) return;
+  if (!loud || !loadSettings().notifications || !Notification.isSupported()) return;
   const n = new Notification({ title, body, silent: true, actions: actions.map((a) => ({ type: 'button' as const, text: a.text })) });
   n.on('click', () => { win?.show(); win?.focus(); });
   // A button answers the decision where it is; the window stays as it was.
@@ -30,8 +41,10 @@ export function notifyDecision(title: string, body: string, actions: { text: str
   n.show();
 }
 
-export function notifyInfo(title: string, body: string) {
-  if (!loadSettings().notifications || win?.isFocused()) return;
+/** A result or other news that needs no answer. `source` groups a burst, as for decisions. */
+export function notifyInfo(title: string, body: string, source = title) {
+  const s = loadSettings();
+  if (!s.notifications || !s.notifyResults || win?.isFocused() || quiet() || !bursts.allow(`info:${source}`, Date.now())) return;
   if (Notification.isSupported()) new Notification({ title, body, silent: true }).show();
 }
 

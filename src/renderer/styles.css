@@ -1024,3 +1024,7 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .thread > .hit { animation: flash var(--dur-attention) var(--ease-in-out); border-radius: var(--radius-xl); }
 .thread > .hit .bub { box-shadow: 0 0 0 2px var(--focus-ring); }
 .thread > .bub.hit { box-shadow: 0 0 0 2px var(--focus-ring); }
+
+/* ---------- do-not-disturb hours ---------- */
+.srow .inp.time { width: 64px; flex: none; text-align: center; font-variant-numeric: tabular-nums; }
+.srow .dash { color: var(--text-tertiary); }

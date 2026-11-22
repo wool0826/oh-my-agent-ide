@@ -26,6 +26,7 @@ import { bundleMergeOrder, openBundles } from '../shared/bundle';
 import { normalizeQuickKey, quickKeyLabel } from '../shared/quickKey';
 import { failedFirst, fixCommand, type Check } from '../shared/preflight';
 import { THEMES, cleanTheme } from '../shared/theme';
+import { cleanTime } from '../shared/notifyRules';
 import { SEARCH_MIN, type TextHit } from '../shared/textSearch';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
@@ -45,7 +46,7 @@ declare global {
       call<T = any>(channel: string, ...args: unknown[]): Promise<T>;
       onState(fn: (s: AppState) => void): void;
       onWorkerLog(fn: (id: string, item: WorkerLogItem) => void): void;
-      onDecisionAlert(fn: () => void): void;
+      onDecisionAlert(fn: (loud: boolean) => void): void;
       /** Back or Forward from the OS (mouse side buttons and Back keys arrive as app commands on Windows and Linux). */
       onNav(fn: (dir: NavDir) => void): void;
       pathForFile(f: File): string;
@@ -2362,6 +2363,8 @@ function settingsHtml() {
 
   const alerts = grp(`
       ${row(t('set.osNoti'), 'set-noti', `<input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}>`)}
+      ${row(t('set.notiResults'), 'set-nres', `<input class="switch" id="set-nres" type="checkbox" ${st.notifyResults ? 'checked' : ''}>`)}
+      ${row(t('set.quiet'), 'set-qfrom', `<input class="inp time" id="set-qfrom" value="${esc(st.quietFrom)}" placeholder="22:00" inputmode="numeric" aria-label="${t('set.quietFrom')}"><span class="dash" aria-hidden="true">–</span><input class="inp time" id="set-qto" value="${esc(st.quietTo)}" placeholder="07:00" inputmode="numeric" aria-label="${t('set.quietTo')}">`)}
       ${row(t('set.sound'), 'set-sound', `<button class="segico" data-action="sound-test" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, sounds.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
       ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
       ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`);
@@ -2574,6 +2577,9 @@ function readSettingsForm() {
     githubHost: hostOnly(v('set-gh')),
     archiveDays: Math.max(1, Number(v('set-arch')) || 7),
     notifications: ($('#set-noti') as HTMLInputElement).checked,
+    notifyResults: ($('#set-nres') as HTMLInputElement).checked,
+    quietFrom: cleanTime(v('set-qfrom')),
+    quietTo: cleanTime(v('set-qto')),
     background: ($('#set-bg') as HTMLInputElement).checked,
     openAtLogin: ($('#set-login') as HTMLInputElement).checked,
     updateCheck: ($('#set-upd') as HTMLInputElement).checked,
@@ -3416,6 +3422,7 @@ function init() {
     const el = e.target as HTMLInputElement;
     if (el.id === 'cmdk-q') { renderPalette(el.value); return; }
     if (el.id === 'set-qkey') el.classList.toggle('bad', normalizeQuickKey(el.value) === null);
+    if (el.id === 'set-qfrom' || el.id === 'set-qto') el.classList.toggle('bad', !!el.value.trim() && !cleanTime(el.value));
     if (el.id === 'set-vol') syncSlider(el);
     if (el.id === 'set-fsize') previewFont();
     if (el.id === 'set-font') { markFont(el); previewFont(); void openFontPicker(el, false); }
@@ -3575,8 +3582,9 @@ function init() {
     if (l) l.push(item);
     if (ui.view === 'worker' && ui.wSel === id) renderSession();
   });
-  ide.onDecisionAlert(() => {
-    if (S) void playSound(S.settings.sound, S.settings.soundVolume, S.settings.customSound);
+  ide.onDecisionAlert((loud) => {
+    // Quiet hours, or one more of a burst from the same Worker: it shows without the sound.
+    if (S && loud) void playSound(S.settings.sound, S.settings.soundVolume, S.settings.customSound);
     document.querySelector('.sec-dec')?.classList.add('blink');
     $('#dec-count')?.classList.add('pulse');
     // The right sidebar stays hidden when a decision arrives; its button's count pulses instead.

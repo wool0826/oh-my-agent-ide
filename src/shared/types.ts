@@ -257,6 +257,11 @@ export interface SettingsView {
   githubHost: string;
   /** OS notification when a decision is needed */
   notifications: boolean;
+  /** Notify when a task ends or a PR is merged or closed, not only when a decision is needed. */
+  notifyResults: boolean;
+  /** Do-not-disturb hours as "HH:MM"; both empty = off. No sound and no OS notification inside them. */
+  quietFrom: string;
+  quietTo: string;
   sound: SoundName;
   soundVolume: number;
   customSound: string;

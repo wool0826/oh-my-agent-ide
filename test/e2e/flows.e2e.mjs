@@ -292,3 +292,17 @@ flow('the quick message box completes a repository name, sends to the Dispatcher
   assert.equal(await again.evaluate("document.getElementById('q').value"), '');
   assert.equal(await again.evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true })); return document.getElementById('q').value;"), 'update the guide in @docs');
 });
+
+flow('do-not-disturb hours are set in Settings and kept as times', {}, async (app) => {
+  await app.click('[data-action="open-settings"]');
+  await app.click('[data-action="pane"][data-id="alerts"]');
+  const set = (id, v) => app.evaluate(`const el = document.getElementById(${JSON.stringify(id)}); el.value = ${JSON.stringify(v)}; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return el.classList.contains('bad');`);
+  // Something that is not a time is marked and not saved.
+  assert.equal(await set('set-qfrom', 'late'), true);
+  assert.equal(await set('set-qfrom', '22'), false);
+  assert.equal(await set('set-qto', '7:30'), false);
+  await app.click('#set-nres');
+  const s = await app.until("return (await window.ide.call('state')).settings.quietTo === '07:30' && (await window.ide.call('state'));", 'the hours saved');
+  assert.equal(s.settings.quietFrom, '22:00');
+  assert.equal(s.settings.notifyResults, false);
+});
