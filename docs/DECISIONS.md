@@ -593,3 +593,7 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **When a write always goes through:** after anything the user does (a click, a key, typing, a drop). Handlers change the page by hand, a disabled button or a class, and count on the next draw to put it right, so the first draw after an action is never skipped.
     - **Not done:** drawing part of a panel. A panel whose HTML changed in one row is still written whole. That would need the rows to be drawn by key, which is a rewrite of how the screens are built; this step takes the common case, nothing changed, which is most updates.
     - **Checked** by an end-to-end flow: an update with nothing new leaves the panels' elements in place, one with something new replaces them, and one after a key press replaces them even with the same HTML.
+141. **The right sidebar's toggle sits in the sidebar's bottom right corner** (asked for by the user), not in the toolbar.
+    - **Open:** it is where the left sidebar has its own toggle, mirrored. It floats over what scrolls in the sidebar, so the sidebar ends with room for it.
+    - **Put away:** the button stays in the window's corner with its count of waiting decisions, in line with the send button, and the composer ends before it.
+    - **One button for the four views' sidebars**, after them in the page, so the keyboard reaches it after their content. The shortcut is unchanged.

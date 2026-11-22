@@ -1028,3 +1028,13 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 /* ---------- do-not-disturb hours ---------- */
 .srow .inp.time { width: 64px; flex: none; text-align: center; font-variant-numeric: tabular-nums; }
 .srow .dash { color: var(--text-tertiary); }
+
+/* ---------- the right sidebar's toggle ---------- */
+/* In the sidebar's bottom right corner, where the left sidebar has its own. It floats over what scrolls there, so the
+   sidebar ends with room for it. With the sidebar put away it stays in the window's corner, beside the composer,
+   which makes room. */
+#ins-toggle { position: fixed; z-index: var(--z-composer); right: calc(var(--panel-inset) + var(--space-10)); bottom: calc(var(--panel-inset) + var(--space-10)); transition: scale var(--dur-instant) var(--ease-out), color var(--dur-fast) var(--ease-standard), bottom var(--dur-slow) var(--ease-standard); }
+.inspector { padding-bottom: calc(var(--control-lg) + 2 * var(--space-10)); }
+.win.ins-min #ins-toggle { bottom: calc(var(--space-16) + var(--space-6)); }
+.composer { transition: box-shadow var(--dur-base) var(--ease-standard), background var(--dur-base) var(--ease-standard), right var(--dur-slow) var(--ease-standard); }
+.win.ins-min .composer { right: calc(var(--panel-inset) + var(--space-10) + var(--control-lg) + var(--space-8)); }
