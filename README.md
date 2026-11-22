@@ -4,7 +4,7 @@ Tell a Dispatcher what needs doing in one window, and it hands the work to Worke
 
 ![Oh My Agent IDE main window: sidebar with decisions, running Workers, PRs in review and the queue; the Dispatcher chat with result cards and auto-answers; the decision inbox and results on the right](docs/images/main-screen.png)
 
-The main window with sample data: the sidebar lists what waits for you, running Workers, PRs in review and the queue; the chat holds the Dispatcher conversation and result cards; the right side holds decisions (a plan to approve, a command to allow) and results.
+The main window with sample data (taken at 0.2; the toolbar has since gained a search button, and the right side its Memos and Automations tabs): the sidebar lists what waits for you, running Workers, PRs in review and the queue; the chat holds the Dispatcher conversation and result cards; the right side holds decisions (a plan to approve, a command to allow) and results.
 
 Decisions made during implementation are in [docs/DECISIONS.md](docs/DECISIONS.md). The design system (an audit of the current UI, the v1 "Graphite Glass" spec and tokens, and a self-contained `design-system.html`) is in [docs/design-system/](docs/design-system/README.md); the app's styles are built on its tokens. What has to be checked by hand with real accounts, because no automated test can reach it, is in [docs/REAL-USE-CHECKLIST.md](docs/REAL-USE-CHECKLIST.md).
 
@@ -76,11 +76,16 @@ Settings opens. Sections are on the left. The Status group at the top of General
 
 | Key | Action |
 |---|---|
+| ⌘/Ctrl+K | Command palette: go to a place, find a task or something said |
+| ⌘/Ctrl+Shift+Space (anywhere on the computer) | Quick message box; change it in Settings → General |
 | ⌘/Ctrl+1–4 | Switch view |
+| ⌘/Ctrl+B, with Alt (⌥) for the right one | Collapse or expand a sidebar |
 | Mouse back button, Alt+← (⌘[ on macOS) | Back to the previous screen |
 | Mouse forward button, Alt+→ (⌘] on macOS) | Forward again |
 | ⌘/Ctrl+, | Settings |
 | ⌘/Ctrl+Z | Undo clearing a list |
+| Tab, in the quick message box | Finish an `@repository` name |
+| ↑ / ↓, in the quick message box | Lines sent before |
 | Enter | Send |
 | Shift+Enter | New line |
 
