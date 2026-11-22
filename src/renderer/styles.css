@@ -159,7 +159,7 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) { .glide-ready::before { transition: none; } .glide-move::before { animation: none; } }
 .usage { margin-left: auto; padding: 5px var(--space-8); border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); display: flex; align-items: center; gap: var(--space-8); }
 .toolbar > .usage { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-/* One ring per account: the 7-day window outside, the 5-hour window inside. Its name and numbers are in the popover (.upop). */
+/* One ring per account: the 5-hour window outside, the 7-day window inside. Its name and numbers are in the popover (.upop). */
 .usage:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .uacct { flex: none; display: grid; place-items: center; border-radius: 50%; transition: scale var(--dur-fast) var(--ease-out); }
 .uacct:hover { scale: 1.14; }

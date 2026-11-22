@@ -190,13 +190,13 @@ export function ms(token: string) {
   return v.endsWith('ms') ? parseFloat(v) : v.endsWith('s') ? parseFloat(v) * 1000 : 0;
 }
 
-/** An account's two rings on the 24×24 grid: 7d outside, 5h inside. */
+/** An account's two rings on the 24×24 grid: 5h outside, 7d inside, so the popover's rows (5h, then 7d) read from the outside in. */
 export function ringsSvg(a: AccountView) {
   const arc = (v: number | null, r: number) => {
     const d = ringArc(v, r);
     return `<circle class="trk" cx="12" cy="12" r="${r}"/>${d ? `<circle class="${lv(v)}" cx="12" cy="12" r="${r}" stroke-dasharray="${d}"/>` : ''}`;
   };
-  return `<svg viewBox="0 0 24 24" aria-hidden="true">${arc(a.sevenDay.utilization, RING.sevenDay)}${arc(a.fiveHour.utilization, RING.fiveHour)}</svg>`;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${arc(a.fiveHour.utilization, RING.fiveHour)}${arc(a.sevenDay.utilization, RING.sevenDay)}</svg>`;
 }
 
 /** "Claude Team", "ChatGPT Free": whose account it is and its plan. */
