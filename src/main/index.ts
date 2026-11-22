@@ -40,6 +40,7 @@ import { listJiraIssues, setJiraToken } from './jira';
 import { fakeMode } from './fake';
 import { lastPreflight, runPreflight } from './preflight';
 import { failedCount } from '../shared/preflight';
+import { diagnostics, exportDiagnostics } from './diagnostics';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -277,6 +278,8 @@ function registerIpc() {
   handle('repo:issues', (name: string) => listIssues(name));
   handle('task:revoke', (taskId: string, key: string) => workers.revokeGrant(taskId, key));
   handle('preflight:run', async () => { const r = await runPreflight(); pushState(); return r; });
+  handle('diag:text', () => diagnostics());
+  handle('diag:export', () => exportDiagnostics(win));
   handle('jira:issues', () => listJiraIssues());
   handle('jira:token', (token: string) => { setJiraToken(String(token ?? '')); pushState(); });
   // The user picked one of two attempts: it is told to open its PR, and the comparison is closed for both.
