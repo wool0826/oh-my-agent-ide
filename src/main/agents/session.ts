@@ -60,6 +60,8 @@ export interface SessionEvents {
   onContext?(tokens: number): void;
   onAccount?(accountId: string | null): void;
   onStatus?(status: 'busy' | 'idle' | 'error', text: string): void;
+  /** The number of background subagents and workflows still running changed (between turns too). */
+  onBackground?(n: number): void;
   onLimited?(): void;
   /** Sent after Stop, while the stopped turn was ending: the input queue was dropped, so the owner sends them again. */
   onResend?(texts: string[]): void;
@@ -312,7 +314,11 @@ export class AgentSession {
           // The app's /compact may answer here; its text says why it failed.
           this.turnText.push(m.content);
         } else if (m.subtype === 'background_tasks_changed') {
-          this.background = liveAgents(m.tasks);
+          const n = liveAgents(m.tasks);
+          if (n !== this.background) {
+            this.background = n;
+            this.ev.onBackground?.(n);
+          }
         }
         return;
       case 'rate_limit_event':

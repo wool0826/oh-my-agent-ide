@@ -34,6 +34,7 @@ import { afterDependency, cancelSet, describeCancel, holdsWorktree, isQueued, st
 import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
+import { isStalled } from '../../shared/stall';
 import { grantScope, hasGrant, withGrant, withoutGrant, type GrantScope } from '../../shared/grants';
 import { FakeSession } from './fakeSession';
 import { fakeMode } from '../fake';
@@ -42,7 +43,7 @@ import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
 import { WORKER_COMPACT } from '../../shared/compactInstructions';
 import { needsPlan, parseResult, taskStarted, workerPrompt } from './workerPrompt';
-import { clip, GO_ON_MSG, LIMIT_RESET_MSG, MAX_REQUEST_WAKES, planApproved, planNudge, planSummaryRule, question, QUESTION_TAG, REPLY_NOTE, RESUME_MSG, SHELL_OUTPUT_CHARS, SLOT_FREE_MSG, TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
+import { clip, GO_ON_MSG, LIMIT_RESET_MSG, MAX_REQUEST_WAKES, planApproved, planNudge, planSummaryRule, question, QUESTION_TAG, REPLY_NOTE, RESUME_MSG, SHELL_OUTPUT_CHARS, SLOT_FREE_MSG, stallMsg, TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
 import { workerCodexTools, workerMemoryDir, workerTools, type StepsOp } from './workerTools';
 import { markDone, mergeProgress, reopenSteps, setSteps, stepsLine, stepView } from '../../shared/steps';
 import { isLocalRepo, localTaskLines } from '../../shared/localRepo';
@@ -119,6 +120,12 @@ class WorkerManager {
   private touch(w: Worker) {
     w.lastActiveAt = nowIso();
     store.changed();
+  }
+
+  /** Background subagents its session still runs for its open task (they start a turn by themselves when they report). */
+  private subagents(w: Worker) {
+    const n = this.sessions.get(w.id)?.background ?? 0;
+    return n > 0 && this.currentTask(w)?.status === 'running' ? n : 0;
   }
 
   currentTask(w: Worker): Task | null {
@@ -233,8 +240,15 @@ class WorkerManager {
       onStatus: (st, text) => {
         // The turn the user stopped ends in an error: the Worker is idle, not in error.
         const stopped = st !== 'busy' && this.stopping.has(w.id);
-        if (st === 'busy') { if (w.status !== 'waiting') w.status = 'running'; }
-        else if (st === 'idle' || stopped) {
+        if (st === 'busy') {
+          if (w.status !== 'waiting') w.status = 'running';
+          w.stalledAt = null;
+        } else if (st === 'idle' && !stopped && this.subagents(w) > 0) {
+          // The turn ended to wait for background subagents, and each one starts a turn by itself when it reports:
+          // the Worker is still at work on its task, not idle (T-0046).
+          w.status = 'running';
+          w.statusText = t('st.subagents', { n: this.subagents(w) });
+        } else if (st === 'idle' || stopped) {
           w.status = 'idle';
           if (stopped) {
             w.statusText = '';
@@ -260,6 +274,16 @@ class WorkerManager {
         // With more input queued, the turn that follows settles the task.
         if (r.internal || r.queued) return;
         this.turnEnded(w, r.text, r.isError, !!r.background);
+      },
+      // Between turns: the last subagent settled without a turn of its own starting (yet), so the Worker is idle.
+      onBackground: (n) => {
+        if (this.sessions.get(w.id)?.busy || w.status !== 'running') return;
+        if (n > 0) w.statusText = t('st.subagents', { n });
+        else {
+          w.status = 'idle';
+          w.statusText = '';
+        }
+        this.touch(w);
       },
       onLimited: () => this.pause(w, this.currentTask(w)),
       // Messages sent while a stopped turn was ending: its task is stopped now, so they go out as new messages do
@@ -920,6 +944,40 @@ class WorkerManager {
     if (released) this.fillSlots();
   }
 
+  /** Tasks whose stall reminder went out, so a second stall flags the Worker instead of reminding it again. */
+  private stallNudged = new Set<string>();
+
+  /**
+   * Open tasks that nothing runs any more (shared/stall.ts): the Worker is reminded once to go on; if it stalls again,
+   * it shows as stalled and the Dispatcher is told, rather than the Worker sitting idle without a word.
+   */
+  sweepStalled(now = Date.now()) {
+    // A task that settled starts afresh if a follow-up reopens it.
+    for (const id of this.stallNudged) if (store.task(id)?.status !== 'running') this.stallNudged.delete(id);
+    for (const w of store.data.workers) {
+      const task = this.currentTask(w);
+      const s = this.sessions.get(w.id) ?? null;
+      if (w.stalledAt) {
+        // Its task ended or moved on another way (a Stop, a cancel, a reply that started no turn).
+        if (!isStalled(w, task, s, now, 0)) { w.stalledAt = null; store.changed(); }
+        continue;
+      }
+      if (!task || !isStalled(w, task, s, now)) continue;
+      const min = Math.round((now - Date.parse(w.lastActiveAt)) / 60_000);
+      if (s && !s.closed && !this.stallNudged.has(task.id)) {
+        this.stallNudged.add(task.id);
+        store.log(w.id, 'event', t('log.stallNudge', { min }));
+        s.send(stallMsg(task.id, min));
+        this.touch(w);
+        continue;
+      }
+      w.stalledAt = new Date(now).toISOString();
+      store.log(w.id, 'event', t('log.stalled', { min }));
+      store.pushUpdate(`${w.id} (${task.id} "${task.title}") looks stalled: its task is open, but its session has been idle for ${min} min with nothing running${this.stallNudged.has(task.id) ? ', even after a reminder to go on' : ''}. send_to_worker to tell it how to go on, or stop it.`, true);
+      store.changed();
+    }
+  }
+
   /**
    * A slot may be free: a task finished or failed, a session went idle, or the limit was raised.
    * Tasks waiting for one start, the longest waiting first. Running Workers are never stopped for a lower limit.
@@ -1125,6 +1183,12 @@ class WorkerManager {
     const w = store.worker(workerId);
     const task = w ? this.currentTask(w) : null;
     if (!w || !task || (task.status !== 'running' && task.status !== 'waiting')) return 'idle';
+    // Its turn ended to wait for background subagents: they go with their process, or one would start a turn on the
+    // stopped task when it reports. The next message resumes the same conversation in a new process.
+    if (s && s.background > 0) {
+      s.close();
+      this.sessions.delete(w.id);
+    }
     // Idle first: failing the task frees the slot, and fillSlots may hand this Worker held feedback or queued work.
     w.status = 'idle';
     w.statusText = '';

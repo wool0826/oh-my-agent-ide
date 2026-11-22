@@ -21,6 +21,7 @@ import { $, acctLabel, ago, awaitsDispatcher, base, call, errText, esc, finished
 import { go, show } from './history';
 import { grantsHtml } from './repos';
 import { ms, workerIcon } from './sidebar';
+import { shownStalled } from '../../shared/stall';
 
 export function statusPill(w: Worker) {
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
@@ -30,6 +31,7 @@ export function statusPill(w: Worker) {
     case 'error': return `<span class="pill red">${t('st.error')}</span>`;
     case 'archived': return `<span class="pill">${t('st.archived')}</span>`;
   }
+  if (shownStalled(w)) return `<span class="pill orange">${t('st.stalled')}</span>`;
   if (awaitsDispatcher(x)) return `<span class="pill orange">${t('st.awaitDispatcher')}</span>`;
   if (x?.status === 'blocked') return `<span class="pill orange">${t('st.afterMerge')}</span>`;
   if (x?.status === 'queued') return `<span class="pill orange">${queuedLabel(x)}</span>`;
@@ -428,12 +430,13 @@ export function renderWorkerInspector() {
   const open = workerDecisions(S!.decisions, w.id);
   renderComposerDecision();
   const asked = awaitsDispatcher(cur);
+  const stalled = shownStalled(w);
   // The same colours as the list's pill (statusPill): starting is blue too.
-  const pillCls = w.status === 'running' || w.status === 'starting' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : asked ? 'orange' : '';
+  const pillCls = w.status === 'running' || w.status === 'starting' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : asked || stalled ? 'orange' : '';
   const stKey: Record<string, Key> = { running: 'st.running', starting: 'st.starting', waiting: 'st.waitingMe', idle: 'st.idle', error: 'st.error', archived: 'st.archived' };
   keepScroll(root, () => { root.innerHTML = `
     ${open.length ? `<div class="ins-h"><b>${t('ins.decisions')}</b><span class="count">${open.length}</span></div><div class="group">${open.map((d) => decisionHtml(d, true)).join('')}</div>` : ''}
-    <div class="ins-h"><b>${esc(w.id)}</b><span class="pill ${pillCls}">${t(asked ? 'st.awaitDispatcher' : stKey[w.status] ?? 'st.idle')}</span></div>
+    <div class="ins-h"><b>${esc(w.id)}</b><span class="pill ${pillCls}">${t(asked ? 'st.awaitDispatcher' : stalled ? 'st.stalled' : stKey[w.status] ?? 'st.idle')}</span></div>
     ${waitingCardsHtml(w)}
     <div class="group kv">
       <span>${t('kv.task')}</span><span>${esc(cur?.title ?? w.title)}</span>
