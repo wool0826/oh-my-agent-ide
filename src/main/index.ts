@@ -36,6 +36,7 @@ import { startUpdateCheck, checkUpdate, updateInfo } from './update';
 import { notifyInfo } from './notify';
 import { closeQuick, destroyQuick, openQuick, releaseQuickKey, syncQuickKey } from './quick';
 import { QUICK_ARG } from '../shared/quickKey';
+import { listJiraIssues, setJiraToken } from './jira';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -268,6 +269,8 @@ function registerIpc() {
   handle('worker:restore', (id: string, ref: string) => workers.restore(id, ref));
   handle('pr:merge', (taskId: string) => mergePr(taskId));
   handle('repo:issues', (name: string) => listIssues(name));
+  handle('jira:issues', () => listJiraIssues());
+  handle('jira:token', (token: string) => { setJiraToken(String(token ?? '')); pushState(); });
   // The user picked one of two attempts: it is told to open its PR, and the comparison is closed for both.
   handle('compare:pick', (taskId: string) => {
     const picked = store.task(taskId);
