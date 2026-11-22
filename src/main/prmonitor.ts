@@ -211,13 +211,16 @@ export async function mergePr(taskId: string) {
   const r = await run('gh', ['pr', 'merge', task.prUrl!, `--${method}`], { env, timeoutMs: 120_000 });
   if (r.code !== 0) throw new Error(r.stderr.trim().split('\n')[0] || t('pr.err.merge'));
   log.info('merged from the app', task.prUrl, method);
-  checkPrsSoon();
+  // Read it again at once, whenever the last round was: the task shows as merged now, not at the next round.
+  void checkPrs();
 }
 
 let running = false;
+/** A round was asked for while one was under way: it may have read a PR before the change, so one more follows. */
+let again = false;
 let lastRun = 0;
 export async function checkPrs() {
-  if (running) return;
+  if (running) { again = true; return; }
   running = true;
   lastRun = Date.now();
   try {
@@ -227,6 +230,7 @@ export async function checkPrs() {
     }
   } finally {
     running = false;
+    if (again) { again = false; void checkPrs(); }
   }
 }
 
