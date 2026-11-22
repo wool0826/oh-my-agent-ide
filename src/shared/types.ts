@@ -113,6 +113,9 @@ export interface Task {
   afterTaskId?: string | null;
   /** Why a queued task waits: every Worker slot is taken (slot) or a usage limit holds every account (limit, or unset). */
   queueReason?: 'slot' | 'limit' | null;
+  /** When the task began waiting for an answer, and whether it has since given its slot back (shared/slots.ts). */
+  waitingSince?: string | null;
+  slotReleased?: boolean;
   /** Effort the Dispatcher chose for this task; null = the Worker default. */
   effort?: Effort | null;
   mergedAt?: string | null;
@@ -264,6 +267,8 @@ export interface SettingsView {
   selfReview: boolean;
   /** Workers running at once (1–8). More tasks wait in the queue for a free slot. */
   maxWorkers: number;
+  /** Minutes a Worker waiting for an answer keeps its slot; 0 = for as long as it waits. */
+  waitSlotMinutes: number;
   /** UI font. Empty = system font. Several can be listed, separated by commas. */
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */

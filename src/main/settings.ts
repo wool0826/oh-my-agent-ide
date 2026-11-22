@@ -4,7 +4,7 @@ import path from 'node:path';
 import { readJson, writeJsonAtomic, uid } from './util';
 import type { AccountPlan, Provider, SettingsView, UsageWindow } from '../shared/types';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
-import { MAX_WORKERS_DEFAULT, clampMaxWorkers } from '../shared/slots';
+import { MAX_WORKERS_DEFAULT, WAIT_SLOT_DEFAULT, clampMaxWorkers, clampWaitSlot } from '../shared/slots';
 
 export interface StoredAccount {
   id: string;
@@ -53,6 +53,7 @@ export const DEFAULTS: SettingsView = {
   effortPerTask: true,
   selfReview: true,
   maxWorkers: MAX_WORKERS_DEFAULT,
+  waitSlotMinutes: WAIT_SLOT_DEFAULT,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
   claudeRules: true,
@@ -87,6 +88,7 @@ function fix(s: SettingsView) {
   s.fontFamily = normalizeFontFamily(s.fontFamily);
   s.fontSize = clampFontSize(s.fontSize);
   s.maxWorkers = clampMaxWorkers(s.maxWorkers);
+  s.waitSlotMinutes = clampWaitSlot(s.waitSlotMinutes);
 }
 
 function fixAccount(a: Partial<StoredAccount>): StoredAccount {

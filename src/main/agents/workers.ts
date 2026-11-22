@@ -32,7 +32,7 @@ import { ALLOW, DENY, type Task, type Worker } from '../../shared/types';
 import { afterDependency, cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
-import { canStart, queueOrder, slotsUsed, waitsForSlot } from '../../shared/slots';
+import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
@@ -900,6 +900,30 @@ class WorkerManager {
     w.statusText = t('st.slotUntil');
     store.log(w.id, 'event', t('log.slotWait', { n: slotsUsed(store.data.tasks), max: loadSettings().maxWorkers }));
     store.changed();
+  }
+
+  /**
+   * Run every half minute: a task that has waited for an answer longer than the setting allows gives its slot
+   * back, and the tasks queued for one start. The waiting Worker is not stopped and runs again when answered.
+   */
+  sweepWaiting(now = Date.now()) {
+    const minutes = loadSettings().waitSlotMinutes;
+    let changed = false;
+    let released = false;
+    for (const task of store.data.tasks) {
+      const step = waitStep(task, now, minutes);
+      if (!step) continue;
+      changed = true;
+      if (step === 'mark') task.waitingSince = new Date(now).toISOString();
+      else if (step === 'clear') { task.waitingSince = null; task.slotReleased = false; }
+      else {
+        task.slotReleased = true;
+        released = true;
+        if (task.workerId) store.log(task.workerId, 'event', t('log.slotReleased', { n: minutes }));
+      }
+    }
+    if (changed) store.changed();
+    if (released) this.fillSlots();
   }
 
   /**
