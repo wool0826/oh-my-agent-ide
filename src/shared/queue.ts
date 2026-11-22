@@ -61,6 +61,11 @@ export function afterDependency(dep: Pick<Task, 'status' | 'prUrl' | 'prState'> 
   return 'wait';
 }
 
+/** A task that still needs its Worker's worktree: its PR may get review fixes, or it has yet to start there. */
+export function holdsWorktree(x: Pick<Task, 'status'> | null | undefined): boolean {
+  return x?.status === 'pr_open' || x?.status === 'blocked' || x?.status === 'queued';
+}
+
 /** What cancelling one task did. */
 export interface CancelReport {
   id: string;

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSettings, updateSettings, settingsView, saveSettings } from './settings';
@@ -6,7 +7,8 @@ import { ensureHome, paths } from './paths';
 import { store } from './store';
 import { accounts } from './accounts';
 import { initMemory, listMemory, readMemory, writeMemory, searchMemoryPage, revisePreference, remember, memoryEvents, memorySync, syncMemory } from './memory';
-import { registerRepo, removeRepo, updateRepo, listIssues } from './repos';
+import { registerRepo, removeRepo, updateRepo, listIssues, addingRepo, cancelAddRepo, repoEvents } from './repos';
+import { opensSafely } from '../shared/openSafe';
 import { installPlugin } from './runtime';
 import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisions, withdraw } from './decisions';
 import { dispatcher, createTask, assignedEvent } from './agents/dispatcher';
@@ -16,7 +18,7 @@ import { runs } from './runs';
 import { automations } from './automations';
 import { PICK_MESSAGE, canPick } from '../shared/compare';
 import type { AutoTrigger } from '../shared/types';
-import { startPrMonitor, checkPrs, checkPrsSoon, mergePr } from './prmonitor';
+import { startPrMonitor, checkPrs, checkPrsSoon, mergePr, resumeCiQuestion } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { notifyActions } from '../shared/notifyActions';
 import { attachmentBlock, registerAttachments } from './attachments';
@@ -120,6 +122,7 @@ function snapshot(): AppState {
     update: updateInfo(),
     fake: fakeMode(),
     preflightFailed: failedCount(lastPreflight() ?? []),
+    repoAdding: addingRepo(),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }
@@ -293,7 +296,6 @@ function registerIpc() {
   handle('repo:issues', (name: string) => listIssues(name));
   handle('task:revoke', (taskId: string, key: string) => workers.revokeGrant(taskId, key));
   handle('preflight:run', async () => { const r = await runPreflight(); pushState(); return r; });
-  handle('diag:text', () => diagnostics());
   handle('diag:export', () => exportDiagnostics(win));
   handle('jira:issues', () => listJiraIssues());
   handle('jira:token', (token: string) => { setJiraToken(String(token ?? '')); pushState(); });
@@ -309,13 +311,23 @@ function registerIpc() {
   handle('auto:add', (prompt: string, trigger: AutoTrigger) => { automations.add({ prompt, trigger }); });
   handle('auto:toggle', (id: string, on: boolean) => automations.setEnabled(id, on));
   handle('auto:remove', (id: string) => { automations.remove(id); });
-  handle('worker:archive', (id: string) => { runs.stop(id); return workers.archive(id); });
+  // Refused while the Worker works; its dev server stops only once it may go.
+  handle('worker:archive', (id: string) => { workers.checkArchive(id); runs.stop(id); return workers.archive(id); });
   handle('run:start', (id: string) => runs.start(id));
   handle('run:stop', (id: string) => runs.stop(id));
   handle('run:clear', (id: string) => runs.clear(id));
   handle('worker:unarchive', async (id: string) => { const w = store.worker(id); if (w) await workers.unarchive(w); });
   handle('repo:add', (url: string, name?: string, description?: string) => registerRepo({ url, name, description }).then((r) => { dispatcher.refreshContext(); return r; }));
-  handle('repo:remove', (name: string) => { removeRepo(name); dispatcher.refreshContext(); });
+  handle('repo:addCancel', () => cancelAddRepo());
+  // Refused while one of its tasks is open; its Workers are archived and their worktrees removed first.
+  handle('repo:remove', async (name: string) => {
+    workers.checkRetire(name); // refused before anything is stopped
+    for (const w of store.data.workers) if (w.repo === name) runs.stop(w.id);
+    const kept = await workers.retireRepo(name);
+    removeRepo(name);
+    dispatcher.refreshContext();
+    return kept;
+  });
   handle('repo:update', (name: string, description: string, setup?: string, run?: string) => { updateRepo(name, { description, ...(setup === undefined ? {} : { setup: setup.trim() }), ...(run === undefined ? {} : { run: run.trim() }) }); dispatcher.refreshContext(); });
   handle('memory:list', () => listMemory());
   handle('memory:read', (p: string) => readMemory(p));
@@ -418,11 +430,14 @@ function registerIpc() {
   handle('account:refresh', () => accounts.refresh());
   handle('open:external', (url: string) => { if (/^https?:\/\//.test(url)) return shell.openExternal(url); });
   handle('open:path', async (p: string) => {
+    // A path an agent reported may be a program or a script: those are shown in their folder, not run.
+    let dir = false;
+    try { dir = fs.statSync(p).isDirectory(); } catch { /* openPath says it is missing */ }
+    if (!opensSafely(p, dir) && fs.existsSync(p)) { shell.showItemInFolder(p); return; }
     const err = await shell.openPath(p);
     if (err) throw new Error(err);
   });
   handle('reveal:path', (p: string) => shell.showItemInFolder(p));
-  handle('pr:check', () => checkPrs());
   handle('app:version', () => app.getVersion());
   // Settings > Models asks for a fresh list (at most a minute old), its Refresh button for a new one;
   // other callers take one up to 6 hours old.
@@ -445,12 +460,19 @@ async function boot() {
   setInterval(() => store.backup(), 3600_000).unref();
   pruneDecisions();
   // Questions and permission requests from the last run are withdrawn; Workers ask again as they continue.
-  for (const d of [...store.data.decisions]) if (d.status === 'pending' && d.source !== 'dispatcher') withdraw(d.id);
+  // The PR monitor's CI question has no Worker turn to ask it again, so it is waited for again instead.
+  for (const d of [...store.data.decisions]) if (d.status === 'pending' && d.source !== 'dispatcher' && !resumeCiQuestion(d)) withdraw(d.id);
   memoryEvents.on('synced', pushState);
   memoryEvents.on('pulled', () => dispatcher.refreshContext());
   await initMemory();
   installPlugin();
   store.on('changed', pushState);
+  repoEvents.on('progress', pushState);
+  // Hooks for the end-to-end tests (test/e2e), which have no button for them; the window does not call them.
+  if (fakeMode()) {
+    handle('diag:text', () => diagnostics());
+    handle('pr:check', () => checkPrs());
+  }
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));

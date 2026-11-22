@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { store } from './store';
 import { workers } from './agents/workers';
 import { cleanupBranch, ghEnv } from './repos';
@@ -6,12 +7,12 @@ import { t } from './i18n';
 import { run, nowIso } from './util';
 import { log } from './log';
 import { automations } from './automations';
-import { ask } from './decisions';
+import { ask, waitFor } from './decisions';
 import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readiness, runsOf, type Check, type RollupItem } from './prchecks';
-import { adoptSeen, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
+import { adoptSeen, isBot, parsePages, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
 import { ciReason } from '../shared/askWhy';
 import { canMerge, conflictBody, mergeMethod, planConflictFix } from '../shared/prMerge';
-import type { Task } from '../shared/types';
+import type { Decision, Task } from '../shared/types';
 
 /**
  * Watch open PRs.
@@ -37,15 +38,18 @@ async function fetchComments(task: Task): Promise<Comment[] | null> {
   const view = await run('gh', ['pr', 'view', task.prUrl!, '--json', 'comments,reviews'], { env, timeoutMs: 60_000 });
   if (view.code !== 0) return null;
   const j = JSON.parse(view.stdout);
-  for (const c of j.comments ?? []) out.push({ id: `c:${c.id}`, author: c.author?.login ?? '?', body: c.body ?? '', where: 'conversation' });
-  for (const r of j.reviews ?? []) if (r.body?.trim()) out.push({ id: `r:${r.id}`, author: r.author?.login ?? '?', body: r.body, where: `review (${r.state})` });
+  for (const c of j.comments ?? []) if (!isBot(c.author?.login ?? '')) out.push({ id: `c:${c.id}`, author: c.author?.login ?? '?', body: c.body ?? '', where: 'conversation' });
+  for (const r of j.reviews ?? []) if (r.body?.trim() && !isBot(r.author?.login ?? '')) out.push({ id: `r:${r.id}`, author: r.author?.login ?? '?', body: r.body, where: `review (${r.state})` });
   const inline = await run('gh', ['api', `repos/${p.owner}/${p.repo}/pulls/${p.num}/comments`, '--paginate'], { env, timeoutMs: 60_000 });
-  if (inline.code === 0) {
-    try {
-      for (const c of JSON.parse(inline.stdout)) out.push({ id: `i:${c.id}`, author: c.user?.login ?? '?', body: c.body ?? '', where: `${c.path}:${c.line ?? c.original_line ?? ''}` });
-    } catch { /* several pages arrive as concatenated JSON arrays; use what parsed */ }
+  if (inline.code !== 0) return out;
+  // With more than one page, gh prints one array per page. A page that does not parse: try again next round.
+  const pages = parsePages<{ id: number; user?: { login?: string; type?: string }; body?: string; path?: string; line?: number | null; original_line?: number | null }>(inline.stdout);
+  if (!pages) {
+    log.warn('pr comments unreadable', task.prUrl, inline.stdout.slice(0, 200));
+    return null;
   }
-  return out.filter((c) => !/\[bot\]$/.test(c.author));
+  for (const c of pages) if (!isBot(c.user?.login ?? '', c.user?.type)) out.push({ id: `i:${c.id}`, author: c.user?.login ?? '?', body: c.body ?? '', where: `${c.path}:${c.line ?? c.original_line ?? ''}` });
+  return out;
 }
 
 /**
@@ -74,7 +78,10 @@ export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', h
     if (!repo || !branch || cleaned.has(branch)) continue;
     cleaned.add(branch);
     const w = task.workerId ? store.worker(task.workerId) : null;
-    await cleanupBranch(repo, w?.repo === repo.name ? w.cwd : null, branch).catch((e) => log.warn('cleanup', e));
+    const worktree = w?.repo === repo.name ? w.cwd : null;
+    // Not under a turn in that worktree: switching its branch would pull the files from under the Worker.
+    if (w && worktree && workers.inUse(w.id)) { cleanupLater.push({ repo: repo.name, worktree, branch, workerId: w.id }); continue; }
+    await cleanupBranch(repo, worktree, branch).catch((e) => log.warn('cleanup', e));
   }
   if (!watch.announced) {
     const text = merged ? t('ev.prMerged', { title: first.title }) : t('ev.prClosed', { title: first.title });
@@ -91,6 +98,8 @@ export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', h
 
 /** Hand new review comments to the Worker. True when some were sent. */
 async function sendComments(task: Task) {
+  // With no Worker to hand them to, they are not marked seen: they go to a Worker that takes the PR later.
+  if (!task.workerId || !store.worker(task.workerId)) return false;
   const comments = await fetchComments(task);
   if (!comments) return false;
   const fresh = comments.filter((c) => !task.seenCommentIds.includes(c.id));
@@ -138,17 +147,37 @@ function askAboutCi(task: Task, body: string, names: string) {
   const leave = t('ci.leave');
   store.pushUpdate(`${task.id} "${task.title}" CI still fails after ${MAX_CI_FIXES} automatic fixes (${names}); asked the user whether to keep fixing`);
   ask({
-    source: 'question', workerId: task.workerId, taskId: task.id,
+    source: 'question', kind: 'ci', workerId: task.workerId, taskId: task.id,
     title: t('ci.capTitle', { n: MAX_CI_FIXES }), detail: names, code: null,
     options: [{ label: retry, description: t('ci.retryDesc', { n: MAX_CI_FIXES }) }, { label: leave, description: t('ci.leaveDesc') }],
     questionKey: null,
     reason: ciReason(t, { who: task.workerId ?? 'Worker', task, prNum: task.prUrl?.match(/\/pull\/(\d+)/)?.[1] ?? '?', fixes: MAX_CI_FIXES, names }),
-  }, entry.abort.signal).then((ans) => {
+  }, entry.abort.signal).then(onCiAnswer(task, entry, retry, leave), () => asking.delete(task.id));
+}
+
+/** The user's answer to the CI question: keep fixing (with what they typed, if anything), or leave it. */
+function onCiAnswer(task: Task, entry: { body: string }, retry: string, leave: string) {
+  return (ans: string) => {
     asking.delete(task.id);
     if (ans === leave || task.prState !== 'OPEN') return;
     task.ciFixAttempts = 0;
     sendCiFix(task, ans === retry ? entry.body : `${entry.body}\n\nThe user says: ${ans}`);
-  }, () => asking.delete(task.id));
+  };
+}
+
+/**
+ * After a restart, wait again for a CI question left open, so its answer still keeps fixing (its failed runs are
+ * marked handled and would not ask again). The failure logs went with the last run; the Worker reads them itself.
+ * False when it no longer applies (the task or its open PR is gone), and it should be withdrawn.
+ */
+export function resumeCiQuestion(d: Decision): boolean {
+  const task = d.taskId ? store.task(d.taskId) : null;
+  if (d.kind !== 'ci' || !task?.prUrl || task.prState !== 'OPEN' || asking.has(task.id)) return false;
+  const entry = { body: `Checks still fail on ${task.prUrl}: ${d.detail}. Read their logs with \`gh run view --log-failed\`.`, abort: new AbortController() };
+  asking.set(task.id, entry);
+  // The labels the card shows, in the language it was asked in.
+  waitFor(d.id, entry.abort.signal).then(onCiAnswer(task, entry, d.options[0]?.label ?? '', d.options[1]?.label ?? ''), () => asking.delete(task.id));
+  return true;
 }
 
 async function checkOne(watch: PrWatch<Task>) {
@@ -175,6 +204,8 @@ async function checkOne(watch: PrWatch<Task>) {
   }
   // A Worker is already on it: this task, or a follow-up working on the same PR.
   if (task.status !== 'pr_open' || prBusy(watch.all)) return;
+  // Its repository was removed, and its Worker with it: only the merge is still noticed.
+  if (task.repo && !store.repo(task.repo)) return;
   // Comments and CI go to the task that opened the PR; it is told about anything a follow-up on the PR already handled.
   adoptSeen(task, watch.all);
   if (await sendComments(task)) return;
@@ -215,6 +246,22 @@ export async function mergePr(taskId: string) {
   void checkPrs();
 }
 
+/** Branch cleanups put off while the Worker was in a turn in that worktree; each PR round tries them again. */
+const cleanupLater: { repo: string; worktree: string; branch: string; workerId: string }[] = [];
+
+async function cleanUpLeft() {
+  for (const c of cleanupLater.splice(0)) {
+    const repo = store.repo(c.repo);
+    if (!repo) continue;
+    if (store.worker(c.workerId) && workers.inUse(c.workerId)) { cleanupLater.push(c); continue; }
+    // The worktree may have gone meanwhile (the Worker archived): then only the branch is cleaned up.
+    await cleanupBranch(repo, fs.existsSync(c.worktree) ? c.worktree : null, c.branch).catch((e) => log.warn('cleanup', e));
+  }
+}
+
+/** Cleanups still put off (for tests). */
+export const pendingCleanups = () => cleanupLater.map((c) => c.branch);
+
 let running = false;
 /** A round was asked for while one was under way: it may have read a PR before the change, so one more follows. */
 let again = false;
@@ -224,6 +271,7 @@ export async function checkPrs() {
   running = true;
   lastRun = Date.now();
   try {
+    await cleanUpLeft();
     // While a Worker is fixing review comments the task is "running"; still notice a merge.
     for (const watch of prsToWatch(store.data.tasks)) {
       try { await checkOne(watch); } catch (e) { log.warn('pr check', watch.url, (e as Error).message); }

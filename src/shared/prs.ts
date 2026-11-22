@@ -84,3 +84,39 @@ export function adoptSeen(owner: Pick<Task, 'seenCommentIds' | 'seenCiRuns' | 'c
     if (attempts) owner.ciFixAttempts = attempts;
   }
 }
+
+/** `gh api --paginate` prints one JSON array per page, back to back. All their items; null when any page is not JSON. */
+export function parsePages<T = unknown>(text: string): T[] | null {
+  const out: T[] = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '[' || c === '{') { if (depth++ === 0) start = i; }
+    else if (c === ']' || c === '}') {
+      if (--depth < 0) return null;
+      if (depth === 0) {
+        try {
+          const page = JSON.parse(text.slice(start, i + 1));
+          if (!Array.isArray(page)) return null;
+          out.push(...page);
+        } catch { return null; }
+      }
+    } else if (depth === 0 && !/\s/.test(c)) return null;
+  }
+  return depth === 0 && !inStr ? out : null;
+}
+
+/** Apps whose comments are reports (CI, previews, coverage, dependency updates), not review. */
+const BOT_LOGINS = new Set(['github-actions', 'dependabot', 'renovate', 'codecov', 'sonarcloud', 'sonarqubecloud', 'vercel', 'netlify', 'changeset-bot', 'mergify', 'gitguardian']);
+
+/** A bot's comment. The REST API gives apps a "[bot]" login and type Bot; `gh pr view` (GraphQL) gives the bare app name. */
+export function isBot(login: string, type?: string | null): boolean {
+  return type === 'Bot' || /\[bot\]$/i.test(login) || BOT_LOGINS.has(login.toLowerCase());
+}

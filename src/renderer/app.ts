@@ -22,7 +22,7 @@ import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, hideUsagePop, hoverUsage, renderSidebar, renderUsage, showUsagePop, stoppable, togglePanel } from './ui/sidebar';
 import { initResize } from './ui/resize';
-import { addDiffNote, confirmCancel, olderLog, openCheckpoints, renderCancelDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
+import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 
 /** Shows a view tab. Navigation goes through go(), which calls this. */
 export function setView(v: View) {
@@ -362,12 +362,17 @@ export async function act(el: HTMLElement, e: Event) {
     case 'queue-clear': ui.cancelAsk = { ids: [], all: true }; renderCancelDialog(); break;
     case 'cancel-dismiss': ui.cancelAsk = null; renderCancelDialog(); break;
     case 'cancel-ok': await confirmCancel(); break;
-    case 'worker-archive': await call('worker:archive', id); break;
+    case 'worker-archive': await archiveWorker(id); break;
+    case 'confirm-dismiss': ui.confirmAsk = null; renderConfirmDialog(); break;
+    case 'confirm-ok': await confirmOk(); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
     case 'repo-select': if (!ui.repoAdding) ui.repoAdd = false; go({ repoSel: id }); renderRepos(); break;
     case 'repo-add-open': ui.repoAdd = true; renderRepos(); $('#repo-add-url').focus(); break;
-    case 'repo-add-cancel': ui.repoAdd = false; renderRepos(); break;
+    case 'repo-add-cancel':
+      // During a clone, Cancel stops it; the form stays with what was typed.
+      if (ui.repoAdding) { await call('repo:addCancel'); break; }
+      ui.repoAdd = false; renderRepos(); break;
     case 'repo-add-pick': {
       const p = await call<string | null>('repo:pickFolder');
       if (p) { $<HTMLInputElement>('#repo-add-url').value = p; $<HTMLInputElement>('#repo-add-url').focus(); }
@@ -375,12 +380,7 @@ export async function act(el: HTMLElement, e: Event) {
     }
     case 'repo-add': await addRepo(); break;
     case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value, $<HTMLTextAreaElement>('#repo-run').value); toast(t('toast.descSaved')); break;
-    case 'repo-remove': {
-      if (!confirm(t('confirm.repoRemove', { name: id }))) return;
-      await call('repo:remove', id);
-      ui.repoSel = null;
-      break;
-    }
+    case 'repo-remove': askRepoRemove(id); break;
     // Picking the open file again reads it again (a Worker may have changed it).
     case 'mem-select': if (ui.memSel === id) void readMemFile(id); else go({ memSel: id }); break;
     case 'mem-sync': await call('memory:sync'); break;
@@ -675,6 +675,7 @@ export function init() {
       if (ui.mergeAsk) { ui.mergeAsk = null; renderAll(true); }
       if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
+      if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); return; }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
       if (ui.settingsShown) closeSettings();
       $('#ctxmenu').hidden = true;
