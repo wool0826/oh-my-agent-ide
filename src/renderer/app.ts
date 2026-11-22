@@ -1,3 +1,4 @@
+import type { Memo } from '../shared/types';
 import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, LogPage, MemoryFile, MemoryHit, MemoryHits, MemorySuggestion, ModelList, PlanSummary, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
@@ -10,6 +11,7 @@ import { reasonText } from '../shared/askWhy';
 import { linkify } from '../shared/linkify';
 import { RING, ringArc } from '../shared/usageRing';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
+import { memoSections } from '../shared/memos';
 import { workerDecisions } from '../shared/inbox';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
@@ -114,6 +116,10 @@ const ui = {
   insMin: stored('oma.insMin'),
   /** "Done today" in the sidebar shows its latest tasks (kept across launches). */
   doneOpen: stored('oma.doneOpen'),
+  /** The chat view's right sidebar shows the inbox or the memos; the memo being edited, and the one asked about before deleting. */
+  insTab: 'inbox' as 'inbox' | 'memo',
+  memoEdit: null as string | null,
+  memoDel: null as string | null,
   /** Asking before cancelling queued tasks: one task, or the whole queue. */
   cancelAsk: null as { ids: string[]; all: boolean } | null,
 };
@@ -893,6 +899,10 @@ function renderChatInspector() {
   const root = $('#chat-ins');
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
+    const tab = (v: 'inbox' | 'memo', label: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${label}${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
+    const tabs = `<div class="segc ins-tabs" role="tablist" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), pending.length)}${tab('memo', t('ins.tabMemo'))}</div>`;
+    if (ui.insTab === 'memo') { root.innerHTML = tabs + memosHtml(); return; }
     // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
     const results = paged('results', s.results.slice().reverse(), PAGE.results);
     const autos = paged('autos', visibleAutos(), PAGE.autos);
@@ -911,8 +921,41 @@ function renderChatInspector() {
       const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
       html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
     }
-    root.innerHTML = html;
+    root.innerHTML = tabs + html;
   });
+  syncSegs(root);
+}
+
+/** One memo: its text, when it changed, and Share / Edit / Delete, shown while it is hovered or focused. */
+function memoHtml(m: Memo) {
+  if (ui.memoEdit === m.id) {
+    return `<div class="memo"><textarea class="inp" data-keep="memo-${m.id}" aria-label="${t('memo.edit')}">${esc(m.text)}</textarea>
+      <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn def" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
+  }
+  const act = (action: string, icon: string, label: string, cls = '') => `<button class="mact${cls}" data-action="${action}" data-id="${m.id}" title="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
+  const del = ui.memoDel === m.id
+    ? `<button class="mact sure" data-action="memo-remove" data-id="${m.id}">${t('memo.removeSure')}</button>`
+    : act('memo-remove-ask', 's-x', t('memo.remove'));
+  return `<div class="memo"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
+    <span class="acts">${act('memo-share', 's-pin', t(m.shared ? 'memo.unshare' : 'memo.share'), m.shared ? ' on' : '')}${act('memo-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
+}
+
+/** The Memos tab: a field to add one, then the memos shared with agents and the user's own. */
+function memosHtml() {
+  const { shared, mine } = memoSections(S!.memos);
+  const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b>${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoHtml).join('')}</div></div>` : '';
+  const add = `<div class="memo-add"><input class="inp" id="memo-new" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"><button class="btn" data-action="memo-add" title="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
+  const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
+  return add + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
+}
+
+async function addMemo() {
+  const inp = $<HTMLInputElement>('#memo-new');
+  const text = inp?.value.trim();
+  if (!text) { inp?.focus(); return; }
+  inp.value = '';
+  await call('memo:add', text);
+  $<HTMLInputElement>('#memo-new')?.focus();
 }
 
 /* ---------- workers ---------- */
@@ -2116,6 +2159,20 @@ async function act(el: HTMLElement, e: Event) {
     case 'worker-filter': go({ view: 'worker', wOpen: false, wFilter: (el.dataset.v || null) as WorkerFilter | null }); break;
     case 'open-settings': openSettings(); break;
     case 'side-toggle': togglePanel('side'); break;
+    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); break;
+    case 'memo-add': await addMemo(); break;
+    case 'memo-share': { const m = S!.memos.find((x) => x.id === id); if (m) await call('memo:update', id, { shared: !m.shared }); break; }
+    case 'memo-edit': ui.memoEdit = id; ui.memoDel = null; renderChatInspector(); document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.focus(); break;
+    case 'memo-edit-cancel': ui.memoEdit = null; renderChatInspector(); break;
+    case 'memo-save': {
+      const text = document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.value ?? '';
+      ui.memoEdit = null;
+      if (text.trim()) await call('memo:update', id, { text });
+      renderChatInspector();
+      break;
+    }
+    case 'memo-remove-ask': ui.memoDel = id; renderChatInspector(); break;
+    case 'memo-remove': ui.memoDel = null; await call('memo:remove', id); break;
     case 'done-toggle': ui.doneOpen = !ui.doneOpen; store('oma.doneOpen', ui.doneOpen); renderSidebar(); break;
     case 'ins-toggle': togglePanel('ins'); break;
     case 'reveal-memory': await call('open:path', `${S!.settings.home}/memory`); break;
@@ -2141,7 +2198,13 @@ async function act(el: HTMLElement, e: Event) {
     case 'goto-decision': {
       // In the view of the Worker that asks, its own panel shows the card.
       const here = ui.view === 'worker' && ui.wOpen && !!document.getElementById(`wdec-${id}`);
-      if (!here) go({ view: 'chat' });
+      if (!here) {
+        // The card is in the inbox tab of the right sidebar: show both before looking for it.
+        ui.insTab = 'inbox';
+        if (ui.insMin) togglePanel('ins');
+        go({ view: 'chat' });
+        renderChatInspector();
+      }
       const card = document.getElementById(`${here ? 'wdec' : 'dec'}-${id}`);
       card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       card?.classList.remove('flash'); void card?.offsetWidth; card?.classList.add('flash');
@@ -2467,6 +2530,8 @@ function init() {
         if (v) void call('decision:answer', el.dataset.id, v);
       } else if (el.dataset.enter === 'repo-add') {
         void addRepo();
+      } else if (el.dataset.enter === 'memo-add') {
+        void addMemo();
       } else if (el.dataset.enter === 'sug-save') {
         void saveSug(el.dataset.id ?? '');
       } else if (el.dataset.enter === 'aa-send') {

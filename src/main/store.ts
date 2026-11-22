@@ -5,6 +5,7 @@ import { readJson, writeJsonAtomic, debounce, nowIso, ensureDir, uid, month } fr
 import { paths } from './paths';
 import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
 import { PAGE, itemsBefore, pageBefore } from '../shared/paging';
+import type { Memo } from '../shared/types';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
 
 export interface DispatcherState {
@@ -28,6 +29,8 @@ export interface Data {
   dispatcher: DispatcherState;
   /** Worker news the Dispatcher should hear on its next turn */
   pendingUpdates: string[];
+  /** The user's memos (shared/memos.ts). Unset in state files saved before they existed. */
+  memos?: Memo[];
   /** Paths the user attached to messages (see attachments.ts) */
   attachments?: string[];
 }

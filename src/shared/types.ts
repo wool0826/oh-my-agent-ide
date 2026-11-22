@@ -283,6 +283,8 @@ export interface AppState {
   chat: ChatItem[];
   /** Task outcomes not cleared from the inspector (results, and errors of a task), oldest first. */
   results: ChatItem[];
+  /** The user's memos, shown in the right sidebar's Memos tab. */
+  memos: Memo[];
   /** The IDE memory's sync with its remote repository. */
   memorySync: MemorySync;
   dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null };
@@ -290,6 +292,15 @@ export interface AppState {
 
 export interface DiffFile { path: string; added: number; removed: number; status: 'A' | 'M' | 'D' | 'R' | '?'; patch: string }
 export interface DiffView { base: string; branch: string; files: DiffFile[]; truncated: boolean; error?: string }
+
+/** A note the user keeps in the app. A shared one is also given to the Dispatcher with its system prompt. */
+export interface Memo {
+  id: string;
+  text: string;
+  shared: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 /** How the last sync of IDE memory with its remote went. */
 export interface MemorySync {
