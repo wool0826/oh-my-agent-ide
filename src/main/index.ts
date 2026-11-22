@@ -27,7 +27,7 @@ import { log } from './log';
 import { month, nowIso, oneLine, uid } from './util';
 import { cleanMemo } from '../shared/memos';
 import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
-import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
+import { ALLOW, ALLOW_TASK, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
 import { notifyText } from '../shared/askWhy';
 import { workerDecisions } from '../shared/inbox';
 import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
@@ -209,7 +209,7 @@ function registerIpc() {
   const userAnswer = (id: string, ans: string) => {
     const d = answerDecision(id, ans);
     if (!d) return;
-    const shown = ans === ALLOW ? t(d.source === 'plan' ? 'plan.approve' : 'allow') : ans === DENY ? t('deny') : ans;
+    const shown = ans === ALLOW ? t(d.source === 'plan' ? 'plan.approve' : 'allow') : ans === ALLOW_TASK ? t('allowTask') : ans === DENY ? t('deny') : ans;
     const who = d.workerId ? `${d.workerId}: ` : '';
     store.chat('decision', `${who}${oneLine(d.title, 80)} → ${shown}`);
     if (d.source === 'dispatcher') dispatcher.decisionAnswered(d.title, ans);

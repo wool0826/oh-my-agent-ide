@@ -1,6 +1,7 @@
 import type { HookCallbackMatcher } from '@anthropic-ai/claude-agent-sdk';
 import { t } from '../i18n';
 import type { Key } from '../../shared/i18n';
+import { loadSettings } from '../settings';
 
 /**
  * Actions that always ask the user, regardless of auto mode.
@@ -30,15 +31,15 @@ export const ALWAYS_ASK_PREFIX = 'Always ask: ';
  * Only destructive or shared-state shell commands are listed; file edits are auto mode's call, wherever they are.
  */
 export function alwaysAskReason(tool: string, input: any): string | null {
-  const rule = alwaysAskRule(tool, input);
+  const rule = alwaysAskRule(tool, input, loadSettings().askOff);
   return rule ? t(rule) : null;
 }
 
-/** The always-ask rule a tool call matches (its label key), or null. */
-export function alwaysAskRule(tool: string, input: any): Key | null {
+/** The always-ask rule a tool call matches (its label key), or null. Rules the user switched off (`off`) are passed over. */
+export function alwaysAskRule(tool: string, input: any, off: readonly string[] = []): Key | null {
   if (tool !== 'Bash') return null;
   const cmd = String(input?.command ?? '');
-  for (const r of BASH_RULES) if (r.re.test(cmd)) return r.why;
+  for (const r of BASH_RULES) if (!off.includes(r.why) && r.re.test(cmd)) return r.why;
   return null;
 }
 
