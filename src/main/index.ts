@@ -273,6 +273,7 @@ function registerIpc() {
   handle('suggest:dismiss', (id: string) => dismissSuggestion(id));
   // A page of a Worker's conversation: the latest, or the one before line `before` (decision 85).
   handle('worker:log', (id: string, opts?: { before?: number; limit?: number }) => store.readLog(id, opts?.before, Math.min(opts?.limit ?? PAGE.log, 1000)));
+  handle('search:text', (q: string) => store.searchText(String(q ?? '')));
   handle('chat:page', (before: string, limit?: number) => store.chatPage(before, Math.min(limit ?? PAGE.chat, 1000)));
   handle('worker:send', (id: string, text: string, files?: string[]) => {
     const body = text + attachmentBlock(registerAttachments(files ?? []));
