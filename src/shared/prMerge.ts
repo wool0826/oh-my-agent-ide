@@ -37,3 +37,21 @@ export function mergeMethod(repo: { squashMergeAllowed?: boolean; mergeCommitAll
   if (repo.mergeCommitAllowed !== false) return 'merge';
   return 'rebase';
 }
+
+/**
+ * The open PRs that can be merged now, one task per PR in the order given: what "Merge N" merges.
+ * A PR whose Worker is still at work on it is left out, since its head is about to change.
+ */
+export function readyToMerge<T extends { id: string; prUrl: string | null; prState: string | null; status: string; prChecks?: PrChecks | null }>(tasks: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const busy = new Set(tasks.filter((x) => x.prUrl && (x.status === 'running' || x.status === 'waiting' || x.status === 'queued' || x.status === 'blocked')).map((x) => x.prUrl!.toLowerCase()));
+  const out: T[] = [];
+  for (const x of tasks) {
+    if (!x.prUrl || x.prState !== 'OPEN' || !canMerge(x.prChecks)) continue;
+    const key = x.prUrl.toLowerCase();
+    if (seen.has(key) || busy.has(key)) continue;
+    seen.add(key);
+    out.push(x);
+  }
+  return out;
+}
