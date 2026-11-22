@@ -1101,6 +1101,8 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 
 /* Markdown lists and tables in agent text (shared/markdown.ts). */
 .bub li.sub, .sum-report li.sub, .plan-md li.sub { margin-left: var(--space-16); }
+:is(.bub, .sum-report, .plan-md) blockquote { margin: var(--space-4) 0; padding-left: var(--space-8); border-left: 2px solid var(--border-default); color: var(--text-secondary); }
+:is(.bub, .sum-report, .plan-md) hr { border: 0; height: 1px; background: var(--border-subtle); margin: var(--space-6) 0; }
 .md-table { max-width: 100%; overflow-x: auto; margin: var(--space-4) 0 var(--space-6); }
 .md-table table { border-collapse: collapse; font-size: var(--fs-caption); line-height: var(--lh-body); }
 .md-table th, .md-table td { padding: var(--space-2) var(--space-8); border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: top; }

@@ -526,6 +526,11 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     const target = box === 'ws' ? ui.wSel : null;
     const reply = ui.reply[box];
     sending = true;
+    // Sending goes to the end of the thread, scrolled up or not, and follows what comes after it.
+    if (thread) {
+      if (box === 'chat') renderChat(true); else renderSession(true);
+      scrollQuietly(thread, thread.scrollHeight);
+    }
     const err = await send(text, files);
     sending = false;
     if (box === 'ws' && ui.wSel !== target) { if (err) toast(err, true); return; }
