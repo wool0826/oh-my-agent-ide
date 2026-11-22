@@ -1,7 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { safeJson } from './advisor';
 import { accounts } from '../accounts';
-import { loadSettings } from '../settings';
+import { loadSettings, claudeHelperModel } from '../settings';
 import { memoryDigest, remember, searchMemory } from '../memory';
 import { memoryDirFor, searchClaudeMemory } from '../claudeContext';
 import { store } from '../store';
@@ -125,7 +125,7 @@ async function judge(src: Source, repo: string | null): Promise<Picked | null> {
     const q = query({
       prompt,
       options: {
-        model: loadSettings().dispatcherModel,
+        model: claudeHelperModel(),
         cwd: paths().home,
         env: accounts.env(acc.id),
         tools: [],

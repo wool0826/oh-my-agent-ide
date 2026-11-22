@@ -268,6 +268,7 @@ function registerIpc() {
       || (patch.claudeRules !== undefined && patch.claudeRules !== before.claudeRules)
       || (patch.claudeMemory !== undefined && patch.claudeMemory !== before.claudeMemory)
       || (!!patch.dispatcherEffort && patch.dispatcherEffort !== before.dispatcherEffort)
+      || (!!patch.dispatcherModel && patch.dispatcherModel !== before.dispatcherModel)
       || (patch.effortPerTask !== undefined && patch.effortPerTask !== before.effortPerTask);
     const moreWorkers = patch.maxWorkers !== undefined && patch.maxWorkers > before.maxWorkers;
     const remoteChanged = patch.memoryRemote !== undefined && patch.memoryRemote.trim() !== before.memoryRemote.trim();

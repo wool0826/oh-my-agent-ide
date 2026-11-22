@@ -1640,7 +1640,7 @@ function openModelPicker(btn: HTMLElement) {
   if (pop.owner === btn) { closePop(); return; }
   const inp = document.getElementById(btn.dataset.dd!) as HTMLInputElement | null;
   if (!inp) return;
-  openPop(btn, modelOpts(inp.value, btn.dataset.dd === 'set-dm'), inp.value, (v) => {
+  openPop(btn, modelOpts(inp.value), inp.value, (v) => {
     if (v === inp.value) return;
     inp.value = v;
     btn.querySelector('span')!.textContent = modelLabel(v);

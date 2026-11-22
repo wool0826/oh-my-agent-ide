@@ -15,7 +15,7 @@ import { ask } from '../decisions';
 import { remember, searchMemory } from '../memory';
 import { memoryDirFor, searchClaudeMemory, userRulesSection } from '../claudeContext';
 import { paths } from '../paths';
-import { loadSettings } from '../settings';
+import { loadSettings, claudeHelperModel } from '../settings';
 import { cachedModels } from '../models';
 import { modelLabel as labelFor } from '../../shared/models';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
@@ -285,7 +285,7 @@ class WorkerManager {
       hooks: { PreToolUse: [alwaysAskHook()] },
       // Registered even with self-review off, so turning it on reaches sessions that are already open.
       // Its model is read when the session starts, like the Worker's own.
-      agents: { [REVIEWER]: reviewerAgent(loadSettings().dispatcherModel) },
+      agents: { [REVIEWER]: reviewerAgent(claudeHelperModel()) },
     }, events);
     this.sessions.set(w.id, s);
     return s;
@@ -845,7 +845,7 @@ class WorkerManager {
   /** Every account is held by a usage limit: the task waits in the queue until the first one resets. */
   private pause(w: Worker, task: Task | null) {
     if (task) { task.status = 'queued'; task.queueReason = 'limit'; task.updatedAt = nowIso(); }
-    const time = limitResetText(accounts.nextFreeAt());
+    const time = limitResetText(accounts.nextFreeAt(providerOf(w.model, cachedModels().models)));
     w.status = 'idle';
     w.statusText = t('st.limitUntil', { time });
     store.log(w.id, 'event', t('log.limitWait', { time }));
@@ -1204,7 +1204,7 @@ class WorkerManager {
     // Its task cannot go on before the limit resets either (the session is gone), so it waits in the queue.
     const task = this.currentTask(w);
     if (task?.status === 'running') { task.status = 'queued'; task.queueReason = 'limit'; task.updatedAt = nowIso(); }
-    const time = limitResetText(accounts.nextFreeAt());
+    const time = limitResetText(accounts.nextFreeAt(providerOf(w.model, cachedModels().models)));
     w.statusText = t('st.limitUntil', { time });
     store.log(w.id, 'event', t('log.limitHeld', { time }));
     store.changed();

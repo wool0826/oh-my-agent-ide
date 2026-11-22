@@ -3,7 +3,7 @@ import { loadSettings, saveSettings, encryptToken, decryptToken, type StoredAcco
 import { log } from './log';
 import { nowIso, uid } from './util';
 import { t } from './i18n';
-import { chooseAccount, isExhausted, limitEnd, liveWindow, nextFreeAt } from '../shared/usage';
+import { chooseAccount, isExhausted, limitEnd, liveWindow, nextFreeAtFor } from '../shared/usage';
 import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type Provider, type UsageWindow } from '../shared/types';
 import { codexClient } from './codex/client';
 import { limitWindows, type CodexRateLimits } from '../shared/codexEvents';
@@ -188,9 +188,12 @@ class Accounts extends EventEmitter {
     return l.length > 0 && l.every((a) => this.isLimited(a));
   }
 
-  /** When every account is held by a limit: when the first one resets (ms). Otherwise null. */
-  nextFreeAt() {
-    return nextFreeAt(this.list());
+  /**
+   * When every account of `provider` is held by a limit: when the first one resets (ms). Otherwise null.
+   * Without a provider: the first reset among providers that are fully held.
+   */
+  nextFreeAt(provider?: Provider) {
+    return nextFreeAtFor(this.list(), provider);
   }
 
   /** A usage limit rejected this account. It is skipped until the limit resets (see limitEnd). */

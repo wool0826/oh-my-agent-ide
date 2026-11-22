@@ -1,6 +1,11 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { AgentSession } from './session';
+import { AgentSession, type SessionEvents } from './session';
+import { CodexSession } from './codexSession';
+import { codexToolsFrom, type SdkToolDef } from './codexTools';
+import { codexClient } from '../codex/client';
+import { cachedModels } from '../models';
+import { providerOf } from '../../shared/models';
 import { workers, modelLabel } from './workers';
 import { accounts } from '../accounts';
 import { store } from '../store';
@@ -138,7 +143,13 @@ function boardServer(d: Dispatcher) {
     // Always visible (not deferred behind tool search). Cloning can take long, so the timeout is generous.
     alwaysLoad: true,
     timeout: 45 * 60_000,
-    tools: [
+    tools: boardTools(d),
+  });
+}
+
+/** The Dispatcher's tools, the same list whether it runs on Claude Code (an MCP server) or on Codex (dynamic tools). */
+function boardTools(d: Dispatcher) {
+  return [
       tool('list_repos', 'List registered repositories and their descriptions.', {}, async () => {
         const rs = store.data.repos;
         return ok(rs.length ? rs.map(repoLine).join('\n') : 'No repositories are registered.');
@@ -276,8 +287,7 @@ function boardServer(d: Dispatcher) {
         const spend = task.spend ? { ...task.spend, note: SPEND_NOTE } : undefined;
         return ok(JSON.stringify({ ...task, seenCommentIds: undefined, spend }, null, 2));
       }),
-    ],
-  });
+  ];
 }
 
 function systemPrompt() {
@@ -320,7 +330,7 @@ function systemPrompt() {
 }
 
 class Dispatcher {
-  session: AgentSession | null = null;
+  session: AgentSession | CodexSession | null = null;
   statusText = '';
   /** Messages that came while every account was held by a usage limit; sent when the first one resets. */
   private held: string[] = [];
@@ -342,34 +352,10 @@ class Dispatcher {
 
   get busy() { return !!this.session?.busy; }
 
-  private open(): AgentSession | null {
+  /** What the Dispatcher's session reports, whichever agent runs it. */
+  private sessionEvents(): SessionEvents {
     const d = store.data.dispatcher;
-    const freshDay = d.date !== today();
-    if (this.session && !this.session.closed && !freshDay) return this.session.ready() ? this.session : null;
-    if (this.session) this.session.close();
-    const acc = accounts.isFree(d.accountId) ? accounts.get(d.accountId) : accounts.pick();
-    if (!acc) return null;
-    if (freshDay) {
-      d.sessionId = null;
-      d.sessionSpend = null;
-      d.date = today();
-      d.contextTokens = 0;
-    }
-    const s = new AgentSession({
-      label: 'Dispatcher',
-      model: loadSettings().dispatcherModel,
-      cwd: paths().home,
-      systemAppend: systemPrompt(),
-      accountId: acc.id,
-      resume: d.sessionId,
-      spent: d.sessionSpend,
-      mcpServers: { board: boardServer(this) },
-      tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
-      additionalDirectories: [paths().repos],
-      effort: loadSettings().dispatcherEffort,
-      // The Dispatcher only has read-only tools, including for attached files.
-      canUseTool: async (_name, input) => ({ behavior: 'allow', updatedInput: input }),
-    }, {
+    return {
       onInit: (sid) => { d.sessionId = sid; store.changed(); },
       onAccount: (id) => { d.accountId = id; store.changed(); },
       // An automatic turn with nothing to say answers NOOP, which is not shown.
@@ -413,9 +399,63 @@ class Dispatcher {
       },
       onLimited: () => {
         this.cutOff = true;
-        store.chat('event', t('ev.limitPaused', { time: limitResetText(accounts.nextFreeAt()) }));
+        store.chat('event', t('ev.limitPaused', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
       },
-    });
+    };
+  }
+
+  /** Whose agent runs the Dispatcher: follows the model chosen in Settings. */
+  get provider() {
+    return providerOf(loadSettings().dispatcherModel, cachedModels().models);
+  }
+
+  private open(): AgentSession | CodexSession | null {
+    const d = store.data.dispatcher;
+    const provider = this.provider;
+    // A conversation cannot move between Claude Code and Codex: after the model changed sides, a new one starts.
+    const switched = (d.provider ?? 'claude') !== provider;
+    const freshDay = d.date !== today() || switched;
+    if (this.session && !this.session.closed && !freshDay) return this.session.ready() ? this.session : null;
+    if (this.session) this.session.close();
+    const own = accounts.get(d.accountId);
+    const acc = own && own.provider === provider && accounts.isFree(own.id) ? own : accounts.pick(undefined, provider);
+    if (!acc) return null;
+    d.provider = provider;
+    if (freshDay) {
+      d.sessionId = null;
+      d.sessionSpend = null;
+      d.date = today();
+      d.contextTokens = 0;
+    }
+    const events = this.sessionEvents();
+    const s = provider === 'chatgpt' ? new CodexSession({
+      label: 'Dispatcher',
+      model: loadSettings().dispatcherModel,
+      cwd: paths().home,
+      instructions: systemPrompt(),
+      accountId: acc.id,
+      resume: d.sessionId,
+      spent: d.sessionSpend,
+      effort: loadSettings().dispatcherEffort,
+      tools: codexToolsFrom(boardTools(this) as unknown as SdkToolDef[]),
+      // The Dispatcher reads and hands out work; it changes nothing itself, and has nobody to ask.
+      sandbox: 'read-only',
+      approvalPolicy: 'never',
+    }, events, codexClient()) : new AgentSession({
+      label: 'Dispatcher',
+      model: loadSettings().dispatcherModel,
+      cwd: paths().home,
+      systemAppend: systemPrompt(),
+      accountId: acc.id,
+      resume: d.sessionId,
+      spent: d.sessionSpend,
+      mcpServers: { board: boardServer(this) },
+      tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
+      additionalDirectories: [paths().repos],
+      effort: loadSettings().dispatcherEffort,
+      // The Dispatcher only has read-only tools, including for attached files.
+      canUseTool: async (_name, input) => ({ behavior: 'allow', updatedInput: input }),
+    }, events);
     this.session = s;
     store.changed();
     return s;
@@ -496,7 +536,7 @@ class Dispatcher {
     if (!s) {
       if (!accounts.list().length) { store.chat('error', t('err.noAccount')); return; }
       this.held.push(full);
-      store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt()) }));
+      store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
       store.changed();
       return;
     }
@@ -523,7 +563,7 @@ class Dispatcher {
   }
 
   /** Send messages in one turn, after Worker updates and anything a usage limit held back. */
-  private deliver(s: AgentSession, msgs: string[]) {
+  private deliver(s: AgentSession | CodexSession, msgs: string[]) {
     const parts = this.cutOff ? ['[Usage limit reset] Your last turn was cut off by a usage limit. Continue where you left off.'] : [];
     parts.push(...this.held, ...msgs);
     this.held = [];
@@ -547,7 +587,7 @@ class Dispatcher {
     // A new day starts a new session anyway; nothing to compact.
     if (!d.sessionId || d.date !== today()) return;
     const s = this.open();
-    if (!s) throw new Error(accounts.list().length ? t('err.limitUntil', { time: limitResetText(accounts.nextFreeAt()) }) : t('err.noAccount'));
+    if (!s) throw new Error(accounts.list().length ? t('err.limitUntil', { time: limitResetText(accounts.nextFreeAt(this.provider)) }) : t('err.noAccount'));
     s.compact();
     store.changed();
   }
