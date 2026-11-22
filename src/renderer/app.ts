@@ -2472,7 +2472,7 @@ function addFiles(box: Box, list: FileList | null) {
 
 /* ---------- command palette: Ctrl/Cmd+K (decision 116) ---------- */
 
-interface Cmd extends PaletteItem { icon: string; run: () => void }
+interface Cmd extends PaletteItem { icon: string; run: () => void; /** Listed only for a search: past tasks would bury the places to go. */ searchOnly?: boolean }
 const cmdk = { open: false, i: 0, all: [] as Cmd[], shown: [] as Cmd[], back: null as HTMLElement | null };
 
 /** Everything the palette can go to, in the order it lists them while nothing is typed. */
@@ -2498,6 +2498,13 @@ function paletteItems(): Cmd[] {
     const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
     out.push({ id: `w:${w.id}`, group: w.status === 'archived' ? t('side.archived') : 'Worker', title: `${w.id} ${x?.title ?? w.title}`,
       hint: [w.repo ?? t('general'), modelLabel(w.model)].join(' · '), icon: workerIcon(w), run: () => openWorker(w.id) });
+  }
+  // Past work, found by typing: a task's id or title, its PR number, a word of its report.
+  for (const x of s.tasks.slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
+    if (!x.workerId || !worker(x.workerId)) continue;
+    const pr = x.prUrl ? `PR #${prNum(x.prUrl)}` : '';
+    out.push({ id: `task:${x.id}`, group: t('cmdk.tasks'), title: `${x.id} ${x.title}`, hint: [x.workerId, taskLabel(x), pr, x.summary ? oneLine(x.summary, 90) : ''].filter(Boolean).join(' · '),
+      icon: sym(x.prUrl ? 's-pr' : 's-check'), searchOnly: true, run: () => go({ view: 'worker', wSel: x.workerId, wOpen: true, wTab: 'summary' }) });
   }
   for (const r of s.repos) out.push({ id: `repo:${r.name}`, group: t('nav.repo'), title: r.name, hint: r.description || undefined, icon: sym('s-box'), run: () => go({ view: 'repo', repoSel: r.name }) });
   const panes: [Pane, Key][] = [['accounts', 'set.accounts'], ['general', 'set.general'], ['display', 'set.display'], ['alerts', 'set.alerts'], ['memory', 'set.memory'], ['models', 'set.models']];
@@ -2530,9 +2537,9 @@ function openPalette() {
 
 /** The list for what is typed. Sections have their names only while nothing is typed: a search mixes them by rank. */
 function renderPalette(q: string) {
-  cmdk.shown = matchItems(cmdk.all, q, 60);
-  cmdk.i = 0;
   const heads = !q.trim();
+  cmdk.shown = matchItems(heads ? cmdk.all.filter((c) => !c.searchOnly) : cmdk.all, q, 60);
+  cmdk.i = 0;
   let last = '';
   $('#cmdk-list').innerHTML = cmdk.shown.map((c, i) => {
     const head = heads && c.group !== last ? `<div class="cmdk-g" role="presentation">${esc(c.group)}</div>` : '';

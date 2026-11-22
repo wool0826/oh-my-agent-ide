@@ -469,3 +469,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **No automatic install.** The installer is unsigned, and an app that downloads and runs an unsigned installer by itself is a worse habit than a link. Auto-update can follow code signing.
     - **Publishing:** `npm run release` uploads the installer of the current version from `release/` as a GitHub release with `gh`. It is run by hand after `npm run dist:win`.
     - **Off switch:** "Check for new versions" in Settings → General.
+121. **The palette finds past tasks.**
+    - **Why:** a task from last week, or "the PR about the cache", could only be found by scrolling. Search existed in the Memory view only.
+    - **What:** every task is in the palette (decision 116) with its id and title, and a meta line of its Worker, status, PR number and the start of its report, all of which are searched. Typing "#24", a word of the title or a word of the report finds it. Enter opens its Worker on the Summary tab, where the task's request, report and PR are.
+    - **Only when typing:** tasks are left out of the list shown before anything is typed, so the places to go stay on top.
+    - **Not searched:** the chat's own messages. They are paged from disk and would need a search in the main process; a task's report covers most of what one looks for.
