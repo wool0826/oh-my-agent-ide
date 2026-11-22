@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createSdkMcpServer, tool, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { AgentSession, summarizeTool } from './session';
+import { AgentSession, summarizeTool, type SessionEvents } from './session';
+import { CodexSession, type CodexApproval, type CodexDecision, type CodexTool } from './codexSession';
+import { codexClient } from '../codex/client';
+import { providerOf } from '../../shared/models';
 import { alwaysAskHook, alwaysAskRule, ALWAYS_ASK_PREFIX } from './permissions';
 import { REVIEWER, reviewerAgent, selfReviewLine } from './selfReview';
 import { adviseOnQuestion } from './advisor';
@@ -80,7 +83,11 @@ const planApproved = (task: Task) =>
 const planSummaryRule = () =>
   `Start the plan with exactly three lines, one sentence each in ${langName()}: "WHAT: " what you will do, "HOW: " how you will do it, "OUTPUT: " what the user gets when it is done. Put the details below them.`;
 
-function workerPrompt(w: Worker) {
+/** A Worker's session: Claude Code, or Codex for a ChatGPT model. The owner uses what the two have in common. */
+export type WorkerSession = AgentSession | CodexSession;
+
+/** `codex`: the Worker runs on Codex, which has no AskUserQuestion, no subagents and no Claude Code memory. */
+function workerPrompt(w: Worker, codex = false) {
   const s = loadSettings();
   return [
     `You are Worker ${w.id} in Oh My Agent IDE. The Dispatcher assigns your tasks; the user only sees results and the decisions that truly need them. Write all progress messages and reports in ${langName()}.`,
@@ -92,16 +99,20 @@ function workerPrompt(w: Worker) {
     '- "[Dispatcher question]" asks you something. Reply with kind "answer", then go on with what you were doing. It is not a new task and needs no RESULT lines.',
     '- kind "request": you need the Dispatcher to do or answer something, such as what another Worker is doing, or a new task for work outside yours. Keep working on what does not depend on it; the answer comes as a "[Dispatcher]" message.',
     '- kind "note": a milestone worth knowing that needs no reply. Use it rarely.',
-    '- Do not start subagents or workflows to build work outside your task (other features, parallel lanes); ask for new tasks with a request. Subagents are for searching and for the self-review.',
+    ...(codex ? [] : ['- Do not start subagents or workflows to build work outside your task (other features, parallel lanes); ask for new tasks with a request. Subagents are for searching and for the self-review.']),
     '',
     'Keep your context small; every step reads all of it again:',
-    '- Find the place with Grep or Glob, then Read only that range (offset and limit). Do not print whole files with cat, sed or Get-Content, and do not read again what you already read or just edited.',
+    codex
+      ? '- Search for the place first (rg, git grep), then read only the lines around it. Do not print whole files, and do not read again what you already read or just edited.'
+      : '- Find the place with Grep or Glob, then Read only that range (offset and limit). Do not print whole files with cat, sed or Get-Content, and do not read again what you already read or just edited.',
     '- Keep command output short: pipe long output through tail or head, and look at `git diff --stat` before the diff of one file.',
     '- Make independent tool calls in the same step, not one at a time.',
     '',
     'Code tasks:',
     '- The current folder is a git worktree of the repository. Create the branch named in the task message from the default branch and work there.',
-    "- Follow the repository's CLAUDE.md and conventions. Run the tests and linters and make them pass.",
+    codex
+      ? "- Follow the repository's AGENTS.md or CLAUDE.md (read CLAUDE.md yourself if there is one) and its conventions. Run the tests and linters and make them pass."
+      : "- Follow the repository's CLAUDE.md and conventions. Run the tests and linters and make them pass.",
     `- When done, commit, push, and open a ready-for-review PR (not a draft) with \`gh pr create\`. Do not request reviewers.${s.githubHost ? ` GH_HOST is set to ${s.githubHost}.` : ''}`,
     `- Write the PR title and body in the language the repository's recent PRs use; if there is no clear convention, use ${langName()}. The body lists what changed and which tests you ran.`,
     '- Do not comment on or merge PRs.',
@@ -112,19 +123,23 @@ function workerPrompt(w: Worker) {
     '',
     'Memory:',
     "- Before choices the user may care about (naming, style, libraries, scope), search the user's preferences and past decisions with the recall tool.",
-    ...(s.claudeMemory
+    ...(s.claudeMemory && !codex
       ? ["- Your Claude Code auto-memory folder is shared by every Worker on this repository and by the user's own Claude Code sessions in it. Save only durable facts about the repository or the user's preferences there; never task progress or anything specific to this branch. Update an existing memory instead of adding a duplicate."]
       : []),
     '',
     'Questions:',
-    '- Use AskUserQuestion only when the user really must decide. Make minor choices yourself and mention them in the final report.',
+    codex
+      ? '- Make minor choices yourself and mention them in the final report. When the user really must decide, end your turn with the BLOCKED line below and the question.'
+      : '- Use AskUserQuestion only when the user really must decide. Make minor choices yourself and mention them in the final report.',
     '',
     'Start your final message with these lines:',
     'RESULT: one-line summary',
     'PR: PR URL (if any)',
     'FILE: absolute path of a result file (one line per file)',
     'Then a short explanation below.',
-    'If you cannot finish without something only the Dispatcher or the user can give, and AskUserQuestion does not fit, start the final message with "BLOCKED: what you need" instead of the RESULT line. The task stays open and goes on when the answer comes.',
+    codex
+      ? 'If you cannot finish without something only the Dispatcher or the user can give, start the final message with "BLOCKED: what you need" instead of the RESULT line. The task stays open and goes on when the answer comes.'
+      : 'If you cannot finish without something only the Dispatcher or the user can give, and AskUserQuestion does not fit, start the final message with "BLOCKED: what you need" instead of the RESULT line. The task stays open and goes on when the answer comes.',
   ].join('\n');
 }
 
@@ -149,7 +164,7 @@ function parseResult(text: string, cwd: string) {
 }
 
 class WorkerManager {
-  sessions = new Map<string, AgentSession>();
+  sessions = new Map<string, WorkerSession>();
   /** Review fixes, CI fixes and follow-ups on finished tasks get different result-card wording. */
   private reviewing = new Set<string>();
   private ciFixing = new Set<string>();
@@ -223,13 +238,31 @@ class WorkerManager {
   }
 
   /** Open a session on a picked account if none is open. Null when a usage limit holds every account. */
-  ensureSession(w: Worker): AgentSession | null {
+  ensureSession(w: Worker): WorkerSession | null {
     const existing = this.sessions.get(w.id);
     if (existing && !existing.closed) return existing.ready() ? existing : null;
-    const acc = accounts.isFree(w.accountId) ? accounts.get(w.accountId) : accounts.pick();
+    // The Worker's model decides whose agent runs it, and so which accounts can carry it.
+    const provider = providerOf(w.model, cachedModels().models);
+    const own = accounts.get(w.accountId);
+    const acc = own && own.provider === provider && accounts.isFree(own.id) ? own : accounts.pick(undefined, provider);
     if (!acc) return null;
     const memDir = workerMemoryDir(w);
-    const s = new AgentSession({
+    const events = this.sessionEvents(w);
+    const s: WorkerSession = provider === 'chatgpt' ? new CodexSession({
+      label: w.id,
+      model: w.model,
+      cwd: w.cwd,
+      instructions: workerPrompt(w, true) + (loadSettings().claudeRules ? userRulesSection() : ''),
+      accountId: acc.id,
+      resume: w.sessionId,
+      spent: w.sessionSpend,
+      effort: loadSettings().workerEffort,
+      tools: workerCodexTools(loadSettings().claudeMemory ? memDir : null, (kind, text) => this.fromWorker(w, kind, text)),
+      // Files in the worktree are the Worker's to change; anything past it (the network for a push, other folders) is asked.
+      sandbox: 'workspace-write',
+      approvalPolicy: 'on-request',
+      approve: this.codexApproval(w),
+    }, events, codexClient()) : new AgentSession({
       label: w.id,
       model: w.model,
       cwd: w.cwd,
@@ -253,7 +286,14 @@ class WorkerManager {
       // Registered even with self-review off, so turning it on reaches sessions that are already open.
       // Its model is read when the session starts, like the Worker's own.
       agents: { [REVIEWER]: reviewerAgent(loadSettings().dispatcherModel) },
-    }, {
+    }, events);
+    this.sessions.set(w.id, s);
+    return s;
+  }
+
+  /** What a Worker's session reports, whichever agent runs it. */
+  private sessionEvents(w: Worker): SessionEvents {
+    return {
       onInit: (sid) => { w.sessionId = sid; store.changed(); },
       onAccount: (id) => { w.accountId = id; store.changed(); },
       onText: (text) => {
@@ -313,9 +353,40 @@ class WorkerManager {
         }
         store.changed();
       },
-    });
-    this.sessions.set(w.id, s);
-    return s;
+    };
+  }
+
+  /** A command or a file change a Codex Worker needs a yes for: the same decision card a Claude Worker's permission gets. */
+  private codexApproval(w: Worker) {
+    return async (req: CodexApproval): Promise<CodexDecision> => {
+      const task = this.currentTask(w);
+      const prev = w.status;
+      w.status = 'waiting';
+      if (task) task.status = 'waiting';
+      store.changed();
+      const tool = req.kind === 'command' ? 'Bash' : 'Edit';
+      const input = req.kind === 'command' ? { command: req.command } : { file_path: req.files.join(', ') };
+      const code = (req.kind === 'command' ? `$ ${req.command}` : req.files.join('\n')).slice(0, 1200);
+      try {
+        const ans = await ask({
+          source: 'permission', workerId: w.id, taskId: task?.id ?? null,
+          title: req.kind === 'command' ? t('perm.bash') : t('perm.files'),
+          detail: '',
+          code,
+          options: [{ label: ALLOW }, { label: DENY }],
+          questionKey: null,
+          reason: permissionReason(t, { who: w.id, task, tool, input, rule: alwaysAskRule(tool, input), decisionReason: req.reason }),
+        });
+        store.log(w.id, 'user', `${oneLine(code, 140)} → ${ans === ALLOW ? t('allow') : ans === DENY ? t('deny') : ans}`);
+        return ans === ALLOW ? 'accept' : 'decline';
+      } catch {
+        return 'decline';
+      } finally {
+        if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
+        if (task && task.status === 'waiting') task.status = 'running';
+        store.changed();
+      }
+    };
   }
 
   private permissionHandler(w: Worker): CanUseTool {
@@ -386,7 +457,7 @@ class WorkerManager {
       }, signal);
       if (ans === ALLOW) {
         const s = this.sessions.get(w.id);
-        if (s) s.cfg.permissionMode = 'auto';
+        if (s instanceof AgentSession) s.cfg.permissionMode = 'auto';
         store.log(w.id, 'user', t('log.planApproved'));
         if (task) {
           task.planApproved = true;
@@ -760,7 +831,7 @@ class WorkerManager {
   }
 
   /** Send the task message, with the task's effort and plan mode in place first; `after` follows it. */
-  private startTask(w: Worker, s: AgentSession, task: Task, after: string[] = []) {
+  private startTask(w: Worker, s: WorkerSession, task: Task, after: string[] = []) {
     task.startedAt = nowIso();
     s.setEffort(this.effortFor(task));
     // Plan mode must be in place before the task message arrives.
@@ -823,7 +894,7 @@ class WorkerManager {
    * when there is nothing else to send. Otherwise a follow-up may reopen the last task (reopenLast);
    * a question from the Dispatcher is no follow-up and reopens nothing.
    */
-  private deliver(w: Worker, s: AgentSession, msgs: string[], task = this.currentTask(w)) {
+  private deliver(w: Worker, s: WorkerSession, msgs: string[], task = this.currentTask(w)) {
     const out = [...(this.held.get(w.id) ?? []), ...msgs];
     const paused = task?.status === 'queued';
     const slot = !!task && waitsForSlot(task);
@@ -1252,6 +1323,39 @@ function workerTools(memDir: string | null, tell: (kind: TellKind, text: string)
       }),
     ],
   });
+}
+
+/** What the recall tool answers: IDE memory, plus the Claude Code memory shared for the repository. */
+function recallText(memDir: string | null, query: string) {
+  const ide = searchMemory(query, 8).map((h) => `[ide] ${h.path}:${h.line} ${h.text}`);
+  const cc = memDir ? searchClaudeMemory(query, [memDir], 8).map((h) => `[claude] ${h.file}:${h.line} ${h.text}`) : [];
+  const lines = [...ide, ...cc];
+  return lines.length ? lines.join('\n') : 'Nothing relevant in memory.';
+}
+
+/** The same two tools for a Worker that runs on Codex. */
+function workerCodexTools(memDir: string | null, tell: (kind: TellKind, text: string) => string): CodexTool[] {
+  return [
+    {
+      name: 'tell_dispatcher',
+      description: 'Say something to the Dispatcher without ending your turn. kind "answer": the answer to a "[Dispatcher question]". kind "request": something you need the Dispatcher to do or answer; its reply comes later as a "[Dispatcher]" message. kind "note": a milestone that needs no reply.',
+      inputSchema: {
+        type: 'object', additionalProperties: false, required: ['kind', 'text'],
+        properties: { kind: { type: 'string', enum: ['answer', 'request', 'note'] }, text: { type: 'string', description: 'Complete on its own: the Dispatcher does not see your conversation.' } },
+      },
+      run: (a) => {
+        const kind = (['answer', 'request', 'note'] as const).find((k) => k === a?.kind);
+        if (!kind || typeof a?.text !== 'string' || !a.text.trim()) throw new Error('tell_dispatcher needs kind (answer, request or note) and text.');
+        return tell(kind, a.text);
+      },
+    },
+    {
+      name: 'recall',
+      description: "Search the user's memory: preferences, repository notes, past decisions and finished tasks.",
+      inputSchema: { type: 'object', additionalProperties: false, required: ['query'], properties: { query: { type: 'string' } } },
+      run: (a) => recallText(memDir, String(a?.query ?? '')),
+    },
+  ];
 }
 
 function needsPlan(task: Task | null) {

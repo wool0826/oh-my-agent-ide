@@ -4,6 +4,7 @@ import { loadSettings, decryptToken, dataDir } from './settings';
 import { claudeHome } from './claudeContext';
 import { readJson, writeJsonAtomic } from './util';
 import { log } from './log';
+import { codexClient } from './codex/client';
 import { modelLabel, sortModels } from '../shared/models';
 import type { ModelInfo, ModelList } from '../shared/types';
 
@@ -24,9 +25,46 @@ let inflight: Promise<ModelList> | null = null;
 let sessionSource: () => Promise<{ id: string; name: string }[] | null> = async () => null;
 export function setSessionModelSource(fn: typeof sessionSource) { sessionSource = fn; }
 
-export function cachedModels(): ModelList {
+/** Claude's models as last read, without the ChatGPT ones. */
+function claudeCache(): ModelList {
   cache ??= readJson<ModelList>(file(), { models: [], fetchedAt: null, error: null });
   return cache;
+}
+
+/** The models Codex offers the ChatGPT account, kept apart: they come from Codex, not from the Anthropic API. */
+const codexFile = () => path.join(dataDir(), 'codex-models.json');
+let codexCache: { models: ModelInfo[]; fetchedAt: string | null } | null = null;
+function codexModels() {
+  codexCache ??= readJson<{ models: ModelInfo[]; fetchedAt: string | null }>(codexFile(), { models: [], fetchedAt: null });
+  return codexCache;
+}
+const hasChatgpt = () => loadSettings().accounts.some((a) => a.provider === 'chatgpt');
+
+async function refreshCodexModels(maxAgeMs: number) {
+  if (!hasChatgpt()) return;
+  const c = codexModels();
+  if (c.models.length && c.fetchedAt && Date.now() - Date.parse(c.fetchedAt) < maxAgeMs) return;
+  try {
+    const r = await codexClient().request<{ data: { model: string; displayName?: string; hidden?: boolean }[] }>('model/list', {}, 30_000);
+    const models = (r?.data ?? []).filter((m) => m?.model && !m.hidden).map((m) => ({ id: m.model, name: String(m.displayName || m.model), created: '', provider: 'chatgpt' as const }));
+    if (!models.length) return;
+    codexCache = { models, fetchedAt: new Date().toISOString() };
+    writeJsonAtomic(codexFile(), codexCache);
+  } catch (e) {
+    log.warn('codex model list', (e as Error).message);
+  }
+}
+
+/** Every model a registered account can run: Claude's, then the ChatGPT account's while one is registered. */
+function merged(c: ModelList): ModelList {
+  const extra = hasChatgpt() ? codexModels().models : [];
+  if (!extra.length) return c;
+  // With no Claude account, the Claude list's "no token" is not an error worth showing: the ChatGPT models are there.
+  return { models: [...c.models, ...extra], fetchedAt: c.fetchedAt ?? codexModels().fetchedAt, error: c.models.length ? c.error : null };
+}
+
+export function cachedModels(): ModelList {
+  return merged(claudeCache());
 }
 
 /** This PC's Claude Code login token. Claude Code refreshes it while it runs, so it can be expired. */
@@ -43,6 +81,7 @@ function loginToken(): string {
 function tokens(): string[] {
   const out: string[] = [];
   for (const a of loadSettings().accounts) {
+    if (a.provider !== 'claude') continue;
     const tok = a.kind === 'token' ? decryptToken(a.tokenEnc) : loginToken();
     if (tok && !out.includes(tok)) out.push(tok);
   }
@@ -69,12 +108,18 @@ async function fetchModels(token: string): Promise<ModelInfo[]> {
 }
 
 /** The model list, read again when the saved one is older than maxAgeMs. On failure the last list stays. */
-export function listModels(maxAgeMs: number): Promise<ModelList> {
-  const c = cachedModels();
+export async function listModels(maxAgeMs: number): Promise<ModelList> {
+  const [claude] = await Promise.all([listClaudeModels(maxAgeMs), refreshCodexModels(maxAgeMs)]);
+  return merged(claude);
+}
+
+function listClaudeModels(maxAgeMs: number): Promise<ModelList> {
+  const c = claudeCache();
   if (c.models.length && c.fetchedAt && Date.now() - Date.parse(c.fetchedAt) < maxAgeMs) return Promise.resolve(c);
   inflight ??= (async () => {
     // no-account: nothing registered; no-token: accounts, but no token this app can read.
-    let error = loadSettings().accounts.length ? 'no-token' : 'no-account';
+    const claudeAccounts = loadSettings().accounts.filter((a) => a.provider === 'claude');
+    let error = claudeAccounts.length ? 'no-token' : 'no-account';
     for (const token of tokens()) {
       try {
         const models = await fetchModels(token);
@@ -95,7 +140,7 @@ export function listModels(maxAgeMs: number): Promise<ModelList> {
       writeJsonAtomic(file(), cache);
       return cache;
     }
-    cache = { ...cachedModels(), error };
+    cache = { ...claudeCache(), error };
     return cache;
   })().finally(() => { inflight = null; });
   return inflight;

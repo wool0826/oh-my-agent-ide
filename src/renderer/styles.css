@@ -487,6 +487,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .acc-name { display: flex; align-items: center; gap: var(--space-8); min-width: 0; }
 .acc-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plan-badge { flex: none; font-size: var(--fs-caption2); font-weight: 600; padding: 1px var(--space-8); border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-text); }
+.plan-badge.chatgpt { background: var(--success-soft); color: var(--success-text); text-transform: capitalize; }
 .plan-badge.enterprise { background: var(--review-soft); color: var(--review-text); }
 .acc-kind { font-size: var(--fs-caption); color: var(--text-secondary); }
 .acc-main .warn { font-size: var(--fs-caption); color: var(--warning-text); overflow-wrap: anywhere; }

@@ -31,7 +31,7 @@ AgentSession.prototype.start = function () {
 const sent = () => starts[starts.length - 1]?.sent ?? [];
 
 const LIMIT_TEXT = "Error during compaction: You've hit your 5-hour limit · resets 12:10am (Asia/Seoul)";
-const feed = (s: AgentSession, m: Record<string, unknown>) => (s as unknown as { handle(m: unknown): void }).handle(m);
+const feed = (s: unknown, m: Record<string, unknown>) => (s as unknown as { handle(m: unknown): void }).handle(m);
 const assistant = (tokens: number, text = 'Working on it.') => ({
   type: 'assistant', parent_tool_use_id: null,
   message: { model: 'claude-opus-5-5', content: [{ type: 'text', text }], usage: { input_tokens: 10, cache_read_input_tokens: tokens - 10, cache_creation_input_tokens: 0, output_tokens: 0 } },
@@ -246,7 +246,7 @@ test('a Worker is compacted from 60K once its task is finished; while the task i
 test('a Worker runs with a 5-minute prompt cache and without the bundled skills; the Dispatcher keeps its own', () => {
   workers.closeAll();
   const { w } = worker();
-  assert.deepEqual(workers.ensureSession(w)!.cfg.env, { FORCE_PROMPT_CACHING_5M: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1' });
+  assert.deepEqual((workers.ensureSession(w) as AgentSession).cfg.env, { FORCE_PROMPT_CACHING_5M: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1' });
   assert.equal((dispatcher as unknown as { open(): AgentSession }).open().cfg.env, undefined);
   workers.closeAll();
 });

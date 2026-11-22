@@ -101,7 +101,7 @@ const ui = {
   setQ: '',
   version: '',
   claude: null as ClaudeInfo | null,
-  accKind: 'token' as 'token' | 'login',
+  accKind: 'token' as 'token' | 'login' | 'chatgpt',
   wTab: 'chat' as 'chat' | 'changes',
   diffs: new Map<string, DiffView | 'loading' | null>(),
   diffOpen: new Set<string>(),
@@ -593,13 +593,26 @@ function cancelX(x: Task) {
   return `<button class="clear-x" data-action="task-cancel" data-id="${esc(x.id)}" title="${t('cancel.task')}" aria-label="${label}"><svg><use href="#s-x"/></svg></button>`;
 }
 
+/** "5h", "7d", "30d": how long a usage window is. */
+function winLabel(mins: number | null | undefined, fallback: string) {
+  if (!mins) return fallback;
+  return mins < 1440 ? `${Math.round(mins / 60)}h` : `${Math.round(mins / 1440)}d`;
+}
+
+/** The account's usage windows with their labels: two for a Claude account, one or two for a ChatGPT plan. */
+function usageWindows(a: AccountView): { label: string; v: number | null }[] {
+  if (a.provider !== 'chatgpt') return [{ label: '5h', v: a.fiveHour.utilization }, { label: '7d', v: a.sevenDay.utilization }];
+  const [short, long] = a.windowMins ?? [null, null];
+  return [...(short ? [{ label: winLabel(short, '5h'), v: a.fiveHour.utilization }] : []), { label: winLabel(long, '7d'), v: a.sevenDay.utilization }];
+}
+
 function usageTip(a: AccountView) {
-  const base = `${a.label}\n5h ${pct(a.fiveHour.utilization)} · 7d ${pct(a.sevenDay.utilization)}`;
+  const base = `${a.label}\n${usageWindows(a).map((w) => `${w.label} ${pct(w.v)}`).join(' · ')}`;
   const head = a.limitedUntil ? `${base}\n${t('usage.limitedUntil', { t: hhmm(a.limitedUntil) })}` : base;
   if (a.lastError) return `${head}\n${a.lastError}`;
   if (!a.usageUpdatedAt) return `${head}\n${t('usage.unknown')}`;
   const parts = [head, t('usage.asOf', { t: hhmm(a.usageUpdatedAt) })];
-  if (a.sevenDay.utilization === null) parts.push(t('usage.no7d'));
+  if (a.provider !== 'chatgpt' && a.sevenDay.utilization === null) parts.push(t('usage.no7d'));
   return parts.join('\n');
 }
 
@@ -1610,8 +1623,10 @@ const AVATAR = ['var(--blue)', 'var(--green)', 'var(--purple)', 'var(--orange)']
 const FALLBACK_MODELS = ['claude-fable-5-2', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'];
 
 /** Every model the accounts can use, newest first; a configured model missing from the list stays selectable. */
-function modelOpts(cur: string): Opt[] {
-  const ids = ui.models.models.length ? ui.models.models.map((m) => m.id) : FALLBACK_MODELS;
+/** `claudeOnly`: for an agent that has to run on Claude Code (the Dispatcher). */
+function modelOpts(cur: string, claudeOnly = false): Opt[] {
+  const known = ui.models.models.filter((m) => !claudeOnly || (m.provider ?? 'claude') === 'claude');
+  const ids = known.length ? known.map((m) => m.id) : FALLBACK_MODELS;
   const list = cur && !ids.includes(cur) ? [cur, ...ids] : ids;
   return list.map((id) => ({ value: id, label: modelLabel(id), sub: id }));
 }
@@ -1625,7 +1640,7 @@ function openModelPicker(btn: HTMLElement) {
   if (pop.owner === btn) { closePop(); return; }
   const inp = document.getElementById(btn.dataset.dd!) as HTMLInputElement | null;
   if (!inp) return;
-  openPop(btn, modelOpts(inp.value), inp.value, (v) => {
+  openPop(btn, modelOpts(inp.value, btn.dataset.dd === 'set-dm'), inp.value, (v) => {
     if (v === inp.value) return;
     inp.value = v;
     btn.querySelector('span')!.textContent = modelLabel(v);
@@ -1766,24 +1781,25 @@ function initials(label: string) {
 }
 
 function accountCard(a: AccountView, i: number) {
-  const kind = a.kind === 'login' ? t('acc.kindLogin') : t('acc.kindToken');
-  const plan = a.plan === 'enterprise' ? 'Enterprise' : 'Team';
+  const gpt = a.provider === 'chatgpt';
+  const kind = gpt ? t('acc.kindChatgpt') : a.kind === 'login' ? t('acc.kindLogin') : t('acc.kindToken');
+  const plan = gpt ? (a.planLabel || 'ChatGPT') : a.plan === 'enterprise' ? 'Enterprise' : 'Team';
   const renaming = ui.accRename === a.id;
   const name = renaming
     ? `<span class="acc-edit"><input class="inp" id="acc-rename" value="${esc(a.label)}" aria-label="${t('acc.name')}" data-id="${a.id}"><button class="btn def" data-action="acc-rename-save" data-id="${a.id}">${t('save')}</button><button class="btn" data-action="acc-rename-cancel">${t('cancel')}</button></span>`
-    : `<span class="acc-name"><b>${esc(a.label)}</b><span class="plan-badge ${a.plan}">${plan}</span></span>`;
+    : `<span class="acc-name"><b>${esc(a.label)}</b><span class="plan-badge ${gpt ? 'chatgpt' : a.plan}">${esc(plan)}</span></span>`;
   const menu = ui.accMenu === a.id ? `<div class="amenu" role="menu" aria-label="${t('acc.options')}">
       <button role="menuitem" data-action="acc-rename" data-id="${a.id}">${t('acc.rename')}</button>
       <button role="menuitem" data-action="acc-refresh">${t('acc.refresh')}</button>
-      <div class="amenu-sep"></div><span class="amenu-h">${t('acc.plan')}</span>
-      ${PLAN_OPTS.map((o) => `<button role="menuitemradio" aria-checked="${a.plan === o.value}" data-action="acc-plan" data-id="${a.id}" data-v="${o.value}">${sym('s-tick', 'amenu-tick')}${o.label}</button>`).join('')}
+      ${gpt ? '' : `<div class="amenu-sep"></div><span class="amenu-h">${t('acc.plan')}</span>
+      ${PLAN_OPTS.map((o) => `<button role="menuitemradio" aria-checked="${a.plan === o.value}" data-action="acc-plan" data-id="${a.id}" data-v="${o.value}">${sym('s-tick', 'amenu-tick')}${o.label}</button>`).join('')}`}
       <div class="amenu-sep"></div>
       <button role="menuitem" class="danger" data-action="acc-remove" data-id="${a.id}">${t('acc.removeMenu')}</button>
     </div>` : '';
   return `<div class="acc-card${renaming ? ' editing' : ''}">
     <span class="avatar" style="background:${AVATAR[i % AVATAR.length]}">${esc(initials(a.label))}</span>
     <span class="acc-main">${name}<span class="acc-kind">${kind}</span>${a.lastError ? `<span class="warn">${esc(a.lastError)}</span>` : ''}</span>
-    <span class="acc-meters">${meter('5h', a.fiveHour.utilization)}${meter('7d', a.sevenDay.utilization)}</span>
+    <span class="acc-meters">${usageWindows(a).map((w) => meter(w.label, w.v)).join('')}</span>
     <span class="acc-more"><button class="btn icon" data-action="acc-menu" data-id="${a.id}" aria-haspopup="menu" aria-expanded="${ui.accMenu === a.id}" aria-label="${t('acc.options')}">${sym('s-more')}</button>${menu}</span>
   </div>`;
 }
@@ -1796,7 +1812,7 @@ function removeDialog() {
   <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t">
     <span class="avatar big" style="background:${AVATAR[i % AVATAR.length]}">${esc(initials(a.label))}</span>
     <h2 id="dlg-t">${esc(t('acc.removeTitle', { name: a.label }))}</h2>
-    <p>${a.kind === 'login' ? t('acc.removeLogin') : t('acc.removeToken')}</p>
+    <p>${a.provider === 'chatgpt' ? t('acc.removeChatgpt') : a.kind === 'login' ? t('acc.removeLogin') : t('acc.removeToken')}</p>
     <div class="dlg-btns"><button class="btn" data-action="acc-remove-cancel">${t('cancel')}</button><button class="btn danger-fill" data-action="acc-remove-ok" data-id="${a.id}">${t('remove')}</button></div>
   </div>`;
 }
@@ -1805,7 +1821,11 @@ function settingsHtml() {
   const s = S!;
   const st = s.settings;
   const full = s.accounts.length >= MAX_ACCOUNTS;
-  const hasLogin = s.accounts.some((a) => a.kind === 'login');
+  const hasLogin = s.accounts.some((a) => a.kind === 'login' && a.provider !== 'chatgpt');
+  const hasChatgpt = s.accounts.some((a) => a.provider === 'chatgpt');
+  // Ways to add an account that are still open: one login of this PC's Claude Code, one of its Codex.
+  const methods: Opt[] = [{ value: 'token', label: t('acc.methodToken') }, ...(hasLogin ? [] : [{ value: 'login', label: t('acc.methodLogin') }]), ...(hasChatgpt ? [] : [{ value: 'chatgpt', label: t('acc.methodChatgpt') }])];
+  if (!methods.some((m) => m.value === ui.accKind)) ui.accKind = 'token';
   const pane = (id: Pane, body: string) => `<section class="pane" data-pane="${id}"${ui.pane === id ? '' : ' hidden'}><h2>${t(PANES.find((p) => p.id === id)!.key)}</h2>${body}</section>`;
   const row = (label: string, forId: string, control: string, cls = '') => `<div class="srow${cls ? ` ${cls}` : ''}"><label class="lbl" for="${forId}">${label}</label>${control}</div>`;
   const grp = (rows: string, cap = '') => `<div class="sgrp-wrap">${cap ? `<h3 class="scap">${cap}</h3>` : ''}<div class="sgrp">${rows}</div></div>`;
@@ -1813,11 +1833,11 @@ function settingsHtml() {
 
   const accounts = `${grp(s.accounts.map(accountCard).join('') || `<div class="srow"><span class="lbl muted">${t('acc.none')}</span></div>`, `${t('acc.registered')} <small>${s.accounts.length} / ${MAX_ACCOUNTS}</small>`)}
     ${full ? '' : grp(`
-      ${hasLogin ? '' : row(t('acc.method'), 'acc-kind', segc('acc-kind', ui.accKind, [{ value: 'token', label: t('acc.methodToken') }, { value: 'login', label: t('acc.methodLogin') }], t('acc.method'), 'data-change="acc-kind"'))}
+      ${methods.length < 2 ? '' : row(t('acc.method'), 'acc-kind', segc('acc-kind', ui.accKind, methods, t('acc.method'), 'data-change="acc-kind"'))}
       ${row(t('acc.name'), 'acc-label', `<input class="inp w" id="acc-label" placeholder="${t('acc.namePh')}">`)}
-      ${row(t('acc.plan'), 'acc-plan', segc('acc-plan', 'team', PLAN_OPTS, t('acc.plan')))}
+      ${row(t('acc.plan'), 'acc-plan', segc('acc-plan', 'team', PLAN_OPTS, t('acc.plan')), 'acc-plan-row')}
       ${row(t('acc.token'), 'acc-token', `<input class="inp w" id="acc-token" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">`, 'acc-token-row')}
-      <div class="srow end"><button class="btn def" data-action="acc-add" id="acc-add-btn">${t('acc.addToken')}</button><button class="btn def" data-action="acc-add-login" id="acc-login-btn">${t('acc.addLogin')}</button></div>`, t('acc.add'))}`;
+      <div class="srow end"><button class="btn def" data-action="acc-add" id="acc-add-btn">${t('acc.addToken')}</button><button class="btn def" data-action="acc-add-login" id="acc-login-btn">${t('acc.addLogin')}</button><button class="btn def" data-action="acc-add-chatgpt" id="acc-chatgpt-btn">${t('acc.addChatgpt')}</button></div>`, t('acc.add'))}`;
 
   const general = grp(`
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
@@ -1937,12 +1957,14 @@ function syncSlider(el: HTMLInputElement) {
 }
 
 function syncAccRows() {
-  const login = ($('#acc-kind') as HTMLInputElement | null)?.value === 'login';
-  document.querySelectorAll<HTMLElement>('.acc-token-row').forEach((el) => { el.hidden = login; });
-  const add = document.getElementById('acc-add-btn');
-  const lg = document.getElementById('acc-login-btn');
-  if (add) add.hidden = login;
-  if (lg) lg.hidden = !login;
+  const kind = ($('#acc-kind') as HTMLInputElement | null)?.value ?? 'token';
+  document.querySelectorAll<HTMLElement>('.acc-token-row').forEach((el) => { el.hidden = kind !== 'token'; });
+  // A ChatGPT account's plan comes from Codex.
+  document.querySelectorAll<HTMLElement>('.acc-plan-row').forEach((el) => { el.hidden = kind === 'chatgpt'; });
+  const show = (id: string, on: boolean) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
+  show('acc-add-btn', kind === 'token');
+  show('acc-login-btn', kind === 'login');
+  show('acc-chatgpt-btn', kind === 'chatgpt');
 }
 
 function syncSoundRows() {
@@ -2389,6 +2411,11 @@ async function act(el: HTMLElement, e: Event) {
     case 'acc-add-login': {
       const r = await call('account:add', $<HTMLInputElement>('#acc-label').value || t('acc.loginName'), 'login', '', $<HTMLInputElement>('#acc-plan').value);
       if (r) { $<HTMLInputElement>('#acc-label').value = ''; ui.accKind = 'token'; toast(t('toast.loginAdded')); }
+      break;
+    }
+    case 'acc-add-chatgpt': {
+      const r = await call('account:addChatgpt', $<HTMLInputElement>('#acc-label').value);
+      if (r) { $<HTMLInputElement>('#acc-label').value = ''; ui.accKind = 'token'; toast(t('toast.chatgptAdded')); void loadModels('now'); }
       break;
     }
     case 'acc-menu': ui.accMenu = ui.accMenu === id ? null : id; ui.accRename = null; openSettings(); break;

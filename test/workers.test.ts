@@ -262,7 +262,7 @@ test('clearing the queue keeps an open PR whose review work was queued, and leav
 });
 
 /** Feed a session what Claude Code would stream, without a process. */
-const feed = (s: AgentSession, ...ms: unknown[]) => ms.forEach((m) => (s as unknown as { handle(m: unknown): void }).handle(m));
+const feed = (s: unknown, ...ms: unknown[]) => ms.forEach((m) => (s as unknown as { handle(m: unknown): void }).handle(m));
 const said = (text: string) => ({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text }] } });
 const turnEnd = (text: string, queued = 0) => ({ type: 'result', subtype: 'success', is_error: false, result: text, queued_turn_count: queued });
 const agents = (n: number) => ({ type: 'system', subtype: 'background_tasks_changed', tasks: [
@@ -273,7 +273,8 @@ const agents = (n: number) => ({ type: 'system', subtype: 'background_tasks_chan
 const PLAN = '# Plan\nWHAT: Add the thing.\nHOW: Change one file.\nOUTPUT: A PR.\n\n## Steps\n1. Edit it.';
 
 /** The Worker calls ExitPlanMode; resolves once the plan card is in the decision inbox (no card if the plan was sent back). */
-async function presentPlan(s: AgentSession, plan = PLAN) {
+async function presentPlan(session: unknown, plan = PLAN) {
+  const s = session as AgentSession;
   const opts = { signal: new AbortController().signal, suggestions: [], toolUseID: 'tu' } as unknown as Parameters<CanUseTool>[2];
   const result = s.cfg.canUseTool!('ExitPlanMode', { plan }, opts);
   await tick();
@@ -285,7 +286,7 @@ test('a plan-first turn that ends while its subagents run leaves the task open; 
   // As T-0017 went: the Worker started explorers in the background and ended its turn to wait for them.
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w, { planFirst: true });
-  const s = workers.ensureSession(w)!;
+  const s = workers.ensureSession(w)! as AgentSession;
   assert.equal(s.cfg.permissionMode, 'plan');
   feed(s, agents(3), said('Explorers are still running. I\'ll finish the plan when their results come in.'), turnEnd(''));
   assert.equal(x.status, 'running');
@@ -567,11 +568,11 @@ beforeEach(() => { wakes = 0; });
 function talking(taskOver: Partial<Task> = {}) {
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w, taskOver);
-  return { w, x, s: workers.ensureSession(w)! };
+  return { w, x, s: workers.ensureSession(w)! as AgentSession };
 }
 const finished: Partial<Task> = { status: 'pr_open', finishedAt: now, prUrl: 'https://github.com/o/r/pull/1', prState: 'OPEN' };
 /** The Worker's turn says this and ends. */
-const turn = (s: AgentSession, text: string) => feed(s, said(text), turnEnd(text));
+const turn = (s: unknown, text: string) => feed(s, said(text), turnEnd(text));
 const chatLines = () => store.data.chat.map((c) => c.text);
 
 test('a question to an idle Worker reopens no task, and what its turn says reaches the Dispatcher as the answer', () => {
@@ -829,7 +830,7 @@ test('on restart, a task left waiting for one that already ended without a PR st
 test('a Worker waiting on a permission goes on once that decision is answered with text: the tool is denied with what the user said', async () => {
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w);
-  const s = workers.ensureSession(w)!;
+  const s = workers.ensureSession(w)! as AgentSession;
   s.ev.onStatus!('busy', '');
   const opts = { signal: new AbortController().signal, suggestions: [], toolUseID: 'tu' } as unknown as Parameters<CanUseTool>[2];
   const result = s.cfg.canUseTool!('Bash', { command: 'rm -rf build' }, opts);
