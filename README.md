@@ -6,7 +6,7 @@ Tell a Dispatcher what needs doing in one window, and it hands the work to Worke
 
 The main window with sample data: the sidebar lists what waits for you, running Workers, PRs in review and the queue; the chat holds the Dispatcher conversation and result cards; the right side holds decisions (a plan to approve, a command to allow) and results.
 
-Decisions made during implementation are in [docs/DECISIONS.md](docs/DECISIONS.md). The design system (an audit of the current UI, the v1 "Graphite Glass" spec and tokens, and a self-contained `design-system.html`) is in [docs/design-system/](docs/design-system/README.md); the app does not use it yet.
+Decisions made during implementation are in [docs/DECISIONS.md](docs/DECISIONS.md). The design system (an audit of the current UI, the v1 "Graphite Glass" spec and tokens, and a self-contained `design-system.html`) is in [docs/design-system/](docs/design-system/README.md); the app's styles are built on its tokens. What has to be checked by hand with real accounts, because no automated test can reach it, is in [docs/REAL-USE-CHECKLIST.md](docs/REAL-USE-CHECKLIST.md).
 
 ## Install
 
