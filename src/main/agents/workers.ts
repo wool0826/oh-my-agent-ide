@@ -1188,18 +1188,23 @@ class WorkerManager {
     if (w && this.working(w)) throw new Error(t('err.archiveBusy', { id: w.id }));
   }
 
+  /** Throws when the repository can't be removed yet: one of its tasks is open, or one of its Workers is mid-turn. */
+  checkRetire(name: string) {
+    const open = store.data.tasks.filter((x) => x.repo === name && (x.status === 'running' || x.status === 'waiting' || isQueued(x)));
+    if (open.length) throw new Error(t('repo.err.busy', { ids: open.map((x) => x.id).join(', ') }));
+    const busy = store.data.workers.find((w) => w.repo === name && this.working(w));
+    if (busy) throw new Error(t('err.archiveBusy', { id: busy.id }));
+  }
+
   /**
    * Before a repository is removed: refused while one of its tasks is open (running, waiting, queued or blocked),
    * since nothing could finish it. Its Workers are archived and their worktrees removed, also one kept for an open
    * PR, which nothing follows any more. A worktree with uncommitted changes is kept. Returns the Workers whose was.
    */
   async retireRepo(name: string): Promise<string[]> {
+    this.checkRetire(name);
     const repo = store.repo(name);
-    const open = store.data.tasks.filter((x) => x.repo === name && (x.status === 'running' || x.status === 'waiting' || isQueued(x)));
-    if (open.length) throw new Error(t('repo.err.busy', { ids: open.map((x) => x.id).join(', ') }));
     const ws = store.data.workers.filter((w) => w.repo === name);
-    const busy = ws.find((w) => this.working(w));
-    if (busy) throw new Error(t('err.archiveBusy', { id: busy.id }));
     const kept: string[] = [];
     for (const w of ws) {
       if (w.status !== 'archived') await this.archive(w.id);

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { store } from './store';
 import { workers } from './agents/workers';
 import { cleanupBranch, ghEnv } from './repos';
@@ -253,7 +254,8 @@ async function cleanUpLeft() {
     const repo = store.repo(c.repo);
     if (!repo) continue;
     if (store.worker(c.workerId) && workers.inUse(c.workerId)) { cleanupLater.push(c); continue; }
-    await cleanupBranch(repo, c.worktree, c.branch).catch((e) => log.warn('cleanup', e));
+    // The worktree may have gone meanwhile (the Worker archived): then only the branch is cleaned up.
+    await cleanupBranch(repo, fs.existsSync(c.worktree) ? c.worktree : null, c.branch).catch((e) => log.warn('cleanup', e));
   }
 }
 

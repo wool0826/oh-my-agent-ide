@@ -67,11 +67,13 @@ function clone(url: string, dir: string): Promise<void> {
         repoEvents.emit('progress');
       }
     });
-    const timer = setTimeout(() => p.kill(), 30 * 60_000);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; p.kill(); }, 30 * 60_000);
     p.on('error', (e) => { clearTimeout(timer); reject(e); });
     p.on('close', (code) => {
       clearTimeout(timer);
       if (adding?.cancelled) return reject(new Error(t('repo.err.cancelled')));
+      if (timedOut) return reject(new Error('git clone failed: it took more than 30 minutes'));
       if (code === 0) return resolve();
       const lines = tail.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
       const why = lines.filter((l) => /^(fatal|error|remote: error)/i.test(l)).pop() || lines.pop() || String(code);

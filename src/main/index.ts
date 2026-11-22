@@ -321,6 +321,7 @@ function registerIpc() {
   handle('repo:addCancel', () => cancelAddRepo());
   // Refused while one of its tasks is open; its Workers are archived and their worktrees removed first.
   handle('repo:remove', async (name: string) => {
+    workers.checkRetire(name); // refused before anything is stopped
     for (const w of store.data.workers) if (w.repo === name) runs.stop(w.id);
     const kept = await workers.retireRepo(name);
     removeRepo(name);
