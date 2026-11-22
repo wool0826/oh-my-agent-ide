@@ -43,7 +43,7 @@ function makeRepo(dir) {
  * Launches the app. `settings` is merged over the test defaults; `repos` names repositories to create and register
  * (each at https://github.com/o/<name>); `gh` seeds the stand-in's file (prs, issues).
  */
-export async function launch({ settings = {}, repos = [], gh = {} } = {}) {
+export async function launch({ settings = {}, repos = [], gh = {}, files = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-e2e-'));
   const data = path.join(dir, 'data');
   const home = path.join(dir, 'home');
@@ -59,6 +59,12 @@ export async function launch({ settings = {}, repos = [], gh = {} } = {}) {
     return { name, url: `https://github.com/o/${name}`, path: p, description: 'e2e', defaultBranch: 'main', addedAt: new Date().toISOString() };
   });
   if (repoRows.length) fs.writeFileSync(path.join(home, 'data', 'state.json'), JSON.stringify({ repos: repoRows }));
+
+  // Files a test wants in place before the app starts, by their path under the home folder (a state file, a backup).
+  for (const [rel, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(home, rel)), { recursive: true });
+    fs.writeFileSync(path.join(home, rel), text);
+  }
 
   const port = await freePort();
   const log = fs.openSync(path.join(dir, 'app.log'), 'w');
@@ -117,7 +123,7 @@ export async function launch({ settings = {}, repos = [], gh = {} } = {}) {
   }
 
   return {
-    dir, evaluate, until,
+    dir, home, evaluate, until,
     /** Says something to the Dispatcher, as typing in the chat does. */
     say: (text) => evaluate(`await window.ide.call('chat:send', ${JSON.stringify(text)}, []); return 1;`),
     click: (selector) => evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); el.click(); return 1;`),

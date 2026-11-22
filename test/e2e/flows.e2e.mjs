@@ -2,6 +2,8 @@
 // Each test starts the app on its own empty profile. Run with `npm run e2e`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { launch } from './harness.mjs';
 
 /** Runs a flow against a fresh app and always stops it. */
@@ -165,4 +167,24 @@ flow('an issue of a repository is handed to the Dispatcher', {
   assert.match(await app.evaluate("document.querySelector('.mini.issue').innerText"), /#12 Tax is rounded twice[\s\S]*bug/);
   await app.click('[data-action="issue-assign"]');
   await app.until("document.querySelector('#chat-thread').innerText.includes('Work on issue #12: Tax is rounded twice')", 'the message in the chat');
+});
+
+const savedTask = { id: 'T-0001', title: 'Kept in the backup', prompt: '', kind: 'other', repo: null, workerId: null, status: 'done', branch: null, prUrl: null, prState: null,
+  summary: 'From the backup.', files: [], createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', finishedAt: '2026-11-01T00:00:00Z', reviewSyncedAt: null, seenCommentIds: [] };
+
+flow('an unreadable state file is set aside and the newest backup is put back', {
+  files: {
+    'data/state.json': '{"tasks":[{"id":"T-00',
+    'data/backups/state-2026-11-01.json': JSON.stringify({ counters: { worker: 0, task: 1 }, tasks: [savedTask] }),
+    'data/backups/state-2026-11-02.json': 'also broken',
+  },
+}, async (app) => {
+  const s = await app.state();
+  assert.deepEqual(s.tasks.map((x) => x.title), ['Kept in the backup']);
+  assert.match(await app.evaluate("document.querySelector('#chat-thread').innerText"), /the backup of 2026-11-01 was put back/);
+  const data = fs.readdirSync(path.join(app.home, 'data'));
+  assert.ok(data.some((n) => /^state-broken-\d+\.json$/.test(n)), `the unreadable file was not kept: ${data.join(', ')}`);
+  // Today's copy was made at launch, from the state that was put back.
+  const today = fs.readdirSync(path.join(app.home, 'data', 'backups')).sort().at(-1);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(app.home, 'data', 'backups', today), 'utf8')).tasks.map((x) => x.title), ['Kept in the backup']);
 });
