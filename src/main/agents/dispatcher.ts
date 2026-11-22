@@ -25,6 +25,7 @@ import { hasSpend } from '../../shared/spend';
 import { sharedMemoDigest } from '../../shared/memos';
 import { describeCancel } from '../../shared/queue';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
+import { bundleName } from '../../shared/bundle';
 import { kTokens } from '../../shared/context';
 import { dispatcherReason } from '../../shared/askWhy';
 import { describePick, pickWorker, reuseBlock } from '../../shared/routing';
@@ -106,7 +107,7 @@ export function assignedEvent(task: Task, w: Worker, continuing: boolean) {
 }
 
 /** Create a task and hand it to a Worker. Used by the Dispatcher tool and by UI buttons. */
-export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; new_worker?: boolean; model?: 'opus' | 'fable'; model_id?: string; compare?: Task['compare']; after_task_id?: string; effort?: Effort; plan_first?: boolean }) {
+export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; bundle?: string; repo?: string; worker_id?: string; new_worker?: boolean; model?: 'opus' | 'fable'; model_id?: string; compare?: Task['compare']; after_task_id?: string; effort?: Effort; plan_first?: boolean }) {
   if (a.kind === 'code' && !a.repo) throw new Error('Code tasks need a repo. Check list_repos.');
   if (a.repo && !store.repo(a.repo)) throw new Error(`Repository is not registered: ${a.repo}`);
   let after: string | null = null;
@@ -129,6 +130,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     effort: s.effortPerTask && a.effort ? a.effort : null,
     planFirst: !!a.plan_first,
     ...(a.compare ? { compare: a.compare } : {}),
+    ...(bundleName(a.bundle) ? { bundle: bundleName(a.bundle) } : {}),
   };
   store.data.tasks.push(task);
   store.changed();
@@ -186,6 +188,7 @@ function boardTools(d: Dispatcher) {
         new_worker: z.boolean().optional().describe('Always start a new Worker, even if an idle one knows the code. Only when the user asks for a fresh Worker.'),
         model: z.enum(['opus', 'fable']).optional().describe('Default opus. fable only for deep design work'),
         after_task_id: z.string().optional().describe('Start only after this task\'s PR is merged (e.g. a follow-up that needs the merged change)'),
+        bundle: z.string().optional().describe('When one request needs changes in several repositories, create one task per repository and give them all the same short bundle name (e.g. "rename billing API"). The user then sees them together and merges their PRs in the order you created them, so create the task whose PR must merge first (the library, the API) before the ones that depend on it. Tell each Worker in its prompt what the other repositories\' tasks change. Omit for a task on its own.'),
         effort: z.enum(EFFORTS as [Effort, ...Effort[]]).optional().describe('Reasoning effort for this task. Omit for the default. medium for mechanical work (resolving conflicts, renames, small or CI fixes), low for trivial edits or lookups, xhigh or max for hard debugging, tricky concurrency, or design.'),
         plan_first: z.boolean().optional().describe('The Worker investigates read-only and proposes a plan; the user approves it in the decision inbox before any change, and the same Worker then carries it out. Use when the user asks to see a plan first, or the change is large, risky, or ambiguous. Write the prompt for the whole job, not "plan only".'),
       }, async (a) => {

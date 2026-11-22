@@ -22,6 +22,7 @@ import { taskMinutes, workerTotals } from '../shared/workerSummary';
 import { canPick, openComparisons } from '../shared/compare';
 import { matchItems, stepIndex, type PaletteItem } from '../shared/palette';
 import { awayDigest, awayRows, type AwayDigest } from '../shared/away';
+import { bundleMergeOrder, openBundles } from '../shared/bundle';
 import { normalizeQuickKey, quickKeyLabel } from '../shared/quickKey';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
@@ -1136,6 +1137,7 @@ function renderChatInspector() {
     // Decisions stay on top; what happened meanwhile comes right under them.
     html += awayHtml();
     html += comparisonsHtml();
+    html += bundlesHtml();
     if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" title="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.items.length) {
       html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
@@ -1184,6 +1186,28 @@ function comparisonsHtml() {
   }).join('')}</div>`).join('');
   const title = (g: (typeof groups)[number]) => esc(g.tasks[0].title.replace(/ \([^()]*\)$/, ''));
   return `<div class="sect"><div class="ins-h"><b>${t('cmp.title')}</b><small>${groups.length === 1 ? title(groups[0]) : groups.length}</small></div><div class="group">${cards}</div></div>`;
+}
+
+/**
+ * A request that spans repositories, in the inbox: its tasks in merge order, each with its repository, where it
+ * stands and its PR, and one button that merges the PRs in that order once every one is ready.
+ */
+function bundlesHtml() {
+  const bundles = openBundles(S!.tasks);
+  if (!bundles.length) return '';
+  return bundles.map((b) => {
+    const key = `b:${b.name}`;
+    const busy = ui.merging.has(key), sure = ui.mergeAsk === key;
+    const n = bundleMergeOrder(b).length;
+    const rows = b.tasks.map((x, i) => {
+      const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.prState === 'MERGED' ? ' purple' : x.status === 'pr_open' ? ' pr-open' : x.status === 'done' ? ' green' : '';
+      const label = x.prState === 'MERGED' ? t('pr.merged') : taskLabel(x);
+      return `<div class="mini bnd"><b><span class="bnd-n">${i + 1}</span>${esc(x.repo ?? t('general'))}</b><span>${esc(x.title)}</span>
+        <span class="bnd-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(x.workerId)}">${esc(x.workerId)}</button>` : ''}${x.prUrl ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}<span class="gap"></span><i class="pill${cls}">${label}</i></span></div>`;
+    }).join('');
+    const btn = b.ready || busy ? `<div class="mini bnd-act"><button class="btn def" data-action="bundle-merge" data-id="${esc(b.name)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'bundle.mergeSure' : 'bundle.merge', { n })}</button></div>` : '';
+    return `<div class="sect"><div class="ins-h"><b>${t('bundle.title')}</b><small>${esc(b.name)}</small></div><div class="group">${rows}${btn}</div></div>`;
+  }).join('');
 }
 
 /** "Daily 09:00", "Weekdays 09:00", "When a PR merges". */
@@ -2904,6 +2928,26 @@ async function act(el: HTMLElement, e: Event) {
       renderAll(true);
       break;
     }
+    case 'bundle-merge': {
+      const b = openBundles(S!.tasks).find((x) => x.name === id);
+      if (!b || !b.ready) break;
+      const key = `b:${b.name}`;
+      if (ui.mergeAsk !== key) { ui.mergeAsk = key; renderAll(true); break; }
+      ui.mergeAsk = null;
+      ui.merging.add(key);
+      renderAll(true);
+      // In the order the tasks were made, and no further once one fails: a later PR may depend on it.
+      const list = bundleMergeOrder(b);
+      let merged = 0;
+      for (const x of list) {
+        try { await ide.call('pr:merge', x.id); merged++; } catch (e) { toast((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), true); break; }
+      }
+      ui.merging.delete(key);
+      if (merged === list.length) toast(t('pr.mergedAll', { n: merged }));
+      else if (merged) toast(t('bundle.stopped', { n: merged, m: list.length - merged }), true);
+      renderAll(true);
+      break;
+    }
     case 'pr-merge-all': {
       if (ui.mergeAsk !== '*') { ui.mergeAsk = '*'; renderAll(true); break; }
       ui.mergeAsk = null;
@@ -3233,7 +3277,7 @@ function init() {
     if (step) { stepValue(step.dataset.for!, Number(step.dataset.step)); return; }
     if (pop.el && !pop.el.contains(tgt) && tgt !== pop.owner) closePop();
     if (ui.memoDel && !tgt.closest('.mact.del.sure')) askMemoDel(null);
-    if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure')) { ui.mergeAsk = null; renderAll(true); }
+    if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure, [data-action="bundle-merge"]')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
     if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
