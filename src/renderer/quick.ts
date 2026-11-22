@@ -1,6 +1,7 @@
 // The quick message box: one line to the Dispatcher from anywhere, then it goes away (decisions 123 and 135).
 import { addRecent, completeRepo, recentStep } from '../shared/quickInput';
 import { clampFontSize, fontStack } from '../shared/font';
+import { planPaste } from '../shared/paste';
 
 interface QuickText { ph: string; sent: string; lang: string; theme: string; repos: string[]; files: string; fontFamily?: string; fontSize?: number }
 interface Bridge { call<T = unknown>(channel: string, ...args: unknown[]): Promise<T>; pathForFile(f: File): string }
@@ -97,6 +98,18 @@ window.addEventListener('drop', (e) => {
   }
   draw();
   input.focus();
+});
+// Pasting files copied in Explorer or Finder attaches them, like a drop. A bare screenshot is saved first.
+input.addEventListener('paste', (e) => {
+  const cd = e.clipboardData;
+  const list = Array.from(cd?.files ?? []);
+  if (!cd || !list.length) return;
+  const plan = planPaste(list.map((f) => { let path = ''; try { path = ide.pathForFile(f); } catch { /* clipboard data */ } return { path, type: f.type, size: f.size }; }), !!cd.getData('text/plain'));
+  if (plan.kind === 'text') return;
+  e.preventDefault();
+  const take = (paths: string[]) => { for (const p of paths) if (p && !files.includes(p)) files.push(p); draw(); };
+  if (plan.kind === 'paths') { take(plan.paths); return; }
+  void Promise.all(plan.files.map(async (i) => ide.call<string>('attach:pasteImage', list[i].type, new Uint8Array(await list[i].arrayBuffer())).catch(() => ''))).then(take);
 });
 chip.addEventListener('click', () => { files = []; draw(); input.focus(); });
 
