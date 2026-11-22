@@ -155,7 +155,7 @@ class Accounts extends EventEmitter {
       if (/^(CLAUDECODE|CLAUDE_|AI_AGENT$|MCP_CONNECTION|MCP_SERVER_CONNECTION|BAGGAGE$|ANTHROPIC_API_KEY$|ANTHROPIC_AUTH_TOKEN$)/.test(k)) continue;
       env[k] = v;
     }
-    env.CLAUDE_AGENT_SDK_CLIENT_APP = 'oh-my-agent-ide/0.6.0';
+    env.CLAUDE_AGENT_SDK_CLIENT_APP = 'oh-my-agent-ide/0.6.1';
     const a = this.get(id);
     if (a?.kind === 'token') env.CLAUDE_CODE_OAUTH_TOKEN = decryptToken(a.tokenEnc);
     return env;
