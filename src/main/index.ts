@@ -412,6 +412,13 @@ async function boot() {
   ensureHome();
   log.info('boot', paths().home);
   store.load();
+  // The state file was unreadable: say what was done about it, once, where the user will see it.
+  if (store.restoredFrom) {
+    log.error('state file unreadable; restored from', store.restoredFrom);
+    store.chat('error', store.restoredFrom === 'none' ? t('backup.lost') : t('backup.restored', { day: store.restoredFrom }));
+  }
+  store.backup();
+  setInterval(() => store.backup(), 3600_000).unref();
   pruneDecisions();
   // Questions and permission requests from the last run are withdrawn; Workers ask again as they continue.
   for (const d of [...store.data.decisions]) if (d.status === 'pending' && d.source !== 'dispatcher') withdraw(d.id);

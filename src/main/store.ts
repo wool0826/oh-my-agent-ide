@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { readJson, writeJsonAtomic, debounce, nowIso, ensureDir, uid, month } from './util';
+import { backupName, backupsNewestFirst, backupsToDrop, stateText } from '../shared/backup';
 import { paths } from './paths';
 import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
 import { PAGE, itemsBefore, pageBefore } from '../shared/paging';
@@ -50,9 +51,54 @@ const empty = (): Data => ({
 class Store extends EventEmitter {
   data: Data = empty();
 
+  /** Set by load() when the state file could not be read and a backup took its place: the day of that backup, or 'none'. */
+  restoredFrom: string | null = null;
+
+  /**
+   * Reads the state. A file that holds something unreadable is set aside (never overwritten), and the newest
+   * backup that can be read takes its place; with none, the app starts empty and says so.
+   */
   load() {
-    const raw = readJson<Partial<Data>>(paths().state, {});
+    const file = paths().state;
+    let text: string | null = null;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { /* a first run */ }
+    if (stateText(text) === 'broken') {
+      const aside = path.join(paths().data, `state-broken-${Date.now()}.json`);
+      try { fs.copyFileSync(file, aside); } catch { /* kept where it is */ }
+      this.restoredFrom = 'none';
+      text = null;
+      let names: string[] = [];
+      try { names = fs.readdirSync(paths().backups); } catch { /* no backups yet */ }
+      for (const name of backupsNewestFirst(names)) {
+        let candidate: string | null = null;
+        try { candidate = fs.readFileSync(path.join(paths().backups, name), 'utf8'); } catch { continue; }
+        if (stateText(candidate) !== 'ok') continue;
+        text = candidate;
+        this.restoredFrom = name.replace(/^state-|\.json$/g, '');
+        break;
+      }
+    }
+    const raw = stateText(text) === 'ok' ? (JSON.parse(text!.replace(/^\uFEFF/, '')) as Partial<Data>) : {};
     this.data = { ...empty(), ...raw } as Data;
+    if (this.restoredFrom) this.flush();
+  }
+
+  /**
+   * Once a day, the state as it is on disk is copied to data/backups, and the oldest copies beyond a week go.
+   * Called at launch and every hour; a day that already has its copy is left alone.
+   */
+  backup(now = new Date()) {
+    try {
+      const dir = paths().backups;
+      ensureDir(dir);
+      const target = path.join(dir, backupName(now));
+      if (fs.existsSync(target)) return;
+      let text: string | null = null;
+      try { text = fs.readFileSync(paths().state, 'utf8'); } catch { return; }
+      if (stateText(text) !== 'ok') return; // never keep a copy of a file that cannot be read
+      fs.writeFileSync(target, text);
+      for (const old of backupsToDrop(fs.readdirSync(dir))) fs.rmSync(path.join(dir, old), { force: true });
+    } catch { /* a backup that fails must not stop the app */ }
   }
 
   private persist = debounce(() => writeJsonAtomic(paths().state, this.data), 300);

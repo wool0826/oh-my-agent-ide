@@ -16,6 +16,7 @@ export function paths() {
     plugin: path.join(home, 'plugin'),
     data: path.join(home, 'data'),
     state: path.join(home, 'data', 'state.json'),
+    backups: path.join(home, 'data', 'backups'),
     workerLogs: path.join(home, 'data', 'workers'),
     appLog: path.join(home, 'data', 'app.log'),
   };
