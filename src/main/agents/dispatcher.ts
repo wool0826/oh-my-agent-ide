@@ -9,6 +9,7 @@ import { providerOf } from '../../shared/models';
 import { workers, modelLabel } from './workers';
 import { accounts } from '../accounts';
 import { store } from '../store';
+import { automations } from '../automations';
 import { createDecision } from '../decisions';
 import { remember, searchMemory, memoryDigest } from '../memory';
 import { memoryDirFor, searchClaudeMemory, userRulesSection } from '../claudeContext';
@@ -287,6 +288,23 @@ function boardTools(d: Dispatcher) {
         const spend = task.spend ? { ...task.spend, note: SPEND_NOTE } : undefined;
         return ok(JSON.stringify({ ...task, seenCommentIds: undefined, spend }, null, 2));
       }),
+      tool('create_automation', 'Set up work that starts by itself: every day at a time, or each time a PR is merged. When it fires you get its prompt as a message starting with "[Automation: title]" and handle it like any request. Use it when the user asks for something to happen regularly or after merges.', {
+        prompt: z.string().describe('What to do each time, written so it stands on its own.'),
+        title: z.string().optional().describe('Short name for the list.'),
+        trigger: z.enum(['daily', 'merged']),
+        time: z.string().optional().describe('For daily: local time of day as HH:MM. Default 09:00.'),
+        weekdays_only: z.boolean().optional().describe('For daily: skip Saturday and Sunday.'),
+      }, async (a) => {
+        try {
+          const made = automations.add({ prompt: a.prompt, title: a.title, trigger: a.trigger === 'merged' ? { kind: 'merged' } : { kind: 'daily', time: a.time ?? '09:00', weekdays: !!a.weekdays_only } });
+          return ok(`Automation ${made.id} "${made.title}" created.${made.nextRunAt ? ` Next run: ${made.nextRunAt}.` : ''}`);
+        } catch (e) { return fail((e as Error).message); }
+      }),
+      tool('list_automations', 'List automations with their trigger, whether they are on, and their last and next run.', {}, async () => {
+        const list = automations.list();
+        return ok(list.length ? JSON.stringify(list, null, 2) : 'No automations.');
+      }),
+      tool('remove_automation', 'Delete an automation by its id (from list_automations).', { id: z.string() }, async (a) => (automations.remove(a.id) ? ok('Removed.') : fail('No such automation.'))),
   ];
 }
 

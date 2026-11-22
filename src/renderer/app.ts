@@ -1,4 +1,4 @@
-import type { Memo, Repo } from '../shared/types';
+import type { Automation, Memo, Repo } from '../shared/types';
 import type { AppState, AutoAnswer, ChatItem, ClaudeInfo, Decision, DiffView, LogPage, MemoryFile, MemoryHit, MemoryHits, MemorySuggestion, ModelList, PlanSummary, Task, Worker, WorkerLogItem, AccountView, SoundName, Lang } from '../shared/types';
 import { ALLOW, DENY, EFFORTS, MAX_ACCOUNTS, type Effort } from '../shared/types';
 import { tr, type Key } from '../shared/i18n';
@@ -14,6 +14,7 @@ import { patchLines, reviewMessage, type DiffNote } from '../shared/diffComment'
 import { canMerge } from '../shared/prMerge';
 import { lastLines } from '../shared/runOutput';
 import { ghRepoRef, issueMessage, type Issue } from '../shared/issues';
+import { parseTime } from '../shared/automations';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -132,7 +133,10 @@ const ui = {
   /** The chat view's right sidebar shows the inbox or the memos; the memo being edited, and the one asked about before deleting. */
   /** The message being answered in each composer; the Worker's is dropped when another Worker is opened. */
   reply: { chat: null as Reply | null, ws: null as (Reply & { wid: string }) | null },
-  insTab: 'inbox' as 'inbox' | 'memo',
+  insTab: 'inbox' as 'inbox' | 'memo' | 'auto',
+  /** The Automations tab's add form: which trigger is picked, and weekdays only. */
+  autoKind: 'daily' as 'daily' | 'merged',
+  autoWk: false,
   memoEdit: null as string | null,
   memoDel: null as string | null,
   /** The last chat item and Worker log length already drawn; what comes after them is new. */
@@ -1054,10 +1058,11 @@ function renderChatInspector() {
   const root = $('#chat-ins');
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
-    const tab = (v: 'inbox' | 'memo', label: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${label}${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${label}${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
-    const tabs = `<div class="segc ins-tabs" role="tablist" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), pending.length)}${tab('memo', t('ins.tabMemo'))}</div>`;
+    const tabs = `<div class="segc ins-tabs" role="tablist" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), pending.length)}${tab('memo', t('ins.tabMemo'))}${tab('auto', t('ins.tabAuto'))}</div>`;
     if (ui.insTab === 'memo') { root.innerHTML = tabs + memosHtml(); return; }
+    if (ui.insTab === 'auto') { root.innerHTML = tabs + autosHtml(); return; }
     // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
     const results = paged('results', s.results.slice().reverse(), PAGE.results);
     const autos = paged('autos', visibleAutos(), PAGE.autos);
@@ -1093,6 +1098,42 @@ function memoHtml(m: Memo) {
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="memo-remove" data-id="${m.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
   return `<div class="memo" data-memo="${m.id}"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
     <span class="acts">${act('memo-share', 's-pin', t(m.shared ? 'memo.unshare' : 'memo.share'), m.shared ? ' on' : '')}${act('memo-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
+}
+
+/** "Daily 09:00", "Weekdays 09:00", "When a PR merges". */
+function triggerLabel(a: Automation) {
+  return a.trigger.kind === 'merged' ? t('auto.merged') : t(a.trigger.weekdays ? 'auto.weekdaysAt' : 'auto.dailyAt', { t: a.trigger.time });
+}
+
+/** The Automations tab: what to hand the Dispatcher and when, then the ones set up, each with its switch. */
+function autosHtml() {
+  const daily = ui.autoKind === 'daily';
+  const add = `<div class="auto-add"><textarea class="inp" id="auto-prompt" data-keep="auto-prompt" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}"></textarea>
+    <div class="auto-when">${segc('auto-kind', ui.autoKind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}${daily ? `<input class="inp" id="auto-time" data-keep="auto-time" value="09:00" inputmode="numeric" aria-label="${t('auto.time')}">` : ''}</div>
+    <div class="auto-when">${daily ? `<label class="auto-wk"><input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}>${t('auto.weekdays')}</label>` : ''}<span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>`;
+  const list = S!.automations;
+  if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
+  const rows = list.map((a) => {
+    const sure = ui.memoDel === a.id;
+    const next = a.enabled && a.nextRunAt ? ` · ${t('auto.next', { t: when(a.nextRunAt) })}` : '';
+    return `<div class="memo auto${a.enabled ? '' : ' off'}"><p title="${esc(a.prompt)}">${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${esc(next)}</span>
+      <span class="acts"><input class="switch" type="checkbox" data-change="auto-toggle" data-id="${a.id}"${a.enabled ? ' checked' : ''} aria-label="${esc(`${t('auto.on')}: ${a.title}`)}"><button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button></span></span></div>`;
+  }).join('');
+  return `${add}<div class="sect"><div class="ins-h"><b>${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${rows}</div></div>`;
+}
+
+async function addAuto() {
+  const inp = $<HTMLTextAreaElement>('#auto-prompt');
+  const prompt = inp?.value.trim();
+  if (!prompt) { inp?.focus(); return; }
+  let trigger: Automation['trigger'] = { kind: 'merged' };
+  if (ui.autoKind === 'daily') {
+    const time = parseTime($<HTMLInputElement>('#auto-time')?.value ?? '');
+    if (!time) { toast(t('auto.badTime'), true); $<HTMLInputElement>('#auto-time')?.focus(); return; }
+    trigger = { kind: 'daily', time, weekdays: ui.autoWk };
+  }
+  inp.value = '';
+  await call('auto:add', prompt, trigger);
 }
 
 /** The Memos tab: a field to add one, then the memos shared with agents and the user's own. */
@@ -2448,8 +2489,10 @@ async function act(el: HTMLElement, e: Event) {
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
       break;
     }
-    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
+    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : el.dataset.v === 'auto' ? 'auto' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
     case 'memo-add': await addMemo(); break;
+    case 'auto-add': await addAuto(); break;
+    case 'auto-remove': if (ui.memoDel === id) { ui.memoDel = null; await call('auto:remove', id); } else askMemoDel(id ?? null); break;
     case 'memo-share': { const m = S!.memos.find((x) => x.id === id); if (m) await call('memo:update', id, { shared: !m.shared }); break; }
     case 'memo-edit': ui.memoEdit = id; ui.memoDel = null; renderChatInspector(); document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.focus(); break;
     case 'memo-edit-cancel': ui.memoEdit = null; renderChatInspector(); break;
@@ -2833,6 +2876,9 @@ function init() {
   document.addEventListener('change', async (e) => {
     const el = e.target as HTMLSelectElement;
     if (el.dataset.change === 'sound-kind') syncSoundRows();
+    if (el.dataset.change === 'auto-toggle') { void call('auto:toggle', el.dataset.id, (el as unknown as HTMLInputElement).checked); return; }
+    if (el.id === 'auto-wk') { ui.autoWk = (el as unknown as HTMLInputElement).checked; return; }
+    if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; renderChatInspector(); return; }
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
     if (el.id === 'set-gh') el.value = hostOnly(el.value);
     if (el.closest?.('#sheet')) void saveSettingsNow();

@@ -844,3 +844,16 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .mini span.err { color: var(--danger-text); }
 .clear-x.always { opacity: 1; }
 .clear-x.always svg { width: 10px; height: 10px; }
+
+/* ---------- automations (the right sidebar's third tab) ---------- */
+.auto-add { display: flex; flex-direction: column; gap: var(--space-8); }
+.auto-add textarea.inp { min-height: 56px; }
+.auto-when { display: flex; align-items: center; gap: var(--space-8); min-height: var(--control-md); }
+.auto-when .segc { flex: none; }
+.auto-when .gap { flex: 1; }
+.auto-when #auto-time { width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+.auto-wk { display: inline-flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; }
+.memo.auto p { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.memo.auto .meta { min-height: var(--control-md); }
+.memo.auto .acts { opacity: 1; align-items: center; gap: var(--space-8); }
+.memo.auto.off p, .memo.auto.off .meta > span:first-child { color: var(--text-tertiary); }

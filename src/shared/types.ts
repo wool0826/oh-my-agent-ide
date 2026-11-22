@@ -282,6 +282,23 @@ export interface ModelInfo { id: string; name: string; created: string; provider
 /** The model list and when it was last read; error is the last failed refresh, if any. */
 export interface ModelList { models: ModelInfo[]; fetchedAt: string | null; error: string | null }
 
+/** What sets an automation off: a time every day (local, "HH:MM"; on weekdays only if asked), or a PR being merged. */
+export type AutoTrigger = { kind: 'daily'; time: string; weekdays: boolean } | { kind: 'merged' };
+
+/** Work the Dispatcher is handed by itself (shared/automations.ts). */
+export interface Automation {
+  id: string;
+  title: string;
+  /** What the Dispatcher is asked to do. */
+  prompt: string;
+  trigger: AutoTrigger;
+  enabled: boolean;
+  lastRunAt: string | null;
+  /** When a daily one runs next; null for an event trigger. */
+  nextRunAt: string | null;
+  createdAt: string;
+}
+
 /** A repository's run command going in a Worker's worktree, or its last output once it ended. */
 export interface RunView {
   workerId: string;
@@ -315,6 +332,7 @@ export interface AppState {
   results: ChatItem[];
   /** The user's memos, shown in the right sidebar's Memos tab. */
   memos: Memo[];
+  automations: Automation[];
   /** Run commands started in this session of the app. */
   runs: RunView[];
   /** The IDE memory's sync with its remote repository. */
