@@ -27,7 +27,8 @@ import { isAttached, readPath } from '../attachments';
 import { t, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
-import { ALLOW, ALLOW_TASK, DENY, type Task, type Worker } from '../../shared/types';
+import { ALLOW, ALLOW_TASK, DENY, type Task, type TaskStatus, type Worker, type WorkerStatus } from '../../shared/types';
+import { workerDecisions } from '../../shared/inbox';
 import { afterDependency, cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
@@ -44,6 +45,19 @@ import { workerCodexTools, workerMemoryDir, workerTools } from './workerTools';
 
 /** A Worker's session: Claude Code, or Codex for a ChatGPT model. The owner uses what the two have in common. */
 export type WorkerSession = AgentSession | CodexSession | FakeSession;
+type FeedbackKind = 'review' | 'ci' | 'conflict';
+
+/**
+ * Set a task's status. Starting or ending a wait forgets the last one's timer and released slot, so two short waits
+ * never add up to the time after which a waiting task gives its slot back (sweepWaiting starts the new timer).
+ */
+function setStatus(task: Task, status: TaskStatus) {
+  if ((status === 'waiting') !== (task.status === 'waiting')) {
+    task.waitingSince = null;
+    task.slotReleased = false;
+  }
+  task.status = status;
+}
 
 class WorkerManager {
   sessions = new Map<string, WorkerSession>();
@@ -70,19 +84,27 @@ class WorkerManager {
    * A follow-up for a task that finished (or failed) less than 3 days ago reopens that task,
    * so the Worker shows as running on it and its next report settles it.
    */
-  private reopenLast(w: Worker) {
-    if (this.currentTask(w)) return;
-    const last = w.taskIds.length ? store.task(w.taskIds[w.taskIds.length - 1]) : null;
-    if (!last || (last.status !== 'done' && last.status !== 'pr_open' && last.status !== 'failed')) return;
-    // A failed task never got finishedAt; it failed when it was last updated.
-    const at = last.finishedAt ?? (last.status === 'failed' ? last.updatedAt : null);
-    if (!at || Date.now() - Date.parse(at) > 3 * 86400_000) return;
-    if (last.prState === 'MERGED' || last.prState === 'CLOSED') return;
+  private reopenLast(w: Worker): Task | null {
+    const last = this.reopenable(w);
+    if (!last) return null;
     // A task that failed before finishing just continues; its report is not a follow-up.
     if (last.finishedAt) this.followups.add(last.id);
-    last.status = 'running';
+    setStatus(last, 'running');
     last.stopped = false;
     last.updatedAt = nowIso();
+    return last;
+  }
+
+  /** The Worker's last task, when a follow-up would reopen it (reopenLast). */
+  private reopenable(w: Worker): Task | null {
+    if (this.currentTask(w)) return null;
+    const last = w.taskIds.length ? store.task(w.taskIds[w.taskIds.length - 1]) : null;
+    if (!last || (last.status !== 'done' && last.status !== 'pr_open' && last.status !== 'failed')) return null;
+    // A failed task never got finishedAt; it failed when it was last updated.
+    const at = last.finishedAt ?? (last.status === 'failed' ? last.updatedAt : null);
+    if (!at || Date.now() - Date.parse(at) > 3 * 86400_000) return null;
+    if (last.prState === 'MERGED' || last.prState === 'CLOSED') return null;
+    return last;
   }
 
   list() { return store.data.workers; }
@@ -277,20 +299,15 @@ class WorkerManager {
   private codexApproval(w: Worker) {
     return async (req: CodexApproval): Promise<CodexDecision> => {
       const task = this.currentTask(w);
-      const prev = w.status;
-      w.status = 'waiting';
-      if (task) task.status = 'waiting';
-      store.changed();
+      const prev = this.awaitDecision(w, task);
       const tool = req.kind === 'command' ? 'Bash' : 'Edit';
       const input = req.kind === 'command' ? { command: req.command } : { file_path: req.files.join(', ') };
       const code = (req.kind === 'command' ? `$ ${req.command}` : req.files.join('\n')).slice(0, 1200);
       // One file names a folder; several files are asked about each time.
       const scope = this.taskScope(task, tool, req.kind === 'command' ? input : req.files.length === 1 ? { file_path: req.files[0] } : {});
       if (task && scope && hasGrant(task, scope.key)) {
-        if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
-        if (task.status === 'waiting') task.status = 'running';
+        this.decided(w, task, prev);
         store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
-        store.changed();
         return 'accept';
       }
       try {
@@ -309,11 +326,27 @@ class WorkerManager {
       } catch {
         return 'decline';
       } finally {
-        if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
-        if (task && task.status === 'waiting') task.status = 'running';
-        store.changed();
+        this.decided(w, task, prev);
       }
     };
+  }
+
+  /** The Worker asks the user something: it and its task wait. Returns the status to go back to. */
+  private awaitDecision(w: Worker, task: Task | null): WorkerStatus {
+    const prev = w.status;
+    w.status = 'waiting';
+    if (task) setStatus(task, 'waiting');
+    store.changed();
+    return prev;
+  }
+
+  /** A decision was answered or withdrawn: back to work, unless another one of this Worker's is still open. */
+  private decided(w: Worker, task: Task | null, prev: WorkerStatus) {
+    if (!workerDecisions(store.data.decisions, w.id).length) {
+      if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
+      if (task && task.status === 'waiting') setStatus(task, 'running');
+    }
+    store.changed();
   }
 
   private permissionHandler(w: Worker): CanUseTool {
@@ -332,10 +365,7 @@ class WorkerManager {
         store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
         return { behavior: 'allow', updatedInput: input };
       }
-      const prev = w.status;
-      w.status = 'waiting';
-      if (task) task.status = 'waiting';
-      store.changed();
+      const prev = this.awaitDecision(w, task);
       try {
         // The always-ask hook's reason is ours (the rule says it better); any other is Claude Code's own.
         const cc = opts.decisionReason?.startsWith(ALWAYS_ASK_PREFIX) ? null : opts.decisionReason;
@@ -355,9 +385,7 @@ class WorkerManager {
       } catch {
         return { behavior: 'deny', message: 'The request was cancelled.' };
       } finally {
-        if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
-        if (task && task.status === 'waiting') task.status = 'running';
-        store.changed();
+        this.decided(w, task, prev);
       }
     };
   }
@@ -379,10 +407,7 @@ class WorkerManager {
       summary = planFallback(plan);
     }
     store.log(w.id, 'worker', plan ? `${t('log.plan')}\n\n${plan}` : t('log.plan'));
-    const prev = w.status;
-    w.status = 'waiting';
-    if (task) task.status = 'waiting';
-    store.changed();
+    const prev = this.awaitDecision(w, task);
     try {
       const ans = await ask({
         source: 'plan', workerId: w.id, taskId: task?.id ?? null,
@@ -412,9 +437,7 @@ class WorkerManager {
     } catch {
       return { behavior: 'deny' as const, message: 'The plan review was cancelled. Stay in plan mode and present the plan again with ExitPlanMode.' };
     } finally {
-      if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
-      if (task && task.status === 'waiting') task.status = 'running';
-      store.changed();
+      this.decided(w, task, prev);
     }
   }
 
@@ -467,10 +490,7 @@ class WorkerManager {
         store.log(w.id, 'auto', t('log.autoAnswered', { a: verdict.answer, basis: verdict.basis }));
         continue;
       }
-      const prev = w.status;
-      w.status = 'waiting';
-      if (task) task.status = 'waiting';
-      store.changed();
+      const prev = this.awaitDecision(w, task);
       try {
         const ans = await ask({
           source: 'question', workerId: w.id, taskId: task?.id ?? null,
@@ -484,9 +504,7 @@ class WorkerManager {
       } catch {
         answers[q.question] = '(The user did not answer. Decide sensibly, proceed, and mention it in your report.)';
       } finally {
-        if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
-        if (task && task.status === 'waiting') task.status = 'running';
-        store.changed();
+        this.decided(w, task, prev);
       }
     }
     return { behavior: 'allow' as const, updatedInput: { ...input, answers } };
@@ -533,7 +551,7 @@ class WorkerManager {
    * its slot, like any task that waits for an answer, and goes on with the next message to the Worker.
    */
   private awaitDispatcher(w: Worker, task: Task, need: string | null) {
-    task.status = 'waiting';
+    setStatus(task, 'waiting');
     task.updatedAt = nowIso();
     // A BLOCKED report without a request is the request. One made earlier told the Dispatcher what is needed; now
     // it hears that the task stopped for it, in case it did something about the request without writing back.
@@ -596,7 +614,7 @@ class WorkerManager {
   private fail(w: Worker, task: Task, text: string) {
     const by = this.stopping.get(w.id);
     const stopped = !!by;
-    task.status = 'failed';
+    setStatus(task, 'failed');
     task.stopped = stopped;
     task.updatedAt = nowIso();
     task.summary = stopped ? t(by === 'user' ? 'task.stoppedUser' : 'task.stoppedDispatcher') : oneLine(text || t('err.stopped'), 200);
@@ -649,7 +667,7 @@ class WorkerManager {
     task.summary = summary;
     task.prUrl = prUrl ?? task.prUrl;
     task.files = files.length ? files : task.files;
-    task.status = task.prUrl ? 'pr_open' : 'done';
+    setStatus(task, task.prUrl ? 'pr_open' : 'done');
     task.stopped = false;
     task.prState = task.prUrl ? (task.prState ?? 'OPEN') : null;
     task.finishedAt = nowIso();
@@ -864,13 +882,18 @@ class WorkerManager {
     for (const task of queueOrder(store.data.tasks, 'slot')) {
       const w = task.workerId ? store.worker(task.workerId) : null;
       if (!w || !waitsForSlot(task) || !this.hasSlot(w)) continue;
-      if (w.status === 'archived') void this.unarchive(w);
+      // Its worktree is made again first; the queue is filled again once it is there.
+      if (w.status === 'archived') {
+        void this.restoreWorker(w).then((ok) => ok && this.fillSlots());
+        continue;
+      }
       const s = this.ensureSession(w);
       // A usage limit holds every account now: it waits for that instead.
       if (!s) { this.pause(w, task); continue; }
       if (!taskStarted(w, task)) w.title = task.title;
       this.deliver(w, s, [], task);
     }
+    this.sendFeedback();
   }
 
   /**
@@ -911,10 +934,10 @@ class WorkerManager {
   }
 
   /** Instructions for a Worker. Says where the message is now: sent, or held for a slot or a usage limit. */
-  send(workerId: string, from: 'user' | 'dispatcher', text: string) {
+  async send(workerId: string, from: 'user' | 'dispatcher', text: string) {
     const w = store.worker(workerId);
     if (!w) throw new Error(t('err.noWorker', { id: workerId }));
-    if (w.status === 'archived') void this.unarchive(w);
+    if (w.status === 'archived') await this.unarchive(w);
     store.log(w.id, from, text);
     if (from === 'user') store.pushUpdate(`The user wrote to ${w.id} directly: ${oneLine(text, 200)}`);
     // From either one, it answers what the Worker asked the Dispatcher for: a task that waited for that goes on.
@@ -924,7 +947,7 @@ class WorkerManager {
       // What it asks with no task open is counted per Worker, from one answer to the next.
       this.requestWakes.delete(w.id);
       if (cur?.status === 'waiting' && !this.sessions.get(w.id)?.busy) {
-        cur.status = 'running';
+        setStatus(cur, 'running');
         cur.updatedAt = nowIso();
         w.statusText = '';
       }
@@ -939,10 +962,10 @@ class WorkerManager {
    * The Dispatcher asks a Worker something. Unlike instructions, a question reopens no task, and the answer goes
    * back to the Dispatcher: by tell_dispatcher, mid-task too, or as the text of the turn. Says where the question is now.
    */
-  ask(workerId: string, text: string) {
+  async ask(workerId: string, text: string) {
     const w = store.worker(workerId);
     if (!w) throw new Error(t('err.noWorker', { id: workerId }));
-    if (w.status === 'archived') void this.unarchive(w);
+    if (w.status === 'archived') await this.unarchive(w);
     store.log(w.id, 'dispatcher', `${t('log.question')}: ${text}`);
     store.chat('event', t('ev.asked', { id: w.id, text: oneLine(text, 200) }));
     // Questions asked before an answer came are answered together.
@@ -955,6 +978,12 @@ class WorkerManager {
   private post(w: Worker, msg: string): 'sent' | 'slot' | 'limit' {
     // Its task waits for a slot: the message goes out when the task starts. Work in progress is never held for one.
     const cur = this.currentTask(w);
+    // A follow-up that reopens the last task starts work like a new task does, so it needs a free slot as well.
+    const reopens = !cur && !msg.startsWith(QUESTION_TAG) && !this.hasSlot(w) ? this.reopenLast(w) : null;
+    if (reopens) {
+      this.waitForSlot(w, reopens, msg);
+      return 'slot';
+    }
     if (cur && waitsForSlot(cur)) {
       this.held.set(w.id, [...(this.held.get(w.id) ?? []), msg]);
       store.log(w.id, 'event', t('log.slotHeld'));
@@ -976,10 +1005,23 @@ class WorkerManager {
   }
 
   /** New review comments on a PR, its failed CI checks, or a conflict with its base. */
-  sendReview(task: Task, body: string, kind: 'review' | 'ci' | 'conflict' = 'review') {
+  sendReview(task: Task, body: string, kind: FeedbackKind = 'review') {
     const w = task.workerId ? store.worker(task.workerId) : null;
     if (!w) return;
-    if (w.status === 'archived') void this.unarchive(w);
+    // The Worker is on another task: the turn that handled this would settle that one. It waits until that is settled.
+    const other = this.currentTask(w);
+    if (other && other.id !== task.id) {
+      this.feedback.set(w.id, [...(this.feedback.get(w.id) ?? []), { taskId: task.id, body, kind }]);
+      store.log(w.id, 'event', t('log.feedbackHeld', { id: task.id, other: other.id }));
+      return store.changed();
+    }
+    if (w.status === 'archived') {
+      void this.restoreWorker(w).then((ok) => {
+        if (ok) this.sendReview(task, body, kind);
+        else store.pushUpdate(`${w.id} could not get its worktree back, so the ${kind === 'ci' ? 'CI failure' : kind === 'conflict' ? 'merge conflict' : 'review comments'} on ${task.id} "${task.title}" (${task.prUrl}) did not reach it.`, true);
+      });
+      return;
+    }
     (kind === 'ci' ? this.ciFixing : this.reviewing).add(task.id);
     store.log(w.id, 'event', t(kind === 'ci' ? 'log.ciFix' : kind === 'conflict' ? 'log.conflictFix' : 'log.review'));
     const msg = kind === 'conflict'
@@ -999,12 +1041,48 @@ class WorkerManager {
     this.deliver(w, s, [msg], task);
   }
 
-  /** The user's (or the Dispatcher's) Stop: the turn is interrupted, and its task shows as stopped, not failed. */
-  async stop(workerId: string, by: 'user' | 'dispatcher') {
+  /**
+   * PR feedback held while its Worker was on another task (sendReview), sent once that task is settled.
+   * All of one task's goes out together; another task's waits until that one is settled in turn.
+   */
+  private sendFeedback() {
+    for (const [id, list] of [...this.feedback]) {
+      const w = store.worker(id);
+      if (!w) { this.feedback.delete(id); continue; }
+      if (this.currentTask(w)) continue;
+      const first = list[0].taskId;
+      const rest = list.filter((f) => f.taskId !== first);
+      if (rest.length) this.feedback.set(id, rest);
+      else this.feedback.delete(id);
+      const task = store.task(first);
+      // Merged, closed or cancelled meanwhile: nothing is left to fix.
+      if (task?.status !== 'pr_open') continue;
+      for (const f of list) if (f.taskId === first) this.sendReview(task, f.body, f.kind);
+    }
+  }
+
+  /**
+   * The user's (or the Dispatcher's) Stop. A turn under way is interrupted, with what was sent after it, and its
+   * task shows as stopped, not failed. With no turn under way, an open task (one that waits for the Dispatcher) is
+   * stopped at once and gives its slot back. Says which it was.
+   */
+  async stop(workerId: string, by: 'user' | 'dispatcher'): Promise<'interrupted' | 'stopped' | 'idle'> {
     const s = this.sessions.get(workerId);
-    if (!s) return;
-    if (s.busy) this.stopping.set(workerId, by);
-    await s.interrupt();
+    if (s?.busy) {
+      this.stopping.set(workerId, by);
+      await s.interrupt();
+      return 'interrupted';
+    }
+    const w = store.worker(workerId);
+    const task = w ? this.currentTask(w) : null;
+    if (!w || !task || (task.status !== 'running' && task.status !== 'waiting')) return 'idle';
+    this.stopping.set(w.id, by);
+    this.fail(w, task, '');
+    this.stopping.delete(w.id);
+    w.status = 'idle';
+    w.statusText = '';
+    this.touch(w);
+    return 'stopped';
   }
 
   /** The task's turn is under way in its session: that is running work, which only Stop interrupts. */
@@ -1040,6 +1118,8 @@ class WorkerManager {
     store.changed();
     await this.tidyCancelled(reports);
     if (by === 'user') store.pushUpdate(`The user cancelled queued work: ${reports.map(describeCancel).join('; ')}`);
+    // A Worker left with nothing open takes the PR feedback that waited for it (after the branches are tidied).
+    this.sendFeedback();
     store.changed();
     return reports;
   }
@@ -1164,12 +1244,37 @@ class WorkerManager {
     store.changed();
   }
 
-  async unarchive(w: Worker) {
-    const repo = w.repo ? store.repo(w.repo) : null;
-    if (repo && !fs.existsSync(path.join(w.cwd, '.git'))) await ensureWorktree(repo, w.id);
-    if (!repo) ensureDir(w.cwd);
-    w.status = 'idle';
-    this.touch(w);
+  /** Archived Workers whose worktree is being made again; a second call waits for the same one. */
+  private unarchiving = new Map<string, Promise<void>>();
+
+  /** Bring an archived Worker back, its worktree first. Rejects when that fails; the Worker stays archived. */
+  unarchive(w: Worker): Promise<void> {
+    const busy = this.unarchiving.get(w.id);
+    if (busy) return busy;
+    const run = (async () => {
+      const repo = w.repo ? store.repo(w.repo) : null;
+      if (repo && !fs.existsSync(path.join(w.cwd, '.git'))) await ensureWorktree(repo, w.id);
+      if (!repo) ensureDir(w.cwd);
+      // Not over a status the Worker got meanwhile.
+      if (w.status === 'archived') w.status = 'idle';
+      this.touch(w);
+    })().finally(() => this.unarchiving.delete(w.id));
+    this.unarchiving.set(w.id, run);
+    return run;
+  }
+
+  /** unarchive() for work the app hands on by itself: false, with a line in the Worker's conversation, when it failed. */
+  private async restoreWorker(w: Worker): Promise<boolean> {
+    try {
+      await this.unarchive(w);
+      return true;
+    } catch (e) {
+      const msg = oneLine((e as Error).message ?? String(e), 200);
+      log.warn(`unarchive ${w.id} failed`, msg);
+      store.log(w.id, 'event', t('log.unarchiveFailed', { msg }));
+      store.changed();
+      return false;
+    }
   }
 
   autoArchive() {
@@ -1187,6 +1292,8 @@ class WorkerManager {
 
   /** Messages that came while a usage limit held every account, per Worker; sent when the first limit resets. */
   private held = new Map<string, string[]>();
+  /** PR feedback for a finished task that came while its Worker was on another one, per Worker, oldest first. */
+  private feedback = new Map<string, { taskId: string; body: string; kind: FeedbackKind }[]>();
 
   private hold(w: Worker, msg: string) {
     this.held.set(w.id, [...(this.held.get(w.id) ?? []), msg]);
@@ -1257,7 +1364,7 @@ class WorkerManager {
       free -= 1;
       const s = this.ensureSession(w);
       if (!s) { this.pause(w, task); continue; }
-      task.status = 'running';
+      setStatus(task, 'running');
       task.updatedAt = nowIso();
       store.log(w.id, 'event', t('log.restarted'));
       if (taskStarted(w, task)) s.send(RESUME_MSG);

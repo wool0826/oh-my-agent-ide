@@ -3,14 +3,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { workers } from '../src/main/agents/workers';
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
+import { paths } from '../src/main/paths';
 import { answer } from '../src/main/decisions';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { ALLOW, type Task, type Worker } from '../src/shared/types';
 import { workerDecisions } from '../src/shared/inbox';
+import { holdsSlot, slotsUsed } from '../src/shared/slots';
 
 // Settings and the IDE home live in a temp folder. Nothing here reads them until a test runs.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-workers-'));
@@ -211,8 +214,8 @@ test('cancelling a paused task drops its held messages, nothing restarts it, and
   workers.retryQueued();
   assert.equal(x.status, 'cancelled');
   assert.equal(sent.get(w.id), undefined);
-  workers.send(w.id, 'dispatcher', 'Next.');
-  workers.send(w.id, 'dispatcher', 'Again.');
+  await workers.send(w.id, 'dispatcher', 'Next.');
+  await workers.send(w.id, 'dispatcher', 'Again.');
   const msgs = sent.get(w.id)!;
   assert.equal(msgs.length, 2);
   assert.ok(msgs[0].startsWith(`[Cancelled] The user cancelled ${x.id} `), msgs[0]);
@@ -575,9 +578,9 @@ const finished: Partial<Task> = { status: 'pr_open', finishedAt: now, prUrl: 'ht
 const turn = (s: unknown, text: string) => feed(s, said(text), turnEnd(text));
 const chatLines = () => store.data.chat.map((c) => c.text);
 
-test('a question to an idle Worker reopens no task, and what its turn says reaches the Dispatcher as the answer', () => {
+test('a question to an idle Worker reopens no task, and what its turn says reaches the Dispatcher as the answer', async () => {
   const { w, x, s } = talking(finished);
-  assert.equal(workers.ask(w.id, 'Which file holds the parser?'), 'sent');
+  assert.equal(await workers.ask(w.id, 'Which file holds the parser?'), 'sent');
   assert.equal(x.status, 'pr_open', 'instructions would reopen it as a follow-up; a question does not');
   assert.ok(sent.get(w.id)![0].startsWith('[Dispatcher question] Which file holds the parser?'), sent.get(w.id)![0]);
   assert.equal(w.ask?.text, 'Which file holds the parser?');
@@ -657,9 +660,9 @@ test('an answer nobody asked for and a note wait for the next Dispatcher turn; e
   assert.deepEqual(chatLines(), []);
 });
 
-test('a reply to instructions with no task to report on goes to the Dispatcher instead of being dropped', () => {
+test('a reply to instructions with no task to report on goes to the Dispatcher instead of being dropped', async () => {
   const { w, x, s } = talking({ status: 'done', finishedAt: now, prUrl: 'https://github.com/o/r/pull/1', prState: 'MERGED' });
-  assert.equal(workers.send(w.id, 'dispatcher', 'Did the migration touch settings?'), 'sent');
+  assert.equal(await workers.send(w.id, 'dispatcher', 'Did the migration touch settings?'), 'sent');
   assert.equal(x.status, 'done', 'a merged task is not reopened');
   turn(s, 'No, only the store.');
   assert.deepEqual(store.data.pendingUpdates, [`${w.id} replied to your message: No, only the store.`]);
@@ -669,7 +672,7 @@ test('a reply to instructions with no task to report on goes to the Dispatcher i
   assert.equal(store.data.pendingUpdates.length, 1);
 });
 
-test('a request the Worker cannot go on without keeps its task open, and the Dispatcher\'s message sets it going again', () => {
+test('a request the Worker cannot go on without keeps its task open, and the Dispatcher\'s message sets it going again', async () => {
   const { w, x, s } = talking();
   assert.match(workers.fromWorker(w, 'request', 'What is W-9 changing in store.ts?'), /^Delivered/);
   assert.equal(w.request?.text, 'What is W-9 changing in store.ts?');
@@ -685,7 +688,7 @@ test('a request the Worker cannot go on without keeps its task open, and the Dis
   assert.match(store.data.pendingUpdates[1], new RegExp(`^${w.id} \\(${x.id} "Task"\\) stopped and waits for your reply to what it asked: What is W-9 changing in store\\.ts\\?\\n  Its task stays open and keeps its Worker slot until the Worker hears from you`));
   assert.equal(store.data.pendingUpdates.length, 2);
 
-  assert.equal(workers.send(w.id, 'dispatcher', 'Only pushUpdate.'), 'sent');
+  assert.equal(await workers.send(w.id, 'dispatcher', 'Only pushUpdate.'), 'sent');
   assert.equal(w.request, null);
   assert.equal(x.status, 'running');
   assert.equal(sent.get(w.id)![0], '[Dispatcher] Only pushUpdate.');
@@ -742,11 +745,11 @@ test('a turn that ends without a report while its subagents run does not finish 
   assert.equal(x.status, 'done');
 });
 
-test('a question held by a usage limit goes out when it resets, still without reopening a task', () => {
+test('a question held by a usage limit goes out when it resets, still without reopening a task', async () => {
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w, finished);
   limit(true);
-  assert.equal(workers.ask(w.id, 'Which file?'), 'limit');
+  assert.equal(await workers.ask(w.id, 'Which file?'), 'limit');
   limit(false);
   workers.retryQueued();
   assert.ok(sent.get(w.id)![0].startsWith('[Dispatcher question] Which file?'), sent.get(w.id)![0]);
@@ -888,4 +891,174 @@ test('a stop by the Dispatcher is marked as its own, and an error after a stop t
   s.ev.onTurnEnd!({ text: 'It broke.', isError: true, internal: false });
   s.ev.onStatus!('error', 'It broke.');
   assert.deepEqual([y.status, y.stopped, w.status], ['failed', false, 'error']);
+});
+
+// Regression tests for the T-0006 review (H3, M1, M3, L1, L2, L12): its repro tests, with the assertions inverted.
+
+const askBash = (s: AgentSession, command: string, id: string) =>
+  s.cfg.canUseTool!('Bash', { command }, { signal: new AbortController().signal, suggestions: [], toolUseID: id } as unknown as Parameters<CanUseTool>[2]);
+
+test('PR feedback for a finished task waits while its Worker is on another task, and settles its own task, not the other', () => {
+  const pr = 'https://github.com/o/r/pull/1';
+  const w = addWorker({ sessionId: 'sid' });
+  const a = addTask(w, { title: 'A', status: 'pr_open', prUrl: pr, prState: 'OPEN', branch: 'a', finishedAt: now });
+  const b = addTask(w, { title: 'B' });
+  const s = workers.ensureSession(w)!;
+  s.send('Working on B.');
+  workers.sendReview(a, 'Please rename x.');
+  // Not sent into B's turn: A keeps its state and takes no slot.
+  assert.equal(a.status, 'pr_open');
+  assert.equal(sent.get(w.id)!.length, 1);
+  // B's report settles B; then the review comments go out for A.
+  s.busy = false;
+  s.ev.onTurnEnd!({ text: 'RESULT: B is done', isError: false, internal: false });
+  assert.deepEqual([b.status, b.summary, b.prUrl], ['done', 'B is done', null]);
+  assert.equal(a.status, 'running');
+  assert.match(sent.get(w.id)!.at(-1)!, /^\[Review comments\] New comments on https:\/\/github\.com\/o\/r\/pull\/1\..*Please rename x\.$/s);
+  s.busy = false;
+  s.ev.onTurnEnd!({ text: `RESULT: renamed x as the review asked\nPR: ${pr}`, isError: false, internal: false });
+  s.ev.onStatus!('idle', '');
+  assert.deepEqual([a.status, a.summary], ['pr_open', 'renamed x as the review asked']);
+  assert.deepEqual([b.status, b.summary, b.prUrl], ['done', 'B is done', null]);
+  assert.equal(slotsUsed(store.data.tasks), 0);
+});
+
+test('held PR feedback is dropped when its PR was merged meanwhile', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const a = addTask(w, { title: 'A', status: 'pr_open', prUrl: 'https://github.com/o/r/pull/2', prState: 'OPEN', branch: 'a', finishedAt: now });
+  addTask(w, { title: 'B' });
+  const s = workers.ensureSession(w)!;
+  s.send('Working on B.');
+  workers.sendReview(a, 'Checks failed.', 'ci');
+  Object.assign(a, { status: 'done', prState: 'MERGED' });
+  s.busy = false;
+  s.ev.onTurnEnd!({ text: 'RESULT: B is done', isError: false, internal: false });
+  assert.equal(a.status, 'done');
+  assert.equal(sent.get(w.id)!.length, 1);
+});
+
+test('a message to an archived repository Worker waits for its worktree, so its turn starts there and is not shown as idle', async () => {
+  const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], { cwd, stdio: 'pipe' });
+  const origin = path.join(tmp, 'origin');
+  const clone = path.join(tmp, 'clone');
+  fs.mkdirSync(origin);
+  git(origin, 'init', '-q', '-b', 'main');
+  fs.writeFileSync(path.join(origin, 'a.txt'), 'a');
+  git(origin, 'add', '.');
+  git(origin, 'commit', '-q', '-m', 'init');
+  git(tmp, 'clone', '-q', origin, clone);
+  const repo = { name: 'r', path: clone, url: origin, defaultBranch: 'main', description: '' } as never;
+  store.data.repos.push(repo);
+  try {
+    const id = `W-${n + 1}`;
+    const w = addWorker({ sessionId: 'sid', repo: 'r', status: 'archived', cwd: path.join(paths().worktrees, 'r', id) });
+    assert.equal(w.id, id);
+    addTask(w, { repo: 'r', status: 'done', finishedAt: now });
+    const how = workers.send(w.id, 'user', 'One more change, please.');
+    assert.equal(sent.get(w.id), undefined, 'nothing is sent before the folder exists');
+    assert.equal(await how, 'sent');
+    assert.ok(fs.existsSync(path.join(w.cwd, '.git')));
+    assert.equal(sent.get(w.id)!.length, 1);
+    assert.equal(w.status, 'running');
+  } finally {
+    store.data.repos.splice(store.data.repos.indexOf(repo), 1);
+  }
+});
+
+test('a message to an archived Worker whose worktree cannot be made again fails, and nothing is sent', async () => {
+  const repo = { name: 'gone', path: path.join(tmp, 'no-such-repo'), url: '', defaultBranch: 'main', description: '' } as never;
+  store.data.repos.push(repo);
+  try {
+    const w = addWorker({ sessionId: 'sid', repo: 'gone', status: 'archived', cwd: path.join(tmp, 'no-such-worktree') });
+    await assert.rejects(workers.send(w.id, 'user', 'Hello.'));
+    assert.equal(w.status, 'archived');
+    assert.equal(sent.get(w.id), undefined);
+  } finally {
+    store.data.repos.splice(store.data.repos.indexOf(repo), 1);
+  }
+});
+
+test('each wait for an answer is timed from its own start: a slot given back in one wait is held again in the next', async () => {
+  loadSettings().waitSlotMinutes = 10;
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  s.ev.onStatus!('busy', '');
+  const t0 = Date.now();
+  const first = askBash(s, 'rm -rf build', 'tu1');
+  await tick();
+  workers.sweepWaiting(t0); // the half-minute sweep sees the wait and marks when it began
+  workers.sweepWaiting(t0 + 10 * 60_000 + 1000);
+  assert.equal(x.slotReleased, true);
+  answer(workerDecisions(store.data.decisions, w.id)[0].id, ALLOW);
+  await first;
+  assert.deepEqual([x.status, x.waitingSince, x.slotReleased], ['running', null, false]);
+
+  // Nine and a half minutes of work later it asks again; the sweep has not run in between.
+  const second = askBash(s, 'rm -rf dist', 'tu2');
+  await tick();
+  assert.equal(x.status, 'waiting');
+  workers.sweepWaiting(t0 + 10 * 60_000 + 1000);
+  assert.equal(x.slotReleased, false, 'the new wait is timed from now, not from the first one');
+  assert.equal(holdsSlot(x), true);
+  workers.sweepWaiting(t0 + 20 * 60_000 + 2000);
+  assert.equal(x.slotReleased, true, 'and gives its slot back once it has lasted the setting');
+  answer(workerDecisions(store.data.decisions, w.id)[0].id, ALLOW);
+  await second;
+});
+
+test('answering one of two open permission requests leaves the Worker waiting for the other', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  s.ev.onStatus!('busy', '');
+  const first = askBash(s, 'rm -rf build', 'tu1');
+  const second = askBash(s, 'rm -rf dist', 'tu2');
+  await tick();
+  const open = workerDecisions(store.data.decisions, w.id);
+  assert.equal(open.length, 2);
+  answer(open[0].id, ALLOW);
+  await first;
+  assert.deepEqual([w.status, x.status], ['waiting', 'waiting']);
+  answer(open[1].id, ALLOW);
+  await second;
+  assert.deepEqual([w.status, x.status], ['running', 'running']);
+});
+
+test('Stop works on a task that waits for the Dispatcher: it is stopped, gives its slot back, and a message continues it', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  s.send('Working.');
+  s.busy = false;
+  s.ev.onTurnEnd!({ text: 'BLOCKED: I need the staging URL.', isError: false, internal: false });
+  s.ev.onStatus!('idle', '');
+  assert.deepEqual([w.status, x.status], ['idle', 'waiting']);
+  assert.equal(await workers.stop(w.id, 'dispatcher'), 'stopped');
+  assert.deepEqual([w.status, x.status, x.stopped, w.request], ['idle', 'failed', true, null]);
+  assert.equal(slotsUsed(store.data.tasks), 0);
+  assert.equal(await workers.stop(w.id, 'dispatcher'), 'idle', 'nothing is left to stop');
+  assert.equal(await workers.send(w.id, 'user', 'Here it is: https://staging.example'), 'sent');
+  assert.equal(x.status, 'running');
+});
+
+test('a follow-up to an idle Worker waits for a slot like a new task when every slot is taken', async () => {
+  loadSettings().maxWorkers = 1;
+  const busy = addWorker({ sessionId: 'b' });
+  const other = addTask(busy);
+  const w = addWorker({ sessionId: 'sid' });
+  const last = addTask(w, { status: 'done', finishedAt: now, summary: 'Done.' });
+  assert.equal(await workers.send(w.id, 'user', 'One more change, please.'), 'slot');
+  assert.deepEqual([last.status, last.queueReason], ['queued', 'slot']);
+  assert.equal(sent.get(w.id), undefined);
+  assert.equal(slotsUsed(store.data.tasks), 1);
+  // A question reopens nothing, so it needs no slot.
+  const asked = addWorker({ sessionId: 'q' });
+  const answered = addTask(asked, { status: 'done', finishedAt: now });
+  assert.equal(await workers.ask(asked.id, 'Which file was it?'), 'sent');
+  assert.equal(answered.status, 'done');
+  other.status = 'done';
+  workers.fillSlots();
+  assert.equal(last.status, 'running');
+  assert.ok(sent.get(w.id)!.some((m) => m.includes('[User message] One more change, please.')));
 });

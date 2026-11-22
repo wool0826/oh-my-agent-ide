@@ -123,8 +123,9 @@ export function doneList(done: Task[]) {
   return `<div class="sub">${rows}${more}</div>`;
 }
 
-/** A Worker can be stopped while it is at work. */
-export const stoppable = (w: Worker) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting';
+/** A Worker can be stopped while it is at work, or while its open task waits for the Dispatcher (it holds a slot). */
+export const stoppable = (w: Worker) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting'
+  || awaitsDispatcher(w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
 
 /** Stop and Open on a sidebar Worker row, shown on hover (the row's context menu has them too). */
 export function workerActs(w: Worker) {

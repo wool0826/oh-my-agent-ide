@@ -216,7 +216,7 @@ function boardTools(d: Dispatcher) {
           const w = store.worker(a.worker_id);
           const no = w && d.mayWrite(w.id);
           if (no) return fail(no);
-          const how = workers.send(a.worker_id, 'dispatcher', a.message);
+          const how = await workers.send(a.worker_id, 'dispatcher', a.message);
           return ok(how === 'sent' ? 'Sent.' : heldNote(how, w!));
         } catch (e) {
           return fail((e as Error).message);
@@ -230,7 +230,7 @@ function boardTools(d: Dispatcher) {
           const w = store.worker(a.worker_id);
           const no = w && d.mayWrite(w.id);
           if (no) return fail(no);
-          const how = workers.ask(a.worker_id, a.question);
+          const how = await workers.ask(a.worker_id, a.question);
           const later = 'The answer arrives by itself in a "[Worker updates]" message. Tell the user in one line that you asked, and end your turn; do not ask again or check for it.';
           if (how !== 'sent') return ok(`${heldNote(how, w!)} ${later}`);
           return ok(w!.status === 'waiting'
@@ -248,8 +248,10 @@ function boardTools(d: Dispatcher) {
         return view ? ok(view) : fail(t('err.noWorker', { id: a.worker_id }));
       }),
       tool('stop_worker', 'Stop what a Worker is doing (the session stays, so it can continue later).', { worker_id: z.string() }, async (a) => {
-        await workers.stop(a.worker_id, 'dispatcher');
-        return ok('Stopped.');
+        const how = await workers.stop(a.worker_id, 'dispatcher');
+        if (how === 'interrupted') return ok('Stopped.');
+        if (how === 'stopped') return ok(`Stopped: ${a.worker_id} was between turns, so its open task is stopped and its slot is free. A message to ${a.worker_id} continues it.`);
+        return ok(`Nothing was stopped: ${a.worker_id} has no turn under way and no open task.`);
       }),
       tool('cancel_task', 'Cancel a task that is waiting to start: queued (waiting for a free Worker slot, or paused until a usage limit resets) or blocked (waiting for another task\'s PR to merge). It will not start. Tasks waiting on it with after_task_id are cancelled too. Its branch is deleted (and its Worker archived if it has nothing else) unless the branch holds commits or uncommitted changes. If it has an open PR, only the queued review, CI or follow-up work is dropped and the PR stays. Running work is not affected; use stop_worker for that.', {
         task_id: z.string(),
