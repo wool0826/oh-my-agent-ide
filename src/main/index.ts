@@ -12,6 +12,7 @@ import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisio
 import { dispatcher, createTask, assignedEvent } from './agents/dispatcher';
 import { workers } from './agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
+import { runs } from './runs';
 import { startPrMonitor, checkPrs, checkPrsSoon, mergePr } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { attachmentBlock, registerAttachments } from './attachments';
@@ -53,6 +54,7 @@ function snapshot(): AppState {
     // All of them, not only those in the chat snapshot, so the inspector's "Show more" reaches every one.
     results: d.chat.filter((c) => (c.kind === 'result' || (c.kind === 'error' && c.ref)) && !c.cleared),
     memos: d.memos ?? [],
+    runs: runs.views(),
     memorySync: memorySync(),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
@@ -203,11 +205,14 @@ function registerIpc() {
   handle('queue:clear', () => workers.clearQueue('user'));
   handle('worker:diff', (id: string) => workers.diff(id));
   handle('pr:merge', (taskId: string) => mergePr(taskId));
-  handle('worker:archive', (id: string) => workers.archive(id));
+  handle('worker:archive', (id: string) => { runs.stop(id); return workers.archive(id); });
+  handle('run:start', (id: string) => runs.start(id));
+  handle('run:stop', (id: string) => runs.stop(id));
+  handle('run:clear', (id: string) => runs.clear(id));
   handle('worker:unarchive', async (id: string) => { const w = store.worker(id); if (w) await workers.unarchive(w); });
   handle('repo:add', (url: string, name?: string, description?: string) => registerRepo({ url, name, description }).then((r) => { dispatcher.refreshContext(); return r; }));
   handle('repo:remove', (name: string) => { removeRepo(name); dispatcher.refreshContext(); });
-  handle('repo:update', (name: string, description: string, setup?: string) => { updateRepo(name, setup === undefined ? { description } : { description, setup: setup.trim() }); dispatcher.refreshContext(); });
+  handle('repo:update', (name: string, description: string, setup?: string, run?: string) => { updateRepo(name, { description, ...(setup === undefined ? {} : { setup: setup.trim() }), ...(run === undefined ? {} : { run: run.trim() }) }); dispatcher.refreshContext(); });
   handle('memory:list', () => listMemory());
   handle('memory:read', (p: string) => readMemory(p));
   handle('memory:write', (p: string, c: string) => { writeMemory(p, c); dispatcher.refreshContext(); });
@@ -370,6 +375,7 @@ else {
   });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   app.on('before-quit', () => {
+    runs.stopAll();
     workers.closeAll();
     dispatcher.close();
     store.flush();

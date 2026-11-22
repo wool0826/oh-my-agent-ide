@@ -51,6 +51,8 @@ export interface Repo {
   addedAt: string;
   /** Shell command run in each new worktree (install dependencies, copy .env, ...). */
   setup?: string;
+  /** Shell command that runs the project (a dev server, the app), started in a Worker's worktree on request. */
+  run?: string;
 }
 
 export type WorkerStatus = 'starting' | 'running' | 'waiting' | 'idle' | 'error' | 'archived';
@@ -280,6 +282,21 @@ export interface ModelInfo { id: string; name: string; created: string; provider
 /** The model list and when it was last read; error is the last failed refresh, if any. */
 export interface ModelList { models: ModelInfo[]; fetchedAt: string | null; error: string | null }
 
+/** A repository's run command going in a Worker's worktree, or its last output once it ended. */
+export interface RunView {
+  workerId: string;
+  running: boolean;
+  /** The user stopped it; its exit code then says nothing. */
+  stopped?: boolean;
+  /** Exit code once it ended. */
+  code: number | null;
+  /** The end of its output. */
+  tail: string;
+  /** The first local address it printed, to open in a browser. */
+  url: string | null;
+  startedAt: string;
+}
+
 export interface AppState {
   ready: boolean;
   setupNeeded: boolean;
@@ -298,6 +315,8 @@ export interface AppState {
   results: ChatItem[];
   /** The user's memos, shown in the right sidebar's Memos tab. */
   memos: Memo[];
+  /** Run commands started in this session of the app. */
+  runs: RunView[];
   /** The IDE memory's sync with its remote repository. */
   memorySync: MemorySync;
   dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null };

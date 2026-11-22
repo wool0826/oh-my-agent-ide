@@ -12,6 +12,7 @@ import { linkify } from '../shared/linkify';
 import { RING, ringArc, untilReset } from '../shared/usageRing';
 import { patchLines, reviewMessage, type DiffNote } from '../shared/diffComment';
 import { canMerge } from '../shared/prMerge';
+import { lastLines } from '../shared/runOutput';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -1398,6 +1399,21 @@ function waitingCardsHtml(w: Worker) {
   }).join('');
 }
 
+/** The repository's run command in this Worker's worktree: start and stop it, the address it printed, and the end of its output. */
+function runHtml(w: Worker) {
+  const repo = w.repo ? S!.repos.find((r) => r.name === w.repo) : null;
+  if (!repo?.run?.trim() || w.status === 'archived') return '';
+  const r = S!.runs.find((x) => x.workerId === w.id);
+  const state = !r ? '' : r.running ? `<span class="pill blue">${t('run.running')}</span>` : r.stopped ? `<span class="pill">${t('run.stopped')}</span>` : `<span class="pill${r.code ? ' red' : ''}">${t('run.exited', { code: r.code ?? '' })}</span>`;
+  const btns = r?.running
+    ? `<button class="btn" data-action="run-stop" data-id="${w.id}">${t('run.stop')}</button>`
+    : `${r ? `<button class="btn" data-action="run-clear" data-id="${w.id}">${t('run.clear')}</button>` : ''}<button class="btn" data-action="run-start" data-id="${w.id}">${t(r ? 'run.again' : 'run.start')}</button>`;
+  const url = r?.url && r.running ? `<a class="run-url" data-action="open-url" data-href="${esc(r.url)}">${esc(r.url)}</a>` : '';
+  const out = r?.tail.trim() ? `<pre class="run-out" data-scroll="run-${w.id}">${esc(lastLines(r.tail, 14))}</pre>` : '';
+  return `<div class="ins-h"><b>${t('run.title')}</b>${state}</div>
+    <div class="group run"><code class="run-cmd" title="${esc(repo.run)}">${esc(oneLine(repo.run, 80))}</code>${url}${out}<div class="ins-act">${btns}</div></div>`;
+}
+
 function renderWorkerInspector() {
   const root = $('#wk-ins');
   const w = worker(ui.wSel);
@@ -1431,6 +1447,7 @@ function renderWorkerInspector() {
       ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(w.statusText, 140))}</span>` : ''}
       ${w.request && w.status !== 'archived' ? `<span>${t('kv.request')}</span><span title="${esc(w.request.text)}">${esc(oneLine(w.request.text, 140))}</span>` : ''}
     </div>
+    ${runHtml(w)}
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
     <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
@@ -1528,6 +1545,8 @@ function renderRepos() {
       <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" data-scroll="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
       <div class="ins-h"><b>${t('repo.setup')}</b></div>
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" data-scroll="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
+      <div class="ins-h"><b>${t('repo.run')}</b></div>
+      <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-run-${esc(r.name)}" data-scroll="repo-run-${esc(r.name)}" id="repo-run" placeholder="${esc(t('repo.runPh'))}">${esc(r.run ?? '')}</textarea>
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
       <div class="ins-h"><b>${t('wk.tasks')}</b><small>${all.length}</small></div>
       <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
@@ -2454,6 +2473,9 @@ async function act(el: HTMLElement, e: Event) {
     case 'close-session': go({ wOpen: false }); break;
     case 'ws-tab': go({ wTab: el.dataset.v as Screen['wTab'] }); break;
     case 'diff-refresh': ui.diffs.delete(id); renderSession(true); break;
+    case 'run-start': await call('run:start', id); break;
+    case 'run-stop': await call('run:stop', id); break;
+    case 'run-clear': await call('run:clear', id); break;
     case 'pr-merge': {
       if (!id) break;
       if (ui.mergeAsk !== id) { ui.mergeAsk = id; renderAll(true); break; }
@@ -2592,7 +2614,7 @@ async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'repo-add': await addRepo(); break;
-    case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value); toast(t('toast.descSaved')); break;
+    case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value, $<HTMLTextAreaElement>('#repo-run').value); toast(t('toast.descSaved')); break;
     case 'repo-remove': {
       if (!confirm(t('confirm.repoRemove', { name: id }))) return;
       await call('repo:remove', id);
