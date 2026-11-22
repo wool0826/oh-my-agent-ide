@@ -162,10 +162,12 @@ function stepperHtml(x: Task, state: 'run' | 'wait' | 'all' | 'err') {
   // The small line gives the count only; the current step's name is read from here.
   const cur = stepView(x)!;
   const said = cur.allDone ? '' : `<span class="sr-only">${esc(t('side.stepAria', { n: cur.at + 1, total: cur.total, title: cur.current }))}</span>`;
-  // Steps the window hides are counted above and below it, so a long plan does not look like three steps.
-  const more = (text: string) => `<span class="stp-more" aria-hidden="true">${esc(text)}</span>`;
-  const above = v.before ? more(t('side.stepsAbove', { n: v.before })) : '';
-  const below = v.after ? more(t(v.afterDone ? 'side.stepsBelowDone' : 'side.stepsBelow', { n: v.after, done: v.afterDone })) : '';
+  // Steps the window hides are counted above and below it, so a long plan does not look like three steps. Both lines
+  // are kept (empty when nothing is hidden there) so the row keeps its height as the window moves.
+  const long = v.size < steps.length;
+  const more = (text: string) => (long ? `<span class="stp-more" aria-hidden="true">${esc(text)}</span>` : '');
+  const above = more(v.before ? t('side.stepsAbove', { n: v.before }) : '');
+  const below = more(v.after ? t(v.afterDone ? 'side.stepsBelowDone' : 'side.stepsBelow', { n: v.after, done: v.afterDone }) : '');
   return `${above}<span class="stp ${state}" style="--n:${v.size}" aria-hidden="true"><span class="stp-in${v.rolled ? ' adv' : ''}">${lines}</span></span>${below}${said}`;
 }
 

@@ -116,5 +116,6 @@ export function stepper(steps: TaskStep[], prev: string | null, now = Date.now()
     lines.push({ i, title: steps[i].title, seg: steps[i].doneAt ? 'done' : i === at ? 'cur' : 'todo', just: just(i) });
   }
   const later = steps.slice(start + size);
-  return { size, rolled, lines, before: start, after: later.length, afterDone: later.filter((s) => s.doneAt).length };
+  // While the leaving line rolls out it is still drawn, so it is not counted above yet.
+  return { size, rolled, lines, before: rolled ? start - 1 : start, after: later.length, afterDone: later.filter((s) => s.doneAt).length };
 }

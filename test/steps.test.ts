@@ -106,6 +106,9 @@ test('stepper: a long plan gets a three-line window that rolls up one line when 
   prev = doneMask(x.steps!);
   markDone(x, 2, AT);
   assert.deepEqual(view(prev), { rolled: true, lines: ['a:done', 'b:done!', 'c:cur', 'd:todo'] });
+  // The line rolling out is still drawn, so it is not counted above yet.
+  assert.equal(stepper(x.steps!, prev, Date.parse(AT) + 500).before, 0);
+  assert.equal(stepper(x.steps!, null).before, 1);
   // Seen long after it was marked (the sidebar was collapsed): no motion.
   assert.deepEqual(view(prev, Date.parse(AT) + 60_000), { rolled: false, lines: ['b:done', 'c:cur', 'd:todo'] });
   // First time drawn: no motion either.
@@ -141,6 +144,17 @@ test('stepper: steps done out of order stay in plan order, the count is of done 
   assert.deepEqual(v.lines.map((l) => `${l.i + 1}.${l.title}:${l.seg}`), ['1.Survey:done', '2.Render:done', '3.Report:cur', '4.Artifact:done', '5.Verify:todo']);
   assert.deepEqual([v.size, v.before, v.after, v.afterDone], [5, 0, 0, 0]);
   assert.equal(stepsLine(x.steps!), '3/5 done; now step 3: Report.');
+  // Drawn whole, a step done since the last draw pops in place and nothing rolls.
+  const prev = doneMask(x.steps!);
+  markDone(x, 3, AT);
+  const w = stepper(x.steps!, prev, Date.parse(AT) + 500);
+  assert.deepEqual([w.rolled, w.before, w.after, w.lines.length, w.lines[2].just], [false, 0, 0, 5, true]);
+  // Six steps, just over the whole-plan size: a window, with a later step done out of order counted below.
+  setSteps(x, ['a', 'b', 'c', 'd', 'e', 'f']);
+  for (const st of x.steps!) st.doneAt = null;
+  markDone(x, 6, AT);
+  const six = stepper(x.steps!, null);
+  assert.deepEqual([six.size, six.before, six.after, six.afterDone], [3, 0, 3, 1]);
 });
 
 test('stepper: the window on a long plan keeps the current step in view and counts the steps it hides', () => {
