@@ -12,7 +12,7 @@ import { reasonText } from '../shared/askWhy';
 import { linkify } from '../shared/linkify';
 import { RING, ringArc, untilReset } from '../shared/usageRing';
 import { patchLines, reviewMessage, type DiffNote } from '../shared/diffComment';
-import { canMerge } from '../shared/prMerge';
+import { canMerge, readyToMerge } from '../shared/prMerge';
 import { lastLines } from '../shared/runOutput';
 import { ghRepoRef, issueMessage, type Issue } from '../shared/issues';
 import { parseTime } from '../shared/automations';
@@ -587,6 +587,10 @@ function renderSidebar() {
     const why = queueWhy(t, x, queueCtx());
     return `<div tabindex="0" role="button" class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}"${why ? ` title="${esc(queueWhyText(why))}"` : ''}>${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span>${cancelX(x)}</div>`;
   }).join('');
+  // Two or more PRs ready at once: one button merges them in turn, asked once.
+  const ready = readyToMerge(s.tasks);
+  const allBusy = ui.merging.has('*'), allSure = ui.mergeAsk === '*';
+  const prTitle = `${t('side.prs')}${ready.length > 1 || allBusy ? `<button class="h-act go${allSure ? ' sure' : ''}" data-action="pr-merge-all"${allBusy ? ' disabled' : ''}>${t(allBusy ? 'pr.merging' : allSure ? 'pr.mergeAllSure' : 'pr.mergeAll', { n: ready.length })}</button>` : ''}`;
   const qTitle = `${t('side.queue')}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
   const any = decRows || runRows || prRows || qRows || errRows;
   const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<span>${t('side.emptyTitle')}</span></div>`;
@@ -612,7 +616,7 @@ function renderSidebar() {
     $('#side').innerHTML = `${live}${live ? '<span class="rail-sep"></span>' : ''}${hist('today', 'done', t('side.doneToday'), doneToday)}${hist('archived', 'arch', t('side.archived'), archived)}`;
     return;
   }
-  $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
+  $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(prTitle, prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
 }
 
 /** What a finished task did, in one line: its PR and state, then the summary its Worker reported. */
@@ -2854,6 +2858,25 @@ async function act(el: HTMLElement, e: Event) {
       renderAll(true);
       break;
     }
+    case 'pr-merge-all': {
+      if (ui.mergeAsk !== '*') { ui.mergeAsk = '*'; renderAll(true); break; }
+      ui.mergeAsk = null;
+      const list = readyToMerge(S!.tasks);
+      ui.merging.add('*');
+      for (const x of list) ui.merging.add(x.id);
+      renderAll(true);
+      // One after another: each merge can change whether the next is still ready, and the app checks again before each.
+      let merged = 0;
+      for (const x of list) {
+        try { await ide.call('pr:merge', x.id); merged++; } catch { /* counted below */ }
+        ui.merging.delete(x.id);
+        renderAll(true);
+      }
+      ui.merging.delete('*');
+      toast(merged === list.length ? t('pr.mergedAll', { n: merged }) : t('pr.mergedSome', { n: merged, m: list.length - merged }), merged !== list.length);
+      renderAll(true);
+      break;
+    }
     case 'diff-note': {
       // Selecting text in the diff is not a click on its line.
       if (String(getSelection() ?? '')) break;
@@ -3164,7 +3187,7 @@ function init() {
     if (step) { stepValue(step.dataset.for!, Number(step.dataset.step)); return; }
     if (pop.el && !pop.el.contains(tgt) && tgt !== pop.owner) closePop();
     if (ui.memoDel && !tgt.closest('.mact.del.sure')) askMemoDel(null);
-    if (ui.mergeAsk && !tgt.closest('.prmerge.sure')) { ui.mergeAsk = null; renderAll(true); }
+    if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
     if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;

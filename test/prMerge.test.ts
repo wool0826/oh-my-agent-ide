@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canMerge, conflictBody, mergeMethod, planConflictFix } from '../src/shared/prMerge';
+import { canMerge, conflictBody, mergeMethod, planConflictFix, readyToMerge } from '../src/shared/prMerge';
 import type { PrChecks } from '../src/shared/types';
 
 const ok: PrChecks = { ci: 'passing', failed: [], conflicts: false, review: null };
@@ -45,4 +45,16 @@ test('the merge method is one the repository allows, squash first', () => {
   assert.equal(mergeMethod({ squashMergeAllowed: false, mergeCommitAllowed: true, rebaseMergeAllowed: true }), 'merge');
   assert.equal(mergeMethod({ squashMergeAllowed: false, mergeCommitAllowed: false, rebaseMergeAllowed: true }), 'rebase');
   assert.equal(mergeMethod(null), 'squash');
+});
+
+test('"Merge N" takes each ready open PR once and leaves out one still being worked on', () => {
+  const ok = { ci: 'passing' as const, failed: [], conflicts: false, review: 'approved' as const };
+  const pr = (id: string, n: number, status: string, prState: string | null, prChecks: typeof ok | null) => ({ id, prUrl: `https://github.com/o/r/pull/${n}`, prState, status, prChecks });
+  const tasks = [
+    pr('T-1', 1, 'pr_open', 'OPEN', ok), pr('T-2', 1, 'done', 'OPEN', ok),
+    pr('T-3', 2, 'pr_open', 'OPEN', { ...ok, conflicts: true }), pr('T-4', 3, 'done', 'MERGED', ok),
+    pr('T-5', 4, 'pr_open', 'OPEN', ok), pr('T-6', 4, 'running', 'OPEN', ok), pr('T-7', 5, 'pr_open', 'OPEN', ok),
+    { id: 'T-8', prUrl: null, prState: null, status: 'done', prChecks: null },
+  ];
+  assert.deepEqual(readyToMerge(tasks).map((x) => x.id), ['T-1', 'T-7']);
 });

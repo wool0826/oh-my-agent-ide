@@ -486,3 +486,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **The shortcut** is a setting in Settings → General, typed as text ("ctrl+alt+k"); empty turns it off. `normalizeQuickKey` refuses a key with no modifier besides Shift, which would take a plain key from every other app. If another app already holds the shortcut, saving says so and the field is marked.
     - **`--quick`:** starting the app again with this argument opens the box in the running app, for a launcher or a pinned shortcut when a global key is not wanted.
     - **One line, no files:** it is for handing work over quickly. Attachments, `@repo` completion and replies stay in the chat.
+124. **"Merge N" for every PR that is ready.**
+    - **Why:** the Merge button (decision 109) is per PR. With several ready at once, each had to be found and pressed twice.
+    - **What:** when two or more open PRs are ready, the sidebar's "PRs in review" heading has "Merge N". It asks once ("Merge N?"), then merges them one after another.
+    - **Which PRs** (`readyToMerge`): open, ready by the same rule as the single button, one task per PR, and not one whose Worker is still at work on it.
+    - **One at a time:** each merge goes through the same path as the single button, which reads the PR again and refuses one that is no longer ready. A merge can make the next PR conflict, so the rest are not assumed ready. At the end a line says how many merged and how many could not; those stay in the list, and a conflict is handed to its Worker as usual.
