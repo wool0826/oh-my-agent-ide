@@ -639,9 +639,9 @@ class WorkerManager {
       store.log(w.id, 'event', t('log.steps', { list: steps.map((s, i) => `${i + 1}. ${s.title}`).join(', ') }));
     } else if (v.done !== before?.done) {
       const n = Number(op.step);
-      store.log(w.id, 'event', t('log.stepDone', { n, total: v.total, title: steps[n - 1].title }));
+      store.log(w.id, 'event', t('log.stepDone', { n, done: v.done, total: v.total, title: steps[n - 1].title }));
       const prefix = `${w.id} (${task.id}) progress:`;
-      mergeProgress(store.data.pendingUpdates, prefix, `${prefix} step ${n}/${v.total} done "${steps[n - 1].title}"; ${v.allDone ? 'all steps done' : `next "${v.current}"`}.`);
+      mergeProgress(store.data.pendingUpdates, prefix, `${prefix} step ${n} done "${steps[n - 1].title}" (${v.done}/${v.total} done); ${v.allDone ? 'all steps done' : `next "${v.current}"`}.`);
     }
     store.changed();
     return `${op.kind === 'set' ? `${steps.length} steps set. ` : ''}${stepsLine(steps)}`;

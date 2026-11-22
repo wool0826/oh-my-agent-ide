@@ -65,7 +65,7 @@ export function reopenSteps(task: Task, to: Task['status']) {
 /** The tool's reply and the Dispatcher's line after a change. */
 export function stepsLine(steps: TaskStep[]) {
   const v = stepView({ steps })!;
-  return v.allDone ? `All ${v.total} steps done.` : `Step ${v.at + 1}/${v.total} now: ${v.current}.`;
+  return v.allDone ? `All ${v.total} steps done.` : `${v.done}/${v.total} done; now step ${v.at + 1}: ${v.current}.`;
 }
 
 /** Pending updates for the Dispatcher with this progress line in place of an older one for the same task. */
@@ -88,15 +88,21 @@ export interface StepperLine { i: number; title: string; seg: Segment; just: boo
 /** How long after a step is marked done the sidebar still plays "just done" on it. */
 export const JUST_MS = 3000;
 
+/** Plans this long or shorter are drawn whole; a longer one gets a three-line window with the hidden steps counted. */
+export const STEPPER_ALL = 5;
+
 /**
- * The sidebar's Stepper: a window of up to three lines on the plan, the step done last, the current one and the next.
+ * The sidebar's Stepper. Lines are always in plan order, each drawn from its own done state, so a step marked out of
+ * order shows as done where it is; the current step is the first one not done. A plan of up to STEPPER_ALL steps is
+ * drawn whole. A longer one gets a window of three lines (the step before the current one, the current one and the
+ * next), and `before` / `after` count the steps it hides on each side, with `afterDone` of the later ones done.
  * `prev` is the doneMask the sidebar drew last time for the same plan; a step done since then (and not long ago) is
  * `just`, and when that moves the window on by one line, the line that leaves is drawn too and `rolled` is set, so the
- * list can roll up into place. Each step is drawn from its own done state, so one marked out of order shows correctly.
+ * list can roll up into place.
  */
 export function stepper(steps: TaskStep[], prev: string | null, now = Date.now()) {
   const n = steps.length;
-  const size = Math.min(3, n);
+  const size = n <= STEPPER_ALL ? n : 3;
   const first = (mask: string) => { const i = mask.indexOf('0'); return i < 0 ? n : i; };
   const startAt = (at: number) => Math.max(0, Math.min(at - 1, n - size));
   const mask = doneMask(steps);
@@ -109,5 +115,6 @@ export function stepper(steps: TaskStep[], prev: string | null, now = Date.now()
   for (let i = rolled ? start - 1 : start; i < start + size; i++) {
     lines.push({ i, title: steps[i].title, seg: steps[i].doneAt ? 'done' : i === at ? 'cur' : 'todo', just: just(i) });
   }
-  return { size, rolled, lines };
+  const later = steps.slice(start + size);
+  return { size, rolled, lines, before: start, after: later.length, afterDone: later.filter((s) => s.doneAt).length };
 }

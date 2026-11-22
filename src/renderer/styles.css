@@ -323,6 +323,9 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .row .t .stp { display: block; height: calc(var(--n) * 16px); margin: var(--space-4) 0 0 calc(-1 * var(--space-6)); padding-left: var(--space-6); overflow: hidden; }
 .row-main:has(.stp) > .ic { align-self: flex-start; margin-top: 1px; }
 .stp-in { display: block; }
+/* The count of steps a long plan's window hides, above and below it, in line with the step titles. */
+.row .t .stp-more { display: block; height: 14px; margin-top: var(--space-4); padding-left: calc(9px + var(--space-6)); font-size: var(--fs-caption2); line-height: 14px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .t .stp-more + .stp, .row .t .stp + .stp-more { margin-top: 0; }
 .stp-in.adv { translate: 0 -16px; animation: roll-up var(--dur-glide) var(--ease-standard); }
 .stp .s { display: flex; align-items: center; gap: var(--space-6); height: 16px; font-size: var(--fs-caption2); color: var(--text-tertiary); }
 .stp .s em { flex: 1; min-width: 0; font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
