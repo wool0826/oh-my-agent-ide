@@ -5,6 +5,7 @@ import { log } from '../log';
 import { PushQueue } from '../util';
 import { SpendMeter, spendOf, type SessionSpend, type Spend } from '../../shared/spend';
 import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW } from '../../shared/context';
+import { compactCommand } from '../../shared/compactInstructions';
 
 /** Compaction as the owner sees it: Claude Code's own (mid-turn) and the app's /compact alike. */
 export type CompactEvent =
@@ -39,6 +40,8 @@ export interface SessionConfig {
   spent?: SessionSpend | null;
   /** Context size from which the idle session is compacted after a turn, read when the turn ends. Default COMPACT_AT. */
   compactAt?: () => number;
+  /** What the app's /compact asks the summary to keep (see shared/compactInstructions). */
+  compactInstructions?: string;
   /** Extra environment for this session's Claude Code process, over the account's. */
   env?: NodeJS.ProcessEnv;
 }
@@ -202,7 +205,7 @@ export class AgentSession {
   private requestCompact() {
     this.ev.onStatus?.('busy', '');
     this.beginCompact();
-    this.sendInternal('/compact');
+    this.sendInternal(compactCommand(this.cfg.compactInstructions));
   }
 
   private beginCompact() {

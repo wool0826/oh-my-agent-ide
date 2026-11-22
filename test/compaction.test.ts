@@ -11,6 +11,7 @@ import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
 import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW, WORKER_IDLE_COMPACT } from '../src/shared/context';
 import type { Task, Worker } from '../src/shared/types';
+import { DISPATCHER_COMPACT, WORKER_COMPACT, compactCommand } from '../src/shared/compactInstructions';
 
 // Settings and the IDE home live in a temp folder. Two accounts, so a limit can move a session to the other one.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-compact-'));
@@ -220,7 +221,7 @@ test('a Worker is compacted from 60K once its task is finished; while the task i
   feed(s, assistant(WORKER_IDLE_COMPACT + 6_000, 'RESULT: Done'));
   feed(s, result({ result: 'RESULT: Done' }));
   assert.equal(x.status, 'done');
-  assert.deepEqual(sent(), ['Task', '[Dispatcher] It is stage-eu.', '/compact']);
+  assert.deepEqual(sent(), ['Task', '[Dispatcher] It is stage-eu.', compactCommand(WORKER_COMPACT)]);
   feed(s, boundary(WORKER_IDLE_COMPACT + 6_000, 9_000));
   feed(s, result());
 
@@ -239,7 +240,7 @@ test('a Worker is compacted from 60K once its task is finished; while the task i
   s.send('[Dispatcher] Rename it.');
   feed(s, assistant(WORKER_IDLE_COMPACT + COMPACT_MIN_GROWTH - 1, 'Renamed.'));
   feed(s, result({ result: 'Renamed.' }));
-  assert.deepEqual(sent().slice(5), ['[Dispatcher] Rename it.', '/compact']);
+  assert.deepEqual(sent().slice(5), ['[Dispatcher] Rename it.', compactCommand(WORKER_COMPACT)]);
   workers.closeAll();
 });
 
@@ -263,5 +264,23 @@ test('the Dispatcher chat says when its conversation was compacted, and why it c
     ['event', 'Compacted the Dispatcher conversation (210K → 9K).'],
     ['error', `Could not compact the Dispatcher conversation (${LIMIT_TEXT}). Nothing was lost; it can be compacted again later.`],
   ]);
+  dispatcher.close();
+});
+
+test("the app's /compact asks to keep what matters for the session's role; without instructions it is bare", () => {
+  assert.equal(compactCommand(), '/compact');
+  assert.equal(compactCommand('  Keep\n the  task. '), '/compact Keep the task.');
+  for (const text of [DISPATCHER_COMPACT, WORKER_COMPACT]) assert.doesNotMatch(compactCommand(text), /\n/);
+  assert.match(DISPATCHER_COMPACT, /preferences.*tasks? with its ID.*Worker.*PRs.*decisions.*questions.*latest request/);
+  assert.match(WORKER_COMPACT, /goal.*definition of done.*steps.*branch.*files changed.*PR.*constraints.*failing tests.*next steps/);
+
+  workers.closeAll();
+  const { w } = worker();
+  assert.equal((workers.ensureSession(w) as AgentSession).cfg.compactInstructions, WORKER_COMPACT);
+  workers.closeAll();
+  const d = (dispatcher as unknown as { open(): AgentSession }).open();
+  assert.equal(d.cfg.compactInstructions, DISPATCHER_COMPACT);
+  d.compact();
+  assert.deepEqual(sent(), [compactCommand(DISPATCHER_COMPACT)]);
   dispatcher.close();
 });

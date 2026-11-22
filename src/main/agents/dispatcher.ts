@@ -29,6 +29,7 @@ import { bundleName } from '../../shared/bundle';
 import { FakeSession } from './fakeSession';
 import { fakeMode } from '../fake';
 import { kTokens } from '../../shared/context';
+import { DISPATCHER_COMPACT } from '../../shared/compactInstructions';
 import { recapChat } from '../../shared/recap';
 import { dispatcherReason } from '../../shared/askWhy';
 import { describePick, pickWorker, reuseBlock } from '../../shared/routing';
@@ -576,6 +577,7 @@ class Dispatcher {
       tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
       additionalDirectories: [paths().repos],
       effort: loadSettings().dispatcherEffort,
+      compactInstructions: DISPATCHER_COMPACT,
       // The Dispatcher only has read-only tools, including for attached files.
       canUseTool: async (_name, input) => ({ behavior: 'allow', updatedInput: input }),
     }, events);
