@@ -3,6 +3,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { readJson, writeJsonAtomic, debounce, nowIso, ensureDir, uid, month } from './util';
 import { backupName, backupsNewestFirst, backupsToDrop, stateText } from '../shared/backup';
+import { SEARCH_MIN, searchItems, type TextHit } from '../shared/textSearch';
 import { paths } from './paths';
 import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
 import { PAGE, itemsBefore, pageBefore } from '../shared/paging';
@@ -158,6 +159,29 @@ class Store extends EventEmitter {
   }
 
   /** Up to `limit` chat items right before the one with id `before`, and whether there are more. */
+  /**
+   * What was said that matches a query: the chat with the Dispatcher (what the user and it said) and each Worker's
+   * conversation, newest first. Workers that are not archived are read first; a Worker gives a few lines at most.
+   */
+  searchText(query: string, limit = 24): TextHit[] {
+    if (query.trim().length < SEARCH_MIN) return [];
+    const said = this.data.chat.filter((c) => c.kind === 'user' || c.kind === 'dispatcher');
+    const out = searchItems(said, query, Math.ceil(limit / 2), (c) => c.id, 'chat');
+    const workers = [...this.data.workers].sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived') || b.lastActiveAt.localeCompare(a.lastActiveAt));
+    for (const w of workers) {
+      if (out.length >= limit) break;
+      let items: WorkerLogItem[] = [];
+      try {
+        items = fs.readFileSync(path.join(paths().workerLogs, `${w.id}.jsonl`), 'utf8').split('\n').filter(Boolean)
+          .map((l) => { try { return JSON.parse(l) as WorkerLogItem; } catch { return { ts: '', from: 'event' as const, text: '' }; } });
+      } catch { continue; }
+      // Events ("ran a tool") are not something said; the line number stays the log's own.
+      const lines = items.map((x) => (x.from === 'event' ? { ...x, text: '' } : x));
+      out.push(...searchItems(lines, query, Math.min(4, limit - out.length), (_x, i) => String(i), w.id));
+    }
+    return out.slice(0, limit);
+  }
+
   chatPage(before: string, limit: number = PAGE.chat) {
     return itemsBefore(this.data.chat, before, limit);
   }

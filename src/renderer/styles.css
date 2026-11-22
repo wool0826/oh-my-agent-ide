@@ -1019,3 +1019,8 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .skel.pre { flex: 1; }
 .skel.pre i { width: 40%; }
 .foot-btn.has-issue::after { content: ""; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg-canvas); }
+
+/* ---------- a message found by search ---------- */
+.thread > .hit { animation: flash var(--dur-attention) var(--ease-in-out); border-radius: var(--radius-xl); }
+.thread > .hit .bub { box-shadow: 0 0 0 2px var(--focus-ring); }
+.thread > .bub.hit { box-shadow: 0 0 0 2px var(--focus-ring); }

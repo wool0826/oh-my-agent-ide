@@ -257,3 +257,19 @@ flow('the appearance follows the setting, at once and after a restart of the pag
   // Saved, not only shown.
   await app.until("return (await window.ide.call('state')).settings.theme === 'light';", 'the setting saved');
 });
+
+flow('the palette finds something said and shows the chat from that message', {}, async (app) => {
+  await app.say('Please remember the pineapple rule\n@fake say Noted: no pineapple on Fridays.');
+  await app.until("document.querySelector('#chat-thread').innerText.includes('no pineapple on Fridays')", "the Dispatcher's answer");
+  // Enough later messages that the first is not what the chat opens on.
+  for (let i = 0; i < 3; i++) await app.say(`Filler ${i}\n@fake say Filler answer ${i}.`);
+  await app.until("document.querySelector('#chat-thread').innerText.includes('Filler answer 2.')", 'the later messages');
+  await app.click('#cmdk-btn');
+  await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'pineapple fridays'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
+  const row = await app.until("[...document.querySelectorAll('.cmdk-it')].findIndex((el) => el.innerText.includes('no pineapple on Fridays')) + 1", 'the message among the results');
+  await app.click(`#cmdk-${row - 1}`);
+  await app.until("!!document.querySelector('#chat-thread .hit')", 'the message marked in the chat');
+  assert.match(await app.evaluate("document.querySelector('#chat-thread .hit').innerText"), /no pineapple on Fridays/);
+  // The thread now starts at that message: what was said before it is above, not shown.
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Please remember the pineapple rule')"), false);
+});

@@ -26,6 +26,7 @@ import { bundleMergeOrder, openBundles } from '../shared/bundle';
 import { normalizeQuickKey, quickKeyLabel } from '../shared/quickKey';
 import { failedFirst, fixCommand, type Check } from '../shared/preflight';
 import { THEMES, cleanTheme } from '../shared/theme';
+import { SEARCH_MIN, type TextHit } from '../shared/textSearch';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -2627,7 +2628,9 @@ function addFiles(box: Box, list: FileList | null) {
 /* ---------- command palette: Ctrl/Cmd+K (decision 116) ---------- */
 
 interface Cmd extends PaletteItem { icon: string; run: () => void; /** Listed only for a search: past tasks would bury the places to go. */ searchOnly?: boolean }
-const cmdk = { open: false, i: 0, all: [] as Cmd[], shown: [] as Cmd[], back: null as HTMLElement | null };
+const cmdk = { open: false, i: 0, all: [] as Cmd[], shown: [] as Cmd[], back: null as HTMLElement | null,
+  /** What was typed, the things said that match it (read from the main process), and the timer that asks for them. */
+  q: '', said: [] as Cmd[], saidFor: '', timer: 0 };
 
 /** Everything the palette can go to, in the order it lists them while nothing is typed. */
 function paletteItems(): Cmd[] {
@@ -2690,17 +2693,61 @@ function openPalette() {
 }
 
 /** The list for what is typed. Sections have their names only while nothing is typed: a search mixes them by rank. */
-function renderPalette(q: string) {
+function renderPalette(q: string, keep = false) {
   const heads = !q.trim();
-  cmdk.shown = matchItems(heads ? cmdk.all.filter((c) => !c.searchOnly) : cmdk.all, q, 60);
-  cmdk.i = 0;
+  cmdk.q = q;
+  // Places and tasks first, then what was said: messages are many, and a place is what one usually wants.
+  cmdk.shown = [...matchItems(heads ? cmdk.all.filter((c) => !c.searchOnly) : cmdk.all, q, 60), ...(cmdk.saidFor === q.trim() ? cmdk.said : [])];
+  if (!keep) { cmdk.i = 0; searchSaid(q); }
   let last = '';
   $('#cmdk-list').innerHTML = cmdk.shown.map((c, i) => {
     const head = heads && c.group !== last ? `<div class="cmdk-g" role="presentation">${esc(c.group)}</div>` : '';
     last = c.group;
     return `${head}<div class="cmdk-it" id="cmdk-${i}" role="option" data-action="cmdk-run" data-i="${i}">${c.icon}<b>${esc(c.title)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}<span class="gap"></span>${c.keys ? `<kbd>${esc(c.keys)}</kbd>` : ''}</div>`;
   }).join('') || `<div class="cmdk-none">${t('cmdk.none')}</div>`;
-  markPalette(false);
+  markPalette(keep);
+}
+
+/** Asks the main process for what was said that matches, a moment after the typing stops, and adds it under the list. */
+function searchSaid(q: string) {
+  clearTimeout(cmdk.timer);
+  const query = q.trim();
+  if (query.length < SEARCH_MIN) { cmdk.said = []; cmdk.saidFor = ''; return; }
+  if (cmdk.saidFor === query) return;
+  cmdk.timer = window.setTimeout(async () => {
+    const hits = (await call<TextHit[]>('search:text', query)) ?? [];
+    // Typed on, or closed, while it was read: this answer is for an older question.
+    if (!cmdk.open || cmdk.q.trim() !== query) return;
+    cmdk.saidFor = query;
+    cmdk.said = hits.map((h, i) => ({
+      id: `said:${i}`, group: t('cmdk.said'), title: h.snippet, hint: `${h.where === 'chat' ? t('nav.chat') : h.where} · ${when(h.ts)}`, icon: sym('s-chat'), searchOnly: true,
+      run: () => (h.where === 'chat' ? void jumpToChat(h.id) : openWorker(h.where)),
+    }));
+    renderPalette(cmdk.q, true);
+  }, 180);
+}
+
+/**
+ * Shows the chat from a message on, loading older pages until it is there (at most 40), and marks it for a moment.
+ */
+async function jumpToChat(id: string) {
+  go({ view: 'chat' });
+  for (let i = 0; i < 40 && !chatAll().some((c) => c.id === id); i++) {
+    const first = chatAll()[0]?.id;
+    if (!first) break;
+    const r = await call<{ items: ChatItem[]; more: boolean }>('chat:page', first, PAGE.chat);
+    if (!r?.items.length) break;
+    ui.chatOlder = [...r.items, ...ui.chatOlder];
+  }
+  if (!chatAll().some((c) => c.id === id)) return;
+  ui.chatFrom = id;
+  ui.lastChatKey = '';
+  renderChat(false, true);
+  const th = $('#chat-thread');
+  const hit = th.querySelector<HTMLElement>(':scope > .bub, :scope > .rp, :scope > div:not(.empty-view)');
+  hit?.scrollIntoView({ block: 'start' });
+  hit?.classList.add('hit');
+  setTimeout(() => hit?.classList.remove('hit'), 1600);
 }
 
 function markPalette(scroll = true) {
@@ -2721,6 +2768,9 @@ function closePalette(restore = true) {
   root.innerHTML = '';
   if (restore && cmdk.back?.isConnected) cmdk.back.focus({ preventScroll: true });
   cmdk.back = null;
+  clearTimeout(cmdk.timer);
+  cmdk.said = [];
+  cmdk.saidFor = '';
 }
 
 function runPalette(i: number) {
