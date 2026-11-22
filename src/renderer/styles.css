@@ -986,3 +986,14 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .li.jira .r { gap: var(--space-8); }
 .jira-msg { padding: var(--space-8) var(--space-12); font-size: var(--fs-caption); color: var(--text-secondary); }
 .jira-msg.err { color: var(--danger-text); }
+
+/* ---------- a request across repositories ---------- */
+.mini.bnd { gap: var(--space-2); }
+.mini.bnd b { display: flex; align-items: center; gap: var(--space-6); }
+.bnd-n { flex: none; min-width: 16px; height: 16px; padding: 0 var(--space-4); border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); font-size: var(--fs-caption2); font-weight: 600; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+.mini .bnd-f { display: flex; align-items: center; gap: var(--space-8); min-height: var(--control-sm); }
+.mini .bnd-f .gap { flex: 1; }
+.mini .bnd-f a { color: var(--text-link); cursor: pointer; }
+.mini .bnd-f a:hover { text-decoration: underline; }
+.mini .bnd-f .pill { font-style: normal; flex: none; }
+.mini.bnd-act { align-items: flex-end; }

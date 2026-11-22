@@ -498,3 +498,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Where:** the Repositories view, under the repository list: key, summary, type, status and "Assign". A Jira issue belongs to no single repository, so the Dispatcher picks one as it does for any request.
     - **What the Dispatcher is told** (`jiraMessage`): the key, summary, link and the description as plain text (Cloud's document format is flattened, cut at 4,000 characters), because Workers cannot read Jira, and to put the key in the PR title so Jira links the PR.
     - **Read only:** the app does not comment on issues or move them between statuses. Jira's own GitHub integration does the linking from the PR title.
+126. **A request across repositories is shown as one bundle and merged in order.**
+    - **Why:** a change to an API and its callers is one request and two or more PRs in different repositories. They showed as unrelated tasks, and the order to merge them in was left to memory.
+    - **How a bundle is made:** `create_task` takes an optional `bundle` name. The Dispatcher gives the same name to each repository's task, creates the one whose PR must merge first before those that depend on it, and tells each Worker what the others change.
+    - **In the inbox** (`shared/bundle.ts`): "Across repositories" with the bundle's name, then its tasks numbered in the order they were created: repository, title, Worker, PR and status. A bundle with every PR merged, closed or cancelled leaves the inbox; a "bundle" of one task is never shown.
+    - **Merge in order:** when every PR left is ready (the same rule as the Merge button), one button merges them in that order after one confirmation. It stops at the first that fails, since a later PR may depend on it, and says how many merged.
+    - **Not atomic:** GitHub cannot merge PRs of different repositories as one. The order and the stop on failure are what the app can offer; the first PRs stay merged if a later one fails.
+    - **No start order:** the tasks run side by side. A task that needs another's merged change still uses `after_task_id`.
