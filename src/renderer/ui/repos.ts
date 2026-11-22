@@ -8,7 +8,7 @@ import { jiraBase, type JiraIssue } from '../../shared/jira';
 import { failedFirst, fixCommand, type Check } from '../../shared/preflight';
 import { PAGE } from '../../shared/paging';
 import { act } from '../app';
-import { $, call, esc, ic, ide, keepInputs, keepScroll, paged, prNum, S, shortPath, skel, sym, t, task, taskLabel, toast, ui, when } from './core';
+import { $, call, esc, ic, ide, keepInputs, keepScroll, paged, prNum, S, shortPath, skel, sym, t, task, taskLabel, toast, tryCall, ui, when } from './core';
 import { go, nav } from './history';
 
 export let jira: undefined | 'loading' | JiraIssue[] | { error: string };
@@ -89,7 +89,8 @@ export function renderRepos() {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
-      return `<div tabindex="0" role="button" class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
+      const local = r.local ? `<span class="pill" title="${esc(t('repo.localNote'))}">${t('repo.local')}</span>` : '';
+      return `<div tabindex="0" role="button" class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${local}${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}${jiraHtml()}</div>`;
   });
   const ins = $('#repo-ins');
@@ -102,7 +103,8 @@ export function renderRepos() {
   keepInputs(ins, () => {
     const all = s.tasks.filter((x) => x.repo === r.name).reverse();
     const ts = paged(`repo-tasks:${r.name}`, all, PAGE.repoTasks);
-    ins.innerHTML = `<div class="ins-h"><b>${esc(r.name)}</b></div>
+    ins.innerHTML = `<div class="ins-h"><b>${esc(r.name)}</b>${r.local ? `<span class="pill">${t('repo.local')}</span>` : ''}</div>
+      ${r.local ? `<div class="repo-local-note">${t('repo.localNote')}</div>` : ''}
       <div class="group kv"><span>${t('kv.path')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(r.path)}" title="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span title="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
       <div class="ins-h"><b>${t('repo.desc')}</b></div>
       <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" data-scroll="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
@@ -155,6 +157,7 @@ export function repoAddHtml() {
     <div class="ins-h"><b>${t('repo.desc')}</b></div>
     <textarea class="inp" id="repo-add-desc" data-keep="repo-add-desc" placeholder="${esc(t('repo.addDescPh'))}"${off}></textarea>
     ${progress ? `<div class="repo-add-progress" role="status">${esc(progress)}</div>` : ''}
+    ${!ui.repoAdding && ui.repoAddError ? `<div class="repo-add-error" role="alert">${esc(ui.repoAddError)}</div>` : ''}
     <div class="ins-act"><button class="btn" data-action="repo-add-cancel">${t('cancel')}</button><button class="btn def" data-action="repo-add"${off}>${t(ui.repoAdding ? 'repo.adding' : 'repo.addGo')}</button></div>`;
 }
 
@@ -164,12 +167,25 @@ export async function addRepo() {
   if (!url) { inp.focus(); return; }
   if (ui.repoAdding) return;
   ui.repoAdding = true;
+  ui.repoAddError = '';
   renderRepos();
-  const r = await call<{ name: string }>('repo:add', url, undefined, $<HTMLTextAreaElement>('#repo-add-desc').value);
-  ui.repoAdding = false;
-  if (!r) { renderRepos(); return; }
+  // The form leaves "Adding…" however the add ends; a failure is said in the form, where it can be fixed (T-0027).
+  let r: { ok: true; v: Repo | undefined } | { ok: false; error: string } = { ok: false, error: t('repo.err.unknown') };
+  try {
+    r = await tryCall<Repo>('repo:add', url, undefined, $<HTMLTextAreaElement>('#repo-add-desc').value);
+  } catch (e) {
+    r = { ok: false, error: (e as Error)?.message || t('repo.err.unknown') };
+  } finally {
+    ui.repoAdding = false;
+  }
+  if (!r.ok || !r.v) {
+    ui.repoAddError = r.ok ? t('repo.err.unknown') : r.error || t('repo.err.unknown');
+    renderRepos();
+    return;
+  }
+  const added = r.v;
   ui.repoAdd = false;
-  toast(t('repo.added', { name: r.name }));
-  go({ repoSel: r.name });
+  toast(t(added.local ? 'repo.addedLocal' : 'repo.added', { name: added.name }));
+  go({ repoSel: added.name });
   renderRepos();
 }

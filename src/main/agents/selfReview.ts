@@ -12,13 +12,16 @@ export const SELF_REVIEW_SKILL = 'oh-my-agent-ide:self-review';
  * It goes in the task message, not the system prompt, so a changed setting applies from the next task
  * without restarting a Worker's session.
  */
-export function selfReviewLine(enabled: boolean, defaultBranch: string): string | null {
+export function selfReviewLine(enabled: boolean, defaultBranch: string, local = false): string | null {
   if (!enabled) return null;
   const { lines, files } = SELF_REVIEW_SKIP;
+  // A local-only repository has no origin and no PR: the review runs against the local branch before the report.
   return [
-    `Self-review: before \`gh pr create\`, follow the \`${SELF_REVIEW_SKILL}\` skill against \`origin/${defaultBranch}\`.`,
+    local
+      ? `Self-review: before your final report, follow the \`${SELF_REVIEW_SKILL}\` skill against \`${defaultBranch}\`.`
+      : `Self-review: before \`gh pr create\`, follow the \`${SELF_REVIEW_SKILL}\` skill against \`origin/${defaultBranch}\`.`,
     `Skip it when the change is at most ${lines} changed lines in at most ${files} files (lockfiles and generated files not counted) or touches only docs or comments.`,
-    'Either way, put its one-line result in the PR body.',
+    `Either way, put its one-line result in ${local ? 'your report' : 'the PR body'}.`,
   ].join(' ');
 }
 

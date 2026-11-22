@@ -24,9 +24,12 @@ async function ahead(cwd: string, base: string, ref: string) {
   return r.code === 0 ? Number(r.stdout.trim()) || 0 : 0;
 }
 
-/** Read what the branch of a cancelled task holds, so nothing with work in it is deleted. */
-export async function inspectBranch(repoPath: string, worktree: string | null, defaultBranch: string, branch: string): Promise<BranchWork> {
-  const base = `refs/remotes/origin/${defaultBranch}`;
+/**
+ * Read what the branch of a cancelled task holds, so nothing with work in it is deleted. `noRemote`: the repository has
+ * no remote, so commits are counted against its local default branch.
+ */
+export async function inspectBranch(repoPath: string, worktree: string | null, defaultBranch: string, branch: string, noRemote = false): Promise<BranchWork> {
+  const base = noRemote ? `refs/heads/${defaultBranch}` : `refs/remotes/origin/${defaultBranch}`;
   const local = await hasRef(repoPath, `refs/heads/${branch}`);
   const remote = await hasRef(repoPath, `refs/remotes/origin/${branch}`);
   let commits = 0;
@@ -56,9 +59,9 @@ export function holdsWork(b: BranchWork) {
  * Delete a task branch that holds no work: move the worktree off it (to the default branch, detached),
  * then delete the local branch and, if it was pushed, the remote one.
  */
-export async function dropBranch(repoPath: string, worktree: string | null, defaultBranch: string, branch: string, b: BranchWork, env?: NodeJS.ProcessEnv) {
+export async function dropBranch(repoPath: string, worktree: string | null, defaultBranch: string, branch: string, b: BranchWork, env?: NodeJS.ProcessEnv, local = false) {
   if (holdsWork(b)) throw new Error(`${branch} holds work; not deleting it.`);
-  if (b.checkedOut && worktree) await run('git', ['switch', '-q', '--detach', `origin/${defaultBranch}`], { cwd: worktree });
+  if (b.checkedOut && worktree) await run('git', ['switch', '-q', '--detach', local ? defaultBranch : `origin/${defaultBranch}`], { cwd: worktree });
   if (b.local) await run('git', ['branch', '-D', branch], { cwd: repoPath });
-  if (b.remote) await run('git', ['push', '-q', 'origin', '--delete', branch], { cwd: repoPath, env, timeoutMs: 120_000 });
+  if (b.remote && !local) await run('git', ['push', '-q', 'origin', '--delete', branch], { cwd: repoPath, env, timeoutMs: 120_000 });
 }

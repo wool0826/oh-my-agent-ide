@@ -40,8 +40,9 @@ const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], is
 /** Spend is shown and recorded only; nothing is held back because of it. */
 const SPEND_NOTE = 'API-equivalent estimate at list prices, summed over every turn including subagents. The accounts are subscriptions, so this is not what is billed. Use it to compare tasks, not to hold work back.';
 
-function repoLine(r: { name: string; description: string; defaultBranch: string; url: string }) {
-  return `- ${r.name}: ${r.description || '(no description)'} [default branch ${r.defaultBranch}] ${r.url}`;
+function repoLine(r: { name: string; description: string; defaultBranch: string; url: string; local?: boolean }) {
+  // A local-only repository's tasks end on a branch, not in a PR.
+  return `- ${r.name}: ${r.description || '(no description)'} [default branch ${r.defaultBranch}${r.local ? '; local only: no remote, so tasks end with a branch to merge, not a PR' : ''}] ${r.url}`;
 }
 
 /** A task's status for the Dispatcher; a queued one says what it waits for. */
@@ -193,7 +194,7 @@ function boardTools(d: Dispatcher) {
         const rs = store.data.repos;
         return ok(rs.length ? rs.map(repoLine).join('\n') : 'No repositories are registered.');
       }),
-      tool('register_repo', 'Clone and register a repository. url is a git URL, "org/name" (company GitHub), or an existing local folder.', {
+      tool('register_repo', 'Clone and register a repository. url is a git URL, "org/name" (company GitHub), or an existing local folder (a git repository with at least one commit; one with no remote is registered as local only).', {
         url: z.string(),
         name: z.string().optional().describe('Short name. Derived from the URL if omitted.'),
         description: z.string().optional().describe('What the repository is responsible for. Used to route tasks.'),
@@ -201,7 +202,7 @@ function boardTools(d: Dispatcher) {
         try {
           store.chat('event', t('ev.cloning', { name: a.name ?? a.url }));
           const r = await registerRepo(a);
-          store.chat('event', t('ev.registered', { name: r.name, path: r.path }));
+          store.chat('event', t(r.local ? 'ev.registeredLocal' : 'ev.registered', { name: r.name, path: r.path }));
           return ok(`Registered: ${repoLine(r)}\nPath: ${r.path}`);
         } catch (e) {
           return fail(`Registration failed: ${(e as Error).message}`);
