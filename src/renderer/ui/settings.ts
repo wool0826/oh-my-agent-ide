@@ -306,7 +306,7 @@ export function settingsHtml() {
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
       ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
-      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 1, 90, t('set.archive')))}
+      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 0, 90, t('set.archive')))}
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
       ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
       ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
@@ -540,7 +540,8 @@ export function readSettingsForm() {
     language: v('set-lang') as Lang,
     home: v('set-home') || S!.settings.home,
     githubHost: hostOnly(v('set-gh')),
-    archiveDays: Math.max(1, Number(v('set-arch')) || 7),
+    // 0 = never.
+    archiveDays: Math.min(90, Math.max(0, Math.round(Number(v('set-arch'))))) || 0,
     notifications: ($('#set-noti') as HTMLInputElement).checked,
     notifyResults: ($('#set-nres') as HTMLInputElement).checked,
     quietFrom: cleanTime(v('set-qfrom')),

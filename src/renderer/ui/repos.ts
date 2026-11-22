@@ -144,11 +144,14 @@ export async function loadIssues(name: string) {
 /** The add form: what to register (cloned unless it is a local folder) and its description, sent to repo:add. */
 export function repoAddHtml() {
   const off = ui.repoAdding ? ' disabled' : '';
+  // While it clones: git's last progress line, and Cancel stops the clone (nothing is registered).
+  const progress = ui.repoAdding ? S!.repoAdding?.progress || t('repo.adding') : '';
   return `<div class="ins-h"><b>${t('repo.add')}</b></div>
     <div class="repo-add-row"><input class="inp" id="repo-add-url" data-keep="repo-add-url" data-enter="repo-add" placeholder="${esc(t('repo.addUrl'))}" aria-label="${esc(t('repo.addUrl'))}" spellcheck="false"${off}><button class="btn" data-action="repo-add-pick"${off}>${t('repo.pickFolder')}</button></div>
     <div class="ins-h"><b>${t('repo.desc')}</b></div>
     <textarea class="inp" id="repo-add-desc" data-keep="repo-add-desc" placeholder="${esc(t('repo.addDescPh'))}"${off}></textarea>
-    <div class="ins-act"><button class="btn" data-action="repo-add-cancel"${off}>${t('cancel')}</button><button class="btn def" data-action="repo-add"${off}>${t(ui.repoAdding ? 'repo.adding' : 'repo.addGo')}</button></div>`;
+    ${progress ? `<div class="repo-add-progress" role="status">${esc(progress)}</div>` : ''}
+    <div class="ins-act"><button class="btn" data-action="repo-add-cancel">${t('cancel')}</button><button class="btn def" data-action="repo-add"${off}>${t(ui.repoAdding ? 'repo.adding' : 'repo.addGo')}</button></div>`;
 }
 
 export async function addRepo() {

@@ -23,12 +23,13 @@ import { nowIso, oneLine, today, uid } from '../util';
 import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
 import { hasSpend } from '../../shared/spend';
 import { sharedMemoDigest } from '../../shared/memos';
-import { describeCancel } from '../../shared/queue';
+import { describeCancel, isQueued } from '../../shared/queue';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { bundleName } from '../../shared/bundle';
 import { FakeSession } from './fakeSession';
 import { fakeMode } from '../fake';
 import { kTokens } from '../../shared/context';
+import { recapChat } from '../../shared/recap';
 import { dispatcherReason } from '../../shared/askWhy';
 import { describePick, pickWorker, reuseBlock } from '../../shared/routing';
 
@@ -138,8 +139,35 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
   store.changed();
   // No Worker named: reuse the idle one that best knows this code; a new Worker only when none fits.
   const reuse = a.worker_id || a.new_worker ? null : pickWorker(store.data.workers, store.data.tasks, task, model);
-  const worker = await workers.assign(task, a.worker_id ?? reuse?.worker.id ?? null, model);
-  return { task, worker, reused: reuse ? describePick(reuse, task.repo) : null };
+  try {
+    const worker = await workers.assign(task, a.worker_id ?? reuse?.worker.id ?? null, model);
+    return { task, worker, reused: reuse ? describePick(reuse, task.repo) : null };
+  } catch (e) {
+    unassigned(task, (e as Error).message);
+    throw e;
+  }
+}
+
+/**
+ * The task could not be handed to a Worker (its worktree failed, no such Worker): it failed, with the error.
+ * Left queued it would wait for nothing, counted as waiting for a usage limit.
+ */
+function unassigned(task: Task, msg: string) {
+  if (task.status !== 'queued' && task.status !== 'blocked') return;
+  task.status = 'failed';
+  task.summary = oneLine(msg, 200);
+  task.updatedAt = task.finishedAt = nowIso();
+  store.chat('error', t('ev.assignFailed', { title: task.title, msg: task.summary }), task.id);
+  store.changed();
+}
+
+/** Call off one attempt of a comparison whose other attempt could not start. Says what happened to it. */
+async function undoAttempt(task: Task): Promise<string> {
+  if (isQueued(task)) {
+    try { await workers.cancelTask(task.id, 'dispatcher'); return `${task.id} was cancelled.`; } catch { /* it started meanwhile */ }
+  }
+  if (task.workerId) await workers.stop(task.workerId, 'dispatcher');
+  return `${task.id} on ${task.workerId ?? '?'} was stopped.`;
 }
 
 function boardServer(d: Dispatcher) {
@@ -307,9 +335,15 @@ function boardTools(d: Dispatcher) {
           const pair = compareModels(st.workerModel, st.designModel, cachedModels().models.map((m) => ({ id: m.id, provider: providerOf(m.id, cachedModels().models) })), [...new Set(accounts.list().map((x) => x.provider))]);
           if (!pair) return fail('A comparison needs two different models, and only one is available.');
           const compare = { group: uid() };
-          const made = [];
+          const made: Awaited<ReturnType<typeof createTask>>[] = [];
           for (const model_id of pair) {
-            made.push(await createTask({ title: `${a.title} (${modelLabel(model_id)})`, prompt: `${a.prompt}\n\n${COMPARE_NOTE}`, kind: 'code', repo: a.repo, new_worker: true, model_id, compare }));
+            try {
+              made.push(await createTask({ title: `${a.title} (${modelLabel(model_id)})`, prompt: `${a.prompt}\n\n${COMPARE_NOTE}`, kind: 'code', repo: a.repo, new_worker: true, model_id, compare }));
+            } catch (e) {
+              // One attempt alone compares nothing: the one that started is called off too.
+              const undone = await Promise.all(made.map((m) => undoAttempt(m.task)));
+              return fail(`Could not start the comparison: ${(e as Error).message}${undone.length ? ` ${undone.join(' ')}` : ''}`);
+            }
           }
           d.acted();
           for (const m of made) store.chat('event', assignedEvent(m.task, m.worker, false));
@@ -382,6 +416,10 @@ class Dispatcher {
   statusText = '';
   /** Messages that came while every account was held by a usage limit; sent when the first one resets. */
   private held: string[] = [];
+  /** The system prompt changed during a turn: the next message starts a fresh session. */
+  private stale = false;
+  /** The end of the earlier conversation, sent with the first message of a session that replaced it (open()). */
+  private carry: string | null = null;
   /** A turn a usage limit cut off; continued when the first limit resets. */
   private cutOff = false;
   /** How long Worker news is gathered before it starts a turn. */
@@ -463,8 +501,12 @@ class Dispatcher {
     // A conversation cannot move between Claude Code and Codex: after the model changed sides, a new one starts.
     const switched = (d.provider ?? 'claude') !== provider;
     const freshDay = d.date !== today() || switched;
-    if (this.session && !this.session.closed && !freshDay) return this.session.ready() ? this.session : null;
+    // A turn under way is never cut: the new session starts with the first message after it (a new day, a new
+    // system prompt or the other agent's model).
+    const keep = !freshDay && !this.stale;
+    if (this.session && !this.session.closed && (keep || this.session.busy)) return this.session.ready() ? this.session : null;
     if (this.session) this.session.close();
+    this.stale = false;
     // Fake agent mode: the Dispatcher follows the script in the user's message; "@fake task" makes a task as create_task does.
     if (fakeMode()) {
       const fake = new FakeSession({
@@ -485,6 +527,12 @@ class Dispatcher {
     if (!acc) return null;
     d.provider = provider;
     if (freshDay) {
+      // Said in the chat, and the new session hears how the earlier conversation ended.
+      if (d.sessionId) {
+        const recap = recapChat(store.data.chat);
+        this.carry = recap ? `[Earlier conversation] ${switched ? 'The Dispatcher model changed' : 'A new day started'}, so this is a new session. The end of the earlier conversation, for context (tasks and Workers are as the board tools show them now):\n${recap}` : null;
+        store.chat('event', t(switched ? 'ev.dispatcherNewModel' : 'ev.dispatcherNewDay'));
+      }
       d.sessionId = null;
       d.sessionSpend = null;
       d.date = today();
@@ -627,7 +675,9 @@ class Dispatcher {
 
   /** Send messages in one turn, after Worker updates and anything a usage limit held back. */
   private deliver(s: AgentSession | CodexSession | FakeSession, msgs: string[]) {
-    const parts = this.cutOff ? ['[Usage limit reset] Your last turn was cut off by a usage limit. Continue where you left off.'] : [];
+    const parts = this.carry ? [this.carry] : [];
+    this.carry = null;
+    if (this.cutOff) parts.push('[Usage limit reset] Your last turn was cut off by a usage limit. Continue where you left off.');
     parts.push(...this.held, ...msgs);
     this.held = [];
     this.cutOff = false;
@@ -676,10 +726,11 @@ class Dispatcher {
 
   /** After repos, memory or language change, use a fresh system prompt from the next message. */
   refreshContext() {
-    if (this.session && !this.session.busy) {
-      this.session.close();
-      this.session = null;
-    }
+    if (!this.session) return;
+    // Mid-turn: the next message after it starts the fresh session (open()).
+    if (this.session.busy) { this.stale = true; return; }
+    this.session.close();
+    this.session = null;
   }
 }
 

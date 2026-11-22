@@ -6,7 +6,7 @@ import { closePop } from './controls';
 import { $, call, isMac, S, ui, worker } from './core';
 import { renderMemory } from './memory';
 import { closeSettings } from './settings';
-import { loadLog, renderCancelDialog } from './workers';
+import { loadLog, renderCancelDialog, renderConfirmDialog } from './workers';
 
 export const nav = new History<Screen>(sameScreen);
 
@@ -63,9 +63,9 @@ export function navStep(dir: NavDir, src: NavSource) {
   closePop();
   $('#ctxmenu').hidden = true;
   // A sheet or dialog on top: Back closes it first, Forward waits until it is gone. Neither is a history entry.
-  if (ui.settingsShown || ui.cancelAsk) {
+  if (ui.settingsShown || ui.cancelAsk || ui.confirmAsk) {
     if (dir === 'forward') return;
-    if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); } else closeSettings();
+    if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); } else if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); } else closeSettings();
     return;
   }
   const cur = screen();

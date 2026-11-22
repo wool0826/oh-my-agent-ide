@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { dispatcher, readWorker } from '../src/main/agents/dispatcher';
+import { createTask, dispatcher, readWorker } from '../src/main/agents/dispatcher';
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
@@ -202,4 +202,49 @@ test("read_worker shows what a Worker is doing, what is unanswered, and the late
   assert.ok(!view.includes('[Task T-1]'), 'only the latest two');
   assert.ok(view.includes(`[${hhmm} worker] Looking at the parser.\n\n[${hhmm} worker] RESULT: Done\n`), view);
   assert.ok(view.endsWith('… (513 more characters cut)'), view.slice(-60));
+});
+
+test('a new day never cuts the turn under way; the next message starts a new session, said in the chat, with the end of the earlier conversation (M6)', async () => {
+  dispatcher.send('Fix the login bug.');
+  const first = dispatcher.session;
+  store.data.dispatcher.sessionId = 'yesterday';
+  turn('On it.');
+  dispatcher.send('Also the footer.');
+  // Midnight passes during that turn: the message goes to the same session, which is not closed.
+  store.data.dispatcher.date = '2000-01-01';
+  dispatcher.send('And the header.');
+  assert.equal(dispatcher.session, first);
+  assert.equal(first?.closed, false);
+  turn('Both noted.');
+  dispatcher.send('Status?');
+  assert.notEqual(dispatcher.session, first);
+  assert.ok(events().some((e) => e.startsWith('A new day: the Dispatcher started a new conversation')));
+  const msg = sent[sent.length - 1];
+  assert.match(msg, /^\[Earlier conversation\] A new day started/);
+  assert.match(msg, /- User \([^)]*\): Fix the login bug\./);
+  assert.match(msg, /- You \([^)]*\): Both noted\./);
+  assert.match(msg, /\n\nStatus\?$/);
+  // Only the first message of the new session carries it.
+  turn('All quiet.');
+  dispatcher.send('Thanks.');
+  assert.equal(sent[sent.length - 1], 'Thanks.');
+});
+
+test('a context refresh during a turn starts the fresh session with the next message after it', async () => {
+  dispatcher.send('Hello.');
+  const first = dispatcher.session;
+  dispatcher.refreshContext();
+  assert.equal(dispatcher.session, first);
+  turn('Hi.');
+  dispatcher.send('Again.');
+  assert.notEqual(dispatcher.session, first);
+  assert.equal(first?.closed, true);
+});
+
+test('a task that could not be handed to a Worker fails with the error instead of waiting in the queue (M2)', async () => {
+  await assert.rejects(createTask({ title: 'Lost', prompt: 'Do it.', kind: 'other', worker_id: 'W-404' }), /W-404/);
+  const x = store.data.tasks[store.data.tasks.length - 1];
+  assert.equal(x.status, 'failed');
+  assert.match(x.summary ?? '', /W-404/);
+  assert.ok(store.data.chat.some((c) => c.kind === 'error' && c.ref === x.id && c.text.startsWith('Could not start "Lost"')));
 });

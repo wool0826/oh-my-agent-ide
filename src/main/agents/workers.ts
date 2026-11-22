@@ -29,7 +29,7 @@ import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, ALLOW_TASK, DENY, type Task, type TaskStatus, type Worker, type WorkerStatus } from '../../shared/types';
 import { workerDecisions } from '../../shared/inbox';
-import { afterDependency, cancelSet, describeCancel, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
+import { afterDependency, cancelSet, describeCancel, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
@@ -300,7 +300,7 @@ class WorkerManager {
 
   /** A command or a file change a Codex Worker needs a yes for: the same decision card a Claude Worker's permission gets. */
   private codexApproval(w: Worker) {
-    return async (req: CodexApproval): Promise<CodexDecision> => {
+    return async (req: CodexApproval, signal?: AbortSignal): Promise<CodexDecision> => {
       const task = this.currentTask(w);
       const prev = this.awaitDecision(w, task);
       const tool = req.kind === 'command' ? 'Bash' : 'Edit';
@@ -322,7 +322,7 @@ class WorkerManager {
           options: this.permOptions(scope),
           questionKey: null,
           reason: permissionReason(t, { who: w.id, task, tool, input, rule: alwaysAskRule(tool, input, loadSettings().askOff), decisionReason: req.reason }),
-        });
+        }, signal);
         store.log(w.id, 'user', `${oneLine(code, 140)} → ${this.answerLabel(ans)}`);
         if (ans === ALLOW_TASK && task && scope) task.grants = withGrant(task.grants, scope);
         return ans === ALLOW || ans === ALLOW_TASK ? 'accept' : 'decline';
@@ -1098,6 +1098,12 @@ class WorkerManager {
     return !!w && !!this.sessions.get(w.id)?.busy && this.currentTask(w)?.id === task.id;
   }
 
+  /** The Worker is using its worktree (see working()). */
+  inUse(workerId: string) {
+    const w = store.worker(workerId);
+    return !!w && this.working(w);
+  }
+
   /** The Worker is using its worktree: mid-turn, or one of its tasks is running. */
   private working(w: Worker) {
     return !!this.sessions.get(w.id)?.busy
@@ -1238,17 +1244,62 @@ class WorkerManager {
     return `[Cancelled] The user cancelled ${ids.join(', ')} while it was waiting; do not continue it. The app deleted its branch unless it held commits or uncommitted changes, and may have moved this worktree back to the default branch.\n\n${msg}`;
   }
 
-  async archive(workerId: string) {
+  /**
+   * Close a Worker's session and remove its worktree. A Worker at work is refused: its task would be left running
+   * with nobody on it (Stop it first). The folder stays while a task still needs it (a PR, a queued or blocked task)
+   * or while it holds uncommitted changes, which removing it would lose. Says which folder was kept and why.
+   */
+  async archive(workerId: string): Promise<{ kept: 'task' | 'dirty' | null }> {
     const w = store.worker(workerId);
-    if (!w) return;
+    if (!w) return { kept: null };
+    this.checkArchive(w.id);
     this.sessions.get(w.id)?.close();
     this.sessions.delete(w.id);
     w.status = 'archived';
     w.statusText = '';
-    const keep = w.taskIds.some((id) => { const x = store.task(id); return x?.status === 'pr_open' || x?.status === 'blocked' || x?.status === 'queued'; });
+    let kept: 'task' | 'dirty' | null = w.taskIds.some((id) => holdsWorktree(store.task(id))) ? 'task' : null;
     const repo = w.repo ? store.repo(w.repo) : null;
-    if (repo && !keep && fs.existsSync(w.cwd)) await removeWorktree(repo, w.cwd).catch(() => {});
+    if (repo && !kept && fs.existsSync(w.cwd)) {
+      if (fs.existsSync(path.join(w.cwd, '.git')) && !(await worktreeClean(w.cwd))) {
+        kept = 'dirty';
+        store.log(w.id, 'event', t('log.archiveKeptDirty'));
+      } else await removeWorktree(repo, w.cwd).catch(() => {});
+    }
     store.changed();
+    return { kept };
+  }
+
+  /** Throws while the Worker is at work: archiving it would leave its task running with nobody on it. */
+  checkArchive(workerId: string) {
+    const w = store.worker(workerId);
+    if (w && this.working(w)) throw new Error(t('err.archiveBusy', { id: w.id }));
+  }
+
+  /** Throws when the repository can't be removed yet: one of its tasks is open, or one of its Workers is mid-turn. */
+  checkRetire(name: string) {
+    const open = store.data.tasks.filter((x) => x.repo === name && (x.status === 'running' || x.status === 'waiting' || isQueued(x)));
+    if (open.length) throw new Error(t('repo.err.busy', { ids: open.map((x) => x.id).join(', ') }));
+    const busy = store.data.workers.find((w) => w.repo === name && this.working(w));
+    if (busy) throw new Error(t('err.archiveBusy', { id: busy.id }));
+  }
+
+  /**
+   * Before a repository is removed: refused while one of its tasks is open (running, waiting, queued or blocked),
+   * since nothing could finish it. Its Workers are archived and their worktrees removed, also one kept for an open
+   * PR, which nothing follows any more. A worktree with uncommitted changes is kept. Returns the Workers whose was.
+   */
+  async retireRepo(name: string): Promise<string[]> {
+    this.checkRetire(name);
+    const repo = store.repo(name);
+    const ws = store.data.workers.filter((w) => w.repo === name);
+    const kept: string[] = [];
+    for (const w of ws) {
+      if (w.status !== 'archived') await this.archive(w.id);
+      if (!repo || !fs.existsSync(path.join(w.cwd, '.git'))) continue;
+      if (await worktreeClean(w.cwd)) await removeWorktree(repo, w.cwd).catch(() => {});
+      else kept.push(w.id);
+    }
+    return kept;
   }
 
   /** Archived Workers whose worktree is being made again; a second call waits for the same one. */
@@ -1285,16 +1336,17 @@ class WorkerManager {
     }
   }
 
+  /** Archive Workers idle for longer than the setting (0 = never). One with an open task is left alone; archive() keeps uncommitted work. */
   autoArchive() {
-    const days = loadSettings().archiveDays || 7;
+    const days = loadSettings().archiveDays;
+    if (!(days > 0)) return;
     const cutoff = Date.now() - days * 24 * 3600_000;
     for (const w of store.data.workers) {
       if (w.status !== 'idle' && w.status !== 'error') continue;
       if (Date.parse(w.lastActiveAt) > cutoff) continue;
-      // A task waiting in the queue (for a slot or a limit) still needs its worktree.
-      if (w.taskIds.some((id) => { const x = store.task(id); return x?.status === 'pr_open' || x?.status === 'blocked' || x?.status === 'queued'; })) continue;
+      if (this.working(w) || w.taskIds.some((id) => holdsWorktree(store.task(id)))) continue;
       log.info(`auto-archive ${w.id}`);
-      void this.archive(w.id);
+      this.archive(w.id).catch((e) => log.warn(`auto-archive ${w.id}`, e));
     }
   }
 
@@ -1348,9 +1400,13 @@ class WorkerManager {
     const resume: { w: Worker; task: Task }[] = [];
     const failed: { w: Worker; task: Task }[] = [];
     for (const w of store.data.workers) {
-      if (w.status === 'archived') continue;
       const task = this.currentTask(w);
       const inProgress = task && (task.status === 'running' || task.status === 'waiting');
+      // An older version archived Workers mid-task; nobody will finish that task, so it failed.
+      if (w.status === 'archived') {
+        if (inProgress) failed.push({ w, task });
+        continue;
+      }
       // The turn that would have answered is gone with the session, and so is a question that was held.
       if (w.ask) this.unanswered(w, 'the app restarted', false);
       if (w.status === 'error') {

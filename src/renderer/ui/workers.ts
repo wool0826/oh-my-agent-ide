@@ -2,7 +2,7 @@
 import type { DiffView, LogPage, Task, Worker, WorkerLogItem } from '../../shared/types';
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars } from '../../shared/spend';
-import { cancelSet, followersOf, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
+import { cancelSet, followersOf, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { queueWhy, type QueueCtx } from '../../shared/queueWhy';
 import { patchLines } from '../../shared/diffComment';
 import { lastLines } from '../../shared/runOutput';
@@ -402,9 +402,83 @@ export function renderWorkerInspector() {
     <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}${grantsHtml(x)}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${w.status === 'running' || w.status === 'waiting' || asked ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
-      ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
+      ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : workerBusy(w, tasks) ? '' : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
       <button class="btn def" data-action="worker-msg" data-id="${w.id}">${t('wk.message')}</button>
     </div>`; });
+}
+
+/** The Worker is at work (a turn, or a task running or waiting): it cannot be archived until it stops. */
+export function workerBusy(w: Worker, tasks: Task[]) {
+  return w.status === 'running' || w.status === 'waiting' || w.status === 'starting' || tasks.some((x) => x.status === 'running' || x.status === 'waiting');
+}
+
+/* ---------- asking before archiving a Worker or removing a repository ---------- */
+
+/** Archive a Worker; first ask when its folder would be removed (a repository Worker no open task needs). */
+export async function archiveWorker(id: string, asked = false) {
+  const w = S!.workers.find((x) => x.id === id);
+  if (!w) return;
+  const tasks = w.taskIds.map((x) => task(x)).filter(Boolean) as Task[];
+  if (!asked && w.repo && !tasks.some(holdsWorktree)) {
+    ui.confirmAsk = { title: t('arch.title', { id: w.id }), body: `<p>${esc(t('arch.body', { folder: base(w.cwd) }))}</p>`, ok: t('wk.archive'), action: 'archive', id };
+    renderConfirmDialog();
+    return;
+  }
+  const r = await call<{ kept: 'task' | 'dirty' | null }>('worker:archive', id);
+  if (r?.kept === 'dirty') toast(t('arch.keptDirty'));
+}
+
+/** Remove a repository: what is affected is listed first, and it is refused while its tasks are open. */
+export function askRepoRemove(name: string) {
+  const tasks = S!.tasks.filter((x) => x.repo === name);
+  const open = tasks.filter((x) => x.status === 'running' || x.status === 'waiting' || isQueued(x));
+  const prs = tasks.filter((x) => x.status === 'pr_open');
+  const ws = S!.workers.filter((w) => w.repo === name && w.status !== 'archived');
+  const list = (xs: string[]) => `<ul class="dlg-list">${xs.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}${xs.length > 5 ? `<li class="more">${t('cancel.more', { n: xs.length - 5 })}</li>` : ''}</ul>`;
+  ui.confirmAsk = open.length
+    ? { title: t('repoRm.busyTitle', { name }), body: `<p>${esc(t('repoRm.busy'))}</p>${list(open.map((x) => `${x.id} ${x.title}`))}`, ok: null, action: 'repo-remove', id: name }
+    : {
+      title: t('repoRm.title', { name }),
+      body: `<p>${esc(t('repoRm.body'))}</p>${ws.length ? `<p>${esc(t('repoRm.workers'))}</p>${list(ws.map((w) => w.id))}` : ''}${prs.length ? `<p>${esc(t('repoRm.prs'))}</p>${list(prs.map((x) => `${x.id} ${x.title}`))}` : ''}`,
+      ok: t('remove'), action: 'repo-remove', id: name,
+    };
+  renderConfirmDialog();
+}
+
+/** The confirm dialog for archiving and removing (ui.confirmAsk); without an OK label it only explains. */
+export function renderConfirmDialog() {
+  const root = $('#dlg');
+  const ask = ui.confirmAsk;
+  if (!ask) {
+    root.hidden = true;
+    root.innerHTML = '';
+    root.dataset.key = '';
+    return;
+  }
+  const key = JSON.stringify(ask);
+  if (!root.hidden && root.dataset.key === key) return;
+  const opening = root.hidden === true;
+  root.dataset.key = key;
+  root.innerHTML = `<div class="dlg-back" data-action="confirm-dismiss"></div>
+  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="xdlg-t">
+    <h2 id="xdlg-t">${esc(ask.title)}</h2>${ask.body}
+    <div class="dlg-btns"><button class="btn${ask.ok ? '' : ' def'}" data-action="confirm-dismiss">${t(ask.ok ? 'cancel' : 'close')}</button>${ask.ok ? `<button class="btn danger-fill" data-action="confirm-ok">${esc(ask.ok)}</button>` : ''}</div>
+  </div>`;
+  root.classList.toggle('opening', opening);
+  root.hidden = false;
+  if (opening) root.querySelector<HTMLButtonElement>('.dlg-btns .btn')?.focus();
+}
+
+export async function confirmOk() {
+  const ask = ui.confirmAsk;
+  ui.confirmAsk = null;
+  renderConfirmDialog();
+  if (!ask?.ok) return;
+  if (ask.action === 'archive') return archiveWorker(ask.id, true);
+  const kept = await call<string[]>('repo:remove', ask.id);
+  if (kept === undefined) return;
+  if (ui.repoSel === ask.id) ui.repoSel = null;
+  toast(kept?.length ? t('repoRm.kept', { ids: kept.join(', ') }) : t('repoRm.done', { name: ask.id }));
 }
 
 /* ---------- cancelling queued tasks ---------- */

@@ -34,7 +34,7 @@ export interface CodexSessionConfig {
   effort?: string;
   tools?: CodexTool[];
   /** Asked before a command runs or files change, when Codex's own rules do not already allow it. No handler: declined. */
-  approve?(req: CodexApproval): Promise<CodexDecision>;
+  approve?(req: CodexApproval, signal: AbortSignal): Promise<CodexDecision>;
   /** What the session may touch without asking. Default workspace-write: files under `cwd`. */
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
   /** When Codex asks first. Default on-request. */
@@ -109,7 +109,12 @@ export class CodexSession {
   /** Claude's permission modes do not exist here; the sandbox and approval policy are fixed when the thread starts. */
   async setMode(_mode: string) { /* nothing to switch */ }
 
+  /** Aborted when the turn is interrupted or the session closes, so an open approval card does not outlive it. */
+  private approvals = new AbortController();
+
   async interrupt() {
+    this.approvals.abort();
+    this.approvals = new AbortController();
     if (!this.sessionId || !this.turnId) return;
     try { await this.link.request('turn/interrupt', { threadId: this.sessionId, turnId: this.turnId }, 15_000); } catch { /* already finished */ }
   }
@@ -309,7 +314,7 @@ export class CodexSession {
   private async ask(req: CodexApproval): Promise<CodexDecision> {
     if (!this.cfg.approve) return 'decline';
     try {
-      return await this.cfg.approve(req);
+      return await this.cfg.approve(req, this.approvals.signal);
     } catch (e) {
       log.warn(`[${this.cfg.label}] approval`, (e as Error).message);
       return 'decline';

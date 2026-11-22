@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adoptSeen, byPr, prBusy, prKey, prsInReview, prsToWatch } from '../src/shared/prs';
+import { adoptSeen, byPr, isBot, parsePages, prBusy, prKey, prsInReview, prsToWatch } from '../src/shared/prs';
 import type { Task } from '../src/shared/types';
 
 const PR17 = 'https://github.com/wool0826/oh-my-agent-ide/pull/17';
@@ -93,4 +93,18 @@ test('prs: the task that opened the PR takes over what a follow-up already handl
   assert.deepEqual(fresh.seenCommentIds, []);
   assert.equal(fresh.seenCiRuns, undefined);
   assert.equal(fresh.ciFixAttempts, undefined);
+});
+
+test('parsePages: one array per page from gh api --paginate, back to back; null when a page is cut', () => {
+  assert.deepEqual(parsePages('[{"id":1}]'), [{ id: 1 }]);
+  assert.deepEqual(parsePages('[{"id":1,"body":"a ] [ \\" b"}][{"id":2}]\n[]'), [{ id: 1, body: 'a ] [ " b' }, { id: 2 }]);
+  assert.deepEqual(parsePages(''), []);
+  assert.equal(parsePages('[{"id":1}][{"id":'), null);
+  assert.equal(parsePages('{"message":"Not Found"}'), null);
+  assert.equal(parsePages('oops'), null);
+});
+
+test('isBot: "[bot]" logins and type Bot from REST, and bare app names from gh pr view', () => {
+  for (const [login, type] of [['dependabot[bot]', null], ['ci-helper', 'Bot'], ['github-actions', null], ['Codecov', undefined]] as const) assert.ok(isBot(login, type), login);
+  for (const login of ['octocat', 'robot-reviewer', 'botanist']) assert.ok(!isBot(login, 'User'), login);
 });
