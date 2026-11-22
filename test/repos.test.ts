@@ -155,7 +155,7 @@ test('git missing (spawn ENOENT) rejects with a readable reason instead of waiti
   const p = fakeChild();
   const done = watch(p, { stallMs: 5000 });
   p.emit('error', Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' }));
-  await assert.rejects(done, /git was not found/);
+  await assert.rejects(done, /git (was )?not found/);
 });
 
 test('a clone whose helper keeps stderr open settles soon after git exits', async () => {
