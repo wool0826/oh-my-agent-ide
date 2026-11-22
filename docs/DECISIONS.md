@@ -605,3 +605,6 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Small things:** nothing is under 11px; file-chip, reply-chip and font-list buttons, the switch and the toolbar's "register an account" link have a place to hit of 24px; Hangul words are not split (`:lang(ko)`); button labels are never the tertiary text color.
     - **The quick message box** follows the font and size settings and the type tokens, and its field is named in the app's language.
     - **Not done:** control heights of 26, 30 and 34 (the scale is 24, 28, 32), spacing of 5, 7 and 14px, and merging `.segc`/`.radios` and the three menus into one component each. Each changes how every screen looks or is built, and wants its own pass with pictures before and after.
+144. **The usage popover is drawn once when it opens; moving between the rings only moves the mark** (reported by the user: the bars kept filling again).
+    - **Why they did:** every pointer move over the rings wrote the popover again, and cleared the timer that ends its opening motion, so each new write played the bars' fill.
+    - **Now:** an open popover is left alone by the pointer. New numbers from a state update are written in place, without the opening motion, and only when something changed.
