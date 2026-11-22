@@ -650,13 +650,13 @@ test('a question whose turn fails or says nothing is reported as unanswered, so 
 
 test('steps: set and marked on the open task, the Dispatcher hears the latest one without a turn of its own', () => {
   const { w, x } = talking();
-  assert.match(workers.steps(w, { kind: 'set', steps: ['Plan', 'Code', 'Test'] }), /^3 steps set\. Step 1\/3 now: Plan\./);
+  assert.match(workers.steps(w, { kind: 'set', steps: ['Plan', 'Code', 'Test'] }), /^3 steps set\. 0\/3 done; now step 1: Plan\./);
   assert.deepEqual(store.data.pendingUpdates, []);
-  assert.match(workers.steps(w, { kind: 'done', step: 1 }), /Step 2\/3 now: Code/);
-  assert.match(workers.steps(w, { kind: 'done', step: 2 }), /Step 3\/3 now: Test/);
+  assert.match(workers.steps(w, { kind: 'done', step: 1 }), /1\/3 done; now step 2: Code/);
+  assert.match(workers.steps(w, { kind: 'done', step: 2 }), /2\/3 done; now step 3: Test/);
   // Marking a step again tells nobody twice.
   workers.steps(w, { kind: 'done', step: 2 });
-  assert.deepEqual(store.data.pendingUpdates, [`${w.id} (${x.id}) progress: step 2/3 done "Code"; next "Test".`]);
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} (${x.id}) progress: step 2 done "Code" (2/3 done); next "Test".`]);
   assert.match(workers.steps(w, { kind: 'done', step: 9 }), /no step 9/);
   assert.equal(wakes, 0);
   assert.deepEqual(x.steps!.map((s) => !!s.doneAt), [true, true, false]);

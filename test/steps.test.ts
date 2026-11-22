@@ -48,7 +48,7 @@ test('stepView and stepsLine: where the Worker is, also when it finished a step 
   markDone(x, 2, AT);
   assert.deepEqual(stepView(x), { done: 1, total: 3, at: 0, current: 'Plan', allDone: false });
   assert.deepEqual(stepper(x.steps!, null).lines.map((l) => l.seg), ['cur', 'done', 'todo']);
-  assert.equal(stepsLine(x.steps!), 'Step 1/3 now: Plan.');
+  assert.equal(stepsLine(x.steps!), '1/3 done; now step 1: Plan.');
   markDone(x, 1, AT); markDone(x, 3, AT);
   assert.deepEqual(stepView(x), { done: 3, total: 3, at: 3, current: 'Test', allDone: true });
   assert.equal(stepsLine(x.steps!), 'All 3 steps done.');
@@ -87,9 +87,9 @@ test('mergeProgress: a newer progress line for the same task replaces the older 
   assert.deepEqual(u, ['W-1 (T-1) notes: hi', 'W-1 (T-1) progress: step 2/3 done', 'W-2 (T-2) progress: step 1/2 done']);
 });
 
-test('stepper: a three-line window on the plan that rolls up one line when a step is done', () => {
+test('stepper: a long plan gets a three-line window that rolls up one line when a step is done', () => {
   const x = T();
-  setSteps(x, ['a', 'b', 'c', 'd', 'e']);
+  setSteps(x, ['a', 'b', 'c', 'd', 'e', 'f', 'g']);
   const view = (prev: string | null, now = Date.parse(AT) + 500) => {
     const v = stepper(x.steps!, prev, now);
     return { rolled: v.rolled, lines: v.lines.map((l) => `${l.title}:${l.seg}${l.just ? '!' : ''}`) };
@@ -106,18 +106,20 @@ test('stepper: a three-line window on the plan that rolls up one line when a ste
   prev = doneMask(x.steps!);
   markDone(x, 2, AT);
   assert.deepEqual(view(prev), { rolled: true, lines: ['a:done', 'b:done!', 'c:cur', 'd:todo'] });
+  // The line rolling out is still drawn, so it is not counted above yet.
+  assert.equal(stepper(x.steps!, prev, Date.parse(AT) + 500).before, 0);
+  assert.equal(stepper(x.steps!, null).before, 1);
   // Seen long after it was marked (the sidebar was collapsed): no motion.
   assert.deepEqual(view(prev, Date.parse(AT) + 60_000), { rolled: false, lines: ['b:done', 'c:cur', 'd:todo'] });
   // First time drawn: no motion either.
   assert.deepEqual(view(null), { rolled: false, lines: ['b:done', 'c:cur', 'd:todo'] });
   // At the end the window stops at the last three steps, also once all are done.
-  markDone(x, 3, AT); markDone(x, 4, AT);
-  assert.deepEqual(view(null).lines, ['c:done', 'd:done', 'e:cur']);
+  for (const n of [3, 4, 5, 6]) markDone(x, n, AT);
+  assert.deepEqual(view(null).lines, ['e:done', 'f:done', 'g:cur']);
   prev = doneMask(x.steps!);
-  markDone(x, 5, AT);
-  assert.deepEqual(view(prev), { rolled: false, lines: ['c:done', 'd:done', 'e:done!'] });
+  markDone(x, 7, AT);
+  assert.deepEqual(view(prev), { rolled: false, lines: ['e:done', 'f:done', 'g:done!'] });
   // Three steps done at once move the window by two lines: no roll, the last one done still pops.
-  setSteps(x, ['a', 'b', 'c', 'd', 'e']);
   for (const st of x.steps!) st.doneAt = null;
   prev = doneMask(x.steps!);
   markDone(x, 1, AT); markDone(x, 2, AT); markDone(x, 3, AT);
@@ -125,9 +127,47 @@ test('stepper: a three-line window on the plan that rolls up one line when a ste
   // A doneAt that does not parse plays nothing.
   prev = doneMask(x.steps!);
   x.steps![3].doneAt = 'not a time';
-  assert.deepEqual(view(prev).lines, ['c:done', 'd:done', 'e:cur']);
-  // A plan of one or two steps shows that many lines; a new plan of another length plays nothing.
+  assert.deepEqual(view(prev).lines, ['d:done', 'e:cur', 'f:todo']);
+  // A plan of one step shows one line; a new plan of another length plays nothing.
   setSteps(x, ['only']);
   assert.deepEqual(view('00000'), { rolled: false, lines: ['only:cur'] });
   assert.equal(stepper(x.steps!, null).size, 1);
+});
+
+test('stepper: steps done out of order stay in plan order, the count is of done steps, a short plan is drawn whole (T-0044)', () => {
+  // The bug report: five steps, 1, 2 and 4 done. The row said "3/5" over a three-line window that hid steps 1 and 5.
+  const x = T();
+  setSteps(x, ['Survey', 'Render', 'Report', 'Artifact', 'Verify']);
+  for (const n of [1, 2, 4]) markDone(x, n, AT);
+  assert.deepEqual(stepView(x), { done: 3, total: 5, at: 2, current: 'Report', allDone: false });
+  const v = stepper(x.steps!, null);
+  assert.deepEqual(v.lines.map((l) => `${l.i + 1}.${l.title}:${l.seg}`), ['1.Survey:done', '2.Render:done', '3.Report:cur', '4.Artifact:done', '5.Verify:todo']);
+  assert.deepEqual([v.size, v.before, v.after, v.afterDone], [5, 0, 0, 0]);
+  assert.equal(stepsLine(x.steps!), '3/5 done; now step 3: Report.');
+  // Drawn whole, a step done since the last draw pops in place and nothing rolls.
+  const prev = doneMask(x.steps!);
+  markDone(x, 3, AT);
+  const w = stepper(x.steps!, prev, Date.parse(AT) + 500);
+  assert.deepEqual([w.rolled, w.before, w.after, w.lines.length, w.lines[2].just], [false, 0, 0, 5, true]);
+  // Six steps, just over the whole-plan size: a window, with a later step done out of order counted below.
+  setSteps(x, ['a', 'b', 'c', 'd', 'e', 'f']);
+  for (const st of x.steps!) st.doneAt = null;
+  markDone(x, 6, AT);
+  const six = stepper(x.steps!, null);
+  assert.deepEqual([six.size, six.before, six.after, six.afterDone], [3, 0, 3, 1]);
+});
+
+test('stepper: the window on a long plan keeps the current step in view and counts the steps it hides', () => {
+  const x = T();
+  setSteps(x, ['1', '2', '3', '4', '5', '6', '7', '8']);
+  const shape = () => { const v = stepper(x.steps!, null); return [v.lines.map((l) => `${l.title}:${l.seg}`).join(' '), v.before, v.after, v.afterDone]; };
+  assert.deepEqual(shape(), ['1:cur 2:todo 3:todo', 0, 5, 0]);
+  // Steps 1 to 3 and 6 done: the window is on 4, the step before it and the next; 6 is done among the hidden ones.
+  for (const n of [1, 2, 3, 6]) markDone(x, n, AT);
+  assert.deepEqual(shape(), ['3:done 4:cur 5:todo', 2, 3, 1]);
+  // Out of order the other way: the current step is still the first one not done, whatever was marked last.
+  for (const n of [7, 8]) markDone(x, n, AT);
+  assert.deepEqual(shape(), ['3:done 4:cur 5:todo', 2, 3, 3]);
+  markDone(x, 4, AT); markDone(x, 5, AT);
+  assert.deepEqual(shape(), ['6:done 7:done 8:done', 5, 0, 0]);
 });

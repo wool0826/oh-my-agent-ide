@@ -70,7 +70,7 @@ export function renderSidebar() {
     const v = x && (OPEN.has(x.status) || failed) ? stepView(x) : null;
     const where = `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}`;
     const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}`
-      : v ? `${where} · ${failed && !v.allDone ? t('side.stoppedAt', { n: v.at + 1, total: v.total }) : v.allDone ? t('side.stepsDone', { total: v.total }) : `${v.at + 1}/${v.total}`}`
+      : v ? `${where} · ${t(v.allDone ? 'side.stepsDone' : failed ? 'side.stoppedAt' : 'side.stepsCount', { done: v.done, total: v.total })}`
       : `${where}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
     const tip = [failed ? w.statusText : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
@@ -147,8 +147,8 @@ const TICK = '<svg viewBox="0 0 10 10"><path d="M1.8 5.3l2.1 2.1 4.2-4.6"/></svg
 const CROSS = '<svg viewBox="0 0 10 10"><path d="M2.4 2.4l5.2 5.2M7.6 2.4l-5.2 5.2"/></svg>';
 
 /**
- * The Stepper under a Worker's row: the step done last, the current one and the next, rolling up a line when a step
- * is done. Colour is the state: running, waiting (for the user or the Dispatcher), all done, or stopped by an error.
+ * The Stepper under a Worker's row: the whole plan when it is short, else a window on the current step with the hidden
+ * steps counted above and below, rolling up a line when a step is done. Colour is the state: running, waiting (for the user or the Dispatcher), all done, or stopped by an error.
  * The row's small line and tooltip carry the same in words, so it is hidden from screen readers.
  */
 function stepperHtml(x: Task, state: 'run' | 'wait' | 'all' | 'err') {
@@ -162,7 +162,13 @@ function stepperHtml(x: Task, state: 'run' | 'wait' | 'all' | 'err') {
   // The small line gives the count only; the current step's name is read from here.
   const cur = stepView(x)!;
   const said = cur.allDone ? '' : `<span class="sr-only">${esc(t('side.stepAria', { n: cur.at + 1, total: cur.total, title: cur.current }))}</span>`;
-  return `<span class="stp ${state}" style="--n:${v.size}" aria-hidden="true"><span class="stp-in${v.rolled ? ' adv' : ''}">${lines}</span></span>${said}`;
+  // Steps the window hides are counted above and below it, so a long plan does not look like three steps. Both lines
+  // are kept (empty when nothing is hidden there) so the row keeps its height as the window moves.
+  const long = v.size < steps.length;
+  const more = (text: string) => (long ? `<span class="stp-more" aria-hidden="true">${esc(text)}</span>` : '');
+  const above = more(v.before ? t('side.stepsAbove', { n: v.before }) : '');
+  const below = more(v.after ? t(v.afterDone ? 'side.stepsBelowDone' : 'side.stepsBelow', { n: v.after, done: v.afterDone }) : '');
+  return `${above}<span class="stp ${state}" style="--n:${v.size}" aria-hidden="true"><span class="stp-in${v.rolled ? ' adv' : ''}">${lines}</span></span>${below}${said}`;
 }
 
 /** The row's tooltip: every step, done ones ticked, the current one marked. */
