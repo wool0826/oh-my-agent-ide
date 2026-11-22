@@ -619,7 +619,7 @@ export function init() {
     }
     if (el.dataset.change === 'auto-toggle') { void call('auto:toggle', el.dataset.id, (el as unknown as HTMLInputElement).checked); return; }
     if (el.id === 'auto-wk') { ui.autoWk = (el as unknown as HTMLInputElement).checked; return; }
-    if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; renderChatInspector(); return; }
+    if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoKind === 'merged'); return; }
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
     if (el.id === 'set-gh') el.value = hostOnly(el.value);
     if (el.closest?.('#sheet')) void saveSettingsNow();

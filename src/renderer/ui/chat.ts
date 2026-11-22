@@ -445,10 +445,11 @@ export function triggerLabel(a: Automation) {
 
 /** The Automations tab: what to hand the Dispatcher and when, then the ones set up, each with its switch. */
 export function autosHtml() {
-  const daily = ui.autoKind === 'daily';
-  const add = `<div class="auto-add"><textarea class="inp" id="auto-prompt" data-keep="auto-prompt" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}"></textarea>
-    <div class="auto-when">${segc('auto-kind', ui.autoKind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}${daily ? `<input class="inp" id="auto-time" data-keep="auto-time" value="09:00" inputmode="numeric" aria-label="${t('auto.time')}">` : ''}</div>
-    <div class="auto-when">${daily ? `<label class="auto-wk">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label>` : ''}<span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>${formErrHtml('auto')}`;
+  // The daily fields are always there and only fade out for "When a PR merges" (.merged), so switching
+  // moves nothing and is done in place, without drawing the tab again (app.ts, "auto-kind").
+  const add = `<div class="auto-add${ui.autoKind === 'merged' ? ' merged' : ''}"><textarea class="inp" id="auto-prompt" data-keep="auto-prompt" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}"></textarea>
+    <div class="auto-when">${segc('auto-kind', ui.autoKind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}<input class="inp auto-daily" id="auto-time" data-keep="auto-time" value="09:00" inputmode="numeric" aria-label="${t('auto.time')}"></div>
+    <div class="auto-when"><label class="auto-wk auto-daily">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label><span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>${formErrHtml('auto')}`;
   const list = S!.automations;
   if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
   const rows = list.map((a) => {

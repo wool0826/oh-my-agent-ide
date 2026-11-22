@@ -142,7 +142,7 @@ button { font: inherit; }
 .platform-win32 .toolbar, .platform-linux .toolbar { padding-right: 150px; }
 .toolbar > * { flex: none; }
 .seg { display: flex; gap: var(--space-2); padding: 3px; border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); }
-.seg button { padding: var(--space-4) 13px; border: 0; background: transparent; border-radius: var(--radius-full); font-size: var(--fs-caption); font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: background var(--dur-base), color var(--dur-base); }
+.seg button { padding: var(--space-4) 13px; border: 0; background: transparent; border-radius: var(--radius-full); font-size: var(--fs-caption); font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: color var(--dur-base); }
 .seg button:hover { color: var(--text-primary); }
 .seg button[aria-pressed="true"] { background: var(--surface-thumb); color: var(--text-primary); box-shadow: var(--rim-strong), var(--shadow-1); }
 .seg button:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
@@ -156,6 +156,8 @@ button { font: inherit; }
 .glide-move::before { animation: glide-stretch var(--dur-glide) var(--ease-stretch); }
 @keyframes glide-stretch { 0% { scale: 1 1; } 30% { scale: 1.14 .82; } 62% { scale: .97 1.04; } 100% { scale: 1 1; } }
 .seg.glide-on button[aria-pressed="true"], .segc.glide-on button.on { background: transparent; box-shadow: none; }
+/* No background transition on the buttons: a control drawn anew showed its chosen button's own fill first and
+   faded it out under the sliding pill, so a tab switch showed two pills. The pill alone marks the choice. */
 @media (prefers-reduced-motion: reduce) { .glide-ready::before { transition: none; } .glide-move::before { animation: none; } }
 .usage { margin-left: auto; padding: 5px var(--space-8); border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); display: flex; align-items: center; gap: var(--space-8); }
 .toolbar > .usage { flex: 0 1 auto; min-width: 0; overflow: hidden; }
@@ -545,7 +547,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 
 /* segmented control */
 .segc { display: inline-flex; flex-wrap: wrap; padding: var(--space-2); gap: var(--space-2); border-radius: var(--radius-full); background: var(--surface-track); box-shadow: var(--rim); }
-.segc button { height: 26px; padding: 0 var(--space-12); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font-size: var(--fs-caption); cursor: pointer; white-space: nowrap; transition: background var(--dur-base), color var(--dur-base); }
+.segc button { height: 26px; padding: 0 var(--space-12); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font-size: var(--fs-caption); cursor: pointer; white-space: nowrap; transition: color var(--dur-base); }
 .segc button:hover { color: var(--text-primary); }
 .segc button.on { background: var(--surface-thumb); color: var(--text-primary); font-weight: 600; box-shadow: var(--rim-strong), var(--shadow-1); }
 .segc button:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
@@ -891,6 +893,9 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .auto-when .segc { flex: none; }
 .auto-when .gap { flex: 1; }
 .auto-when #auto-time { width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+/* "When a PR merges" fades the daily fields out but keeps their room, so nothing below moves. */
+.auto-daily { transition: opacity var(--dur-base) var(--ease-standard), visibility var(--dur-base); }
+.auto-add.merged .auto-daily { opacity: 0; visibility: hidden; }
 .auto-wk { display: inline-flex; align-items: center; gap: var(--space-8); padding-left: var(--space-4); font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; }
 .memo.auto p { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .memo.auto .meta { min-height: var(--control-md); }
