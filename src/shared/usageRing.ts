@@ -1,7 +1,7 @@
-// The toolbar's usage rings: one per account, the 7-day window outside and the 5-hour window inside.
+// The toolbar's usage rings: one per account, the 5-hour window outside and the 7-day window inside.
 
-/** Radii on the ring's 24×24 grid. The longer window gets the larger ring. */
-export const RING = { sevenDay: 10, fiveHour: 5.5 } as const;
+/** Radii on the ring's 24×24 grid. The 5-hour window, the one that runs out first, gets the larger ring. */
+export const RING = { fiveHour: 10, sevenDay: 5.5 } as const;
 
 /**
  * `stroke-dasharray` that draws `percent` of a circle of radius `r`: the arc's length, then the whole circumference
