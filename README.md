@@ -50,6 +50,7 @@ Settings opens. Sections are on the left. The Status group at the top of General
 - Each result shows what its task cost as an "API-equivalent estimate" (Claude Code's figure at API list prices) with its input, output and cache tokens. Subscription accounts are not billed this amount, and nothing is held back because of it. The Dispatcher's own cost this month is in the menu of the context indicator next to the send button.
 - When an answer or a correction holds a fact worth reusing, a "Remember this?" card offers to save it to memory (save, edit, or dismiss). It appears only when the check is confident, at most once per task; turn it off in Settings > Memory.
 - The Automations tab on the right sets up work that starts by itself: every day at a time (weekdays only if you like), or each time a PR is merged. When one fires, the Dispatcher gets its text as a message and handles it like a request you typed. You can also ask in the chat ("check for outdated dependencies every weekday at 9"). The app must be open; a daily one missed while it was closed runs once at the next start.
+- Drag the inner edge of either sidebar to change its width; double-click the edge to go back to the default. The widths are kept across restarts, and on a small window the sidebars give way so the middle stays at least 420px wide.
 - In the Worker view, select a Worker to see its conversation with the Dispatcher and message it directly. "Done today" and "Archived Workers" in the sidebar filter the Worker list; "All" shows every Worker again.
 - A Worker's Summary tab shows its work without the conversation: totals (tasks, PRs, files, spend), then each task with what was asked, how long it took, its full report, its PR and its files.
 - Long conversations (the chat and a Worker's) open at their latest messages; scroll up for earlier ones. Long lists (results, auto-answers, archived Workers, a repository's tasks, memory search) end in "Show more".
@@ -80,6 +81,7 @@ Settings opens. Sections are on the left. The Status group at the top of General
 | ⌘/Ctrl+Shift+Space (anywhere on the computer) | Quick message box; change it in Settings → General |
 | ⌘/Ctrl+1–4 | Switch view |
 | ⌘/Ctrl+B, with Alt (⌥) for the right one | Collapse or expand a sidebar |
+| ←/→ on a sidebar's edge (Shift for larger steps, Home/End for the limits) | Narrow or widen that sidebar |
 | Mouse back button, Alt+← (⌘[ on macOS) | Back to the previous screen |
 | Mouse forward button, Alt+→ (⌘] on macOS) | Forward again |
 | ⌘/Ctrl+, | Settings |

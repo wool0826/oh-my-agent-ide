@@ -9,6 +9,7 @@ import { readyToMerge } from '../../shared/prMerge';
 import { groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { History, type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
+import { applyWidths } from './resize';
 import { away } from './chat';
 import { pop } from './controls';
 import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, oneLine, pct, prNum, queuedLabel, ring, S, store, sym, t, task, ui, when, worker } from './core';
@@ -272,6 +273,7 @@ export function applyPanels() {
   const win = $('#win');
   win.classList.toggle('side-min', ui.sideMin);
   win.classList.toggle('ins-min', ui.insMin);
+  applyWidths();
   const left = $('#side-toggle');
   const leftTip = t(ui.sideMin ? 'side.expand' : 'side.collapse', { key: isMac ? '⌘B' : 'Ctrl+B' });
   left.title = leftTip;

@@ -21,6 +21,7 @@ import { closePalette, Cmd, cmdk, openPalette, paletteKeys, renderPalette, runPa
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, hideUsagePop, hoverUsage, renderSidebar, renderUsage, showUsagePop, stoppable, togglePanel } from './ui/sidebar';
+import { initResize } from './ui/resize';
 import { addDiffNote, confirmCancel, olderLog, openCheckpoints, renderCancelDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 
 /** Shows a view tab. Navigation goes through go(), which calls this. */
@@ -533,6 +534,7 @@ export function init() {
   document.body.classList.add(`platform-${ide.platform}`);
   // Before the first paint, so a sidebar that was put away does not animate shut at launch.
   applyPanels();
+  initResize();
   document.addEventListener('click', (e) => {
     const tgt = e.target as HTMLElement;
     const segBtn = tgt.closest<HTMLButtonElement>('[data-segc]');
