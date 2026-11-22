@@ -33,5 +33,6 @@ test('stepsReminderHook: adds the reminder as context to a PostToolUse result on
   const post = (tool_name: string) => ({ hook_event_name: 'PostToolUse', tool_name, tool_input: {}, tool_response: '', session_id: 's', transcript_path: '', cwd: '' }) as never;
   assert.deepEqual(await hook(post('Bash'), undefined, opts), { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: 'remind' } });
   assert.deepEqual(await hook(post('Read'), undefined, opts), {});
+  assert.deepEqual(await hook({ ...(post('Bash') as object), agent_id: 'a1' } as never, undefined, opts), {});
   assert.deepEqual(await hook({ ...(post('Bash') as object), hook_event_name: 'PreToolUse' } as never, undefined, opts), {});
 });

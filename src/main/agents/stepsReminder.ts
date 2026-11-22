@@ -27,7 +27,8 @@ export function stepsReminder(counts: Map<string, number>, task: Task | null, to
 export function stepsReminderHook(remind: (toolName: string) => string | null): HookCallbackMatcher {
   return {
     hooks: [async (input) => {
-      if (input.hook_event_name !== 'PostToolUse') return {};
+      // A subagent's calls (a search, the self-review) are not the Worker's own and do not count.
+      if (input.hook_event_name !== 'PostToolUse' || input.agent_id) return {};
       const text = remind(input.tool_name);
       return text ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } } : {};
     }],

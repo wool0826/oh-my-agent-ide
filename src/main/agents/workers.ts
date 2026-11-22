@@ -630,6 +630,7 @@ class WorkerManager {
     const before = stepView(task);
     const err = op.kind === 'set' ? setSteps(task, op.steps) : markDone(task, op.step, nowIso());
     if (err) return err;
+    this.stepless.delete(task.id);
     const steps = task.steps!;
     const v = stepView(task)!;
     if (op.kind === 'set') {
