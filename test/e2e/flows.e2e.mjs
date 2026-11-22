@@ -188,3 +188,20 @@ flow('an unreadable state file is set aside and the newest backup is put back', 
   const today = fs.readdirSync(path.join(app.home, 'data', 'backups')).sort().at(-1);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(app.home, 'data', 'backups', today), 'utf8')).tasks.map((x) => x.title), ['Kept in the backup']);
 });
+
+flow('an allowance for a task is kept on the task and can be taken back', {}, async (app) => {
+  await app.say('@fake task - Install twice\n@@fake permission npm install a\n@@fake wait 1500\n@@fake permission npm install b\n@@fake result Installed.');
+  await app.until(`!!document.querySelector('${DEC}')`, 'the first permission card');
+  await app.click(answer('allow-task'));
+  let s = await app.until("return (await window.ide.call('state')).tasks.some((x) => x.grants?.length) && (await window.ide.call('state'));", 'the allowance on the task');
+  const t = task(s, 'Install twice');
+  assert.deepEqual(t.grants, [{ key: 'bash:npm install', label: 'npm install' }]);
+  // Taken back while the Worker is between the two installs: the second one asks again.
+  await app.click('button[data-v="worker"]');
+  await app.click(`#wk-list [data-id="${t.workerId}"]`);
+  await app.until("!!document.querySelector('[data-action=\"grant-revoke\"]')", 'the allowance in the Worker view');
+  await app.click('[data-action="grant-revoke"]');
+  s = await app.until("return (await window.ide.call('state')).decisions.some((d) => d.status === 'pending') && (await window.ide.call('state'));", 'the second permission asked again');
+  assert.deepEqual(task(s, 'Install twice').grants, []);
+  assert.match(s.decisions.find((d) => d.status === 'pending').code, /npm install b/);
+});

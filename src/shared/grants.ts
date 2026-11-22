@@ -52,3 +52,19 @@ export function grantScope(tool: string, input: unknown): GrantScope | null {
   const name = tool.replace(/^mcp__\w+?__/, '');
   return { key: `tool:${tool}`, label: name };
 }
+
+/** A kind of action allowed for a task, kept on the task so it outlasts a restart. */
+export type Grant = GrantScope;
+
+export function hasGrant(task: { grants?: Grant[] | null } | null, key: string): boolean {
+  return !!task?.grants?.some((g) => g.key === key);
+}
+
+/** The task's grants with this one added; the same kind is kept once. */
+export function withGrant(grants: readonly Grant[] | null | undefined, g: Grant): Grant[] {
+  return [...(grants ?? []).filter((x) => x.key !== g.key), { key: g.key, label: g.label }];
+}
+
+export function withoutGrant(grants: readonly Grant[] | null | undefined, key: string): Grant[] {
+  return (grants ?? []).filter((x) => x.key !== key);
+}

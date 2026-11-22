@@ -1670,7 +1670,7 @@ function renderWorkerInspector() {
     </div>
     ${runHtml(w)}
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
-    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
+    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}${grantsHtml(x)}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${w.status === 'running' || w.status === 'waiting' ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
@@ -1763,6 +1763,12 @@ function jiraHtml() {
   const list = paged('jira', jira, 8);
   return `${head(String(jira.length))}<div class="jira-list">${list.items.map((i) => `<div class="li jira">${ic('doc')}<span class="m"><b><a tabindex="0" role="link" data-action="open-url" data-href="${esc(i.url)}">${esc(i.key)}</a> ${esc(i.summary)}</b><span>${esc([i.type, i.updatedAt ? when(i.updatedAt) : ''].filter(Boolean).join(' · '))}</span></span>
     <span class="r">${i.status ? `<span class="pill">${esc(i.status)}</span>` : ''}<button class="btn" data-action="jira-assign" data-id="${esc(i.key)}">${t('issue.assign')}</button></span></div>`).join('')}${list.more}</div>`;
+}
+
+/** What the user allowed for the length of a task still in progress, each with a button that takes it back. */
+function grantsHtml(x: Task) {
+  if (!x.grants?.length || !(x.status === 'running' || x.status === 'waiting' || x.status === 'queued' || x.status === 'blocked')) return '';
+  return `<span class="grants"><em>${t('grant.title')}</em>${x.grants.map((g) => `<i class="pill">${esc(g.label)}<button type="button" class="grant-x" data-action="grant-revoke" data-id="${esc(x.id)}" data-key="${esc(g.key)}" title="${t('grant.revoke')}" aria-label="${esc(`${t('grant.revoke')}: ${g.label}`)}"><svg aria-hidden="true"><use href="#s-x"/></svg></button></i>`).join('')}</span>`;
 }
 
 function renderRepos() {
@@ -2904,6 +2910,7 @@ async function act(el: HTMLElement, e: Event) {
       go({ view: 'chat' });
       break;
     }
+    case 'grant-revoke': await call('task:revoke', id, el.dataset.key); break;
     case 'jira-token-clear': await call('jira:token', ''); jira = undefined; S!.settings.jiraTokenSet = false; openSettings(); break;
     case 'jira-refresh': void loadJira(); renderRepos(); break;
     case 'jira-assign': {

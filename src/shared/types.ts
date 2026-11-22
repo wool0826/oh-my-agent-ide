@@ -132,6 +132,8 @@ export interface Task {
   conflictSeen?: string;
   /** Times the Worker was sent failed CI checks to fix. */
   ciFixAttempts?: number;
+  /** Kinds of action the user allowed for the length of this task (shared/grants.ts). */
+  grants?: { key: string; label: string }[];
   /** The request this task is one part of, when it spans several repositories (shared/bundle.ts). */
   bundle?: string | null;
   /** One of two attempts at the same task (shared/compare.ts): its group, and the attempt the user picked once they did. */
