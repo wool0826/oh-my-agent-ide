@@ -6,6 +6,7 @@ import { CodexSession, type CodexApproval, type CodexDecision } from './codexSes
 import { codexClient } from '../codex/client';
 import { providerOf } from '../../shared/models';
 import { alwaysAskHook, alwaysAskRule, ALWAYS_ASK_PREFIX } from './permissions';
+import { STEPS_TASK_LINE, stepsReminder, stepsReminderHook } from './stepsReminder';
 import { REVIEWER, reviewerAgent, selfReviewLine } from './selfReview';
 import { adviseOnQuestion } from './advisor';
 import { accounts } from '../accounts';
@@ -72,6 +73,8 @@ class WorkerManager {
   private followups = new Set<string>();
   /** Plan-first tasks whose Worker was reminded to present its plan, until it presents one. */
   private planNudged = new Set<string>();
+  /** Tool calls per task made without progress steps, for the one-time reminder (see stepsReminder). */
+  private stepless = new Map<string, number>();
   /** Plan-first tasks whose Worker was already sent back once for leaving out the WHAT / HOW / OUTPUT lines. */
   private summaryAsked = new Set<string>();
   /** Workers with no open task that the Dispatcher wrote to: what their turn says goes back to it. */
@@ -197,7 +200,7 @@ class WorkerManager {
       effort: loadSettings().workerEffort,
       permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto',
       canUseTool: this.permissionHandler(w),
-      hooks: { PreToolUse: [alwaysAskHook()] },
+      hooks: { PreToolUse: [alwaysAskHook()], PostToolUse: [stepsReminderHook((tool) => stepsReminder(this.stepless, this.currentTask(w), tool))] },
       // Registered even with self-review off, so turning it on reaches sessions that are already open.
       // Its model is read when the session starts, like the Worker's own.
       agents: { [REVIEWER]: reviewerAgent(claudeHelperModel()) },
@@ -627,6 +630,7 @@ class WorkerManager {
     const before = stepView(task);
     const err = op.kind === 'set' ? setSteps(task, op.steps) : markDone(task, op.step, nowIso());
     if (err) return err;
+    this.stepless.delete(task.id);
     const steps = task.steps!;
     const v = stepView(task)!;
     if (op.kind === 'set') {
@@ -838,6 +842,7 @@ class WorkerManager {
       // A local-only repository's finished work is on its branch until the user merges it: build on that branch.
       if (dep?.status === 'done' && dep.branch && isLocalRepo(repo) && task.branch) head.push(`Its work is on branch ${dep.branch}, which may not be merged into ${repo!.defaultBranch} yet: unless it is, start your branch from it (\`git switch -c ${task.branch} ${dep.branch}\`) instead of ${repo!.defaultBranch}.`);
     }
+    head.push(STEPS_TASK_LINE);
     return `${head.join('\n')}\n\n${task.prompt}`;
   }
 
