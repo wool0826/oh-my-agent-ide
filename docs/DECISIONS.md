@@ -322,3 +322,4 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
       - A usage limit: the account whose limit ends first, and the time it resets.
       - A merge: the PR it waits for, or that it starts or is cancelled now because of how the task it waits for ended (`afterDependency`, decision 92). A cancel shows in red.
     - **Not shown:** messages held for the Worker until its task starts. They are not in the app state, and the conversation already logs them.
+97. **A link ends where the URL ends, not where the run of characters does.** Before, `https://…/pull/27.` and `https://…/pull/27을` were linked whole, so the click opened a page that does not exist. `src/shared/linkify.ts` leaves out sentence punctuation (`. , ; : ! ?`), a closing bracket that has no opening one in the URL, and Korean text stuck to the end. A URL that itself ends in Hangul is cut short; agents write particles after URLs far more often than they write such URLs.
