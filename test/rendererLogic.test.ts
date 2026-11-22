@@ -9,13 +9,43 @@ import { stampQueued } from '../src/shared/queue';
 import type { Decision, Task } from '../src/shared/types';
 
 test('md: lists, ordered lists and nested items', () => {
-  assert.equal(mdHtml('Done:\n\n- one\n- two `x`\n  - deeper'), '<p>Done:</p><ul><li>one</li><li>two <code>x</code></li><li class="sub">deeper</li></ul>');
+  assert.equal(mdHtml('Done:\n\n- one\n- two `x`\n  - deeper'), '<p>Done:</p><ul><li>one</li><li>two <code>x</code><ul><li>deeper</li></ul></li></ul>');
   assert.equal(mdHtml('1. first\n2. second'), '<ol><li>first</li><li>second</li></ol>');
   assert.equal(mdHtml('3. third\n4. fourth'), '<ol start="3"><li>third</li><li>fourth</li></ol>');
   // A paragraph right before a list ends at it.
   assert.equal(mdHtml('Changes\n* a\n* b'), '<p>Changes</p><ul><li>a</li><li>b</li></ul>');
   // A line indented under an item goes with it.
   assert.equal(mdHtml('- item\n  more of it'), '<ul><li>item<br>more of it</li></ul>');
+});
+
+test('md: nested lists, ordered and unordered mixed, as real lists inside their item', () => {
+  // A bullet under a numbered item (three spaces, as written after "2. ").
+  assert.equal(mdHtml('1. first\n2. second\n   - nested'), '<ol><li>first</li><li>second<ul><li>nested</li></ul></li></ol>');
+  // Numbers under a bullet, three levels, then back out to the top.
+  assert.equal(mdHtml('- a\n  1. a1\n  2. a2\n     - deep\n- b'), '<ul><li>a<ol><li>a1</li><li>a2<ul><li>deep</li></ul></li></ol></li><li>b</li></ul>');
+  // A nested list keeps its start number, and a continuation line stays with its nested item.
+  assert.equal(mdHtml('- a\n    3. c\n       more'), '<ul><li>a<ol start="3"><li>c<br>more</li></ol></li></ul>');
+  // A tab counts as indentation.
+  assert.equal(mdHtml('- a\n\t- b'), '<ul><li>a<ul><li>b</li></ul></li></ul>');
+  // Another kind at the same level starts a new list; one space is not nesting.
+  assert.equal(mdHtml('- a\n1. b'), '<ul><li>a</li></ul><ol><li>b</li></ol>');
+  assert.equal(mdHtml('- a\n - b'), '<ul><li>a</li><li>b</li></ul>');
+  // Inside a quote too.
+  assert.equal(mdHtml('> - a\n>   - b'), '<blockquote><ul><li>a<ul><li>b</li></ul></li></ul></blockquote>');
+  assert.doesNotMatch(mdHtml('- a\n  - b'), /class="sub"/);
+});
+
+test('md: strikethrough, and only marked text is bold', () => {
+  assert.equal(mdHtml('~~old~~ and ~~two words~~'), '<p><s>old</s> and <s>two words</s></p>');
+  assert.equal(mdHtml('a ~~ b ~~ c, ~x, `~~code~~`'), '<p>a ~~ b ~~ c, ~x, <code>~~code~~</code></p>');
+  assert.equal(mdHtml('[~~gone~~](https://a.io)'), '<p><a data-action="open-url" data-href="https://a.io" title="https://a.io"><s>gone</s></a></p>');
+  // The full sample from the bug report: <b> wraps only the bold word and the heading.
+  const h = mdHtml('## Title\n**bold**, *italic*, ~~strike~~, `code`, [link](https://x.dev) end.\n\n> quote\n\n1. one\n2. two\n   - nested\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n---\n\n```ts\nconst ok = true;\n```');
+  assert.deepEqual(h.match(/<b[^>]*>[^<]*<\/b>/g), ['<b class="mh">Title</b>', '<b>bold</b>']);
+  assert.equal((h.match(/<b[\s>]/g) ?? []).length, (h.match(/<\/b>/g) ?? []).length);
+  assert.match(h, /<s>strike<\/s>/);
+  assert.match(h, /<li>two<ul><li>nested<\/li><\/ul><\/li>/);
+  assert.match(h, /<hr><pre>const ok = true;<\/pre>$/);
 });
 
 test('md: tables', () => {
