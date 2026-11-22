@@ -835,6 +835,8 @@ class WorkerManager {
       const dep = store.task(task.afterTaskId);
       if (dep?.prUrl && dep.prState === 'MERGED') head.push(`This task builds on ${dep.prUrl}, which has been merged into the default branch.`);
       else if (dep?.status === 'done') head.push(`This task waited for ${dep.id} "${dep.title}", which finished without a PR: ${dep.summary ?? ''}${dep.files.length ? ` Files: ${dep.files.join(', ')}` : ''}`);
+      // A local-only repository's finished work is on its branch until the user merges it: build on that branch.
+      if (dep?.status === 'done' && dep.branch && isLocalRepo(repo) && task.branch) head.push(`Its work is on branch ${dep.branch}, which may not be merged into ${repo!.defaultBranch} yet: unless it is, start your branch from it (\`git switch -c ${task.branch} ${dep.branch}\`) instead of ${repo!.defaultBranch}.`);
     }
     return `${head.join('\n')}\n\n${task.prompt}`;
   }

@@ -88,6 +88,8 @@ test('the default branch of a local repository: checked out, then init.defaultBr
   assert.equal(pickLocalDefault('gone', '', ['master', 'x']), 'master');
   assert.equal(pickLocalDefault('', '', ['x']), 'x');
   assert.equal(pickLocalDefault('main', 'main', []), null);
+  // A Worker's task branch checked out when the folder is added is not taken for the default.
+  assert.equal(pickLocalDefault('agent/t-1', '', ['agent/t-1', 'main']), 'main');
 });
 
 test('a Worker worktree of a local-only repository starts from its local branch; one with origin from origin (T-0027)', async () => {
@@ -163,6 +165,21 @@ test('a clone whose helper keeps stderr open settles soon after git exits', asyn
   p.emit('exit', 128);
   // No close: a process git started still holds the pipe.
   await assert.rejects(done, /Authentication failed/);
+});
+
+test('a clone the kill does not end still settles after the grace time (T-0027)', async () => {
+  const p = fakeChild();
+  p.kill = () => { p.killed++; return true; };
+  await assert.rejects(watch(p, { killGraceMs: 30 }), /made no progress/);
+  assert.equal(p.killed, 1);
+  let cancel: () => void = () => {};
+  let cancelled = false;
+  const q = fakeChild();
+  q.kill = () => true;
+  const done = watch(q, { stallMs: 10_000, killGraceMs: 30, cancelled: () => cancelled, onCancel: (fn) => { cancel = fn; } });
+  cancelled = true;
+  cancel();
+  await assert.rejects(done, /cancelled/);
 });
 
 test('a cancelled clone says it was cancelled', async () => {

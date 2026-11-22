@@ -42,17 +42,16 @@ export async function localDefaultBranch(dir: string) {
 export const repoEvents = new EventEmitter();
 
 /** The repository being added: one at a time. `abort` ends the git command it is running. */
-let adding: { name: string; progress: string; child: ChildProcess | null; cancelled: boolean; abort: AbortController } | null = null;
+let adding: { name: string; progress: string; child: ChildProcess | null; cancelled: boolean; abort: AbortController; onKilled?: () => void } | null = null;
 
 /**
  * The environment for git while adding a repository: it never waits for an answer nobody can give (a password or
- * username prompt, Git Credential Manager's window, an SSH host-key question), so a missing credential fails at once.
- * Stored credentials still work.
+ * username prompt, Git Credential Manager's window), so a missing credential fails at once. Stored credentials and
+ * the user's own ssh command (core.sshCommand, GIT_SSH) still work; ssh has no terminal to ask on (stdin is closed,
+ * the window hidden), and the clone's stall timer ends one that waits anyway.
  */
 export function gitEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...ghEnv(), GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' };
-  if (!env.GIT_SSH_COMMAND) env.GIT_SSH_COMMAND = 'ssh -o BatchMode=yes';
-  return env;
+  return { ...ghEnv(), GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' };
 }
 
 /** Say which step the add is on (the window shows it under the form). */
@@ -62,9 +61,12 @@ function step(text: string) {
   repoEvents.emit('progress');
 }
 
-/** git while adding: no prompt, a time limit, and ended by Cancel. */
-function addGit(args: string[], cwd: string, timeoutMs = 60_000) {
-  return run('git', args, { cwd, env: gitEnv(), timeoutMs, signal: adding?.abort.signal });
+/** git while adding: no prompt, a time limit, and ended by Cancel, which then says it was cancelled. */
+async function addGit(args: string[], cwd: string, timeoutMs = 60_000) {
+  const job = adding;
+  const r = await run('git', args, { cwd, env: gitEnv(), timeoutMs, signal: job?.abort.signal });
+  if (job?.cancelled) throw new Error(t('repo.err.cancelled'));
+  return r;
 }
 
 /** End a process and the ones it started (git clone runs git-remote-https; on Windows kill() ends only git). */
@@ -86,6 +88,7 @@ export function cancelAddRepo() {
   adding.cancelled = true;
   adding.abort.abort();
   if (adding.child) killTree(adding.child);
+  adding.onKilled?.();
   return true;
 }
 
@@ -112,6 +115,10 @@ export interface CloneWatch {
   cancelled: () => boolean;
   progress: (line: string) => void;
   kill: (p: CloneChild) => void;
+  /** Registers what Cancel calls once it has killed the clone, so it settles even if the process lingers. */
+  onCancel?: (fn: () => void) => void;
+  /** How long after a kill the clone settles without an exit (default 5 s). */
+  killGraceMs?: number;
 }
 
 /**
@@ -133,7 +140,10 @@ export function watchClone(p: CloneChild, o: CloneWatch): Promise<void> {
       if (lingering) clearTimeout(lingering);
       if (e) reject(e); else resolve();
     };
-    const stop = (w: 'stall' | 'total') => { why = w; o.kill(p); };
+    // A kill that does not take (taskkill refused, a child that survives) still settles the add a little later.
+    const stop = (w: 'stall' | 'total') => { why = w; o.kill(p); afterKill(); };
+    const afterKill = () => { lingering ??= setTimeout(() => finish(null), o.killGraceMs ?? 5000); };
+    o.onCancel?.(() => afterKill());
     const total = setTimeout(() => stop('total'), o.totalMs);
     let stall = setTimeout(() => stop('stall'), o.stallMs);
     p.stderr?.on('data', (d: Buffer) => {
@@ -175,7 +185,8 @@ function clone(url: string, dir: string): Promise<void> {
     cancelled: () => !!job?.cancelled,
     progress: (line) => step(line),
     kill: killTree,
-  }).finally(() => { if (job) job.child = null; });
+    onCancel: (fn) => { if (job) job.onKilled = fn; },
+  }).finally(() => { if (job) { job.child = null; job.onKilled = undefined; } });
 }
 
 /** A folder a clone left behind; read-only pack files can need a retry on Windows. */
@@ -208,7 +219,12 @@ export async function registerRepo(input: { url: string; name?: string; descript
       dir = path.resolve(url);
       step(t('repo.step.check'));
       const top = await addGit(['rev-parse', '--git-dir'], dir);
-      if (top.code !== 0) throw new Error(t(/ENOENT/.test(top.stderr) ? 'repo.err.noGit' : 'repo.err.notGit'));
+      if (top.code !== 0) {
+        if (/ENOENT/.test(top.stderr)) throw new Error(t('repo.err.noGit'));
+        // Another reason (dubious ownership, no access) is said as git says it: the folder may well be a repository.
+        const line = top.stderr.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? '';
+        throw new Error(!line || /not a git repository/i.test(line) ? t('repo.err.notGit') : line.slice(0, 400));
+      }
       const origin = await addGit(['remote', 'get-url', 'origin'], dir);
       if (origin.code === 0 && origin.stdout.trim()) url = origin.stdout.trim();
       else {
