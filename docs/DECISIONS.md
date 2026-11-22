@@ -378,3 +378,11 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Timers, not `finished`:** steps that follow an animation wait on a timer of the same length. An animation's `finished` never settles while the window is hidden, which would have left a memo undeleted.
     - **Reduced motion:** every duration is a token that is 0 then, so all of it is instant, and the timers with it.
     - **Left as it is:** list rows, cards and the usage rings do not animate when their content changes, since they are redrawn whole; that needs elements that are kept between renders.
+107. **UI pass over every screen (0.3.1).** Each view, each Settings pane and both themes were walked on a seeded profile, with a script listing clipped text, small targets, unnamed controls, native controls, text under 11px and click-only elements.
+    - **One colour scale for usage:** the bars in Settings > Accounts were blue, and orange from 80%, while the toolbar rings and the popover go green, yellow, orange, red. The same number now has the same colour in all three.
+    - **Rows work from the keyboard:** sidebar rows and the Worker, repository and memory lists were click-only `div`s. They take the focus, show the focus ring, and act on Enter or Space; a focused row that is drawn again keeps the focus.
+    - **No dash for a missing account** in a Worker's line of the list ("repo, model" instead of "repo, model, –").
+    - **Empty states without a paragraph:** the chat's and the repository list's empty views keep their title (and the Add button), in line with the rule that the UI carries no explanatory text.
+    - **Nothing under 11px:** inline code inside small text and the account count in Settings were 10px.
+    - **Smaller things:** the 18px round X has a larger place to hit; "Effort" is written one way in the Korean Settings labels.
+    - **Seen and left:** Settings' title is centred on the window, not on its content column; hints stay in native `title` tooltips everywhere but the usage rings; below the window's minimum width (1040px) the chat column gets tight.
