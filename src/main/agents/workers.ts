@@ -952,6 +952,8 @@ class WorkerManager {
    * it shows as stalled and the Dispatcher is told, rather than the Worker sitting idle without a word.
    */
   sweepStalled(now = Date.now()) {
+    // A task that settled starts afresh if a follow-up reopens it.
+    for (const id of this.stallNudged) if (store.task(id)?.status !== 'running') this.stallNudged.delete(id);
     for (const w of store.data.workers) {
       const task = this.currentTask(w);
       const s = this.sessions.get(w.id) ?? null;
@@ -1181,6 +1183,12 @@ class WorkerManager {
     const w = store.worker(workerId);
     const task = w ? this.currentTask(w) : null;
     if (!w || !task || (task.status !== 'running' && task.status !== 'waiting')) return 'idle';
+    // Its turn ended to wait for background subagents: they go with their process, or one would start a turn on the
+    // stopped task when it reports. The next message resumes the same conversation in a new process.
+    if (s && s.background > 0) {
+      s.close();
+      this.sessions.delete(w.id);
+    }
     // Idle first: failing the task frees the slot, and fillSlots may hand this Worker held feedback or queued work.
     w.status = 'idle';
     w.statusText = '';

@@ -374,6 +374,39 @@ test('an open task with nothing running it: the Worker is reminded once, then sh
   s.send('Go on.');
   assert.equal(w.stalledAt, null);
   assert.equal(w.status, 'running');
+  // Flagged again, then the task settles another way: the flag goes with it.
+  s.busy = false;
+  s.ev.onStatus!('idle', '');
+  workers.sweepStalled(Date.now() + 12 * 60_000);
+  assert.ok(w.stalledAt);
+  x.status = 'done';
+  workers.sweepStalled(Date.now() + 13 * 60_000);
+  assert.equal(w.stalledAt, null);
+});
+
+test('a task that waits for the Dispatcher or a plan approval is never reminded as stalled', () => {
+  const a = addWorker({ sessionId: 'sid' });
+  addTask(a, { status: 'waiting' });
+  const b = addWorker({ sessionId: 'sid' });
+  addTask(b, { planFirst: true });
+  for (const w of [a, b]) workers.ensureSession(w);
+  workers.sweepStalled(Date.now() + 60 * 60_000);
+  assert.equal(sent.size, 0);
+  assert.equal(store.data.pendingUpdates.length, 0);
+});
+
+test('Stop while a Worker waits for its subagents closes their session, so none of them restarts the stopped task', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  feed(s, agents(2), said('Waiting for the explorers.'), turnEnd(''));
+  assert.equal(w.status, 'running');
+  assert.equal(await workers.stop(w.id, 'user'), 'stopped');
+  assert.equal(s.closed, true);
+  assert.equal(workers.sessions.has(w.id), false);
+  assert.equal(w.status, 'idle');
+  assert.equal(x.status, 'failed');
+  assert.equal(x.stopped, true);
 });
 
 test('a plan-first turn that ends without a plan is reminded once, then waits for instructions without closing', () => {
