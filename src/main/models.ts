@@ -1,3 +1,4 @@
+import { fakeMode } from './fake';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadSettings, decryptToken, dataDir } from './settings';
@@ -109,6 +110,7 @@ async function fetchModels(token: string): Promise<ModelInfo[]> {
 
 /** The model list, read again when the saved one is older than maxAgeMs. On failure the last list stays. */
 export async function listModels(maxAgeMs: number): Promise<ModelList> {
+  if (fakeMode()) return cachedModels();
   const [claude] = await Promise.all([listClaudeModels(maxAgeMs), refreshCodexModels(maxAgeMs)]);
   return merged(claude);
 }

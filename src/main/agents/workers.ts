@@ -34,6 +34,8 @@ import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
 import { grantScope, type GrantScope } from '../../shared/grants';
+import { FakeSession } from './fakeSession';
+import { fakeMode } from '../fake';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
@@ -87,7 +89,7 @@ const planSummaryRule = () =>
   `Start the plan with exactly three lines, one sentence each in ${langName()}: "WHAT: " what you will do, "HOW: " how you will do it, "OUTPUT: " what the user gets when it is done. Put the details below them.`;
 
 /** A Worker's session: Claude Code, or Codex for a ChatGPT model. The owner uses what the two have in common. */
-export type WorkerSession = AgentSession | CodexSession;
+export type WorkerSession = AgentSession | CodexSession | FakeSession;
 
 /** `codex`: the Worker runs on Codex, which has no AskUserQuestion, no subagents and no Claude Code memory. */
 function workerPrompt(w: Worker, codex = false) {
@@ -246,6 +248,12 @@ class WorkerManager {
   ensureSession(w: Worker): WorkerSession | null {
     const existing = this.sessions.get(w.id);
     if (existing && !existing.closed) return existing.ready() ? existing : null;
+    // Fake agent mode: a scripted session with the Worker's real permission, question and plan handler. No account.
+    if (fakeMode()) {
+      const fake = new FakeSession({ label: w.id, model: w.model, cwd: w.cwd, accountId: null, resume: w.sessionId, canUseTool: this.permissionHandler(w), permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto' }, this.sessionEvents(w));
+      this.sessions.set(w.id, fake);
+      return fake;
+    }
     // The Worker's model decides whose agent runs it, and so which accounts can carry it.
     const provider = providerOf(w.model, cachedModels().models);
     const own = accounts.get(w.accountId);

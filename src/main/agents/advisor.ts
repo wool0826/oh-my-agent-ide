@@ -1,3 +1,4 @@
+import { fakeMode } from '../fake';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { accounts } from '../accounts';
 import { loadSettings, claudeHelperModel } from '../settings';
@@ -17,6 +18,7 @@ export interface AdvisorVerdict { canAnswer: boolean; answer: string; basis: str
  * Answer only with clear support in memory; otherwise it goes to the decision inbox.
  */
 export async function adviseOnQuestion(input: { workerId: string; taskTitle: string; question: string; options: string[] }): Promise<AdvisorVerdict | null> {
+  if (fakeMode()) return null; // no model to ask: the question goes to the user
   const acc = accounts.pick();
   if (!acc) return null;
   const hits = searchMemory(`${input.question} ${input.options.join(' ')} ${input.taskTitle}`, 10)

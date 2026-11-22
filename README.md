@@ -96,6 +96,7 @@ Build output goes to `dist/`, installers to `release/`.
 - `npm run dist:win` builds the Windows installer.
 - `npm run dist:mac` builds the macOS dmg (on a Mac).
 - To keep settings and data in another folder, set `OMA_DATA_DIR=<folder>`. Its `settings.json` holds `home`.
+- To run without accounts or usage, set `OMA_FAKE_AGENT=1`: every agent follows the `@fake` lines of the message it gets (see `src/shared/fakeScript.ts`), asking for permissions and reporting results through the app's real paths. The toolbar shows "Fake agents".
 
 ### Layout
 

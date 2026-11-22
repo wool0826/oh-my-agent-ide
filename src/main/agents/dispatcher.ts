@@ -26,6 +26,8 @@ import { sharedMemoDigest } from '../../shared/memos';
 import { describeCancel } from '../../shared/queue';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { bundleName } from '../../shared/bundle';
+import { FakeSession } from './fakeSession';
+import { fakeMode } from '../fake';
 import { kTokens } from '../../shared/context';
 import { dispatcherReason } from '../../shared/askWhy';
 import { describePick, pickWorker, reuseBlock } from '../../shared/routing';
@@ -374,7 +376,7 @@ function systemPrompt() {
 }
 
 class Dispatcher {
-  session: AgentSession | CodexSession | null = null;
+  session: AgentSession | CodexSession | FakeSession | null = null;
   statusText = '';
   /** Messages that came while every account was held by a usage limit; sent when the first one resets. */
   private held: string[] = [];
@@ -453,7 +455,7 @@ class Dispatcher {
     return providerOf(loadSettings().dispatcherModel, cachedModels().models);
   }
 
-  private open(): AgentSession | CodexSession | null {
+  private open(): AgentSession | CodexSession | FakeSession | null {
     const d = store.data.dispatcher;
     const provider = this.provider;
     // A conversation cannot move between Claude Code and Codex: after the model changed sides, a new one starts.
@@ -461,6 +463,21 @@ class Dispatcher {
     const freshDay = d.date !== today() || switched;
     if (this.session && !this.session.closed && !freshDay) return this.session.ready() ? this.session : null;
     if (this.session) this.session.close();
+    // Fake agent mode: the Dispatcher follows the script in the user's message; "@fake task" makes a task as create_task does.
+    if (fakeMode()) {
+      const fake = new FakeSession({
+        label: 'Dispatcher', model: loadSettings().dispatcherModel, cwd: paths().home, accountId: null, resume: d.sessionId,
+        createTask: async (a) => {
+          const { task, worker: w, reused } = await createTask(a);
+          this.acted();
+          store.chat('event', assignedEvent(task, w, !!reused));
+          return `${task.id} assigned to ${w.id}.`;
+        },
+      }, this.sessionEvents());
+      this.session = fake;
+      store.changed();
+      return fake;
+    }
     const own = accounts.get(d.accountId);
     const acc = own && own.provider === provider && accounts.isFree(own.id) ? own : accounts.pick(undefined, provider);
     if (!acc) return null;
@@ -607,7 +624,7 @@ class Dispatcher {
   }
 
   /** Send messages in one turn, after Worker updates and anything a usage limit held back. */
-  private deliver(s: AgentSession | CodexSession, msgs: string[]) {
+  private deliver(s: AgentSession | CodexSession | FakeSession, msgs: string[]) {
     const parts = this.cutOff ? ['[Usage limit reset] Your last turn was cut off by a usage limit. Continue where you left off.'] : [];
     parts.push(...this.held, ...msgs);
     this.held = [];
