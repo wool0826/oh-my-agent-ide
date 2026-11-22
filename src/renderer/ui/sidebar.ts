@@ -2,6 +2,7 @@
 import type { Task, Worker, AccountView } from '../../shared/types';
 import { isQueued } from '../../shared/queue';
 import { canStop } from '../../shared/canStop';
+import { stepSegments, stepView } from '../../shared/steps';
 import { queueWhy, queueWhyText } from '../../shared/queueWhy';
 import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
@@ -62,9 +63,16 @@ export function renderSidebar() {
   const workerRow = (w: Worker, grouped = false) => {
     const x = lastTask(w);
     const what = x?.title ?? w.title;
-    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
+    const waits = w.status === 'waiting' || awaitsDispatcher(x);
+    // The steps its Worker planned for the open task, when it gave some: how far it is, under the title.
+    const v = x && OPEN.has(x.status) ? stepView(x) : null;
+    const where = `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}`;
+    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}`
+      : v ? `${where} · ${v.allDone ? t('side.stepsDone', { total: v.total }) : t('side.stepOf', { n: v.at + 1, total: v.total, title: v.current })}`
+      : `${where}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
+    const tip = w.status === 'error' ? w.statusText : v ? stepsTip(x!) : '';
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
-    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span></button>${workerActs(w)}</div>`;
+    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` title="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepBar(x!, waits) : ''}</span></button>${workerActs(w)}</div>`;
   };
   // Running Workers get one area per repository; the heading carries the repository's name and how many run in it.
   const runRows = groupByRepo(running, (w) => w.repo).map((g) =>
@@ -126,11 +134,35 @@ export function doneList(done: Task[]) {
 }
 
 
-/** Stop and Open on a sidebar Worker row, shown on hover (the row's context menu has them too). */
+const OPEN = new Set(['running', 'waiting', 'queued']);
+
+/**
+ * The bar under a Worker's row: one segment per step, done ones filled, the current one pulsing; a long plan is one
+ * continuous bar. Its text is the row's small line, so the bar itself is hidden from screen readers.
+ */
+function stepBar(x: Task, waits: boolean) {
+  const segs = stepSegments(x.steps ?? []);
+  const v = stepView(x)!;
+  const inner = segs ? segs.map((s) => `<i class="${s}"></i>`).join('') : `<i class="fill" style="width:${Math.round((v.done / v.total) * 100)}%"></i>`;
+  return `<span class="steps${segs ? '' : ' cont'}${waits ? ' wait' : ''}" aria-hidden="true">${inner}</span>`;
+}
+
+/** The row's tooltip: every step, done ones ticked, the current one marked. */
+function stepsTip(x: Task) {
+  const v = stepView(x)!;
+  const head = v.allDone ? t('side.stepsDone', { total: v.total }) : t('side.stepAria', { n: v.at + 1, total: v.total, title: v.current });
+  return `${head}\n${(x.steps ?? []).map((s, i) => `${s.doneAt ? '✓' : i === v.at ? '▸' : '·'} ${i + 1}. ${s.title}`).join('\n')}`;
+}
+
+/** Stop and Open on a sidebar Worker row, shown on hover, focus and on the selected row (its context menu has them too). */
 export function workerActs(w: Worker) {
-  const btn = (action: string, icon: string, label: string) => `<button class="clear-x" data-action="${action}" data-id="${esc(w.id)}" title="${label}" aria-label="${esc(`${label}: ${w.id}`)}"><svg><use href="#${icon}"/></svg></button>`;
+  const btn = (action: string, icon: string, label: string, cls: string, extra = '') =>
+    `<button type="button" class="row-act ${cls}" data-action="${action}" data-id="${esc(w.id)}" title="${esc(label)}" aria-label="${esc(label)}"${extra}><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
-  return `<span class="row-acts">${canStop(w, x) ? btn('worker-stop', 's-stop', t('wk.stop')) : ''}${btn('open-worker', 's-chev', t('wk.open'))}</span>`;
+  // While its Stop is on its way, the button waits instead of sending it twice.
+  const busy = ui.stopping.has(w.id);
+  const stop = canStop(w, x) ? btn('worker-stop', 's-stop16', t('wk.stopWho', { id: w.id }), 'stop', busy ? ' disabled aria-busy="true"' : '') : '';
+  return `<span class="row-acts${busy ? ' on' : ''}">${stop}${btn('open-worker', 's-open', t('wk.openWho', { id: w.id }), 'open')}</span>`;
 }
 
 /** The × on a queued task's row: asks before cancelling it. */

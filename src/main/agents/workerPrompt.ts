@@ -23,6 +23,8 @@ export function workerPrompt(w: Worker, codex = false) {
     '- "[Dispatcher question]" asks you something. Reply with kind "answer", then go on with what you were doing. It is not a new task and needs no RESULT lines.',
     '- kind "request": you need the Dispatcher to do or answer something, such as what another Worker is doing, or a new task for work outside yours. Keep working on what does not depend on it; the answer comes as a "[Dispatcher]" message.',
     '- kind "note": a milestone worth knowing that needs no reply. Use it rarely.',
+    '',
+    'Progress (set_steps and step_done tools): for a task with several stages, declare 3–7 short steps with set_steps once you know the plan, and call step_done as each one finishes, so the user and the Dispatcher see how far you are. Revise them with set_steps if the plan changes. Skip this for small tasks.',
     ...(codex ? [] : ['- Do not start subagents or workflows to build work outside your task (other features, parallel lanes); ask for new tasks with a request. Subagents are for searching and for the self-review.']),
     '',
     'Keep your context small; every step reads all of it again:',

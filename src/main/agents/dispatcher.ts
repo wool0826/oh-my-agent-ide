@@ -32,6 +32,7 @@ import { kTokens } from '../../shared/context';
 import { recapChat } from '../../shared/recap';
 import { dispatcherReason } from '../../shared/askWhy';
 import { describePick, pickWorker, reuseBlock } from '../../shared/routing';
+import { stepView } from '../../shared/steps';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
@@ -72,9 +73,12 @@ function workerLine(id: string) {
   const tasks = w.taskIds.map((x) => store.task(x)).filter(Boolean) as Task[];
   const last = tasks[tasks.length - 1];
   const idleDays = Math.floor((Date.now() - Date.parse(w.lastActiveAt)) / 86400_000);
+  // The plan of an open task; a finished task's steps are history.
+  const steps = last && ['running', 'waiting', 'queued'].includes(last.status) ? stepView(last) : null;
   return `- ${w.id} [${w.status}] ${w.repo ?? 'general'}, ${modelLabel(w.model)}, context ${Math.round(w.contextTokens / 1000)}K` +
     `${idleDays ? `, last active ${idleDays} day(s) ago` : ''}${w.statusText ? `\n  Now: ${oneLine(w.statusText, 120)}` : ''}` +
     `\n  Tasks: ${tasks.map((x) => `${x.id} ${x.title} (${statusLine(x)}${x.prUrl ? ` ${x.prUrl}` : ''}${x.prState === 'MERGED' ? ' merged' : ''})`).join('; ') || 'none'}` +
+    `${steps ? `\n  Steps: ${steps.done}/${steps.total} done${steps.allDone ? '' : `, now: ${steps.current}`}` : ''}` +
     `${last?.summary ? `\n  Latest result: ${oneLine(last.summary, 160)}` : ''}` +
     `${w.ask ? `\n  Has not answered your question yet (asked ${clock(w.ask.at)}): ${oneLine(w.ask.text, 200)}` : ''}` +
     `${w.request ? `\n  Waits for your answer (since ${clock(w.request.at)}): ${oneLine(w.request.text, 300)}` : ''}` +
