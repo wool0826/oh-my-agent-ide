@@ -1,16 +1,16 @@
 // The tray icon: the app keeps working with its window closed, and this is the way back to it (decision 117).
 
-import path from 'node:path';
 import { Menu, Tray, app, nativeImage, type BrowserWindow } from 'electron';
 import { t } from './i18n';
 import { trayLines, type TrayCounts } from '../shared/tray';
 import { log } from './log';
+import { trayIconFile } from '../shared/appIcon';
 
 let tray: Tray | null = null;
 let last = '';
 
 function icon() {
-  const file = app.isPackaged ? path.join(process.resourcesPath, 'tray.png') : path.join(app.getAppPath(), 'build', 'icon.png');
+  const file = trayIconFile({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() });
   const size = process.platform === 'darwin' ? 18 : 16;
   return nativeImage.createFromPath(file).resize({ width: size, height: size, quality: 'best' });
 }
