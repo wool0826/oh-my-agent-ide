@@ -75,7 +75,10 @@ button { font: inherit; }
 /* sidebar */
 .sidebar { grid-row: 1 / 3; grid-column: 1; margin: var(--panel-inset) 0 var(--panel-inset) var(--panel-inset); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .lights { height: 44px; flex: none; }
-.platform-win32 .lights, .platform-linux .lights { height: 12px; }
+.platform-win32 .lights, .platform-linux .lights, .platform-darwin.fullscreen .lights { height: 12px; }
+/* Where content may start at the top left: clear of the traffic lights on macOS, the window edge elsewhere. */
+body { --lights-end: 0px; }
+.platform-darwin:not(.fullscreen) { --lights-end: calc(var(--lights-x) + var(--lights-w) + var(--lights-gap)); }
 .side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--space-10) var(--space-10); display: flex; flex-direction: column; gap: var(--space-12); }
 .side-sec h4 { margin: 0; font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); padding: 0 var(--space-8) var(--space-4); display: flex; align-items: center; gap: var(--space-6); }
 .side-sec.blink h4 { color: var(--danger-text); animation: pulse var(--dur-attention) var(--ease-in-out) 3; }
@@ -140,6 +143,8 @@ button { font: inherit; }
 /* toolbar */
 .toolbar { grid-row: 1; grid-column: 2 / 4; display: flex; align-items: center; gap: var(--space-12); padding: 0 var(--space-12) 0 14px; white-space: nowrap; min-width: 0; }
 .platform-win32 .toolbar, .platform-linux .toolbar { padding-right: 150px; }
+/* A collapsed sidebar is narrower than the traffic lights, so the toolbar starts after them. */
+.platform-darwin .win.side-min .toolbar { padding-left: max(14px, calc(var(--lights-end) - var(--rail-w))); }
 .toolbar > * { flex: none; }
 .seg { display: flex; gap: var(--space-2); padding: 3px; border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); }
 .seg button { padding: var(--space-4) 13px; border: 0; background: transparent; border-radius: var(--radius-full); font-size: var(--fs-caption); font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: color var(--dur-base); }
@@ -500,7 +505,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .settings-win { position: fixed; inset: 0; z-index: var(--z-settings); background: var(--bg-backdrop); display: flex; flex-direction: column; }
 .stopbar { flex: none; height: var(--toolbar-h); display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-12); padding: 0 var(--space-16); }
 .platform-win32 .stopbar, .platform-linux .stopbar { padding-right: 150px; }
-.platform-darwin .stopbar { padding-left: 86px; }
+.platform-darwin .stopbar { padding-left: max(var(--space-16), var(--lights-end)); }
 .stopbar h1 { margin: 0; font-size: var(--fs-headline); font-weight: 600; }
 .stopbar .sback { justify-self: start; padding-left: 6px; }
 .stopbar .sback svg { width: var(--icon-md); height: var(--icon-md); }

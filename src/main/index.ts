@@ -178,7 +178,7 @@ function createWindow() {
     // Matches --bg-canvas, so nothing flashes before the page paints its backdrop.
     backgroundColor: look.background,
     titleBarStyle: mac ? 'hiddenInset' : 'hidden',
-    // Inside the floating sidebar panel.
+    // Inside the floating sidebar panel. Keep x in step with --lights-x in tokens.css.
     trafficLightPosition: mac ? { x: 22, y: 22 } : undefined,
     titleBarOverlay: mac ? undefined : { color: '#00000000', symbolColor: look.symbol, height: 44 },
     webPreferences: {
@@ -209,6 +209,11 @@ function createWindow() {
   win.on('app-command', (_e, cmd) => {
     if (cmd === 'browser-backward' || cmd === 'browser-forward') win?.webContents.send('nav', cmd === 'browser-backward' ? 'back' : 'forward');
   });
+  // macOS hides the traffic lights in full screen, so the page drops the room it keeps for them.
+  const sendFullScreen = () => win?.webContents.send('fullscreen', win.isFullScreen());
+  win.on('enter-full-screen', sendFullScreen);
+  win.on('leave-full-screen', sendFullScreen);
+  win.webContents.on('did-finish-load', sendFullScreen);
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };

@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('ide', {
   onDecisionAlert: (fn: (loud: boolean) => void) => ipcRenderer.on('decision-alert', (_e, loud) => fn(loud !== false)),
   /** Back or Forward from an app command (mouse side buttons, Back keys). */
   onNav: (fn: (dir: 'back' | 'forward') => void) => ipcRenderer.on('nav', (_e, dir) => fn(dir)),
+  /** The window entered or left full screen. */
+  onFullScreen: (fn: (on: boolean) => void) => ipcRenderer.on('fullscreen', (_e, on) => fn(on === true)),
   /** Absolute path of a dropped file or folder. */
   pathForFile: (f: File) => webUtils.getPathForFile(f),
 });

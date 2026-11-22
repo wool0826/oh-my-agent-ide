@@ -577,6 +577,7 @@ export function init() {
   // Anything the user does makes the next draw a real one. Capture, so it counts before the handlers run.
   for (const type of ['click', 'keydown', 'input', 'change', 'drop', 'contextmenu']) document.addEventListener(type, userActed, true);
   document.body.classList.add(`platform-${ide.platform}`);
+  ide.onFullScreen((on) => document.body.classList.toggle('fullscreen', on));
   // Before the first paint, so a sidebar that was put away does not animate shut at launch.
   applyPanels();
   initResize();
