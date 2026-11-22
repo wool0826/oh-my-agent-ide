@@ -343,3 +343,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Shared or not:** a memo is the user's own until they mark it "Share with agents". Shared memos go into the Dispatcher's system prompt (`sharedMemoDigest`, oldest first, capped at 3000 characters), not to Workers: the Dispatcher passes on what a task needs. Nothing a user jots down reaches an agent unasked.
     - **Stored** with the app state (`memos`), not in the memory git repository: they are not synced to the remote and agents cannot edit them.
     - **Delete** asks once on the same button instead of opening a dialog.
+102. **A reply quotes its message inside the reply's own text.**
+    - **How:** a reply is sent and stored as `[Reply to NAME]`, the quoted line (one line, at most 280 characters), a blank line, then what the user wrote (`src/shared/reply.ts`). The agent reads which message is answered, and the UI parses the same text to draw the quote. The attached-files block already travels this way.
+    - **Why not a `replyTo` id:** lines of a Worker's log have no id, and an id would tell the agent nothing: it would still need the quoted text in the message. With the text alone, chat items, log lines and old state files stay as they are.
+    - **What it costs:** the quote does not link back to the original message, and a user message that happens to start with that heading is drawn as a reply.
+    - **Where:** Reply shows on hover beside Dispatcher and Worker messages only. Events, result cards and the user's own messages have none.
