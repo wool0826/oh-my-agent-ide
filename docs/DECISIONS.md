@@ -397,3 +397,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Merge button:** a PR with no failed or running checks, no conflicts and no review still asked for (`canMerge`) shows Merge among its badges. It asks once ("Merge it?"); a click elsewhere or Escape takes the question back.
     - **Merging** reads the PR's state again first, so a PR that stopped being ready since the window last showed it is not merged, and uses the way the repository allows: squash, then a merge commit, then a rebase (`mergeMethod`). The branch is not deleted there; the monitor's cleanup after a merge does that, and starts the tasks that waited for it.
     - **No auto-merge:** merging stays a click. A task that merges by itself when ready can come later if it is missed.
+110. **A run command per repository, started in a Worker's worktree.**
+    - **Why:** the Changes tab shows what a Worker changed; trying it meant opening a terminal in its worktree. Each repository now has a run command next to its setup command (for example `npm run dev`).
+    - **Where it shows:** the Worker view has a Run section when the Worker's repository has the command: Run, Stop, the first local address the command printed (opens in the browser), and the end of its output. One run per Worker.
+    - **A session thing:** runs are not stored. The window is told about output without saving the state (it arrives a few times a second), and quitting the app, or archiving the Worker, stops the run.
+    - **Stopping** ends the whole process tree (`taskkill /T` on Windows, the process group elsewhere), since the command is usually a script that starts the real server. A run the user stopped says "Stopped", not its exit code.
+    - **Output** is kept without terminal colour codes, to its last 6000 characters (`appendOutput`); the address is the first one on this machine in it (`localUrl`), with `0.0.0.0` shown as `localhost`.
+    - **Left out:** a built-in browser preview. The address opens in the user's browser.

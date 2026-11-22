@@ -53,6 +53,7 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 - Open PRs show whether they are ready to merge: CI, conflicts and review, on the result cards and in the Worker view. When CI fails, the Worker gets the end of the failed GitHub Actions log (or just the link, for other CI) and fixes it on the same branch, up to 3 times per task; after that the decision inbox asks whether to keep going.
 - When an open PR conflicts with its base branch, its Worker merges the base in and resolves the conflict on the same branch (no rebase, no force-push), and asks when a conflict needs a decision. When a PR is ready (CI passed or none, no conflicts, no review still asked for), a Merge button appears next to its badges; it asks once, then merges the way the repository allows.
 - In the Repositories view, a setup command (for example `npm ci`) runs in every new worktree. `ROOT_PATH` points at the main checkout, so `cp $env:ROOT_PATH/.env .` (Windows) or `cp "$ROOT_PATH/.env" .` copies local config.
+- A repository can also have a run command (for example `npm run dev`). The Worker view then has a Run section: start it in that Worker's worktree to try its change, open the local address it prints, read the end of its output, and stop it. Quitting the app stops what is running.
 - In the Memory view, review and edit preferences, repository notes and past decisions. Opening a repository note offers a button to have a Worker open a PR adding it to that repository's CLAUDE.md.
 
 ### Shortcuts

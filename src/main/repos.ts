@@ -64,7 +64,7 @@ export function removeRepo(name: string) {
   store.changed();
 }
 
-export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description' | 'setup'>>) {
+export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description' | 'setup' | 'run'>>) {
   const r = store.repo(name);
   if (!r) return;
   Object.assign(r, patch);
