@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron';
 import os from 'node:os';
 import path from 'node:path';
 import { readJson, writeJsonAtomic, uid } from './util';
-import type { AccountPlan, SettingsView, UsageWindow } from '../shared/types';
+import type { AccountPlan, Provider, SettingsView, UsageWindow } from '../shared/types';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
 import { MAX_WORKERS_DEFAULT, clampMaxWorkers } from '../shared/slots';
 
@@ -11,6 +11,10 @@ export interface StoredAccount {
   label: string;
   kind: 'token' | 'login';
   plan: AccountPlan;
+  /** claude, or chatgpt: this PC's Codex sign-in (always kind login; the app holds no token for it). */
+  provider: Provider;
+  planLabel?: string | null;
+  windowMins?: [number | null, number | null] | null;
   /** Token encrypted with safeStorage (base64). Empty for login accounts. */
   tokenEnc: string;
   fiveHour: UsageWindow;
@@ -79,6 +83,9 @@ function fixAccount(a: Partial<StoredAccount>): StoredAccount {
     label: a.label ?? 'Account',
     kind: a.kind ?? 'token',
     plan: a.plan ?? 'team',
+    provider: a.provider ?? 'claude',
+    planLabel: a.planLabel ?? null,
+    windowMins: a.windowMins ?? null,
     tokenEnc: a.tokenEnc ?? '',
     fiveHour: a.fiveHour ?? { utilization: null, resetsAt: null },
     sevenDay: a.sevenDay ?? { utilization: null, resetsAt: null },

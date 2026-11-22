@@ -294,6 +294,7 @@ function registerIpc() {
   });
   handle('sound:data', (file: string) => soundData(file));
   handle('account:add', (label: string, kind: 'token' | 'login', token: string, plan?: AccountPlan) => accounts.add(label, kind, token, plan));
+  handle('account:addChatgpt', async (label: string) => { const id = await accounts.addChatgpt(label); void listModels(0).then(pushState); return id; });
   handle('account:remove', (id: string) => accounts.remove(id));
   handle('account:rename', (id: string, label: string) => accounts.rename(id, label));
   handle('account:plan', (id: string, plan: AccountPlan) => accounts.setPlan(id, plan));

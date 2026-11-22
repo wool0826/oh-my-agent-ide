@@ -11,6 +11,9 @@ export type UsageWindow = { utilization: number | null; resetsAt: string | null 
 
 export type AccountPlan = 'team' | 'enterprise';
 
+/** Whose agents an account or a model belongs to: Claude Code, or Codex signed in with a ChatGPT account. */
+export type Provider = 'claude' | 'chatgpt';
+
 /** At most this many accounts can be registered. */
 export const MAX_ACCOUNTS = 4;
 
@@ -20,6 +23,14 @@ export interface AccountView {
   /** token: stored OAuth token, login: this PC's existing Claude Code login */
   kind: 'token' | 'login';
   plan: AccountPlan;
+  provider: Provider;
+  /** ChatGPT: the plan Codex reports (free, plus, pro, ...). */
+  planLabel?: string | null;
+  /**
+   * ChatGPT: how long the windows in `fiveHour` and `sevenDay` really are, in minutes (a plan has one or two windows,
+   * and not of those lengths). Unset for Claude accounts, whose windows are 5 hours and 7 days.
+   */
+  windowMins?: [number | null, number | null] | null;
   fiveHour: UsageWindow;
   sevenDay: UsageWindow;
   usageUpdatedAt: string | null;
@@ -263,7 +274,7 @@ export interface SettingsView {
 export interface ClaudeInfo { home: string; rules: string[]; memoryHome: string }
 
 /** A model the account can use, from the API's model list. */
-export interface ModelInfo { id: string; name: string; created: string }
+export interface ModelInfo { id: string; name: string; created: string; provider?: Provider }
 /** The model list and when it was last read; error is the last failed refresh, if any. */
 export interface ModelList { models: ModelInfo[]; fetchedAt: string | null; error: string | null }
 

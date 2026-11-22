@@ -1,6 +1,6 @@
 // Model names for display. The list itself comes from the API (main/models.ts).
 
-import type { ModelInfo } from './types';
+import type { ModelInfo, Provider } from './types';
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 
@@ -16,6 +16,13 @@ export function modelLabel(id: string, models?: readonly ModelInfo[]): string {
   const b = id.match(/^claude-(\d+)(?:-(\d{1,2}))?-([a-z]+)(?:-\d{8})?$/);
   if (b) return `${cap(b[3])} ${b[1]}${b[2] ? `.${b[2]}` : ''}`;
   return id;
+}
+
+/** Whose agent runs a model: Claude Code for Claude models, Codex (a ChatGPT account) for everything else. */
+export function providerOf(model: string, models?: readonly ModelInfo[]): Provider {
+  const known = models?.find((x) => x.id === model)?.provider;
+  if (known) return known;
+  return /^claude/i.test(model) ? 'claude' : 'chatgpt';
 }
 
 /** Newest first, by the API's creation date. */

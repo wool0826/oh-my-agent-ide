@@ -1,4 +1,4 @@
-import type { UsageWindow } from './types';
+import type { Provider, UsageWindow } from './types';
 
 /**
  * A usage window whose reset time has passed no longer says anything: the real value is unknown and low.
@@ -16,6 +16,8 @@ export interface RoutableAccount {
   /** Set when a usage limit actually rejected the account: when that limit resets. */
   limitedUntil: string | null;
   lastAssignedAt: string | null;
+  /** Unset on accounts saved before ChatGPT accounts existed: Claude. */
+  provider?: Provider;
 }
 
 /** The fuller of the live 5h and 7d windows, in percent (0 when unknown). */
@@ -32,8 +34,9 @@ export function isExhausted(a: RoutableAccount, now = Date.now()) {
  * The account for a new session: the lowest usage among accounts not exhausted, however high that usage is;
  * within 5 points, the one assigned longest ago. Null when every account (other than `exclude`) is exhausted.
  */
-export function chooseAccount<T extends RoutableAccount>(list: readonly T[], now = Date.now(), exclude?: string | null): T | null {
-  const pool = list.filter((a) => a.id !== exclude && !isExhausted(a, now));
+export function chooseAccount<T extends RoutableAccount>(list: readonly T[], now = Date.now(), exclude?: string | null, provider?: Provider): T | null {
+  // A session runs on one provider's agent, so only that provider's accounts can carry it.
+  const pool = list.filter((a) => a.id !== exclude && !isExhausted(a, now) && (!provider || (a.provider ?? 'claude') === provider));
   if (!pool.length) return null;
   return [...pool].sort((x, y) => {
     const d = usageScore(x, now) - usageScore(y, now);

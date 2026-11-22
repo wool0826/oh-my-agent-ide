@@ -4,7 +4,9 @@ import { log } from './log';
 import { nowIso, uid } from './util';
 import { t } from './i18n';
 import { chooseAccount, isExhausted, limitEnd, liveWindow, nextFreeAt } from '../shared/usage';
-import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type UsageWindow } from '../shared/types';
+import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type Provider, type UsageWindow } from '../shared/types';
+import { codexClient } from './codex/client';
+import { limitWindows, type CodexRateLimits } from '../shared/codexEvents';
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 
@@ -19,7 +21,7 @@ class Accounts extends EventEmitter {
 
   views(): AccountView[] {
     return this.list().map((a) => ({
-      id: a.id, label: a.label, kind: a.kind, plan: a.plan,
+      id: a.id, label: a.label, kind: a.kind, plan: a.plan, provider: a.provider, planLabel: a.planLabel ?? null, windowMins: a.windowMins ?? null,
       fiveHour: liveWindow(a.fiveHour), sevenDay: liveWindow(a.sevenDay),
       usageUpdatedAt: a.usageUpdatedAt, usageSource: a.usageSource,
       limited: this.isLimited(a), limitedUntil: this.isLimited(a) ? a.limitedUntil : null, lastError: a.lastError,
@@ -29,11 +31,11 @@ class Accounts extends EventEmitter {
   add(label: string, kind: 'token' | 'login', token: string, plan: AccountPlan = 'team') {
     const s = loadSettings();
     if (s.accounts.length >= MAX_ACCOUNTS) throw new Error(t('acc.err.max', { n: MAX_ACCOUNTS }));
-    if (kind === 'login' && s.accounts.some((a) => a.kind === 'login')) throw new Error(t('acc.err.oneLogin'));
+    if (kind === 'login' && s.accounts.some((a) => a.kind === 'login' && a.provider === 'claude')) throw new Error(t('acc.err.oneLogin'));
     const tok = token.trim();
     if (kind === 'token' && !/^sk-ant-/.test(tok)) throw new Error(t('acc.err.token'));
     const acc: StoredAccount = {
-      id: uid(), label: label.trim() || t('acc.defaultName', { n: s.accounts.length + 1 }), kind, plan,
+      id: uid(), label: label.trim() || t('acc.defaultName', { n: s.accounts.length + 1 }), kind, plan, provider: 'claude',
       tokenEnc: kind === 'token' ? encryptToken(tok) : '',
       fiveHour: { utilization: null, resetsAt: null }, sevenDay: { utilization: null, resetsAt: null },
       usageUpdatedAt: null, usageSource: null, limitedUntil: null, lastAssignedAt: null, lastError: null, usageBackoffUntil: null,
@@ -43,6 +45,80 @@ class Accounts extends EventEmitter {
     this.emit('changed');
     void this.refresh(acc.id);
     return acc.id;
+  }
+
+  /**
+   * Register this PC's Codex sign-in (a ChatGPT account). The app holds no token for it: Codex keeps the sign-in,
+   * and the user signs in with `codex login`. One such account, since Codex has one sign-in.
+   */
+  async addChatgpt(label: string) {
+    const s = loadSettings();
+    if (s.accounts.length >= MAX_ACCOUNTS) throw new Error(t('acc.err.max', { n: MAX_ACCOUNTS }));
+    if (s.accounts.some((a) => a.provider === 'chatgpt')) throw new Error(t('acc.err.oneChatgpt'));
+    let signedIn = false;
+    try {
+      const r = await codexClient().request<{ account: unknown | null }>('account/read', { refreshToken: false }, 30_000);
+      signedIn = !!r?.account;
+    } catch (e) {
+      log.warn('codex account', (e as Error).message);
+      throw new Error(t('acc.err.codexMissing'));
+    }
+    if (!signedIn) throw new Error(t('acc.err.codexLogin'));
+    const acc: StoredAccount = {
+      id: uid(), label: label.trim() || 'ChatGPT', kind: 'login', plan: 'team', provider: 'chatgpt', planLabel: null, windowMins: null, tokenEnc: '',
+      fiveHour: { utilization: null, resetsAt: null }, sevenDay: { utilization: null, resetsAt: null },
+      usageUpdatedAt: null, usageSource: null, limitedUntil: null, lastAssignedAt: null, lastError: null, usageBackoffUntil: null,
+    };
+    s.accounts.push(acc);
+    saveSettings();
+    this.emit('changed');
+    void this.refreshCodex();
+    return acc.id;
+  }
+
+  /** The ChatGPT account, if one is registered. */
+  chatgpt() {
+    return this.list().find((a) => a.provider === 'chatgpt') ?? null;
+  }
+
+  /**
+   * What Codex reports about the ChatGPT account's usage. A plan has one or two windows: the shorter one goes
+   * where a Claude account has its 5-hour window, the longer (or only) one where it has the 7-day window.
+   */
+  applyCodex(rl: CodexRateLimits | null) {
+    const a = this.chatgpt();
+    if (!a || !rl) return;
+    const wins = limitWindows(rl);
+    const long = wins.length ? wins[wins.length - 1] : null;
+    const short = wins.length > 1 ? wins[0] : null;
+    a.fiveHour = short ? { utilization: short.utilization, resetsAt: short.resetsAt } : { utilization: null, resetsAt: null };
+    a.sevenDay = long ? { utilization: long.utilization, resetsAt: long.resetsAt } : { utilization: null, resetsAt: null };
+    a.windowMins = [short?.minutes ?? null, long?.minutes ?? null];
+    a.planLabel = rl.planType ?? a.planLabel ?? null;
+    a.usageUpdatedAt = nowIso();
+    a.usageSource = 'endpoint';
+    a.lastError = null;
+    if (rl.rateLimitReachedType) {
+      const full = wins.filter((w) => w.utilization >= 95 && w.resetsAt).map((w) => Date.parse(w.resetsAt!));
+      this.markLimited(a.id, full.length ? Math.max(...full) : undefined);
+    }
+    saveSettings();
+    this.emit('changed');
+  }
+
+  /** Read the ChatGPT account's usage from Codex. Starts the Codex process if it is not running. */
+  async refreshCodex() {
+    const a = this.chatgpt();
+    if (!a) return;
+    try {
+      const r = await codexClient().request<{ rateLimits: CodexRateLimits | null }>('account/rateLimits/read', undefined, 30_000);
+      this.applyCodex(r?.rateLimits ?? null);
+    } catch (e) {
+      a.lastError = t('acc.err.usage', { msg: (e as Error).message });
+      log.warn('codex usage', (e as Error).message);
+      saveSettings();
+      this.emit('changed');
+    }
   }
 
   remove(id: string) {
@@ -99,8 +175,8 @@ class Accounts extends EventEmitter {
    * within 5 points, the one assigned longest ago. `exclude` is the account that just hit its limit.
    * Null only when every account is held by a limit (or there are none).
    */
-  pick(exclude?: string | null): StoredAccount | null {
-    const chosen = chooseAccount(this.list(), Date.now(), exclude);
+  pick(exclude?: string | null, provider: Provider = 'claude'): StoredAccount | null {
+    const chosen = chooseAccount(this.list(), Date.now(), exclude, provider);
     if (!chosen) return null;
     chosen.lastAssignedAt = nowIso();
     saveSettings();
@@ -168,7 +244,7 @@ class Accounts extends EventEmitter {
   async refresh(id?: string) {
     for (const a of this.list()) {
       if (id && a.id !== id) continue;
-      if (a.kind !== 'token') continue;
+      if (a.kind !== 'token' || a.provider !== 'claude') continue;
       if (a.usageBackoffUntil && Date.parse(a.usageBackoffUntil) > Date.now()) continue;
       try {
         const res = await fetch(USAGE_URL, {
@@ -212,7 +288,10 @@ class Accounts extends EventEmitter {
 
   startPolling() {
     void this.refresh();
-    setInterval(() => void this.refresh(), 5 * 60_000).unref();
+    void this.refreshCodex();
+    // Codex also reports the usage as it changes during a turn.
+    codexClient().on('rateLimits', (rl: CodexRateLimits | null) => this.applyCodex(rl));
+    setInterval(() => { void this.refresh(); void this.refreshCodex(); }, 5 * 60_000).unref();
   }
 }
 
