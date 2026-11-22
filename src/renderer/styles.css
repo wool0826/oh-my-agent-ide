@@ -905,5 +905,48 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .cmp-side p { font-size: var(--fs-caption); line-height: var(--lh-body); color: var(--text-secondary); user-select: text; overflow-wrap: anywhere; }
 .cmp-f { display: flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption); }
 .cmp-f .gap { flex: 1; }
-.cmp-f .spend { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.cmp-side > .spend { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.cmp-f .linkbtn { white-space: nowrap; }
 .cmp-f .btn { flex: none; }
+
+/* ---------- command palette ---------- */
+/* Floating glass over a scrim, a third of the way down: a field, then the list. The highlighted row is the menu's. */
+.toolbar > #cmdk-btn { margin-left: auto; }
+.toolbar > #cmdk-btn + .usage { margin-left: 0; }
+.cmdk { position: fixed; z-index: var(--z-dialog); left: 0; right: 0; top: 16vh; margin-inline: auto; width: 560px; max-width: calc(100% - 32px); max-height: min(440px, 68vh); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-xl); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-5); }
+.cmdk-in { flex: none; display: flex; align-items: center; gap: var(--space-10); min-height: var(--row-min); padding: 0 var(--space-16); border-bottom: .5px solid var(--border-subtle); color: var(--text-secondary); }
+.cmdk-in .sym { width: var(--icon-md); height: var(--icon-md); flex: none; }
+.cmdk-in input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--text-primary); font: inherit; font-size: var(--fs-headline); user-select: text; }
+.cmdk-in input::placeholder { color: var(--text-tertiary); }
+.cmdk-in kbd { flex: none; color: var(--text-secondary); }
+.cmdk-list { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-6); }
+.cmdk-g { padding: var(--space-8) var(--space-10) var(--space-4); font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); }
+.cmdk-it { display: flex; align-items: center; gap: var(--space-10); min-height: var(--control-lg); padding: 0 var(--space-10); border-radius: var(--radius-sm); cursor: default; white-space: nowrap; }
+.cmdk-it > .sym { flex: none; width: var(--icon-md); height: var(--icon-md); margin: 0 1px; color: var(--text-secondary); }
+.cmdk-it b { font-size: var(--fs-body); font-weight: 500; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+.cmdk-it small { font-size: var(--fs-caption); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+.cmdk-it .gap { flex: 1; }
+.cmdk-it kbd { flex: none; font-weight: 500; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.cmdk-it[aria-selected="true"] { background: var(--accent-solid); color: var(--text-on-accent); }
+.cmdk-it[aria-selected="true"] :is(small, kbd, .sym) { color: inherit; }
+.cmdk-it[aria-selected="true"] .ic { --c: currentColor; }
+.cmdk-it[aria-selected="true"] kbd { background: rgba(255, 255, 255, .18); }
+.cmdk-none { padding: var(--space-24) var(--space-12); text-align: center; font-size: var(--fs-caption); color: var(--text-secondary); }
+#cmdk.opening .dlg-back { animation: fade-in var(--dur-base) var(--ease-out); }
+#cmdk.opening .cmdk { animation: upop-in var(--dur-base) var(--ease-out); }
+
+/* ---------- links by keyboard ---------- */
+a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1px; border-radius: var(--radius-xs); }
+
+/* ---------- placeholder rows while a list is read ---------- */
+.skel i { display: block; height: 10px; border-radius: var(--radius-full); background: var(--surface-track); animation: pulse var(--dur-attention) var(--ease-in-out) infinite; }
+.mini.skel { gap: var(--space-8); padding-block: var(--space-12); }
+.mini.skel i:first-child { width: 72%; }
+.mini.skel i:last-child { width: 38%; }
+.skel-list { display: flex; flex-direction: column; gap: var(--space-8); }
+.skel.file { display: flex; align-items: center; height: 34px; padding: 0 var(--space-12); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); }
+.skel.file i { width: 32%; }
+.skel.file:nth-child(2) i { width: 44%; }
+.skel.file:nth-child(3) i { width: 26%; }
+@media (prefers-reduced-motion: reduce) { .skel i { animation: none; } }
+:root[data-motion="reduced"] .skel i { animation: none; }

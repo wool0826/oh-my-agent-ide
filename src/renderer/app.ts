@@ -18,6 +18,7 @@ import { parseTime } from '../shared/automations';
 import type { Checkpoint } from '../shared/checkpoints';
 import { taskMinutes, workerTotals } from '../shared/workerSummary';
 import { canPick, openComparisons } from '../shared/compare';
+import { matchItems, stepIndex, type PaletteItem } from '../shared/palette';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -218,6 +219,12 @@ function oneLine(s: string, n = 120) {
 
 function ic(kind: string, glyph = kind) {
   return `<span class="ic k-${kind}" aria-hidden="true"><svg><use href="#g-${glyph}"/></svg></span>`;
+}
+
+/** Placeholder rows shown while a list is being read: grey bars where the rows will be. */
+function skel(n: number, kind: 'mini' | 'file') {
+  const row = kind === 'mini' ? '<div class="mini skel" aria-hidden="true"><i></i><i></i></div>' : '<div class="skel file" aria-hidden="true"><i></i></div>';
+  return row.repeat(n);
 }
 
 function sym(id: string, cls = '') {
@@ -735,7 +742,7 @@ function renderUsage() {
   if (!accs.length) {
     el.className = 'usage-empty nodrag';
     el.removeAttribute('tabindex');
-    el.innerHTML = `<a data-action="open-settings">${t('usage.addAccount')}</a>`;
+    el.innerHTML = `<a tabindex="0" role="link" data-action="open-settings">${t('usage.addAccount')}</a>`;
     hideUsagePop();
     return;
   }
@@ -758,6 +765,9 @@ function applyPanels() {
   left.setAttribute('aria-label', leftTip);
   left.setAttribute('aria-expanded', String(!ui.sideMin));
   const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
+  const find = $('#cmdk-btn');
+  find.title = t('cmdk.tip', { key: isMac ? '⌘K' : 'Ctrl+K' });
+  find.setAttribute('aria-label', find.title);
   const right = $('#ins-toggle');
   const key = isMac ? '⌥⌘B' : 'Ctrl+Alt+B';
   const rightTip = !ui.insMin ? t('ins.collapse', { key }) : n ? t('ins.expandDec', { key, n }) : t('ins.expand', { key });
@@ -814,11 +824,11 @@ function resultLinks(x: Task | null) {
   const links: string[] = [];
   if (x?.prUrl) {
     const st = x.prState === 'MERGED' ? ` · ${t('pr.merged')}` : x.prState === 'CLOSED' ? ` · ${t('pr.closed')}` : '';
-    links.push(`<a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${st}</a>`);
+    links.push(`<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${st}</a>`);
     const badges = prBadges(x);
     if (badges) links.push(badges);
   }
-  for (const f of x?.files ?? []) links.push(`<a data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${esc(base(f))}</a>`);
+  for (const f of x?.files ?? []) links.push(`<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${esc(base(f))}</a>`);
   return links;
 }
 
@@ -852,7 +862,7 @@ function chatItemHtml(c: ChatItem) {
     case 'result': {
       const x = task(c.ref);
       const links = resultLinks(x);
-      if (x?.workerId) links.push(`<a data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
+      if (x?.workerId) links.push(`<a tabindex="0" role="link" data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
       return `<div class="attach"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${inline(c.text)}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
     }
   }
@@ -1117,8 +1127,8 @@ function comparisonsHtml() {
     const w = worker(x.workerId);
     const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.status === 'done' ? ' green' : '';
     return `<div class="cmp-side"><div class="cmp-h"><b>${esc(x.workerId ?? '')}</b><small>${esc(w ? modelLabel(w.model) : '')}</small><span class="pill${cls}">${taskLabel(x)}</span></div>
-      ${x.summary ? `<p>${inline(oneLine(x.summary, 220))}</p>` : ''}
-      <div class="cmp-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="cmp-changes" data-id="${esc(x.workerId)}">${t('cmp.changes')}</button>` : ''}<span class="gap"></span>${spendHtml(x.spend, true)}<button class="btn def" data-action="cmp-pick" data-id="${esc(x.id)}"${canPick(x) ? '' : ' disabled'}>${t('cmp.pick')}</button></div></div>`;
+      ${x.summary ? `<p>${inline(oneLine(x.summary, 220))}</p>` : ''}${spendHtml(x.spend, true)}
+      <div class="cmp-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="cmp-changes" data-id="${esc(x.workerId)}">${t('cmp.changes')}</button>` : ''}<span class="gap"></span><button class="btn def" data-action="cmp-pick" data-id="${esc(x.id)}"${canPick(x) ? '' : ' disabled'}>${t('cmp.pick')}</button></div></div>`;
   }).join('')}</div>`).join('');
   const title = (g: (typeof groups)[number]) => esc(g.tasks[0].title.replace(/ \([^()]*\)$/, ''));
   return `<div class="sect"><div class="ins-h"><b>${t('cmp.title')}</b><small>${groups.length === 1 ? title(groups[0]) : groups.length}</small></div><div class="group">${cards}</div></div>`;
@@ -1282,8 +1292,8 @@ function workerReport(text: string) {
   const pr = head.filter((l) => /^PR:/i.test(l)).map(val).map((v) => v.match(/https?:\/\/\S+\/pull\/\d+/)?.[0]).find(Boolean);
   const files = head.filter((l) => /^FILE:/i.test(l)).map(val).filter(Boolean);
   const links = [
-    pr ? `<a data-action="open-url" data-href="${esc(pr)}">${sym('s-pr')}PR #${prNum(pr)}</a>` : '',
-    ...files.map((f) => `<a data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${sym('s-doc')}${esc(base(f))}</a>`),
+    pr ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(pr)}">${sym('s-pr')}PR #${prNum(pr)}</a>` : '',
+    ...files.map((f) => `<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${sym('s-doc')}${esc(base(f))}</a>`),
   ].filter(Boolean).join('');
   const rest = lines.slice(i).join('\n').trim();
   const title = inline(summary);
@@ -1445,7 +1455,7 @@ function renderDiff(w: Worker) {
   const root = $('#ws-diff');
   const v = ui.diffs.get(w.id);
   if (v === undefined) { void loadDiff(w.id); }
-  if (v === undefined || v === 'loading') { root.innerHTML = `<div class="empty-view"><span>${t('diff.loading')}</span></div>`; return; }
+  if (v === undefined || v === 'loading') { root.innerHTML = `<div class="skel-list" role="status" aria-label="${t('diff.loading')}">${skel(3, 'file')}</div>`; return; }
   if (v === null) { root.innerHTML = `<div class="empty-view"><span>${t('diff.noRepo')}</span></div>`; return; }
   if (v.error) { root.innerHTML = `<div class="empty-view"><span>${t('diff.missing')}</span></div>`; return; }
   const add = v.files.reduce((n, f) => n + f.added, 0), del = v.files.reduce((n, f) => n + f.removed, 0);
@@ -1542,7 +1552,7 @@ function runHtml(w: Worker) {
   const btns = r?.running
     ? `<button class="btn" data-action="run-stop" data-id="${w.id}">${t('run.stop')}</button>`
     : `${r ? `<button class="btn" data-action="run-clear" data-id="${w.id}">${t('run.clear')}</button>` : ''}<button class="btn" data-action="run-start" data-id="${w.id}">${t(r ? 'run.again' : 'run.start')}</button>`;
-  const url = r?.url && r.running ? `<a class="run-url" data-action="open-url" data-href="${esc(r.url)}">${esc(r.url)}</a>` : '';
+  const url = r?.url && r.running ? `<a class="run-url" tabindex="0" role="link" data-action="open-url" data-href="${esc(r.url)}">${esc(r.url)}</a>` : '';
   const out = r?.tail.trim() ? `<pre class="run-out" data-scroll="run-${w.id}">${esc(lastLines(r.tail, 14))}</pre>` : '';
   return `<div class="ins-h"><b>${t('run.title')}</b>${state}</div>
     <div class="group run"><code class="run-cmd" title="${esc(repo.run)}">${esc(oneLine(repo.run, 80))}</code>${url}${out}<div class="ins-act">${btns}</div></div>`;
@@ -1574,7 +1584,7 @@ function renderWorkerInspector() {
       <span>${t('kv.repo')}</span><span>${esc(w.repo ?? t('general'))}</span>
       ${cur?.branch ? `<span>${t('kv.branch')}</span><span>${esc(cur.branch)}</span>` : ''}
       ${cur?.status === 'blocked' ? `<span>${t('kv.startsAfter')}</span><span>${esc(cur.afterTaskId ?? '')} ${t('pr.merged')}</span>` : ''}
-      <span>${t('kv.folder')}</span><span><a data-action="reveal" data-path="${esc(w.cwd)}" title="${esc(w.cwd)}">${esc(base(w.cwd))}</a></span>
+      <span>${t('kv.folder')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(w.cwd)}" title="${esc(w.cwd)}">${esc(base(w.cwd))}</a></span>
       <span>${t('kv.model')}</span><span>${modelLabel(w.model)} · ${t(`effort.${(S!.settings.effortPerTask && cur?.effort) || S!.settings.workerEffort}` as Key)}</span>
       <span>${t('kv.account')}</span><span>${esc(acctLabel(w.accountId))}</span>
       <span>${t('kv.context')}</span><span>${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}</span>
@@ -1583,7 +1593,7 @@ function renderWorkerInspector() {
     </div>
     ${runHtml(w)}
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
-    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
+    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${w.status === 'running' || w.status === 'waiting' ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
@@ -1674,7 +1684,7 @@ function renderRepos() {
     const all = s.tasks.filter((x) => x.repo === r.name).reverse();
     const ts = paged(`repo-tasks:${r.name}`, all, PAGE.repoTasks);
     ins.innerHTML = `<div class="ins-h"><b>${esc(r.name)}</b></div>
-      <div class="group kv"><span>${t('kv.path')}</span><span><a data-action="reveal" data-path="${esc(r.path)}" title="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span title="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
+      <div class="group kv"><span>${t('kv.path')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(r.path)}" title="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span title="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
       <div class="ins-h"><b>${t('repo.desc')}</b></div>
       <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" data-scroll="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
       <div class="ins-h"><b>${t('repo.setup')}</b></div>
@@ -1684,7 +1694,7 @@ function renderRepos() {
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
       ${issuesHtml(r)}
       <div class="ins-h"><b>${t('wk.tasks')}</b><small>${all.length}</small></div>
-      <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
+      <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
       <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
 }
@@ -1696,11 +1706,11 @@ function issuesHtml(r: Repo) {
   if (v === undefined) { void loadIssues(r.name); }
   const refresh = `<button class="clear-x always" data-action="issues-refresh" data-id="${esc(r.name)}" title="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
   const head = (n: string) => `<div class="ins-h"><b>${t('issue.title')}</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
-  if (v === undefined || v === 'loading') return `${head('')}<div class="group"><div class="mini"><span>${t('issue.loading')}</span></div></div>`;
-  if (!Array.isArray(v)) return `${head('')}<div class="group"><div class="mini"><span class="err">${esc(v.error)}</span></div></div>`;
+  if (v === undefined || v === 'loading') return `${head('')}<div class="group" role="status" aria-label="${t('issue.loading')}">${skel(3, 'mini')}</div>`;
+  if (!Array.isArray(v)) return `${head('')}<div class="group"><div class="mini"><span class="err" title="${esc(v.error)}">${t('issue.err')}</span></div></div>`;
   if (!v.length) return `${head('0')}<div class="group"><div class="mini"><span>${t('issue.none')}</span></div></div>`;
   const list = paged(`issues:${r.name}`, v, 6);
-  return `${head(String(v.length))}<div class="group">${list.items.map((i) => `<div class="mini issue"><b><a data-action="open-url" data-href="${esc(i.url)}">#${i.number}</a> ${esc(i.title)}</b>
+  return `${head(String(v.length))}<div class="group">${list.items.map((i) => `<div class="mini issue"><b><a tabindex="0" role="link" data-action="open-url" data-href="${esc(i.url)}">#${i.number}</a> ${esc(i.title)}</b>
     <span class="issue-f"><span class="lbls">${i.labels.slice(0, 3).map((l) => `<i class="pill">${esc(l)}</i>`).join('')}</span><button class="btn" data-action="issue-assign" data-id="${esc(r.name)}" data-n="${i.number}">${t('issue.assign')}</button></span></div>`).join('')}${list.more}</div>`;
 }
 
@@ -2442,6 +2452,115 @@ function addFiles(box: Box, list: FileList | null) {
   renderChips(box);
 }
 
+/* ---------- command palette: Ctrl/Cmd+K (decision 116) ---------- */
+
+interface Cmd extends PaletteItem { icon: string; run: () => void }
+const cmdk = { open: false, i: 0, all: [] as Cmd[], shown: [] as Cmd[], back: null as HTMLElement | null };
+
+/** Everything the palette can go to, in the order it lists them while nothing is typed. */
+function paletteItems(): Cmd[] {
+  const s = S!;
+  const mod = isMac ? '⌘' : 'Ctrl+';
+  const out: Cmd[] = [];
+  // Waiting decisions first: they are what the user most likely came for.
+  for (const d of s.decisions.filter((x) => x.status === 'pending')) {
+    out.push({ id: `dec:${d.id}`, group: t('side.decisions'), title: oneLine(d.summary?.what || d.title, 80), hint: d.workerId ?? 'Dispatcher', icon: ic('ask'),
+      run: () => { const row = document.createElement('i'); row.dataset.action = 'goto-decision'; row.dataset.id = d.id; void act(row, new Event('click')); } });
+  }
+  const views: [View, string, string][] = [['chat', t('nav.chat'), 's-chat'], ['worker', 'Worker', 's-cpu'], ['repo', t('nav.repo'), 's-box'], ['memory', t('nav.memory'), 's-doc']];
+  views.forEach(([v, title, icon], i) => out.push({ id: `view:${v}`, group: t('cmdk.go'), title, keys: `${mod}${i + 1}`, icon: sym(icon), run: () => go({ view: v }) }));
+  const tabs: [typeof ui.insTab, Key][] = [['inbox', 'ins.tabInbox'], ['memo', 'ins.tabMemo'], ['auto', 'ins.tabAuto']];
+  for (const [v, key] of tabs) {
+    out.push({ id: `tab:${v}`, group: t('cmdk.go'), title: t(key), hint: t('nav.chat'), icon: sym('s-side-r'),
+      run: () => { ui.insTab = v; if (ui.insMin) togglePanel('ins'); go({ view: 'chat' }); renderChatInspector(); } });
+  }
+  const live = s.workers.filter((w) => w.status !== 'archived').sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
+  const arch = s.workers.filter((w) => w.status === 'archived').sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
+  for (const w of [...live, ...arch]) {
+    const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+    out.push({ id: `w:${w.id}`, group: w.status === 'archived' ? t('side.archived') : 'Worker', title: `${w.id} ${x?.title ?? w.title}`,
+      hint: [w.repo ?? t('general'), modelLabel(w.model)].join(' · '), icon: workerIcon(w), run: () => openWorker(w.id) });
+  }
+  for (const r of s.repos) out.push({ id: `repo:${r.name}`, group: t('nav.repo'), title: r.name, hint: r.description || undefined, icon: sym('s-box'), run: () => go({ view: 'repo', repoSel: r.name }) });
+  const panes: [Pane, Key][] = [['accounts', 'set.accounts'], ['general', 'set.general'], ['display', 'set.display'], ['alerts', 'set.alerts'], ['memory', 'set.memory'], ['models', 'set.models']];
+  panes.forEach(([pane, key], i) => out.push({ id: `set:${pane}`, group: t('set.title'), title: t(key), hint: t('set.title'), keys: i ? undefined : `${mod},`, icon: sym('s-gear'), run: () => openSettings(pane) }));
+  out.push({ id: 'side', group: t('cmdk.window'), title: t('cmdk.side'), keys: `${mod}B`, icon: sym('s-side-l'), run: () => togglePanel('side') });
+  out.push({ id: 'ins', group: t('cmdk.window'), title: t('cmdk.ins'), keys: isMac ? '⌥⌘B' : 'Ctrl+Alt+B', icon: sym('s-side-r'), run: () => togglePanel('ins') });
+  return out;
+}
+
+function openPalette() {
+  if (!S || cmdk.open) return;
+  closePop();
+  hideUsagePop();
+  $('#ctxmenu').hidden = true;
+  cmdk.open = true;
+  cmdk.back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  cmdk.all = paletteItems();
+  const root = $('#cmdk');
+  root.innerHTML = `<div class="dlg-back" data-action="cmdk-close"></div>
+    <div class="cmdk" role="dialog" aria-modal="true" aria-label="${t('cmdk.ph')}">
+      <label class="cmdk-in">${sym('s-search')}<input id="cmdk-q" type="text" role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-autocomplete="list" placeholder="${t('cmdk.ph')}" spellcheck="false" autocomplete="off"><kbd>Esc</kbd></label>
+      <div class="cmdk-list" id="cmdk-list" role="listbox"></div>
+    </div>`;
+  root.hidden = false;
+  root.classList.add('opening');
+  setTimeout(() => root.classList.remove('opening'), ms('--dur-slow') + 40);
+  renderPalette('');
+  $('#cmdk-q').focus();
+}
+
+/** The list for what is typed. Sections have their names only while nothing is typed: a search mixes them by rank. */
+function renderPalette(q: string) {
+  cmdk.shown = matchItems(cmdk.all, q, 60);
+  cmdk.i = 0;
+  const heads = !q.trim();
+  let last = '';
+  $('#cmdk-list').innerHTML = cmdk.shown.map((c, i) => {
+    const head = heads && c.group !== last ? `<div class="cmdk-g" role="presentation">${esc(c.group)}</div>` : '';
+    last = c.group;
+    return `${head}<div class="cmdk-it" id="cmdk-${i}" role="option" data-action="cmdk-run" data-i="${i}">${c.icon}<b>${esc(c.title)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}<span class="gap"></span>${c.keys ? `<kbd>${esc(c.keys)}</kbd>` : ''}</div>`;
+  }).join('') || `<div class="cmdk-none">${t('cmdk.none')}</div>`;
+  markPalette(false);
+}
+
+function markPalette(scroll = true) {
+  document.querySelectorAll<HTMLElement>('#cmdk-list .cmdk-it').forEach((el, i) => {
+    el.setAttribute('aria-selected', String(i === cmdk.i));
+    if (i === cmdk.i && scroll) el.scrollIntoView({ block: 'nearest' });
+  });
+  const input = $('#cmdk-q');
+  if (cmdk.shown.length) input.setAttribute('aria-activedescendant', `cmdk-${cmdk.i}`); else input.removeAttribute('aria-activedescendant');
+  if (!scroll) $('#cmdk-list').scrollTop = 0;
+}
+
+function closePalette(restore = true) {
+  if (!cmdk.open) return;
+  cmdk.open = false;
+  const root = $('#cmdk');
+  root.hidden = true;
+  root.innerHTML = '';
+  if (restore && cmdk.back?.isConnected) cmdk.back.focus({ preventScroll: true });
+  cmdk.back = null;
+}
+
+function runPalette(i: number) {
+  const c = cmdk.shown[i];
+  if (!c) return;
+  closePalette(false);
+  // Settings covers the window: leave it for anywhere else, stay in it for one of its own panes.
+  if (ui.settingsShown && !c.id.startsWith('set:')) closeSettings();
+  c.run();
+}
+
+/** Keys while the palette is open. Typing goes to its field; the window's other shortcuts wait. */
+function paletteKeys(e: KeyboardEvent) {
+  if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cmdk.i = stepIndex(cmdk.i, e.key === 'ArrowDown' ? 1 : -1, cmdk.shown.length); markPalette(); return; }
+  if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); runPalette(cmdk.i); return; }
+  if (e.key === 'Tab') { e.preventDefault(); $('#cmdk-q').focus(); }
+}
+
 /* ---------- render all ---------- */
 
 /** Shows a view tab. Navigation goes through go(), which calls this. */
@@ -2598,6 +2717,9 @@ async function act(el: HTMLElement, e: Event) {
     case 'memo-remove': if (ui.memoDel === id) await removeMemo(id!); else askMemoDel(id ?? null); break;
     case 'done-toggle': ui.doneOpen = !ui.doneOpen; store('oma.doneOpen', ui.doneOpen); renderSidebar(); break;
     case 'ins-toggle': togglePanel('ins'); break;
+    case 'cmdk-open': openPalette(); break;
+    case 'cmdk-close': closePalette(); break;
+    case 'cmdk-run': runPalette(Number(el.dataset.i)); break;
     case 'reveal-memory': await call('open:path', `${S!.settings.home}/memory`); break;
     case 'reveal-claude': if (ui.claude) await call('open:path', ui.claude.home); break;
     case 'ctx-menu': {
@@ -2990,6 +3112,7 @@ function init() {
   });
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
+    if (el.id === 'cmdk-q') { renderPalette(el.value); return; }
     if (el.id === 'set-vol') syncSlider(el);
     if (el.id === 'set-fsize') previewFont();
     if (el.id === 'set-font') { markFont(el); previewFont(); void openFontPicker(el, false); }
@@ -3029,9 +3152,13 @@ function init() {
   // Enter in an input runs the action named in data-enter.
   document.addEventListener('keydown', (e) => {
     const el = e.target as HTMLElement;
+    // Ctrl/Cmd+K opens the palette from anywhere, and closes it.
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyK') { e.preventDefault(); if (cmdk.open) closePalette(); else openPalette(); return; }
+    if (cmdk.open) { paletteKeys(e); return; }
     if (popKeys(e)) return;
-    // A row that acts on a click does the same on Enter or Space.
+    // A row that acts on a click does the same on Enter or Space; a link does on Enter.
     if ((e.key === 'Enter' || e.key === ' ') && !e.isComposing && el.matches?.('div[data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
+    if (e.key === 'Enter' && !e.isComposing && el.matches?.('a[data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
     // Ctrl/Cmd+B puts the left sidebar away, with Alt the right one. Not while Settings covers them.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyB' && !ui.settingsShown) { e.preventDefault(); togglePanel(e.altKey ? 'ins' : 'side'); return; }
     if (el.id === 'set-font' && e.key === 'ArrowDown') { e.preventDefault(); void openFontPicker(el as HTMLInputElement, true); return; }
