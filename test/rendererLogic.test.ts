@@ -41,6 +41,32 @@ test('md: everything is escaped, headings and code blocks still work', () => {
   assert.equal(mdHtml('one\ntwo\n\nthree'), '<p>one<br>two</p><p>three</p>');
 });
 
+test('md: [text](url) links, with brackets in the text and parentheses in the URL', () => {
+  const a = (url: string, text: string) => `<a data-action="open-url" data-href="${url}" title="${url}">${text}</a>`;
+  assert.equal(mdHtml('Sources:\n- [Docs](https://x.dev/a)'), `<p>Sources:</p><ul><li>${a('https://x.dev/a', 'Docs')}</li></ul>`);
+  assert.equal(mdHtml('[[Bug] spawn (gh) fails](https://github.com/o/r/issues/1)'), `<p>${a('https://github.com/o/r/issues/1', '[Bug] spawn (gh) fails')}</p>`);
+  assert.equal(mdHtml('see [wiki](https://en.wikipedia.org/wiki/Queue_(abstract)).'), `<p>see ${a('https://en.wikipedia.org/wiki/Queue_(abstract)', 'wiki')}.</p>`);
+  assert.equal(mdHtml('[**bold** name](https://a.io)'), `<p>${a('https://a.io', '<b>bold</b> name')}</p>`);
+  // Not http(s), or no URL: left as written.
+  assert.equal(mdHtml('[x](javascript:alert(1)) [y] [z](relative)'), '<p>[x](javascript:alert(1)) [y] [z](relative)</p>');
+  // Quotes cannot break out of the attribute.
+  assert.equal(mdHtml('[x](https://a.io/"onmouseover="y)'), '<p>[x](<a data-action="open-url" data-href="https://a.io/">https://a.io/</a>&quot;onmouseover=&quot;y)</p>');
+  assert.equal(mdHtml('[<img src=x>](https://a.io)'), `<p>${a('https://a.io', '&lt;img src=x&gt;')}</p>`);
+  assert.equal(mdHtml('`[a](https://a.io)`'), '<p><code>[a](https://a.io)</code></p>');
+  assert.equal(mdHtml('[`foo.ts`](https://a.io) 2 [b](https://b.io?x=1&y=_2_)'), `<p>${a('https://a.io', '<code>foo.ts</code>')} 2 ${a('https://b.io?x=1&amp;y=_2_', 'b')}</p>`);
+  assert.equal(mdHtml('\u00000\u0000 [[x](https://a.io)'), `<p>0 [${a('https://a.io', 'x')}</p>`);
+  assert.equal(mdHtml('['.repeat(20000)).length, 20007);
+});
+
+test('md: quotes, rules and bold italics', () => {
+  assert.equal(mdHtml('> quoted **text**\n> - item\n\nafter'), '<blockquote><p>quoted <b>text</b></p><ul><li>item</li></ul></blockquote><p>after</p>');
+  assert.equal(mdHtml('one\n\n---\n\ntwo'), '<p>one</p><hr><p>two</p>');
+  assert.equal(mdHtml('***'), '<hr>');
+  assert.equal(mdHtml('> > deep'), '<blockquote><blockquote><p>deep</p></blockquote></blockquote>');
+  assert.match(mdHtml('| a | b |\n|---|---|\n| 1 | 2 |'), /^<div class="md-table">/);
+  assert.equal(mdHtml('***both***'), '<p><b><i>both</i></b></p>');
+});
+
 test('canStop: one rule for every place that offers Stop', () => {
   const w = (status: string, request: object | null = null) => ({ status, request }) as never;
   for (const st of ['running', 'starting', 'waiting']) assert.equal(canStop(w(st), null), true, st);
