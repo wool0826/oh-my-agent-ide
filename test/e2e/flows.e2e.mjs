@@ -306,3 +306,53 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
   assert.equal(s.settings.quietFrom, '22:00');
   assert.equal(s.settings.notifyResults, false);
 });
+
+// Every control on a screen has a name a screen reader can say. Returns what does not, as short HTML.
+const NAMELESS = `return (() => {
+  const shown = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const named = (el) => {
+    const id = el.id;
+    const labelled = !!el.closest('label') || (!!id && !!document.querySelector('label[for="' + id + '"]')) || !!el.getAttribute('aria-labelledby');
+    return !!((el.getAttribute('aria-label') || '').trim() || (el.title || '').trim() || (el.textContent || '').trim() || labelled || (el.placeholder || '').trim());
+  };
+  return [...document.querySelectorAll('button, a[data-action], [role="button"], [role="link"], [role="tab"], input:not([type="hidden"]), textarea, select')]
+    .filter((el) => shown(el) && !named(el)).map((el) => el.outerHTML.slice(0, 160));
+})();`;
+
+flow('every control on the main screens has a name, and the keyboard keeps its place when a screen is drawn again', { repos: ['demo'], gh: { issues: [{ number: 3, title: 'An issue', url: 'https://github.com/o/demo/issues/3', labels: [], updatedAt: '2026-11-20T00:00:00Z' }] } }, async (app) => {
+  await app.say('@fake task - Ask something\n@@fake permission npm install x\n@@fake result Done.\n@fake task demo A change\n@@fake pr https://github.com/o/demo/pull/1\n@@fake result Changed.');
+  await app.until("return !!document.querySelector('#chat-ins .dec') && (await window.ide.call('state')).tasks.some((x) => x.status === 'pr_open');", 'a decision and a PR');
+  await app.evaluate("await window.ide.call('pr:check'); return 1;");
+  await app.until("!!document.querySelector('#chat-ins .prmerge')", 'the Merge button');
+  const nameless = {};
+  const look = async (screen) => { const list = await app.evaluate(NAMELESS); if (list.length) nameless[screen] = list; };
+  await look('chat');
+  for (const tab of ['memo', 'auto']) { await app.click(`[data-action="ins-tab"][data-v="${tab}"]`); await look(`chat inspector: ${tab}`); }
+  await app.click('[data-action="ins-tab"][data-v="inbox"]');
+  await app.click('button[data-v="worker"]');
+  await look('worker list');
+  await app.click('#wk-list [data-action="select-worker"]');
+  await app.click('#wk-list [data-action="select-worker"]');
+  await look('worker');
+  await app.click('button[data-v="repo"]');
+  await app.click('#repo-main [data-action="repo-select"]');
+  await app.until("!!document.querySelector('[data-action=\"issue-assign\"]')", 'the issues');
+  await look('repositories');
+  await app.click('button[data-v="memory"]');
+  await look('memory');
+  await app.click('[data-action="open-settings"]');
+  for (const pane of ['accounts', 'general', 'display', 'alerts', 'memory', 'models']) { await app.click(`[data-action="pane"][data-id="${pane}"]`); await look(`settings: ${pane}`); }
+  await app.click('[data-action="close-settings"]');
+  await app.click('#cmdk-btn');
+  await look('palette');
+  await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return 1;");
+  assert.deepEqual(nameless, {});
+
+  // Focus on a button in the inbox, then the whole window is drawn again: the focus is on the same button.
+  await app.click('button[data-v="chat"]');
+  await app.evaluate("document.querySelector('#chat-ins [data-action=\"answer\"][data-val=\"deny\"]').focus(); return 1;");
+  await app.evaluate("await window.ide.call('pr:check'); window.dispatchEvent(new Event('focus')); return 1;");
+  await app.say('@fake say Something new, so the screen is drawn again.');
+  await app.until("document.querySelector('#chat-thread').innerText.includes('Something new')", 'the new message');
+  assert.equal(await app.evaluate("document.activeElement?.dataset?.action + ':' + document.activeElement?.dataset?.id?.length"), 'answer:' + (await app.evaluate("document.querySelector('#chat-ins [data-action=\"answer\"]').dataset.id.length")));
+});

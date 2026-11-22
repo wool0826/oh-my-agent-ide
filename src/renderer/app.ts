@@ -27,6 +27,7 @@ import { normalizeQuickKey, quickKeyLabel } from '../shared/quickKey';
 import { failedFirst, fixCommand, type Check } from '../shared/preflight';
 import { THEMES, cleanTheme } from '../shared/theme';
 import { cleanTime } from '../shared/notifyRules';
+import { focusSelector } from '../shared/focusKey';
 import { SEARCH_MIN, type TextHit } from '../shared/textSearch';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
@@ -2815,9 +2816,9 @@ function renderAll(force = false) {
   applyTheme(S.settings.theme);
   if (!ui.settingsShown) applyFont(S.settings.fontFamily, S.settings.fontSize);
   if (langChanged) force = true;
-  // A focused row is drawn again as a new element; the focus goes to the one that took its place.
-  const focused = document.activeElement instanceof HTMLElement && document.activeElement.matches('div[data-action][tabindex]') ? document.activeElement : null;
-  const focusKey = focused ? `div[data-action="${focused.dataset.action}"][tabindex]${focused.dataset.id ? `[data-id="${CSS.escape(focused.dataset.id)}"]` : ''}${focused.dataset.v ? `[data-v="${CSS.escape(focused.dataset.v)}"]` : ''}` : '';
+  // A focused control (a row, a button, a link) is drawn again as a new element; the focus goes to the one that took its place.
+  const focused = document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-action]') ? document.activeElement : null;
+  const focusKey = focused ? focusSelector(focused.tagName, focused.dataset) ?? '' : '';
   const focusRoot = focused?.closest<HTMLElement>('.sidebar, .view');
   applyPanels();
   renderSidebar();
@@ -2828,7 +2829,7 @@ function renderAll(force = false) {
   if (ui.view === 'worker') { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
   if (ui.view === 'repo') renderRepos();
   if (ui.view === 'memory' && force) renderMemory();
-  if (focused && !focused.isConnected && document.activeElement === document.body) focusRoot?.querySelector<HTMLElement>(focusKey)?.focus({ preventScroll: true });
+  if (focused && focusKey && !focused.isConnected && document.activeElement === document.body) focusRoot?.querySelector<HTMLElement>(focusKey)?.focus({ preventScroll: true });
 }
 
 function openWorker(id: string) {
