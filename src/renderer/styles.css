@@ -811,52 +811,56 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 /* ---------- review comments on a diff ---------- */
 /* A line takes a click to comment on it. Comments sit under their line, in the UI font, and are sent together. */
 .dl.can { cursor: pointer; }
-.dl.can:hover { box-shadow: inset 2px 0 0 var(--accent); filter: brightness(1.12); }
+.dl.can:hover { box-shadow: inset 2px 0 0 var(--accent); background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }
 .dnote { position: sticky; left: 0; width: min(100%, 640px); margin: var(--space-4) var(--space-12); padding: var(--space-6) var(--space-8) var(--space-6) var(--space-10); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--rim), inset 2px 0 0 var(--accent); display: flex; align-items: flex-start; gap: var(--space-8); font-family: var(--font); font-size: var(--fs-caption); line-height: var(--lh-body); white-space: normal; animation: rise-in var(--dur-base) var(--ease-out); }
 .dnote p { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.dnote .clear-x { opacity: 1; margin-top: 1px; }
+.dnote .clear-x { opacity: 1; margin-top: var(--space-2); }
 .dnote.edit { flex-direction: column; align-items: stretch; box-shadow: var(--rim); }
-.dnote.edit textarea.inp { min-height: 52px; }
+.dnote.edit textarea.inp { min-height: 60px; }
 
 /* ---------- merge from the app ---------- */
 /* Among a ready PR's badges: a small filled button; asked once, it says "Merge it?". */
-.prmerge { font: inherit; font-size: var(--fs-caption2); font-weight: 600; line-height: 1.5; padding: 0 9px; border: 0; border-radius: var(--radius-full); background: var(--accent-solid); color: var(--text-on-accent); cursor: pointer; white-space: nowrap; transition: background var(--dur-fast) var(--ease-standard), scale var(--dur-instant) var(--ease-out); }
-.prmerge:hover:not(:disabled) { filter: brightness(1.1); }
+.prmerge { font: inherit; font-size: var(--fs-caption2); font-weight: 600; line-height: var(--lh-body); padding: 0 var(--space-8); border: 0; border-radius: var(--radius-full); position: relative; background: var(--accent-solid); color: var(--text-on-accent); cursor: pointer; white-space: nowrap; transition: background var(--dur-fast) var(--ease-standard), scale var(--dur-instant) var(--ease-out); }
+/* It is as tall as the pills beside it; the place to hit is 24px. */
+.prmerge::after { content: ""; position: absolute; inset: -4px 0; }
+.prmerge:hover:not(:disabled) { filter: brightness(.94); }
 .prmerge:active:not(:disabled) { scale: .95; }
-.prmerge.sure { background: var(--success-solid, var(--meter-ok)); color: var(--text-on-solid); }
-.prmerge:disabled { opacity: .6; cursor: default; }
+.prmerge.sure { background: var(--success-solid); color: var(--text-on-solid); }
+.prmerge:disabled { opacity: .45; cursor: default; }
 .prmerge:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 
 /* ---------- run command in a Worker's worktree ---------- */
 .group.run { padding: var(--space-10) var(--space-12); display: flex; flex-direction: column; gap: var(--space-8); }
-.run-cmd { align-self: flex-start; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-caption2); }
+.run-cmd { align-self: flex-start; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-code); }
 .run-url { font-size: var(--fs-caption); color: var(--text-link); cursor: pointer; overflow-wrap: anywhere; }
 .run-url:hover { text-decoration: underline; }
-.run-out { margin: 0; padding: var(--space-8) var(--space-10); max-height: 190px; overflow: auto; border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: var(--well); font-family: var(--font-mono); font-size: var(--fs-caption2); line-height: var(--lh-code); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--text-secondary); }
+.run-out { margin: 0; padding: var(--space-8) var(--space-10); max-height: 190px; overflow: auto; border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: var(--well); font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--text-secondary); }
 
 /* ---------- a repository's open issues ---------- */
 .mini.issue { gap: var(--space-6); }
 .mini.issue b a { color: var(--text-link); cursor: pointer; font-variant-numeric: tabular-nums; }
+.mini.issue b a:hover { text-decoration: underline; }
 .mini .issue-f { display: flex; align-items: center; gap: var(--space-8); }
 .mini .issue-f .pill { font-style: normal; flex: none; }
 .mini .issue-f .lbls { flex: 1; min-width: 0; display: flex; gap: var(--space-4); overflow: hidden; }
-.mini .issue-f .btn { flex: none; font-size: var(--fs-caption2); padding: 2px 10px; color: var(--text-primary); }
+.mini .issue-f .btn { flex: none; color: var(--text-primary); }
 .mini span.err { color: var(--danger-text); }
 .clear-x.always { opacity: 1; }
 .clear-x.always svg { width: 10px; height: 10px; }
 
 /* ---------- automations (the right sidebar's third tab) ---------- */
 .auto-add { display: flex; flex-direction: column; gap: var(--space-8); }
-.auto-add textarea.inp { min-height: 56px; }
+.auto-add textarea.inp { min-height: 60px; }
 .auto-when { display: flex; align-items: center; gap: var(--space-8); min-height: var(--control-md); }
 .auto-when .segc { flex: none; }
 .auto-when .gap { flex: 1; }
 .auto-when #auto-time { width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
-.auto-wk { display: inline-flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; }
+.auto-wk { display: inline-flex; align-items: center; gap: var(--space-8); padding-left: var(--space-4); font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; }
 .memo.auto p { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .memo.auto .meta { min-height: var(--control-md); }
 .memo.auto .acts { opacity: 1; align-items: center; gap: var(--space-8); }
-.memo.auto.off p, .memo.auto.off .meta > span:first-child { color: var(--text-tertiary); }
+/* Switched off: the title steps down, as a row with nothing in it does. */
+.memo.auto.off p { color: var(--text-secondary); font-weight: 500; }
 
 /* ---------- checkpoints ---------- */
 /* Picking a checkpoint asks here, under the Changes tab's header, before the files are put back. */
@@ -864,7 +868,7 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .ckpt-ask > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ckpt-ask b { font-size: var(--fs-caption); font-weight: 600; }
 .ckpt-ask small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ckpt-ask .btn { flex: none; height: 26px; padding: 0 var(--space-12); font-size: var(--fs-caption); }
+.ckpt-ask .btn { flex: none; }
 
 /* ---------- a Worker's Summary tab ---------- */
 .sum-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-8); }
@@ -876,9 +880,14 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .sum-task header b { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 600; overflow-wrap: anywhere; }
 .sum-task header .pill { flex: none; }
 .sum-meta { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.sum-ask summary { font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; width: max-content; border-radius: var(--radius-xs); }
-.sum-ask summary:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
-.sum-prompt { margin-top: var(--space-6); padding: var(--space-8) var(--space-10); border-radius: var(--radius-md); background: var(--surface-sunken); font-size: var(--fs-caption); line-height: var(--lh-body); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; max-height: 240px; overflow: auto; }
+/* The disclosure uses the app's chevron, not the browser's triangle. */
+.sum-ask summary { display: flex; align-items: center; gap: var(--space-6); width: max-content; min-height: var(--control-sm); list-style: none; font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; border-radius: var(--radius-xs); }
+.sum-ask summary::-webkit-details-marker { display: none; }
+.sum-ask summary svg { width: 7px; height: 11px; flex: none; transition: transform var(--dur-fast) var(--ease-standard); }
+.sum-ask[open] summary svg { transform: rotate(90deg); }
+.sum-ask summary:hover { color: var(--text-primary); }
+.sum-ask summary:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.sum-prompt { margin-top: var(--space-2); padding: var(--space-8) var(--space-10); border-radius: var(--radius-md); background: var(--surface-sunken); font-size: var(--fs-caption); line-height: var(--lh-body); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; max-height: 240px; overflow: auto; }
 .sum-report { font-size: var(--fs-body); line-height: var(--lh-body); user-select: text; overflow-wrap: anywhere; }
 .sum-report p + p { margin-top: var(--space-6); }
 .sum-report ul, .sum-report ol { margin: var(--space-4) 0; padding-left: var(--space-20); }
@@ -887,15 +896,14 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .sum-task .spend { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 
 /* ---------- two attempts at one task, in the inbox ---------- */
-.cmp + .cmp { border-top: .5px solid var(--border-subtle); }
+.cmp + .cmp { border-top: .5px solid var(--border-default); }
 .cmp-side { padding: var(--space-10) var(--space-12); display: flex; flex-direction: column; gap: var(--space-6); }
-.cmp-side + .cmp-side { border-top: .5px dashed var(--border-subtle); }
+.cmp-side + .cmp-side { border-top: .5px solid var(--border-subtle); }
 .cmp-h { display: flex; align-items: baseline; gap: var(--space-6); }
 .cmp-h b { font-size: var(--fs-body); font-weight: 600; }
 .cmp-h small { flex: 1; min-width: 0; font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cmp-side p { font-size: var(--fs-caption); line-height: var(--lh-ui); color: var(--text-secondary); user-select: text; overflow-wrap: anywhere; }
+.cmp-side p { font-size: var(--fs-caption); line-height: var(--lh-body); color: var(--text-secondary); user-select: text; overflow-wrap: anywhere; }
 .cmp-f { display: flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption); }
 .cmp-f .gap { flex: 1; }
 .cmp-f .spend { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.cmp-f .btn { flex: none; font-size: var(--fs-caption2); padding: 2px 10px; }
-.cmp-f .btn:disabled { opacity: .45; cursor: default; }
+.cmp-f .btn { flex: none; }

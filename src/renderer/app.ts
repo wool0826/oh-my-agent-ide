@@ -1134,7 +1134,7 @@ function autosHtml() {
   const daily = ui.autoKind === 'daily';
   const add = `<div class="auto-add"><textarea class="inp" id="auto-prompt" data-keep="auto-prompt" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}"></textarea>
     <div class="auto-when">${segc('auto-kind', ui.autoKind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}${daily ? `<input class="inp" id="auto-time" data-keep="auto-time" value="09:00" inputmode="numeric" aria-label="${t('auto.time')}">` : ''}</div>
-    <div class="auto-when">${daily ? `<label class="auto-wk"><input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}>${t('auto.weekdays')}</label>` : ''}<span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>`;
+    <div class="auto-when">${daily ? `<label class="auto-wk">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label>` : ''}<span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>`;
   const list = S!.automations;
   if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
   const rows = list.map((a) => {
@@ -1395,7 +1395,7 @@ function renderSummary(w: Worker) {
     return `<article class="sum-task">
       <header><b>${esc(x.id)} ${esc(x.title)}</b><span class="pill${cls}">${taskLabel(x)}</span></header>
       ${meta ? `<small class="sum-meta">${esc(meta)}</small>` : ''}
-      <details class="sum-ask"><summary>${t('sum.asked')}</summary><div class="sum-prompt">${esc(x.prompt.trim())}</div></details>
+      <details class="sum-ask"><summary><svg aria-hidden="true"><use href="#s-chev"/></svg>${t('sum.asked')}</summary><div class="sum-prompt">${esc(x.prompt.trim())}</div></details>
       ${x.summary ? `<div class="sum-report">${md(x.summary)}</div>` : ''}
       ${links.length ? `<div class="sum-links">${links.join('')}</div>` : ''}
       ${spendHtml(x.spend)}
