@@ -378,6 +378,11 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .btn.danger { color: var(--danger-text); }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+/* Cards in narrow panels (decisions, "Remember this?", auto-answers): long text wraps inside the card, never past its edge. */
+.dec, .aa, .dec > *, .aa > *, .aa .fix > * { min-width: 0; max-width: 100%; }
+.dec .d, .aa .why { overflow-wrap: anywhere; }
+.dec .btns .btn, .aa .btns .btn { white-space: normal; overflow-wrap: anywhere; word-break: keep-all; min-width: 0; max-width: 100%; line-height: var(--lh-ui); text-align: center; }
+.dec .btns.col .btn { text-align: left; padding: var(--space-6) var(--space-10); border-radius: var(--radius-md); min-height: var(--control-md); }
 .inp { font: inherit; font-size: var(--fs-caption); padding: 5px var(--space-10); border-radius: var(--radius-md); border: 0; background: var(--surface-sunken); color: var(--text-primary); box-shadow: var(--well); width: 100%; user-select: text; }
 .inp:focus { outline: var(--focus-outline); outline-offset: 0; }
 .inp::placeholder, .ssearch input::placeholder, .searchbar input::placeholder { color: var(--text-tertiary); }
