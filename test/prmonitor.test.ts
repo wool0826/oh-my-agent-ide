@@ -90,6 +90,21 @@ test('prmonitor: tasks waiting for the follow-up are released when the shared PR
   assert.equal(store.data.chat.filter((c) => c.text.includes('PR closed without merging')).length, 1);
 });
 
+test('prmonitor: tasks waiting on a PR are settled before its branch cleanup runs git', async () => {
+  store.data.repos.push({ name: 'slow', url: '', path: tmp, description: '', defaultBranch: 'main', addedAt: now });
+  const url = 'https://github.com/o/r/pull/41';
+  const dep = addTask({ repo: 'slow', prUrl: url, prState: 'OPEN' });
+  const waiting = addTask({ status: 'blocked', afterTaskId: dep.id, finishedAt: null, startedAt: null });
+  const shown = store.data.chat.length;
+
+  const p = settle(onPr(url), 'CLOSED', dep.branch!);
+  // Before the first await: the cleanup (fetch, branch -D, push --delete) has not run yet.
+  assert.equal(waiting.status, 'cancelled');
+  assert.equal(dep.prState, 'CLOSED');
+  assert.equal(store.data.chat.length - shown > 0, true);
+  await p;
+});
+
 test('prmonitor: the branch of a merged PR is cleaned up only once its Worker is out of the worktree (L7)', async () => {
   store.data.repos.push({ name: 'busy', url: '', path: tmp, description: '', defaultBranch: 'main', addedAt: now });
   store.data.workers.push({
