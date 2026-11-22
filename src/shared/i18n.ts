@@ -106,7 +106,9 @@ const en = {
   'usage.unknown': 'Usage not known yet',
   'usage.limitedUntil': 'At its usage limit until {t}',
   'usage.asOf': 'As of {t}',
-  'usage.no7d': '7-day usage arrives only when the usage server answers; the limit events during work report the 5-hour window.',
+  'usage.resetsIn': 'Resets in {t}',
+  'usage.limitedShort': 'Limited until {t}',
+  'usage.limited': 'At its limit',
 
   // chat
   'ctx.compact': 'Compact conversation',
@@ -684,7 +686,9 @@ const ko: Record<Key, string> = {
   'usage.unknown': '아직 사용량을 모름',
   'usage.limitedUntil': '{t}까지 사용량 한도',
   'usage.asOf': '{t} 기준',
-  'usage.no7d': '7일 사용량은 사용량 서버가 답할 때만 들어와요. 작업 중 한도 알림은 5시간 값만 알려 줘요.',
+  'usage.resetsIn': '{t} 뒤 초기화',
+  'usage.limitedShort': '{t}까지 한도',
+  'usage.limited': '한도 도달',
 
   'ctx.compact': '대화 압축',
   'ctx.clear': '새 대화 시작',

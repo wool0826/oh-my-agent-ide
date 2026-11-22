@@ -9,7 +9,7 @@ import { queueWhy, queueWhyText, type QueueCtx } from '../shared/queueWhy';
 import { prsInReview } from '../shared/prs';
 import { reasonText } from '../shared/askWhy';
 import { linkify } from '../shared/linkify';
-import { RING, ringArc } from '../shared/usageRing';
+import { RING, ringArc, untilReset } from '../shared/usageRing';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -123,6 +123,9 @@ const ui = {
   insTab: 'inbox' as 'inbox' | 'memo',
   memoEdit: null as string | null,
   memoDel: null as string | null,
+  /** The last chat item and Worker log length already drawn; what comes after them is new. */
+  chatSeen: null as string | null,
+  logSeen: null as { wid: string; n: number } | null,
   /** Asking before cancelling queued tasks: one task, or the whole queue. */
   cancelAsk: null as { ids: string[]; all: boolean } | null,
 };
@@ -270,9 +273,13 @@ function toast(text: string, err = false) {
   const el = $('#toast');
   el.textContent = text;
   el.classList.toggle('err', err);
+  el.classList.remove('out');
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { el.hidden = true; }, err ? 6000 : 3000);
+  toastTimer = window.setTimeout(() => {
+    el.classList.add('out');
+    toastTimer = window.setTimeout(() => { el.hidden = true; el.classList.remove('out'); }, ms('--dur-base'));
+  }, err ? 6000 : 3000);
 }
 
 async function call<T = any>(ch: string, ...args: unknown[]): Promise<T | undefined> {
@@ -407,11 +414,24 @@ function watchTop(th: HTMLElement, load: () => void) {
  * Put a thread's new content in, keeping the reader's place: at the end when following it, the same distance
  * from the end when a page went in above (`older`), and otherwise the same offset, since what is above stays put.
  */
+/** Marks where a thread's new items begin; they rise in after it. */
+const NEW_FROM = '<i class="new-from" hidden></i>';
+
 function setThread(th: HTMLElement, html: string, follow: boolean, older: boolean) {
   const fromEnd = th.scrollHeight - th.scrollTop;
   th.innerHTML = html;
   if (older) scrollQuietly(th, th.scrollHeight - fromEnd);
   else if (follow) scrollQuietly(th, th.scrollHeight);
+}
+
+/** Fade in what a container shows now (a tab or a pane just picked). Later re-renders of it don't fade. */
+const swapTimers = new WeakMap<HTMLElement, number>();
+function swapIn(el: HTMLElement) {
+  clearTimeout(swapTimers.get(el));
+  el.classList.remove('swap');
+  void el.offsetWidth;
+  el.classList.add('swap');
+  swapTimers.set(el, window.setTimeout(() => el.classList.remove('swap'), ms('--dur-slow')));
 }
 
 /** Says "Loading…" on a thread's .pg-top while its page is on the way. */
@@ -606,14 +626,86 @@ function usageWindows(a: AccountView): { label: string; v: number | null }[] {
   return [...(short ? [{ label: winLabel(short, '5h'), v: a.fiveHour.utilization }] : []), { label: winLabel(long, '7d'), v: a.sevenDay.utilization }];
 }
 
+/** A token duration in ms, as it is now: 0 while motion is reduced. */
+function ms(token: string) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  return v.endsWith('ms') ? parseFloat(v) : v.endsWith('s') ? parseFloat(v) * 1000 : 0;
+}
+
+/** An account's two rings on the 24×24 grid: 7d outside, 5h inside. */
+function ringsSvg(a: AccountView) {
+  const arc = (v: number | null, r: number) => {
+    const d = ringArc(v, r);
+    return `<circle class="trk" cx="12" cy="12" r="${r}"/>${d ? `<circle class="${lv(v)}" cx="12" cy="12" r="${r}" stroke-dasharray="${d}"/>` : ''}`;
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${arc(a.sevenDay.utilization, RING.sevenDay)}${arc(a.fiveHour.utilization, RING.fiveHour)}</svg>`;
+}
+
+/** "Claude Team", "ChatGPT Free": whose account it is and its plan. */
+function planName(a: AccountView) {
+  const plan = a.provider === 'chatgpt' ? a.planLabel ?? '' : a.plan;
+  return `${a.provider === 'chatgpt' ? 'ChatGPT' : 'Claude'}${plan ? ` ${plan[0].toUpperCase()}${plan.slice(1)}` : ''}`;
+}
+
+/** The same facts as the popover in one string, for screen readers. */
 function usageTip(a: AccountView) {
-  const base = `${a.label}\n${usageWindows(a).map((w) => `${w.label} ${pct(w.v)}`).join(' · ')}`;
-  const head = a.limitedUntil ? `${base}\n${t('usage.limitedUntil', { t: hhmm(a.limitedUntil) })}` : base;
-  if (a.lastError) return `${head}\n${a.lastError}`;
-  if (!a.usageUpdatedAt) return `${head}\n${t('usage.unknown')}`;
-  const parts = [head, t('usage.asOf', { t: hhmm(a.usageUpdatedAt) })];
-  if (a.provider !== 'chatgpt' && a.sevenDay.utilization === null) parts.push(t('usage.no7d'));
-  return parts.join('\n');
+  const parts = [`${a.label}, ${planName(a)}`, usageWindows(a).map((w) => `${w.label} ${pct(w.v)}`).join(' · ')];
+  if (a.limitedUntil) parts.push(t('usage.limitedUntil', { t: hhmm(a.limitedUntil) }));
+  if (a.lastError) parts.push(a.lastError);
+  else if (!a.usageUpdatedAt) parts.push(t('usage.unknown'));
+  return parts.join('. ');
+}
+
+/** One account in the usage popover: its rings and name, a bar per window with the time to its reset, and how fresh the numbers are. */
+function usageCard(a: AccountView) {
+  const wins = [
+    ...(a.provider !== 'chatgpt' || a.windowMins?.[0] ? [{ label: a.provider === 'chatgpt' ? winLabel(a.windowMins?.[0], '5h') : '5h', w: a.fiveHour }] : []),
+    { label: a.provider === 'chatgpt' ? winLabel(a.windowMins?.[1], '7d') : '7d', w: a.sevenDay },
+  ];
+  const rows = wins.map(({ label, w }) => {
+    const left = untilReset(w.resetsAt)?.map((p) => t(p.unit === 'd' ? 'time.day' : p.unit === 'h' ? 'time.hour' : 'time.min', { n: p.n })).join(' ');
+    return `<div class="uw"><span class="wl">${label}</span><span class="cap"><i class="${lv(w.utilization)}" style="width:${Math.min(100, w.utilization ?? 0)}%"></i></span><b>${pct(w.utilization)}</b><small>${left ? esc(t('usage.resetsIn', { t: left })) : ''}</small></div>`;
+  }).join('');
+  const state = a.limited
+    ? `<span class="pill red">${esc(a.limitedUntil ? t('usage.limitedShort', { t: when(a.limitedUntil) }) : t('usage.limited'))}</span>`
+    : `<time>${a.usageUpdatedAt ? esc(t('usage.asOf', { t: when(a.usageUpdatedAt) })) : ''}</time>`;
+  const note = a.lastError ? `<p class="err">${esc(a.lastError)}</p>` : !a.usageUpdatedAt ? `<p>${t('usage.unknown')}</p>` : '';
+  return `<section class="ua${a.id === usagePop.hover ? ' on' : ''}" data-id="${esc(a.id)}"><header>${ringsSvg(a)}<span class="who"><b>${esc(a.label)}</b><small>${esc(planName(a))}</small></span>${state}</header>${rows}${note}</section>`;
+}
+
+/** The usage popover: every account's numbers while the pointer or the focus is on the rings. */
+const usagePop = { shown: false, hover: null as string | null, timer: 0 };
+function showUsagePop() {
+  const el = $('#usage-pop');
+  clearTimeout(usagePop.timer);
+  if (!S?.accounts.length) return;
+  el.innerHTML = S.accounts.map(usageCard).join('');
+  if (usagePop.shown) return;
+  usagePop.shown = true;
+  el.classList.remove('out');
+  el.hidden = false;
+  const r = $('#usage').getBoundingClientRect();
+  el.style.top = `${r.bottom + 8}px`;
+  el.style.left = `${Math.max(8, Math.min(r.right - el.offsetWidth, innerWidth - el.offsetWidth - 8))}px`;
+  // The bars fill once, as it opens; a refresh of its numbers afterwards redraws them in place.
+  el.classList.add('opening');
+  usagePop.timer = window.setTimeout(() => el.classList.remove('opening'), ms('--dur-glide'));
+}
+function hideUsagePop() {
+  if (!usagePop.shown) return;
+  usagePop.shown = false;
+  usagePop.hover = null;
+  const el = $('#usage-pop');
+  clearTimeout(usagePop.timer);
+  el.classList.remove('opening');
+  el.classList.add('out');
+  usagePop.timer = window.setTimeout(() => { el.hidden = true; el.classList.remove('out'); }, ms('--dur-fast'));
+}
+/** Marks the account whose ring the pointer is on. */
+function hoverUsage(id: string | null) {
+  if (usagePop.hover === id) return;
+  usagePop.hover = id;
+  document.querySelectorAll<HTMLElement>('#usage-pop .ua').forEach((s) => s.classList.toggle('on', s.dataset.id === id));
 }
 
 function renderUsage() {
@@ -621,19 +713,17 @@ function renderUsage() {
   const el = $('#usage');
   if (!accs.length) {
     el.className = 'usage-empty nodrag';
+    el.removeAttribute('tabindex');
     el.innerHTML = `<a data-action="open-settings">${t('usage.addAccount')}</a>`;
+    hideUsagePop();
     return;
   }
-  // One ring per account, in the order of Settings: 7d outside, 5h inside. The name and the numbers are in the tooltip.
-  const arc = (v: number | null, r: number) => {
-    const d = ringArc(v, r);
-    return `<circle class="trk" cx="12" cy="12" r="${r}"/>${d ? `<circle class="${lv(v)}" cx="12" cy="12" r="${r}" stroke-dasharray="${d}"/>` : ''}`;
-  };
+  // One ring per account, in the order of Settings. The names and the numbers are in the popover (#usage-pop).
   el.className = 'usage nodrag';
-  el.innerHTML = accs.map((a: AccountView) => {
-    const tip = esc(usageTip(a));
-    return `<span class="uacct${a.limited ? ' limited' : ''}" role="img" title="${tip}" aria-label="${tip}"><svg viewBox="0 0 24 24" aria-hidden="true">${arc(a.sevenDay.utilization, RING.sevenDay)}${arc(a.fiveHour.utilization, RING.fiveHour)}</svg></span>`;
-  }).join('');
+  el.tabIndex = 0;
+  el.setAttribute('aria-label', accs.map(usageTip).join('\n'));
+  el.innerHTML = accs.map((a: AccountView) => `<span class="uacct${a.limited ? ' limited' : ''}" data-id="${esc(a.id)}">${ringsSvg(a)}</span>`).join('');
+  if (usagePop.shown) showUsagePop();
 }
 
 /** Put the sidebars away or back, and say so on their buttons. The right one's button counts open decisions while it is hidden. */
@@ -778,7 +868,11 @@ function renderChat(force = false, older = false) {
     if (prev && c.kind === 'error' && prev.c.kind === 'error' && prev.c.text === c.text && !c.ref && !prev.c.ref) { prev.n++; continue; }
     items.push({ c, n: 1 });
   }
-  for (const { c, n } of items) {
+  // What arrived since the last render comes in with a short rise: everything after the marker (styles.css, .new-from).
+  const seenAt = older ? -1 : items.findIndex(({ c }) => c.id === ui.chatSeen);
+  const tail = items[items.length - 1]?.c.id ?? null;
+  for (const [i, { c, n }] of items.entries()) {
+    if (seenAt >= 0 && i === seenAt + 1) html += NEW_FROM;
     const ts = Date.parse(c.ts);
     if (ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
     last = ts;
@@ -786,6 +880,7 @@ function renderChat(force = false, older = false) {
   }
   if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><span>${t('chat.emptyBody')}</span></div>`;
   if (s.dispatcher.busy) html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(s.dispatcher.statusText ? oneLine(s.dispatcher.statusText, 80) : '')}</div>`;
+  ui.chatSeen = tail;
   setThread(th, html, nearBottom || force, older);
   watchTop(th, () => void olderChat());
   const ctx = s.dispatcher.contextTokens;
@@ -976,10 +1071,10 @@ function memoHtml(m: Memo) {
       <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn def" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
   }
   const act = (action: string, icon: string, label: string, cls = '') => `<button class="mact${cls}" data-action="${action}" data-id="${m.id}" title="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
-  const del = ui.memoDel === m.id
-    ? `<button class="mact sure" data-action="memo-remove" data-id="${m.id}">${t('memo.removeSure')}</button>`
-    : act('memo-remove-ask', 's-x', t('memo.remove'));
-  return `<div class="memo"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
+  // One button for both steps, so asking is a change of its width and colour, not a new element.
+  const sure = ui.memoDel === m.id;
+  const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="memo-remove" data-id="${m.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
+  return `<div class="memo" data-memo="${m.id}"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
     <span class="acts">${act('memo-share', 's-pin', t(m.shared ? 'memo.unshare' : 'memo.share'), m.shared ? ' on' : '')}${act('memo-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
 }
 
@@ -990,6 +1085,31 @@ function memosHtml() {
   const add = `<div class="memo-add"><input class="inp" id="memo-new" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"><button class="btn" data-action="memo-add" title="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
   const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
   return add + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
+}
+
+/** Which memo's Delete is asking "Delete it?" (null: none). Changed in place, so the button can animate. */
+function askMemoDel(id: string | null) {
+  ui.memoDel = id;
+  document.querySelectorAll<HTMLElement>('.mact.del').forEach((b) => {
+    const on = b.dataset.id === id;
+    b.classList.toggle('sure', on);
+    b.setAttribute('aria-label', t(on ? 'memo.removeSure' : 'memo.remove'));
+  });
+}
+
+/** Delete a memo: its row closes up first, then it goes. */
+async function removeMemo(id: string) {
+  ui.memoDel = null;
+  const row = document.querySelector<HTMLElement>(`.memo[data-memo="${CSS.escape(id)}"]`);
+  const d = ms('--dur-base');
+  if (row && d) {
+    row.style.overflow = 'hidden';
+    const h = `${row.offsetHeight}px`;
+    row.animate([{ height: h, opacity: 1 }, { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px' }], { duration: d, easing: 'cubic-bezier(.2, 0, 0, 1)', fill: 'forwards' });
+    // A timer, not the animation's `finished`: that never settles while the window is hidden.
+    await new Promise((r) => setTimeout(r, d));
+  }
+  await call('memo:remove', id);
 }
 
 async function addMemo() {
@@ -1128,7 +1248,9 @@ function renderSession(force = false, older = false) {
   ui.lastLogKey = key;
   let html = start > 0 ? olderBtn('log', loading) : '';
   let last = 0;
+  const seen = !older && ui.logSeen?.wid === w.id ? ui.logSeen.n - start : -1;
   log.forEach((it, i) => {
+    if (seen > 0 && i === seen) html += NEW_FROM;
     const ts = Date.parse(it.ts);
     const gap = ts - last > 30 * 60_000;
     if (gap) html += `<span class="stamp">${hhmm(it.ts)}</span>`;
@@ -1137,6 +1259,7 @@ function renderSession(force = false, older = false) {
   });
   if (!log.length) html = `<div class="empty-view"><span>${t('ws.empty')}</span></div>`;
   if (w.status === 'running' || w.status === 'starting') html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(oneLine(w.statusText, 90))}</div>`;
+  ui.logSeen = { wid: w.id, n: start + log.length };
   setThread(th, html, nearBottom || force, older);
   watchTop(th, () => { if (ui.wSel) void olderLog(ui.wSel); });
 }
@@ -1323,6 +1446,7 @@ function renderCancelDialog() {
     <h2 id="cdlg-t">${esc(title)}</h2>${body}
     <div class="dlg-btns"><button class="btn" data-action="cancel-dismiss">${t('cancel.keep')}</button><button class="btn danger-fill" data-action="cancel-ok">${esc(ok)}</button></div>
   </div>`;
+  root.classList.toggle('opening', root.hidden === true);
   root.hidden = false;
   if (opening) root.querySelector<HTMLButtonElement>('.dlg-btns .btn')?.focus();
 }
@@ -1916,6 +2040,7 @@ async function loadClaudeInfo() {
   if (ui.settingsShown) openSettings();
 }
 
+let sheetTimer: number | undefined;
 function openSettings(pane?: Pane) {
   if (pane) ui.pane = pane;
   // Each time the window opens (button, shortcut or first run), not on every re-render.
@@ -1926,6 +2051,9 @@ function openSettings(pane?: Pane) {
   if (ui.settingsShown) root.querySelectorAll<HTMLInputElement>('.spanes input').forEach((el) => { if (el.id && el.id !== 'acc-rename') keep.set(el.id, el.type === 'checkbox' ? el.checked : el.value); });
   const focusId = ui.settingsShown && root.contains(document.activeElement) ? (document.activeElement as HTMLElement).id : '';
   const scroll = root.querySelector('.spanes')?.scrollTop ?? 0;
+  clearTimeout(sheetTimer);
+  root.classList.remove('closing');
+  if (!ui.settingsShown) swapIn(root);
   ui.settingsShown = true;
   root.innerHTML = settingsHtml();
   renderMemSync();
@@ -2012,7 +2140,7 @@ function filterPanes() {
 
 function showPane(id: Pane) {
   ui.pane = id;
-  document.querySelectorAll<HTMLElement>('.pane').forEach((p) => { p.hidden = p.dataset.pane !== id; });
+  document.querySelectorAll<HTMLElement>('.pane').forEach((p) => { p.hidden = p.dataset.pane !== id; if (!p.hidden) swapIn(p); });
   document.querySelectorAll<HTMLButtonElement>('.snav-i').forEach((b) => {
     const on = b.dataset.id === id;
     b.classList.toggle('on', on);
@@ -2037,8 +2165,11 @@ function closeSettings() {
   ui.accMenu = ui.accRename = ui.accRemove = null;
   ui.restartAsk = false;
   ui.setQ = '';
-  $('#sheet').hidden = true;
-  $('#sheet').innerHTML = '';
+  const sheet = $('#sheet');
+  const gone = () => { sheet.hidden = true; sheet.innerHTML = ''; sheet.classList.remove('closing'); };
+  const d = ms('--dur-fast');
+  clearTimeout(sheetTimer);
+  if (d) { sheet.classList.add('closing'); sheetTimer = window.setTimeout(gone, d); } else gone();
   document.body.classList.remove('modal');
   if (S) applyFont(S.settings.fontFamily, S.settings.fontSize);
 }
@@ -2227,7 +2358,7 @@ async function act(el: HTMLElement, e: Event) {
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
       break;
     }
-    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); break;
+    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
     case 'memo-add': await addMemo(); break;
     case 'memo-share': { const m = S!.memos.find((x) => x.id === id); if (m) await call('memo:update', id, { shared: !m.shared }); break; }
     case 'memo-edit': ui.memoEdit = id; ui.memoDel = null; renderChatInspector(); document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.focus(); break;
@@ -2239,8 +2370,7 @@ async function act(el: HTMLElement, e: Event) {
       renderChatInspector();
       break;
     }
-    case 'memo-remove-ask': ui.memoDel = id; renderChatInspector(); break;
-    case 'memo-remove': ui.memoDel = null; await call('memo:remove', id); break;
+    case 'memo-remove': if (ui.memoDel === id) await removeMemo(id!); else askMemoDel(id ?? null); break;
     case 'done-toggle': ui.doneOpen = !ui.doneOpen; store('oma.doneOpen', ui.doneOpen); renderSidebar(); break;
     case 'ins-toggle': togglePanel('ins'); break;
     case 'reveal-memory': await call('open:path', `${S!.settings.home}/memory`); break;
@@ -2548,6 +2678,7 @@ function init() {
     const step = tgt.closest<HTMLElement>('[data-step]');
     if (step) { stepValue(step.dataset.for!, Number(step.dataset.step)); return; }
     if (pop.el && !pop.el.contains(tgt) && tgt !== pop.owner) closePop();
+    if (ui.memoDel && !tgt.closest('.mact.del.sure')) askMemoDel(null);
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
     if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
@@ -2584,6 +2715,15 @@ function init() {
   void document.fonts.ready.then(() => glideAll(false));
   void loadModels('cached');
   $('#sheet').addEventListener('scroll', () => closePop(), true);
+  const usage = $('#usage');
+  usage.addEventListener('mouseover', (e) => {
+    if (!usage.classList.contains('usage')) return;
+    showUsagePop();
+    hoverUsage((e.target as HTMLElement).closest<HTMLElement>('.uacct')?.dataset.id ?? null);
+  });
+  usage.addEventListener('mouseleave', hideUsagePop);
+  usage.addEventListener('focus', () => { if (usage.matches(':focus-visible')) showUsagePop(); });
+  usage.addEventListener('blur', hideUsagePop);
   window.addEventListener('resize', () => closePop());
   // Scroll events don't bubble; capturing on document sees every scrolling element.
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
@@ -2619,6 +2759,8 @@ function init() {
     }
     if (e.key === 'Escape') {
       if (pop.el) { closePop(true); return; }
+      hideUsagePop();
+      if (ui.memoDel) askMemoDel(null);
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
       if (ui.settingsShown) closeSettings();

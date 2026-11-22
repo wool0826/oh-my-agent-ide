@@ -143,13 +143,38 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) { .glide-ready::before { transition: none; } .glide-move::before { animation: none; } }
 .usage { margin-left: auto; padding: 5px var(--space-8); border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); display: flex; align-items: center; gap: var(--space-8); }
 .toolbar > .usage { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-/* One ring per account: the 7-day window outside, the 5-hour window inside. Its name and numbers are in the tooltip. */
-.uacct { flex: none; display: grid; place-items: center; border-radius: 50%; }
-.uacct svg { width: 22px; height: 22px; transform: rotate(-90deg); }
-.uacct circle { fill: none; stroke-width: 3; stroke-linecap: round; }
-.uacct .trk { stroke: var(--meter-track); }
-.uacct.limited .trk { stroke: var(--danger-soft); }
-.uacct .lv-g { stroke: var(--meter-ok); } .uacct .lv-y { stroke: var(--meter-caution); } .uacct .lv-o { stroke: var(--meter-warn); } .uacct .lv-r { stroke: var(--meter-critical); }
+/* One ring per account: the 7-day window outside, the 5-hour window inside. Its name and numbers are in the popover (.upop). */
+.usage:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.uacct { flex: none; display: grid; place-items: center; border-radius: 50%; transition: scale var(--dur-fast) var(--ease-out); }
+.uacct:hover { scale: 1.14; }
+.uacct svg { width: 22px; height: 22px; }
+.uacct svg, .ua header svg { transform: rotate(-90deg); }
+.uacct circle, .ua header circle { fill: none; stroke-width: 3; stroke-linecap: round; background: none; }
+.uacct .trk, .ua header .trk { stroke: var(--meter-track); }
+.uacct.limited .trk, .ua.limited header .trk { stroke: var(--danger-soft); }
+circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-caution); } circle.lv-o { stroke: var(--meter-warn); } circle.lv-r { stroke: var(--meter-critical); }
+/* The usage popover: one block per account, in the rings' order. It only shows, so the pointer passes through it. */
+.upop { position: fixed; z-index: var(--z-popover); width: 356px; max-width: calc(100vw - 16px); padding: var(--space-6); border-radius: var(--radius-xl); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-4); display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none; transform-origin: 100% 0; animation: upop-in var(--dur-base) var(--ease-out); transition: opacity var(--dur-fast) var(--ease-standard), translate var(--dur-fast) var(--ease-standard); }
+.upop.out { opacity: 0; translate: 0 -3px; }
+@keyframes upop-in { from { opacity: 0; scale: .97; translate: 0 -4px; } }
+.ua { padding: var(--space-8) var(--space-10) var(--space-10); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: var(--space-6); transition: background var(--dur-fast) var(--ease-standard); }
+.ua.on { background: var(--surface-hover); }
+.ua header { display: flex; align-items: center; gap: var(--space-8); }
+.ua header svg { flex: none; width: 20px; height: 20px; }
+.ua .who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ua .who b { font-size: var(--fs-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ua .who small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ua header time { flex: none; font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ua header .pill { flex: none; }
+.uw, .ua p { margin-left: calc(20px + var(--space-8)); }
+.uw { display: grid; grid-template-columns: 24px minmax(0, 1fr) 36px 122px; align-items: center; column-gap: var(--space-8); font-variant-numeric: tabular-nums; }
+.uw .wl { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); }
+.uw b { font-size: var(--fs-caption); font-weight: 600; text-align: right; }
+.uw small { font-size: var(--fs-caption2); color: var(--text-tertiary); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ua p { font-size: var(--fs-caption2); color: var(--text-tertiary); line-height: var(--lh-ui); overflow-wrap: anywhere; }
+.ua p.err { color: var(--danger-text); }
+.upop.opening .cap i { transform-origin: 0 50%; animation: bar-in var(--dur-glide) var(--ease-standard) backwards; }
+@keyframes bar-in { from { scale: 0 1; } }
 .tbtn { position: relative; flex: none; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 0; border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
 .tbtn:hover { color: var(--text-primary); }
 .tbtn:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
@@ -281,10 +306,17 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .memo .meta .sym { font-size: var(--fs-caption); color: var(--accent); }
 .memo .acts { margin-left: auto; display: flex; gap: var(--space-4); opacity: 0; transition: opacity var(--dur-fast); }
 .memo:hover .acts, .memo:focus-within .acts { opacity: 1; }
-.mact { height: var(--control-sm); min-width: var(--control-sm); padding: 0; border: 0; border-radius: var(--radius-full); background: var(--surface-selected); box-shadow: var(--rim); color: var(--text-primary); display: grid; place-items: center; cursor: pointer; font: inherit; font-size: var(--fs-caption2); font-weight: 600; }
+.mact { height: var(--control-sm); min-width: var(--control-sm); padding: 0; border: 0; border-radius: var(--radius-full); background: var(--surface-selected); box-shadow: var(--rim); color: var(--text-primary); display: grid; place-items: center; cursor: pointer; font: inherit; font-size: var(--fs-caption2); font-weight: 600; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), scale var(--dur-instant) var(--ease-out); }
 .mact svg { width: var(--icon-sm); height: var(--icon-sm); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .mact:hover, .mact.on { background: var(--accent-solid); color: var(--text-on-accent); }
 .mact.sure { padding: 0 var(--space-8); background: var(--danger-solid); color: var(--text-on-solid); }
+/* Delete is one button: asked once, its X gives way to "Delete it?" and it widens and turns red. */
+.mact.del { display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; transition: background var(--dur-base) var(--ease-standard), color var(--dur-base) var(--ease-standard), padding var(--dur-base) var(--ease-standard), scale var(--dur-instant) var(--ease-out); }
+.mact.del svg { flex: none; transition: width var(--dur-base) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard); }
+.mact.del .lbl { max-width: 0; opacity: 0; transition: max-width var(--dur-base) var(--ease-standard), opacity var(--dur-base) var(--ease-standard); }
+.mact.del.sure svg { width: 0; opacity: 0; }
+.mact.del.sure .lbl { max-width: 9em; opacity: 1; }
+.memo:has(.mact.sure) .acts { opacity: 1; }
 .mact:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .memo textarea.inp { min-height: 64px; }
 .dec { padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-8); }
@@ -302,7 +334,7 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .btns { display: flex; gap: var(--space-6); justify-content: flex-end; flex-wrap: wrap; }
 .btns.col { flex-direction: column; align-items: stretch; }
 .btns.col .btn { text-align: left; padding: 5px var(--space-10); }
-.btn { font-size: var(--fs-caption); font-weight: 500; padding: var(--space-4) 13px; border-radius: var(--radius-full); border: 0; background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-primary); cursor: pointer; white-space: nowrap; transition: background var(--dur-fast), filter var(--dur-fast); }
+.btn { font-size: var(--fs-caption); font-weight: 500; padding: var(--space-4) 13px; border-radius: var(--radius-full); border: 0; background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-primary); cursor: pointer; white-space: nowrap; transition: background var(--dur-fast), filter var(--dur-fast), scale var(--dur-instant) var(--ease-out); }
 .btn:hover { background: linear-gradient(var(--surface-hover), var(--surface-hover)), var(--surface-raised); }
 .btn.def { background: var(--accent-fill); box-shadow: var(--accent-rim); color: var(--text-on-accent); }
 .btn.def:hover { filter: brightness(.94); }
@@ -739,3 +771,33 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 .pg-top { align-self: center; padding: var(--space-4) var(--space-12); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-tertiary); font: inherit; font-size: var(--fs-caption2); font-weight: 500; cursor: pointer; }
 .pg-top:hover { color: var(--text-link); }
 .pg-top:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+
+/* ---------- motion ---------- */
+/* Durations are tokens, so all of it is instant while motion is reduced (tokens.css). State arrives often and most
+   content is drawn again each time, so nothing here plays on a plain re-render: an entrance plays when its element
+   goes from hidden to shown, or while a class the app sets for that moment is on (.swap, .opening, .new-from). */
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; translate: 0 6px; } }
+/* A view just switched to. Not the composers: a fading parent would switch their glass off until it ends. */
+main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hidden]) > :not(.composer), aside.view:not([hidden]) { animation: fade-in var(--dur-base) var(--ease-out); }
+/* A tab or a pane just picked, and Settings as it opens and closes */
+.inspector.swap > :not(.ins-tabs), .pane.swap { animation: rise-in var(--dur-base) var(--ease-out); }
+.settings-win.swap { animation: sheet-in var(--dur-base) var(--ease-out); }
+.settings-win.closing { opacity: 0; scale: .985; pointer-events: none; transition: opacity var(--dur-fast) var(--ease-standard), scale var(--dur-fast) var(--ease-standard); }
+@keyframes sheet-in { from { opacity: 0; scale: .985; } }
+/* Messages that arrived since the thread was last drawn */
+.new-from ~ :not(.typing) { animation: rise-in var(--dur-slow) var(--ease-out) backwards; }
+/* What a message is a reply to, as it is picked */
+.rchip { animation: rise-in var(--dur-base) var(--ease-out); }
+/* Menus, the confirm dialog, the toast */
+.ctxmenu { transform-origin: 0 0; animation: pop-in var(--dur-fast) var(--ease-out); }
+#dlg.opening .dlg-back { animation: fade-in var(--dur-base) var(--ease-out); }
+#dlg.opening .dlg { animation: dlg-in var(--dur-slow) var(--ease-spring); }
+@keyframes dlg-in { from { opacity: 0; scale: .94; } }
+.toast { animation: toast-in var(--dur-base) var(--ease-out); transition: opacity var(--dur-base) var(--ease-standard), translate var(--dur-base) var(--ease-standard); }
+.toast.out { opacity: 0; translate: 0 8px; }
+@keyframes toast-in { from { opacity: 0; translate: 0 8px; } }
+/* Rows and round buttons answer the pointer without a jump; buttons give a little when pressed */
+.row, .snav-i { transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.send, .tbtn, .foot-btn { transition: scale var(--dur-instant) var(--ease-out), color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); }
+.btn:active:not(:disabled), .send:active:not(:disabled), .tbtn:active, .foot-btn:active, .mact:active { scale: .95; }
