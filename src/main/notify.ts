@@ -6,20 +6,27 @@ import { loadSettings } from './settings';
 let win: BrowserWindow | null = null;
 export function setWindow(w: BrowserWindow) { win = w; }
 
+/** Notifications with buttons are kept from garbage collection until they close, or their buttons do nothing. */
+const live = new Set<Notification>();
+
 /**
  * A decision is needed: the renderer plays the chosen sound and blinks the sidebar,
  * then an OS notification, taskbar flash (Windows) or Dock bounce (macOS).
  * The OS notification is silent because the app plays its own sound.
  */
-export function notifyDecision(title: string, body: string) {
+export function notifyDecision(title: string, body: string, actions: { text: string; run: () => void }[] = []) {
   win?.webContents.send('decision-alert');
   if (win && !win.isFocused()) {
     win.flashFrame(true);
     if (process.platform === 'darwin') app.dock?.bounce('informational');
   }
   if (!loadSettings().notifications || !Notification.isSupported()) return;
-  const n = new Notification({ title, body, silent: true });
+  const n = new Notification({ title, body, silent: true, actions: actions.map((a) => ({ type: 'button' as const, text: a.text })) });
   n.on('click', () => { win?.show(); win?.focus(); });
+  // A button answers the decision where it is; the window stays as it was.
+  n.on('action', (_e, i) => { const index = typeof i === 'number' ? i : (i as { actionIndex: number }).actionIndex; actions[index]?.run(); });
+  live.add(n);
+  n.on('close', () => live.delete(n));
   n.show();
 }
 

@@ -448,3 +448,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Quitting** is the tray's Quit, Cmd+Q, or the OS shutting down. `closeAction` in `shared/tray.ts` is the rule. If the desktop gives no tray icon, closing quits as before, so the app can never be left running with no way to reach it.
     - **Start at sign-in** is a separate setting, off by default. The OS starts the app with `--hidden`, so it sits in the tray until opened. Only the installed app registers itself, not a development run.
     - **macOS:** the Dock badge shows the number of waiting decisions.
+118. **Answer from the notification, and a long wait gives its slot back.**
+    - **Why:** away from the window, a decision could only be answered by opening the app, and each Worker waiting for an answer kept its slot. With three slots, three unanswered questions stopped the whole queue.
+    - **Buttons on the notification** (`shared/notifyActions.ts`): a permission has Allow and Deny; a question has its options when there are two or three, each short and without a description. A plan has none, because it has to be read. A button sends the same answer as the inbox card's button and leaves the window as it is. To deny with a reason, or to type another answer, open the app.
+    - **Slot release** (`waitStep` in `shared/slots.ts`): a check every half minute times each waiting task. After "Free a waiting Worker's slot after" minutes (10 by default, 0 = never) the task no longer counts as holding a slot, and queued tasks start. The Worker's conversation notes it.
+    - **The waiting Worker is not stopped.** It goes on the moment it is answered, without waiting for a slot again, so one more Worker than the limit can be at work for a while. Queueing it behind the tasks that took its place would make answering late cost more than answering never.
+    - **Not done:** answering from a phone. The user left that out.

@@ -18,6 +18,7 @@ import { PICK_MESSAGE, canPick } from '../shared/compare';
 import type { AutoTrigger } from '../shared/types';
 import { startPrMonitor, checkPrs, checkPrsSoon, mergePr } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
+import { notifyActions } from '../shared/notifyActions';
 import { attachmentBlock, registerAttachments } from './attachments';
 import { t } from './i18n';
 import { claudeHome, ruleFiles } from './claudeContext';
@@ -38,6 +39,9 @@ let win: BrowserWindow | null = null;
 let quitting = false;
 /** The "still running" notice was shown in this run. */
 let trayHinted = false;
+
+/** The user's answer to a decision, from the inbox or a notification button. Set once the handlers exist. */
+let answerByUser: (id: string, ans: string) => void = () => {};
 
 function quitApp() {
   quitting = true;
@@ -213,6 +217,7 @@ function registerIpc() {
     suggestFromDecision(d);
   };
   handle('decision:answer', userAnswer);
+  answerByUser = userAnswer;
   handle('auto:correct', (id: string, newAnswer: string, scope: 'once' | 'preference') => {
     const a = store.data.autoAnswers.find((x) => x.id === id);
     if (!a) throw new Error(t('err.noItem'));
@@ -397,7 +402,9 @@ async function boot() {
   // Worker news worth a turn of its own: the Dispatcher starts one by itself.
   store.on('wake', () => dispatcher.wake());
   onDecisionCreated((d) => {
-    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d));
+    // Simple decisions carry their answers as buttons on the notification.
+    const actions = notifyActions(d).map((a) => ({ text: 'key' in a.label ? t(a.label.key) : a.label.text, run: () => answerByUser(d.id, a.answer) }));
+    notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d), actions);
   });
   onLateAnswer((d) => {
     if (d.workerId) {
@@ -409,6 +416,8 @@ async function boot() {
   void listModels(6 * 3600_000);
   workers.resumeAfterRestart();
   startPrMonitor();
+  // A Worker that waits too long for an answer gives its slot to the queue (decision 118).
+  setInterval(() => workers.sweepWaiting(), 30_000);
   automations.start((text) => dispatcher.send(text));
   setInterval(retryAfterLimits, 2 * 60_000).unref();
   scheduleLimitRetry();

@@ -23,7 +23,7 @@ import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
 import { workerDecisions } from '../shared/inbox';
-import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
+import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clampWaitSlot, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
 import { restoreScroll, saveScroll } from '../shared/scroll';
 import { CHAT_SNAPSHOT, PAGE, firstPage, pagesFor, slideOlder, threadStart } from '../shared/paging';
@@ -2231,7 +2231,8 @@ function settingsHtml() {
       ${row(t('set.defaultEffort'), 'set-we', segc('set-we', st.workerEffort, effortOpts(), t('set.effort')), 'wrap')}
       ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}
       ${row(t('set.selfReview'), 'set-srev', `<input class="switch" id="set-srev" type="checkbox" ${st.selfReview ? 'checked' : ''}>`)}
-      ${row(t('set.maxWorkers'), 'set-maxw', stepper('set-maxw', st.maxWorkers, MAX_WORKERS_MIN, MAX_WORKERS_MAX, t('set.maxWorkers')))}`, t('set.workers'))}`;
+      ${row(t('set.maxWorkers'), 'set-maxw', stepper('set-maxw', st.maxWorkers, MAX_WORKERS_MIN, MAX_WORKERS_MAX, t('set.maxWorkers')))}
+      ${row(t('set.waitSlot'), 'set-wslot', stepper('set-wslot', st.waitSlotMinutes, 0, WAIT_SLOT_MAX, t('set.waitSlot')))}`, t('set.workers'))}`;
 
   return `<header class="stopbar drag">
       <button class="btn sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
@@ -2428,6 +2429,7 @@ function readSettingsForm() {
     effortPerTask: ($('#set-ept') as HTMLInputElement).checked,
     selfReview: ($('#set-srev') as HTMLInputElement).checked,
     maxWorkers: clampMaxWorkers(v('set-maxw')),
+    waitSlotMinutes: clampWaitSlot(v('set-wslot')),
     fontFamily: normalizeFontFamily(v('set-font')),
     fontSize: clampFontSize(v('set-fsize')),
     claudeRules: ($('#set-crules') as HTMLInputElement).checked,
