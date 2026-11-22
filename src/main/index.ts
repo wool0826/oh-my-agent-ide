@@ -227,8 +227,8 @@ function registerIpc() {
   handle('chat:send', (text: string, files?: string[]) => dispatcher.send(text, files ?? []));
   handle('chat:stop', () => dispatcher.stop());
   // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
-  handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), lang: loadSettings().language, theme: loadSettings().theme }));
-  handle('quick:send', (text: string) => dispatcher.send(String(text), []));
+  handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), files: t('quick.files'), lang: loadSettings().language, theme: loadSettings().theme, repos: store.data.repos.map((r) => r.name) }));
+  handle('quick:send', (text: string, files?: string[]) => dispatcher.send(String(text), Array.isArray(files) ? files.map(String) : []));
   handle('quick:close', () => closeQuick());
   handle('dispatcher:compact', () => dispatcher.compact());
   handle('dispatcher:clear', () => dispatcher.clear());

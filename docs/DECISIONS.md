@@ -557,3 +557,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **In the palette:** from two characters on, the messages that match are listed under "Said", after the places and tasks, each with a line of text around the word found, where it was said and when. The search runs in the main process a moment after the typing stops, since the chat held by the page is only its latest part.
     - **Opening a hit:** a chat message opens the chat starting at that message and marks it for a moment; older pages are loaded until it is there. A hit in a Worker's conversation opens that conversation at its end, not at the line: Worker logs are paged by line number, and jumping into the middle of one is left for when it is missed.
     - **Read on demand:** nothing is indexed. Each search reads the chat in memory and the Workers' log files, which is fast enough at the sizes these have and leaves nothing to keep in step.
+135. **The quick message box completes repository names, takes files, and remembers what was sent.**
+    - **Why:** the box of decision 123 took one plain line. Naming the repository meant typing its whole name from memory, a file could not go with the message, and a request repeated often was typed again each time.
+    - **`@` completion** (`completeRepo` in `shared/quickInput.ts`): while the caret is at the end of an `@word` that starts a registered repository's name, the name is shown beside the field and Tab takes it. Of several that fit, the shortest wins. A word after other text without a space ("me@bi") is not one.
+    - **Files:** dropped on the box, they go with the message as paths, exactly as in the chat; a pill says how many, and a click on it clears them.
+    - **Sent lines:** the last ten lines sent from the box are kept by its page. Up and Down go through them and come back to the line being typed.
+    - **Still one line.** A multi-line request, a reply to a message or a look at the answer belongs in the window.
+    - **Built with the app:** the box's script is now TypeScript bundled like the main page (`src/renderer/quick.ts`), so it shares rules with the rest and is type-checked.
