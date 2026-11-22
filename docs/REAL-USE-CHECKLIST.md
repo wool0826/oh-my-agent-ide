@@ -1,6 +1,6 @@
 # Real-use checklist
 
-What the automated tests cannot reach, to be run by hand on the installed app with real accounts. The end-to-end tests (`npm run e2e`, decision 128) cover the app's own flows with fake agents; everything here needs a real model, a real GitHub or Jira, the operating system, or a person.
+What the automated tests cannot reach, to be run by hand on the installed app with real accounts. The end-to-end tests (`npm run e2e`, decision 128) cover the app's own flows with fake agents: permissions and allowances, questions, plans, failures, slots, merging (one PR, all ready, a bundle in order), an automation fired by a merge, the palette and its search, "While you were away", issues, backups, the launch checks, the diagnostics report, the appearance setting, do-not-disturb hours and the quick message box's typing aids. Everything here needs a real model, a real GitHub or Jira, the operating system, or a person.
 
 How to use it: install the current build, work through a section, and write the result in its table: `ok`, or what happened instead. A row that fails becomes an issue or a message to the Dispatcher. Nothing here has been run yet unless its row says so.
 
@@ -80,3 +80,18 @@ Before starting: one repository you can open throwaway PRs in, registered in the
 | 8.1 | Install the new build over the old one. | Settings, tasks and conversations are kept. | |
 | 8.2 | Publish a release with `npm run release`, then start an older build. | Within a minute the gear has a dot, and Settings shows "Get <version>" linking to the release. | |
 | 8.3 | On a Mac: `npm run dist:mac`, install, and repeat 1.1, 3.1, 3.2, 3.4 and 3.7 (⌘⇧Space). | The same results. CI builds the app on macOS; it has never been used there. | |
+
+## 9. What only eyes and ears can check
+
+| # | Do | Expect | Result |
+|---|---|---|---|
+| 9.1 | Settings → Display → Appearance: Light, then System. Go through every view, a Worker's Changes tab and Settings. | Everything is readable, nothing is left dark on light or light on dark. The window frame and its caption buttons match. With System, changing the OS theme changes the app. | |
+| 9.2 | Set do-not-disturb hours that include now, and have a Worker ask for a permission. | No sound and no notification; the decision is in the inbox, the tray counts it, the taskbar flashes. | |
+| 9.3 | Have a Worker ask three things within a few seconds. | One sound and one notification, three cards. | |
+| 9.4 | Turn off "Notify when a task ends" and let a task finish with the window in the background. | No notification for it; a decision still notifies. | |
+| 9.5 | Remove a sign-in (`gh auth logout` on a test host) and start the app. | A red dot on the gear; Settings → General → Status lists the sign-in first with its command. Signing in and pressing refresh clears it. | |
+| 9.6 | Settings → General → Diagnostics → "Save report…", after a day of use. Read the file. | No token, no company host name, no email, no OS user name. Note here anything in it you would not want to pass on. | |
+| 9.7 | Drop two files on the quick message box and send. | The box shows "2 files"; the message in the chat carries both paths. | |
+| 9.8 | Restart the app while a task with an "Allow for this task" is still running. | The allowance is still listed under the task and still applies. | |
+| 9.9 | Search the palette for something said weeks ago in the chat. | The chat opens at that message, marked for a moment. | |
+| 9.10 | Use the app for a few minutes with a screen reader (Narrator, VoiceOver). | Controls are announced by sensible names, and a new decision is noticed. Note what is confusing. | |
