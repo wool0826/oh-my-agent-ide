@@ -216,8 +216,8 @@ flow('Settings shows what is missing on this computer and the command that fixes
   await app.click('[data-action="pane"][data-id="general"]');
   await app.until("document.querySelectorAll('#pre-rows .pill').length >= 4", 'the status rows');
   const rows = await app.evaluate("[...document.querySelectorAll('#pre-rows .srow')].map((r) => r.innerText.replace(/\\s+/g, ' ').trim())");
-  // What failed comes first, with its command; the rest are fine. Fake agents need no account.
-  assert.match(rows[0], /^GitHub sign-in: github\.company\.com gh auth login --hostname github\.company\.com Needed$/);
+  // What failed comes first, with why and its command; the rest are fine. Fake agents need no account.
+  assert.match(rows[0], /^GitHub sign-in: github\.company\.com Installed, but not signed in\. Run: gh auth login --hostname github\.company\.com Needed$/);
   assert.deepEqual(rows.slice(1).map((r) => r.replace(/ OK$/, '')), ['git', 'GitHub CLI (gh)', 'GitHub sign-in: github.com', 'IDE home folder']);
   assert.equal((await app.state()).preflightFailed, 1);
 });
