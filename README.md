@@ -88,8 +88,12 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 ```bash
 npm install
 npm run typecheck
+npm test
+npm run e2e
 npm start
 ```
+
+`npm test` runs the unit tests of the rules in `src/shared`. `npm run e2e` starts the built app on an empty profile with fake agents and a stand-in for `gh`, and drives its window through whole flows (`test/e2e/flows.e2e.mjs`); it uses no account and no network.
 
 Build output goes to `dist/`, installers to `release/`.
 

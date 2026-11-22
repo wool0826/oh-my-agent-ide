@@ -15,10 +15,17 @@ export interface RunResult { code: number; stdout: string; stderr: string }
 
 /** Run a program without a shell. Never throws; reports failure through `code`. */
 export function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}): Promise<RunResult> {
+  let env = opts.env ?? process.env;
+  // End-to-end tests put a script in gh's place (test/e2e/gh-stub.mjs), run by this same executable as Node.
+  if (cmd === 'gh' && process.env.OMA_GH_STUB) {
+    args = [process.env.OMA_GH_STUB, ...args];
+    cmd = process.execPath;
+    env = { ...env, ELECTRON_RUN_AS_NODE: '1' };
+  }
   return new Promise((resolve) => {
     execFile(cmd, args, {
       cwd: opts.cwd,
-      env: opts.env ?? process.env,
+      env,
       timeout: opts.timeoutMs ?? 10 * 60_000,
       maxBuffer: 32 * 1024 * 1024,
       windowsHide: true,
