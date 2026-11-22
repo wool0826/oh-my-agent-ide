@@ -597,3 +597,11 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Open:** it is where the left sidebar has its own toggle, mirrored. It floats over what scrolls in the sidebar, so the sidebar ends with room for it.
     - **Put away:** the button stays in the window's corner with its count of waiting decisions, in line with the send button, and the composer ends before it.
     - **One button for the four views' sidebars**, after them in the page, so the keyboard reaches it after their content. The shortcut is unchanged.
+142. **What the 0.6 design-system audit found is fixed where the rule was clear; sizes off the scale stay.**
+    - **Contrast:** account avatars use `--avatar-1` to `--avatar-4` (solid fills that hold 4.5:1 under white in both themes) instead of the base hues. Status glyphs (`.c-*`) take the `--state-*` roles, which step down to the 600s on a light canvas. A green pill on a chosen or hovered row sits on the card's solid color.
+    - **A message found by search** is marked `.found`, not `.hit`: the memory search's `.hit` rules were reaching the bubble, and the flash replaced a blue bubble's fill under its white text. The mark is a ring only.
+    - **Motion reduced:** the typing dots and the decision flash stop too, under the OS setting and under `data-motion="reduced"`. The two durations written as seconds are tokens.
+    - **Keyboard:** a dialog that asks keeps Tab among its own controls. The queue's "Clear" and the memory search show the focus ring.
+    - **Small things:** nothing is under 11px; file-chip, reply-chip and font-list buttons, the switch and the toolbar's "register an account" link have a place to hit of 24px; Hangul words are not split (`:lang(ko)`); button labels are never the tertiary text color.
+    - **The quick message box** follows the font and size settings and the type tokens, and its field is named in the app's language.
+    - **Not done:** control heights of 26, 30 and 34 (the scale is 24, 28, 32), spacing of 5, 7 and 14px, and merging `.segc`/`.radios` and the three menus into one component each. Each changes how every screen looks or is built, and wants its own pass with pictures before and after.

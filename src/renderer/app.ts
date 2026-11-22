@@ -624,6 +624,17 @@ export function init() {
     // Ctrl/Cmd+K opens the palette from anywhere, and closes it.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyK') { e.preventDefault(); if (cmdk.open) closePalette(); else openPalette(); return; }
     if (cmdk.open) { paletteKeys(e); return; }
+    // A dialog that asks keeps the keyboard inside it: Tab goes round its own controls.
+    if (e.key === 'Tab') {
+      const dlg = [...document.querySelectorAll<HTMLElement>('.dlg[aria-modal="true"]')].find((d) => d.getClientRects().length);
+      if (dlg) {
+        const stops = [...dlg.querySelectorAll<HTMLElement>('button:not(:disabled), input, textarea, [tabindex="0"]')];
+        const at = stops.indexOf(document.activeElement as HTMLElement);
+        e.preventDefault();
+        stops[(at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length]?.focus();
+        return;
+      }
+    }
     if (popKeys(e)) return;
     // A row that acts on a click does the same on Enter or Space; a link does on Enter.
     if ((e.key === 'Enter' || e.key === ' ') && !e.isComposing && el.matches?.('div[data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
