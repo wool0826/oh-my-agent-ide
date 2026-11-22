@@ -40,6 +40,7 @@ import { fakeMode } from '../fake';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
+import { WORKER_COMPACT } from '../../shared/compactInstructions';
 import { needsPlan, parseResult, taskStarted, workerPrompt } from './workerPrompt';
 import { clip, GO_ON_MSG, LIMIT_RESET_MSG, MAX_REQUEST_WAKES, planApproved, planNudge, planSummaryRule, question, QUESTION_TAG, REPLY_NOTE, RESUME_MSG, SHELL_OUTPUT_CHARS, SLOT_FREE_MSG, TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
 import { workerCodexTools, workerMemoryDir, workerTools, type StepsOp } from './workerTools';
@@ -193,6 +194,7 @@ class WorkerManager {
       env: WORKER_ENV,
       // With its task finished, an idle Worker is compacted much earlier (see WORKER_IDLE_COMPACT).
       compactAt: () => (this.currentTask(w) ? COMPACT_AT : WORKER_IDLE_COMPACT),
+      compactInstructions: WORKER_COMPACT,
       accountId: acc.id,
       resume: w.sessionId,
       spent: w.sessionSpend,
