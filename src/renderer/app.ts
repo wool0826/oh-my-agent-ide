@@ -586,9 +586,20 @@ function applyPanels() {
   badge.textContent = n ? String(n) : '';
 }
 
+let sideAnim: number | undefined;
 function togglePanel(which: 'side' | 'ins') {
-  if (which === 'side') { ui.sideMin = !ui.sideMin; store('oma.sideMin', ui.sideMin); }
-  else { ui.insMin = !ui.insMin; store('oma.insMin', ui.insMin); }
+  if (which === 'side') {
+    ui.sideMin = !ui.sideMin;
+    store('oma.sideMin', ui.sideMin);
+    // The sidebar's new content fades in only for this change: every later state update rebuilds it and must not fade.
+    const win = $('#win');
+    win.classList.add('side-anim');
+    clearTimeout(sideAnim);
+    sideAnim = window.setTimeout(() => win.classList.remove('side-anim'), 400);
+  } else {
+    ui.insMin = !ui.insMin;
+    store('oma.insMin', ui.insMin);
+  }
   applyPanels();
   if (S) renderSidebar();
 }
@@ -2359,6 +2370,8 @@ function bindDrop() {
 
 function init() {
   document.body.classList.add(`platform-${ide.platform}`);
+  // Before the first paint, so a sidebar that was put away does not animate shut at launch.
+  applyPanels();
   document.addEventListener('click', (e) => {
     const tgt = e.target as HTMLElement;
     const segBtn = tgt.closest<HTMLButtonElement>('[data-segc]');
