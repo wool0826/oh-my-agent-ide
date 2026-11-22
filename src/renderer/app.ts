@@ -9,6 +9,7 @@ import { prsInReview } from '../shared/prs';
 import { reasonText } from '../shared/askWhy';
 import { linkify } from '../shared/linkify';
 import { RING, ringArc } from '../shared/usageRing';
+import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { workerDecisions } from '../shared/inbox';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
@@ -111,6 +112,8 @@ const ui = {
   /** The left sidebar is a rail of glyphs, and the right one is hidden (kept across launches). */
   sideMin: stored('oma.sideMin'),
   insMin: stored('oma.insMin'),
+  /** "Done today" in the sidebar shows its latest tasks (kept across launches). */
+  doneOpen: stored('oma.doneOpen'),
   /** Asking before cancelling queued tasks: one task, or the whole queue. */
   cancelAsk: null as { ids: string[]; all: boolean } | null,
 };
@@ -461,7 +464,8 @@ function renderSidebar() {
   // One row per PR, even when a follow-up task recorded the same PR.
   const prs = prsInReview(s.tasks);
   const queued = s.tasks.filter(isQueued);
-  const doneToday = s.tasks.filter(finishedToday).length;
+  const doneTasks = s.tasks.filter(finishedToday);
+  const doneToday = doneTasks.length;
   const archived = s.workers.filter((w) => w.status === 'archived').length;
   const selW = ui.view === 'worker' && ui.wOpen ? ui.wSel : null;
   let selUsed = false;
@@ -477,14 +481,16 @@ function renderSidebar() {
     const small = d.reason ? `${d.workerId ?? 'Dispatcher'} · ${d.reason.why}` : [d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', ');
     return `<div class="row" data-action="goto-decision" data-id="${d.id}"${d.reason ? ` title="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(d.summary?.what || d.title, 60))}</b><small>${esc(small)}</small></span></div>`;
   }).join('');
-  const workerRow = (w: Worker) => {
+  const workerRow = (w: Worker, grouped = false) => {
     const x = lastTask(w);
     const what = x?.title ?? w.title;
-    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : `${w.repo ?? t('general')}, ${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
+    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
     return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}" data-ctx="worker"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span>${workerActs(w)}</div>`;
   };
-  const runRows = running.map(workerRow).join('');
-  const errRows = failed.map(workerRow).join('');
+  // Running Workers get one area per repository; the heading carries the repository's name and how many run in it.
+  const runRows = groupByRepo(running, (w) => w.repo).map((g) =>
+    `<div class="rg"><div class="rg-h">${ic('repo', 'box')}<b>${esc(g.repo ?? t('general'))}</b><span class="n">${g.items.length}</span></div>${g.items.map((w) => workerRow(w, true)).join('')}</div>`).join('');
+  const errRows = failed.map((w) => workerRow(w)).join('');
   const prRows = prs.map((x) => `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
   const qRows = queued.map((x) => {
     const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''}, ${queuedLabel(x)}`;
@@ -497,7 +503,7 @@ function renderSidebar() {
   // A filter's row is selected while the Worker list it filters is on screen.
   const filterCls = (f: WorkerFilter, n: number) => `${n ? '' : ' zero'}${ui.view === 'worker' && !ui.wOpen && ui.wFilter === f ? ' sel' : ''}`;
   const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
-    <div class="row${filterCls('today', doneToday)}" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></div>
+    <div class="row${filterCls('today', doneToday)}" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span>${doneToday ? `<button class="disc" data-action="done-toggle" aria-expanded="${ui.doneOpen}" title="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}" aria-label="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>` : ''}</div>${doneToday && ui.doneOpen ? doneList(doneTasks) : ''}
     <div class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
   if (ui.sideMin) {
@@ -517,6 +523,23 @@ function renderSidebar() {
     return;
   }
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
+}
+
+/** What a finished task did, in one line: its PR and state, then the summary its Worker reported. */
+function doneLine(x: Task) {
+  const pr = x.prUrl ? `#${prNum(x.prUrl)} ${x.prState === 'MERGED' ? t('pr.merged') : x.prState === 'CLOSED' ? t('pr.closed') : t('st.inReview')}` : t('side.noPr');
+  return x.summary ? `${pr} · ${oneLine(x.summary, 140)}` : pr;
+}
+
+/** Under "Done today": the five tasks finished last. A row opens its Worker; the heading row still lists them all. */
+function doneList(done: Task[]) {
+  const rows = recentlyFinished(done).map((x) => {
+    const line = doneLine(x);
+    const at = new Date(x.finishedAt!).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `<div class="row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" title="${esc(`${x.title}\n${line}`)}"><span class="t"><b>${esc(x.title)}</b><small>${esc(line)}</small></span><time>${at}</time></div>`;
+  }).join('');
+  const more = done.length > 5 ? `<button class="linkbtn" data-action="worker-filter" data-v="today">${t('side.doneAll', { n: done.length })}</button>` : '';
+  return `<div class="sub">${rows}${more}</div>`;
 }
 
 /** A Worker can be stopped while it is at work. */
@@ -2093,6 +2116,7 @@ async function act(el: HTMLElement, e: Event) {
     case 'worker-filter': go({ view: 'worker', wOpen: false, wFilter: (el.dataset.v || null) as WorkerFilter | null }); break;
     case 'open-settings': openSettings(); break;
     case 'side-toggle': togglePanel('side'); break;
+    case 'done-toggle': ui.doneOpen = !ui.doneOpen; store('oma.doneOpen', ui.doneOpen); renderSidebar(); break;
     case 'ins-toggle': togglePanel('ins'); break;
     case 'reveal-memory': await call('open:path', `${S!.settings.home}/memory`); break;
     case 'reveal-claude': if (ui.claude) await call('open:path', ui.claude.home); break;
