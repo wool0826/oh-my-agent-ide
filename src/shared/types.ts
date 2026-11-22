@@ -283,11 +283,29 @@ export interface AppState {
   chat: ChatItem[];
   /** Task outcomes not cleared from the inspector (results, and errors of a task), oldest first. */
   results: ChatItem[];
+  /** The IDE memory's sync with its remote repository. */
+  memorySync: MemorySync;
   dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null };
 }
 
 export interface DiffFile { path: string; added: number; removed: number; status: 'A' | 'M' | 'D' | 'R' | '?'; patch: string }
 export interface DiffView { base: string; branch: string; files: DiffFile[]; truncated: boolean; error?: string }
+
+/** How the last sync of IDE memory with its remote went. */
+export interface MemorySync {
+  /** A remote repository is set. */
+  remote: boolean;
+  state: 'off' | 'syncing' | 'ok' | 'error';
+  /** When the last sync ended. */
+  at: string | null;
+  /** One line from git, when it failed. */
+  error: string | null;
+  /** Commits merged in from the remote and sent to it by the last sync. */
+  pulled: number;
+  pushed: number;
+  /** Commits here that the remote still lacks. */
+  pending: number;
+}
 
 export interface MemoryFile { path: string; title: string; kind: 'preference' | 'repo' | 'decision' | 'task' | 'other'; size: number; updatedAt: string }
 export interface MemoryHit { path: string; line: number; text: string; score: number }

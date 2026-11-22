@@ -320,6 +320,13 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .hit:hover { background: var(--surface-hover); }
 .hit small { color: var(--text-secondary); font-size: var(--fs-caption2); }
 .hit span { font-size: var(--fs-body); overflow-wrap: anywhere; }
+.msync { display: flex; align-items: center; gap: var(--space-8); flex: 1; min-width: 0; font-size: var(--fs-caption); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.msync .sym { font-size: var(--icon-md); }
+.msync .ic { width: var(--icon-md); height: var(--icon-md); }
+.msync b { font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+.msync > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msync.bad b { color: var(--warning-text); }
+.msync-err { font-family: var(--font-mono); font-size: var(--fs-caption2); line-height: var(--lh-code); color: var(--text-secondary); padding: var(--space-8) 14px; border-top: .5px solid var(--border-subtle); overflow-wrap: anywhere; user-select: text; }
 .memedit { flex: 1; min-height: 300px; max-height: none; field-sizing: fixed; font-family: var(--font-mono); font-size: var(--fs-code); }
 
 /* settings: a full window — top bar, section list on the left, the chosen section centered on the right */
