@@ -10,6 +10,8 @@ import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestio
 
 export interface DispatcherState {
   sessionId: string | null; date: string | null; contextTokens: number; accountId: string | null;
+  /** Whose agent `sessionId` belongs to. Unset in older state files: Claude. */
+  provider?: 'claude' | 'chatgpt';
   /** The Dispatcher's own spend (its sessions, the answer-on-your-behalf check and the memory-suggestion check) by month, YYYY-MM. */
   spend?: Record<string, Spend>;
   sessionSpend?: SessionSpend | null;

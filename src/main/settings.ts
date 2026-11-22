@@ -60,6 +60,16 @@ export const DEFAULTS: SettingsView = {
   memorySuggest: true,
 };
 
+/**
+ * The model for the small Claude Code helpers (the answer-for-you check, the memory suggestion, the reviewer
+ * subagent): the Dispatcher's model, unless that is a ChatGPT model, which Claude Code cannot run.
+ */
+export function claudeHelperModel(): string {
+  const s = loadSettings();
+  const isClaude = (m: string) => /^claude/i.test(m);
+  return [s.dispatcherModel, s.workerModel].find(isClaude) ?? DEFAULTS.dispatcherModel;
+}
+
 let cache: Settings | null = null;
 
 export function loadSettings(): Settings {

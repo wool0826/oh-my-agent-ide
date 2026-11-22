@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { accounts } from '../accounts';
-import { loadSettings } from '../settings';
+import { loadSettings, claudeHelperModel } from '../settings';
 import { memoryDigest, searchMemory } from '../memory';
 import { memoryDirFor, searchClaudeMemory, userRules } from '../claudeContext';
 import { store } from '../store';
@@ -49,7 +49,7 @@ export async function adviseOnQuestion(input: { workerId: string; taskTitle: str
     const q = query({
       prompt,
       options: {
-        model: loadSettings().dispatcherModel,
+        model: claudeHelperModel(),
         cwd: paths().home,
         env: accounts.env(acc.id),
         tools: [],

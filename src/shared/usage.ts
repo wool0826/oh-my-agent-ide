@@ -51,6 +51,20 @@ export function nextFreeAt(list: readonly RoutableAccount[], now = Date.now()): 
   return Math.min(...list.map((a) => Date.parse(a.limitedUntil!)));
 }
 
+const PROVIDERS: Provider[] = ['claude', 'chatgpt'];
+const ofProvider = (list: readonly RoutableAccount[], p: Provider) => list.filter((a) => (a.provider ?? 'claude') === p);
+
+/**
+ * The same per provider: a session can only run on its own provider's accounts, so a free Claude account does
+ * not help one that waits for the ChatGPT account. Without `provider`: the first time any provider that is
+ * fully held gets an account back (when work that waits should be tried again).
+ */
+export function nextFreeAtFor(list: readonly RoutableAccount[], provider?: Provider, now = Date.now()): number | null {
+  if (provider) return nextFreeAt(ofProvider(list, provider), now);
+  const times = PROVIDERS.map((p) => nextFreeAt(ofProvider(list, p), now)).filter((t): t is number => t !== null);
+  return times.length ? Math.min(...times) : null;
+}
+
 /**
  * When a limit rejection ends. The rejection's own reset time if it has one; otherwise the latest reset among
  * windows that are (nearly) full, since a full 7-day window outlasts the 5-hour one; otherwise 30 minutes.
