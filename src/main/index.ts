@@ -12,7 +12,7 @@ import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisio
 import { dispatcher, createTask, assignedEvent } from './agents/dispatcher';
 import { workers } from './agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
-import { startPrMonitor, checkPrs, checkPrsSoon } from './prmonitor';
+import { startPrMonitor, checkPrs, checkPrsSoon, mergePr } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { attachmentBlock, registerAttachments } from './attachments';
 import { t } from './i18n';
@@ -202,6 +202,7 @@ function registerIpc() {
   handle('task:cancel', (id: string) => workers.cancelTask(id, 'user'));
   handle('queue:clear', () => workers.clearQueue('user'));
   handle('worker:diff', (id: string) => workers.diff(id));
+  handle('pr:merge', (taskId: string) => mergePr(taskId));
   handle('worker:archive', (id: string) => workers.archive(id));
   handle('worker:unarchive', async (id: string) => { const w = store.worker(id); if (w) await workers.unarchive(w); });
   handle('repo:add', (url: string, name?: string, description?: string) => registerRepo({ url, name, description }).then((r) => { dispatcher.refreshContext(); return r; }));

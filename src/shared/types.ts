@@ -123,6 +123,8 @@ export interface Task {
   prChecks?: PrChecks | null;
   /** CI runs (GitHub Actions run IDs, or external checks) whose failure was already handled. */
   seenCiRuns?: string[];
+  /** The head and base commits of the conflict last handed to the Worker, so one conflict is sent once. */
+  conflictSeen?: string;
   /** Times the Worker was sent failed CI checks to fix. */
   ciFixAttempts?: number;
   /** It failed because the user pressed Stop, not because of an error. Shown as stopped, not in red. */
