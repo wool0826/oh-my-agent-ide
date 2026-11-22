@@ -474,7 +474,14 @@ class Dispatcher {
         store.changed();
       },
       onStatus: (st, text) => {
-        if (st === 'error') {
+        // The turn the user stopped ends here, in an error or not: shown as stopped, as a Worker's is.
+        const stopped = st !== 'busy' && this.stopping;
+        if (stopped) {
+          this.stopping = false;
+          store.chat('event', t('ev.dispatcherStopped'));
+          this.auto = false;
+          this.autoActed = false;
+        } else if (st === 'error') {
           store.chat('error', t('err.dispatcher', { msg: text }));
           // A session that died mid-turn ends no turn, so an automatic one is over here.
           this.auto = false;
@@ -689,7 +696,11 @@ class Dispatcher {
     store.changed();
   }
 
+  /** The user pressed Stop and the turn has not ended yet: its error is the Stop, not a failure (L4). */
+  private stopping = false;
+
   async stop() {
+    if (this.busy) this.stopping = true;
     await this.session?.interrupt();
   }
 

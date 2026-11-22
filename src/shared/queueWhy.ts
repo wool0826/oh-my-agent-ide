@@ -57,11 +57,10 @@ export function queueWhy(say: Say, task: Task, ctx: QueueCtx): QueueWhy | null {
 
   if (waitsForSlot(task)) {
     const n = slotsUsed(ctx.tasks);
-    const why = say('q.slotWhy', { n, max: ctx.maxWorkers });
-    // The same test fillSlots makes: its Worker already holds a slot, or one is free.
-    if (canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers)) return { why, starts: say('q.slotFree'), cancelled: false, again };
+    // The same test fillSlots makes picks both sentences: its Worker already holds a slot, or one is free.
+    if (canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers)) return { why: say('q.slotFreeWhy', { n, max: ctx.maxWorkers }), starts: say('q.slotFree'), cancelled: false, again };
     const place = queuePlace(ctx.tasks, task.id) ?? { pos: 1, total: 1 };
-    return { why, starts: say('q.slotStarts', place), cancelled: false, again };
+    return { why: say('q.slotWhy', { n, max: ctx.maxWorkers }), starts: say('q.slotStarts', place), cancelled: false, again };
   }
 
   // Paused for a usage limit: it goes on when the first account's limit resets.

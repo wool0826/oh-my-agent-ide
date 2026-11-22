@@ -114,3 +114,23 @@ test('queueWhy: Korean text', () => {
   const b = T('B', { status: 'blocked', afterTaskId: 'D' });
   assert.match(queueWhy(ko, b, ctx([T('D', { status: 'cancelled' }), b]))!.starts, /취소돼요/);
 });
+
+test('queueWhy: with a free slot, why and starts agree instead of saying every slot is taken', () => {
+  const tasks = [T('R1'), slot('Q1', 3)];
+  const q = queueWhy(en, tasks[1], ctx(tasks))!;
+  assert.equal(q.why, 'It waited for a Worker slot; one is free now (1/2 in use).');
+  assert.doesNotMatch(q.why, /All \d+ Worker slots are in use/);
+});
+
+test('queueWhy: Korean task ids and PR numbers are not followed by a particle that may not fit', () => {
+  const b = T('B', { status: 'blocked', afterTaskId: 'T-0005' });
+  const run = (dep: Task) => queueWhy(ko, b, ctx([dep, b]))!;
+  const texts = [
+    run(T('T-0005', { status: 'running' })).starts,
+    run(T('T-0005', { status: 'done' })).starts,
+    run(T('T-0005', { status: 'failed' })).starts,
+    run(T('T-0005', { status: 'pr_open', prUrl: 'https://github.com/o/r/pull/12', prState: 'OPEN' })).starts,
+    run(T('T-0005', { status: 'done', prUrl: 'https://github.com/o/r/pull/12', prState: 'MERGED' })).starts,
+  ];
+  for (const s of texts) assert.doesNotMatch(s, /(T-0005|#12)[이가은는을를]/, s);
+});

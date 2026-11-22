@@ -123,7 +123,8 @@ export function issuesHtml(r: Repo) {
   const refresh = `<button class="clear-x always" data-action="issues-refresh" data-id="${esc(r.name)}" title="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
   const head = (n: string) => `<div class="ins-h"><b>${t('issue.title')}</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
   if (v === undefined || v === 'loading') return `${head('')}<div class="group" role="status" aria-label="${t('issue.loading')}">${skel(3, 'mini')}</div>`;
-  if (!Array.isArray(v)) return `${head('')}<div class="group"><div class="mini"><span class="err" title="${esc(v.error)}">${t('issue.err')}</span></div></div>`;
+  // The error itself, not only in a tooltip, with a way to ask again (L17).
+  if (!Array.isArray(v)) return `${head('')}<div class="group"><div class="mini" role="alert"><b>${t('issue.err')}</b>${v.error !== t('issue.err') ? `<span class="err">${esc(v.error)}</span>` : ''}<span><button type="button" class="linkbtn" data-action="issues-refresh" data-id="${esc(r.name)}">${t('retry')}</button></span></div></div>`;
   if (!v.length) return `${head('0')}<div class="group"><div class="mini"><span>${t('issue.none')}</span></div></div>`;
   const list = paged(`issues:${r.name}`, v, 6);
   return `${head(String(v.length))}<div class="group">${list.items.map((i) => `<div class="mini issue"><b><a tabindex="0" role="link" data-action="open-url" data-href="${esc(i.url)}">#${i.number}</a> ${esc(i.title)}</b>

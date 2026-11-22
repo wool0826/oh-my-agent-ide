@@ -1,6 +1,7 @@
 // The left sidebar: what waits for the user, what runs, PRs in review, the queue and the history.
 import type { Task, Worker, AccountView } from '../../shared/types';
 import { isQueued } from '../../shared/queue';
+import { canStop } from '../../shared/canStop';
 import { queueWhy, queueWhyText } from '../../shared/queueWhy';
 import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
@@ -35,7 +36,7 @@ export function renderSidebar() {
   const pending = s.decisions.filter((d) => d.status === 'pending');
   const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
   // A Worker that waits for the Dispatcher's answer is listed too: its task is open and holds a slot.
-  const running = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting' || awaitsDispatcher(lastTask(w)));
+  const running = s.workers.filter((w) => canStop(w, lastTask(w)));
   // A Worker stopped by an error is not running; it waits for someone to tell it to continue.
   const failed = s.workers.filter((w) => w.status === 'error');
   // One row per PR, even when a follow-up task recorded the same PR.
@@ -62,7 +63,8 @@ export function renderSidebar() {
     const x = lastTask(w);
     const what = x?.title ?? w.title;
     const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
-    return `<div tabindex="0" role="button" class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}" data-ctx="worker"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span>${workerActs(w)}</div>`;
+    // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
+    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span></button>${workerActs(w)}</div>`;
   };
   // Running Workers get one area per repository; the heading carries the repository's name and how many run in it.
   const runRows = groupByRepo(running, (w) => w.repo).map((g) =>
@@ -72,7 +74,7 @@ export function renderSidebar() {
   const qRows = queued.map((x) => {
     const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''}, ${queuedLabel(x)}`;
     const why = queueWhy(t, x, queueCtx());
-    return `<div tabindex="0" role="button" class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}"${why ? ` title="${esc(queueWhyText(why))}"` : ''}>${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span>${cancelX(x)}</div>`;
+    return `<div class="row split${selCls(x.workerId)}"${why ? ` title="${esc(queueWhyText(why))}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span></button>${cancelX(x)}</div>`;
   }).join('');
   // Two or more PRs ready at once: one button merges them in turn, asked once.
   const ready = readyToMerge(s.tasks);
@@ -84,7 +86,7 @@ export function renderSidebar() {
   // A filter's row is selected while the Worker list it filters is on screen.
   const filterCls = (f: WorkerFilter, n: number) => `${n ? '' : ' zero'}${ui.view === 'worker' && !ui.wOpen && ui.wFilter === f ? ' sel' : ''}`;
   const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
-    <div tabindex="0" role="button" class="row${filterCls('today', doneToday)}" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span>${doneToday ? `<button class="disc" data-action="done-toggle" aria-expanded="${ui.doneOpen}" title="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}" aria-label="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>` : ''}</div>${doneToday && ui.doneOpen ? doneList(doneTasks) : ''}
+    <div class="row split${filterCls('today', doneToday)}"><button type="button" class="row-main" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></button>${doneToday ? `<button class="disc" data-action="done-toggle" aria-expanded="${ui.doneOpen}" title="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}" aria-label="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>` : ''}</div>${doneToday && ui.doneOpen ? doneList(doneTasks) : ''}
     <div tabindex="0" role="button" class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
   if (ui.sideMin) {
@@ -123,14 +125,12 @@ export function doneList(done: Task[]) {
   return `<div class="sub">${rows}${more}</div>`;
 }
 
-/** A Worker can be stopped while it is at work, or while its open task waits for the Dispatcher (it holds a slot). */
-export const stoppable = (w: Worker) => w.status === 'running' || w.status === 'waiting' || w.status === 'starting'
-  || awaitsDispatcher(w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
 
 /** Stop and Open on a sidebar Worker row, shown on hover (the row's context menu has them too). */
 export function workerActs(w: Worker) {
   const btn = (action: string, icon: string, label: string) => `<button class="clear-x" data-action="${action}" data-id="${esc(w.id)}" title="${label}" aria-label="${esc(`${label}: ${w.id}`)}"><svg><use href="#${icon}"/></svg></button>`;
-  return `<span class="row-acts">${stoppable(w) ? btn('worker-stop', 's-stop', t('wk.stop')) : ''}${btn('open-worker', 's-chev', t('wk.open'))}</span>`;
+  const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+  return `<span class="row-acts">${canStop(w, x) ? btn('worker-stop', 's-stop', t('wk.stop')) : ''}${btn('open-worker', 's-chev', t('wk.open'))}</span>`;
 }
 
 /** The × on a queued task's row: asks before cancelling it. */
@@ -257,6 +257,7 @@ export function renderUsage() {
   if (!accs.length) {
     el.className = 'usage-empty nodrag';
     el.removeAttribute('tabindex');
+    el.removeAttribute('role');
     el.innerHTML = `<a tabindex="0" role="link" data-action="open-settings">${t('usage.addAccount')}</a>`;
     hideUsagePop();
     return;
@@ -264,6 +265,8 @@ export function renderUsage() {
   // One ring per account, in the order of Settings. The names and the numbers are in the popover (#usage-pop).
   el.className = 'usage nodrag';
   el.tabIndex = 0;
+  // A picture of the numbers; the popover it describes has them as text (L14).
+  el.setAttribute('role', 'img');
   el.setAttribute('aria-label', accs.map(usageTip).join('\n'));
   el.innerHTML = accs.map((a: AccountView) => `<span class="uacct${a.limited ? ' limited' : ''}" data-id="${esc(a.id)}">${ringsSvg(a)}</span>`).join('');
   refreshUsagePop();

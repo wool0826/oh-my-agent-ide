@@ -31,7 +31,7 @@ import { cleanMemo } from '../shared/memos';
 import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
 import { ALLOW, ALLOW_TASK, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
 import { notifyText } from '../shared/askWhy';
-import { workerDecisions } from '../shared/inbox';
+import { answerTarget } from '../shared/inbox';
 import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
 import { hasTray, showWindow, updateTray } from './tray';
 import { startUpdateCheck, checkUpdate, updateInfo } from './update';
@@ -275,10 +275,10 @@ function registerIpc() {
   handle('worker:log', (id: string, opts?: { before?: number; limit?: number }) => store.readLog(id, opts?.before, Math.min(opts?.limit ?? PAGE.log, 1000)));
   handle('search:text', (q: string) => store.searchText(String(q ?? '')));
   handle('chat:page', (before: string, limit?: number) => store.chatPage(before, Math.min(limit ?? PAGE.chat, 1000)));
-  handle('worker:send', (id: string, text: string, files?: string[]) => {
+  handle('worker:send', (id: string, text: string, files?: string[], answerId?: string | null) => {
     const body = text + attachmentBlock(registerAttachments(files ?? []));
-    // While the Worker waits on the user, what is typed to it answers that decision, as the inbox's text field does (decision 93).
-    const open = workerDecisions(store.data.decisions, id)[0];
+    // It answers a decision only when the composer said so above the text (decision 93, M7); a permission never.
+    const open = answerTarget(store.data.decisions, id, answerId);
     if (!open) return workers.send(id, 'user', body);
     userAnswer(open.id, body);
     return 'answered';

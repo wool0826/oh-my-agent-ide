@@ -13,8 +13,9 @@ import { bundleMergeOrder, openBundles } from '../../shared/bundle';
 import { memoSections } from '../../shared/memos';
 import { CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
+import { canStop } from '../../shared/canStop';
 import { act } from '../app';
-import { $, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go } from './history';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
@@ -130,6 +131,11 @@ export function renderChat(force = false, older = false) {
   // What arrived since the last render comes in with a short rise: everything after the marker (styles.css, .new-from).
   const seenAt = older ? -1 : items.findIndex(({ c }) => c.id === ui.chatSeen);
   const tail = items[items.length - 1]?.c.id ?? null;
+  // Only what is new is read out (L14): the last line from the app or an agent since the previous draw.
+  if (seenAt >= 0 && !older) {
+    const fresh = items.slice(seenAt + 1).map(({ c }) => c).filter((c) => c.kind !== 'user');
+    if (fresh.length) announce(fresh[fresh.length - 1].text);
+  }
   for (const [i, { c, n }] of items.entries()) {
     if (seenAt >= 0 && i === seenAt + 1) html += NEW_FROM;
     const ts = Date.parse(c.ts);
@@ -179,14 +185,21 @@ export async function olderChat() {
   if (ui.view === 'chat') renderChat(false, true);
 }
 
+/** Both composers: with nothing typed, the send button stops what is at work (the Dispatcher, or the Worker by canStop). */
 export function updateSendButton() {
-  const btn = $<HTMLButtonElement>('#chat-send');
-  const empty = !$<HTMLTextAreaElement>('#chat-input').value.trim() && !ui.attach.chat.length;
-  const stop = !!S?.dispatcher.busy && empty;
-  btn.classList.toggle('stop', stop);
-  btn.innerHTML = sym(stop ? 's-stop' : 's-up');
-  btn.setAttribute('aria-label', stop ? t('chat.stop') : t('send'));
-  btn.title = stop ? t('chat.stop') : '';
+  const set = (btn: HTMLButtonElement | null, stop: boolean, label: string) => {
+    if (!btn) return;
+    if (btn.classList.contains('stop') === stop && btn.getAttribute('aria-label') === (stop ? label : t('send'))) return;
+    btn.classList.toggle('stop', stop);
+    btn.innerHTML = sym(stop ? 's-stop' : 's-up');
+    btn.setAttribute('aria-label', stop ? label : t('send'));
+    btn.title = stop ? label : '';
+  };
+  const empty = (box: Box) => !$<HTMLTextAreaElement>(box === 'chat' ? '#chat-input' : '#ws-input').value.trim() && !ui.attach[box].length;
+  set($<HTMLButtonElement>('#chat-send'), !!S?.dispatcher.busy && empty('chat'), t('chat.stop'));
+  const w = worker(ui.wSel);
+  const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+  set($<HTMLButtonElement>('#ws-send'), !!w && canStop(w, cur) && empty('ws'), t('wk.stop'));
 }
 
 /** The free-text hint of a decision: it denies with a reason, asks for plan changes, or gives another answer. */
@@ -435,7 +448,7 @@ export function autosHtml() {
   const daily = ui.autoKind === 'daily';
   const add = `<div class="auto-add"><textarea class="inp" id="auto-prompt" data-keep="auto-prompt" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}"></textarea>
     <div class="auto-when">${segc('auto-kind', ui.autoKind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}${daily ? `<input class="inp" id="auto-time" data-keep="auto-time" value="09:00" inputmode="numeric" aria-label="${t('auto.time')}">` : ''}</div>
-    <div class="auto-when">${daily ? `<label class="auto-wk">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label>` : ''}<span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>`;
+    <div class="auto-when">${daily ? `<label class="auto-wk">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label>` : ''}<span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>${formErrHtml('auto')}`;
   const list = S!.automations;
   if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
   const rows = list.map((a) => {
@@ -457,8 +470,17 @@ export async function addAuto() {
     if (!time) { toast(t('auto.badTime'), true); $<HTMLInputElement>('#auto-time')?.focus(); return; }
     trigger = { kind: 'daily', time, weekdays: ui.autoWk };
   }
-  inp.value = '';
-  await call('auto:add', prompt, trigger);
+  // The text stays until it is saved; a failure is shown under it (L8).
+  const r = await tryCall('auto:add', prompt, trigger);
+  ui.formErr.auto = r.ok ? '' : r.error;
+  if (r.ok) { const now = $<HTMLTextAreaElement>('#auto-prompt'); if (now) now.value = ''; }
+  renderChatInspector();
+}
+
+/** Why the last add failed, under its field, until it is added or dismissed. */
+export function formErrHtml(key: 'memo' | 'auto') {
+  const msg = ui.formErr[key];
+  return msg ? `<div class="ferr" role="alert"><span>${esc(t('err.notSent', { msg }))}</span><button type="button" class="clear-x always" data-action="form-err-x" data-id="${key}" title="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg><use href="#s-x"/></svg></button></div>` : '';
 }
 
 /** The Memos tab: a field to add one, then the memos shared with agents and the user's own. */
@@ -467,7 +489,7 @@ export function memosHtml() {
   const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b>${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoHtml).join('')}</div></div>` : '';
   const add = `<div class="memo-add"><input class="inp" id="memo-new" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"><button class="btn" data-action="memo-add" title="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
   const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
-  return add + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
+  return add + formErrHtml('memo') + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
 }
 
 /** Which memo's Delete is asking "Delete it?" (null: none). Changed in place, so the button can animate. */
@@ -499,8 +521,10 @@ export async function addMemo() {
   const inp = $<HTMLInputElement>('#memo-new');
   const text = inp?.value.trim();
   if (!text) { inp?.focus(); return; }
-  inp.value = '';
-  await call('memo:add', text);
+  const r = await tryCall('memo:add', text);
+  ui.formErr.memo = r.ok ? '' : r.error;
+  if (r.ok) { const now = $<HTMLInputElement>('#memo-new'); if (now) now.value = ''; }
+  renderChatInspector();
   $<HTMLInputElement>('#memo-new')?.focus();
 }
 
@@ -513,7 +537,7 @@ export function renderChips(box: Box) {
   const files = ui.attach[box];
   el.hidden = !files.length;
   el.innerHTML = files.map((f, i) => `<span class="fchip" title="${esc(f)}">${sym('s-doc')}<span>${esc(base(f))}</span><button type="button" data-action="unattach" data-box="${box}" data-i="${i}" aria-label="${t('remove')}"><svg><use href="#s-x"/></svg></button></span>`).join('');
-  if (box === 'chat') updateSendButton();
+  updateSendButton();
 }
 
 export function addFiles(box: Box, list: FileList | null) {

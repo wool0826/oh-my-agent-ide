@@ -8,6 +8,20 @@ export function isQueued(t: Pick<Task, 'status'>): boolean {
   return t.status === 'queued' || t.status === 'blocked';
 }
 
+/**
+ * Keep the time each task entered the queue (L13). Called on every state change: a task seen queued for the first
+ * time takes its updatedAt, which every queueing sets; one that left the queue loses it. Says whether anything changed.
+ */
+export function stampQueued(tasks: Pick<Task, 'status' | 'updatedAt' | 'queuedSince'>[]): boolean {
+  let changed = false;
+  for (const t of tasks) {
+    const q = isQueued(t);
+    if (q && !t.queuedSince) { t.queuedSince = t.updatedAt; changed = true; }
+    else if (!q && t.queuedSince) { t.queuedSince = null; changed = true; }
+  }
+  return changed;
+}
+
 /** The task still has an open PR, which cancelling never touches. */
 export function hasOpenPr(t: Pick<Task, 'prUrl' | 'prState'>): boolean {
   return !!t.prUrl && t.prState !== 'MERGED' && t.prState !== 'CLOSED';

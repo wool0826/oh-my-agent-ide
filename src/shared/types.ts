@@ -113,6 +113,8 @@ export interface Task {
   afterTaskId?: string | null;
   /** Why a queued task waits: every Worker slot is taken (slot) or a usage limit holds every account (limit, or unset). */
   queueReason?: 'slot' | 'limit' | null;
+  /** When it entered the queue (queued or blocked); cleared when it leaves. Set by stampQueued (shared/queue.ts). */
+  queuedSince?: string | null;
   /** When the task began waiting for an answer, and whether it has since given its slot back (shared/slots.ts). */
   waitingSince?: string | null;
   slotReleased?: boolean;
