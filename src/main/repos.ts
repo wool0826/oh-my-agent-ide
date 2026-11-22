@@ -7,6 +7,7 @@ import { loadSettings } from './settings';
 import { store } from './store';
 import { nowIso, run, runOk, slug, ensureDir, uid } from './util';
 import { toolCommand } from './toolpath';
+import { notFoundMessage } from '../shared/toolpath';
 import { t } from './i18n';
 import { log } from './log';
 import type { Repo } from '../shared/types';
@@ -70,7 +71,11 @@ function clone(url: string, dir: string): Promise<void> {
     });
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; p.kill(); }, 30 * 60_000);
-    p.on('error', (e) => { clearTimeout(timer); reject(e); });
+    p.on('error', (e) => {
+      clearTimeout(timer);
+      const missing = (e as NodeJS.ErrnoException).code === 'ENOENT' && process.platform !== 'win32';
+      reject(missing ? new Error(notFoundMessage('git', process.env.PATH ?? '')) : e);
+    });
     p.on('close', (code) => {
       clearTimeout(timer);
       if (adding?.cancelled) return reject(new Error(t('repo.err.cancelled')));

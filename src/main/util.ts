@@ -37,7 +37,8 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Nod
     }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as any).code === 'number' ? (err as any).code : 1) : 0;
       // "spawn gh ENOENT" says nothing to the user: name what was searched and how to install it instead.
-      if ((err as any)?.code === 'ENOENT' && (!opts.cwd || fs.existsSync(opts.cwd))) return resolve({ code, stdout: '', stderr: notFoundMessage(name, String(env.PATH ?? '')), missing: true });
+      // Not on Windows, where .cmd shims also fail this way while installed and the message there stays as it was.
+      if ((err as any)?.code === 'ENOENT' && process.platform !== 'win32' && (!opts.cwd || fs.existsSync(opts.cwd))) return resolve({ code, stdout: '', stderr: notFoundMessage(name, String(env.PATH ?? '')), missing: true });
       resolve({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') + (err && !stderr ? String(err.message) : '') });
     });
   });

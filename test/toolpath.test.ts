@@ -34,6 +34,10 @@ test('the login shell PATH is read after the marker, past what startup files pri
 test('a missing shell gives no PATH instead of failing', async () => {
   assert.equal(await loginShellPath(undefined), null);
   assert.equal(await loginShellPath('/no/such/shell-oma', 1_000), null);
+  // A program that is not a usable shell gives no PATH, quickly.
+  const t0 = Date.now();
+  assert.equal(await loginShellPath(process.execPath, 300).catch(() => 'threw'), null);
+  assert.ok(Date.now() - t0 < 5_000);
 });
 
 test('gh is looked for in Homebrew, /usr/local and MacPorts before the PATH', () => {
@@ -45,10 +49,14 @@ test('gh is looked for in Homebrew, /usr/local and MacPorts before the PATH', ()
 });
 
 test('a program that cannot be started reads as "not found", not "spawn … ENOENT"', async () => {
+  if (process.platform === 'win32') return; // Windows keeps the old message (see util.run)
   const r = await run('oma-no-such-tool-xyz', ['--version'], { env: { ...process.env, PATH: '/nowhere' } });
   assert.notEqual(r.code, 0);
   assert.equal(r.missing, true);
   assert.match(r.stderr, /^oma-no-such-tool-xyz not found\. Searched: .*\/nowhere/);
   assert.doesNotMatch(r.stderr, /ENOENT/);
+});
+
+test('the not-found message names the folders searched and how to install and sign in', () => {
   assert.match(notFoundMessage('gh', '/usr/bin'), /gh not found\. Searched: \/opt\/homebrew\/bin:.*brew install gh.*gh auth login/);
 });

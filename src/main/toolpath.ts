@@ -11,9 +11,11 @@ export function loginShellPath(shell: string | undefined, timeoutMs = 3_000): Pr
   if (!shell) return Promise.resolve(null);
   return new Promise((resolve) => {
     try {
-      execFile(shell, ['-ilc', `printf '%s' "${PATH_MARKER}$PATH"`], { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      const child = execFile(shell, ['-ilc', `printf '%s' "${PATH_MARKER}$PATH"`], { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024 }, (err, stdout) => {
         resolve(err && !stdout ? null : parseShellPath(String(stdout ?? '')));
       });
+      // An rc file that reads input gets end-of-file instead of waiting for the timeout.
+      child.stdin?.end();
     } catch {
       resolve(null);
     }
