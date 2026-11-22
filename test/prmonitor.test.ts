@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { settle } from '../src/main/prmonitor';
+import { pendingCleanups, resumeCiQuestion, settle } from '../src/main/prmonitor';
+import { workers } from '../src/main/agents/workers';
+import { answer } from '../src/main/decisions';
 import { store } from '../src/main/store';
 import { prsToWatch } from '../src/shared/prs';
-import type { Task, Worker } from '../src/shared/types';
+import type { Decision, Task, Worker } from '../src/shared/types';
 
 // Settings and the IDE home live in a temp folder. Tasks have no repository, so no git command runs.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-prmonitor-'));
@@ -86,4 +88,43 @@ test('prmonitor: tasks waiting for the follow-up are released when the shared PR
   assert.equal(waiting.status, 'cancelled');
   assert.equal(followup.prState, 'CLOSED');
   assert.equal(store.data.chat.filter((c) => c.text.includes('PR closed without merging')).length, 1);
+});
+
+test('prmonitor: the branch of a merged PR is cleaned up only once its Worker is out of the worktree (L7)', async () => {
+  store.data.repos.push({ name: 'busy', url: '', path: tmp, description: '', defaultBranch: 'main', addedAt: now });
+  store.data.workers.push({
+    id: 'W-31', title: 'Worker', model: 'claude-opus-5-5', accountId: null, sessionId: null, cwd: tmp, repo: 'busy',
+    status: 'running', statusText: '', contextTokens: 0, taskIds: [], createdAt: now, lastActiveAt: now, knowledge: '',
+  });
+  const url = 'https://github.com/o/r/pull/31';
+  const x = addTask({ workerId: 'W-31', repo: 'busy', prUrl: url, prState: 'OPEN' });
+  const running = addTask({ workerId: 'W-31', repo: 'busy', status: 'running' });
+  store.worker('W-31')!.taskIds.push(x.id, running.id);
+  await settle(onPr(url), 'MERGED', x.branch!);
+  assert.equal(x.status, 'done');
+  assert.deepEqual(pendingCleanups(), [x.branch]);
+});
+
+test('prmonitor: a CI question left open at a restart is waited for again, and keeping on sends a fix (L5)', async () => {
+  const x = addTask({ prUrl: 'https://github.com/o/r/pull/41', prState: 'OPEN', ciFixAttempts: 3 });
+  const d: Decision = {
+    id: 'ci-41', kind: 'ci', source: 'question', workerId: 'W-21', taskId: x.id, title: 'CI still fails', detail: 'build, lint', code: null,
+    options: [{ label: 'Keep fixing' }, { label: 'Leave it' }], questionKey: null, status: 'pending', answer: null, createdAt: now, answeredAt: null,
+  };
+  store.data.decisions.push(d);
+  // Not a CI question, or one whose PR is gone: withdrawn as before.
+  assert.equal(resumeCiQuestion({ ...d, id: 'q', kind: undefined }), false);
+  assert.equal(resumeCiQuestion({ ...d, id: 'q2', taskId: 'T-none' }), false);
+  assert.equal(resumeCiQuestion(d), true);
+  const sent: [string, string | undefined, string][] = [];
+  const own = workers.sendReview;
+  workers.sendReview = (task, body, kind) => { sent.push([task.id, kind, body]); };
+  try {
+    answer('ci-41', 'Keep fixing');
+    await new Promise((r) => setImmediate(r));
+  } finally { workers.sendReview = own; }
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0][1], 'ci');
+  assert.match(sent[0][2], /Checks still fail on https:\/\/github.com\/o\/r\/pull\/41: build, lint/);
+  assert.equal(x.ciFixAttempts, 1);
 });

@@ -1,10 +1,11 @@
 import fs from 'node:fs';
-import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { paths } from './paths';
 import { loadSettings } from './settings';
 import { store } from './store';
-import { nowIso, run, runOk, slug, ensureDir } from './util';
+import { nowIso, run, runOk, slug, ensureDir, uid } from './util';
 import { t } from './i18n';
 import { log } from './log';
 import type { Repo } from '../shared/types';
@@ -26,9 +27,69 @@ async function defaultBranch(dir: string) {
   return 'main';
 }
 
+/** Says when the repository being added makes progress (the window shows it). */
+export const repoEvents = new EventEmitter();
+
+/** The repository being added: one at a time. */
+let adding: { name: string; progress: string; child: ChildProcess | null; cancelled: boolean } | null = null;
+
+/** What the window shows while a repository is added. */
+export function addingRepo(): { name: string; progress: string } | null {
+  return adding ? { name: adding.name, progress: adding.progress } : null;
+}
+
+/** Stop the clone under way. Its temporary folder is removed and nothing is registered. */
+export function cancelAddRepo() {
+  if (!adding) return false;
+  adding.cancelled = true;
+  adding.child?.kill();
+  return true;
+}
+
+/** The last progress line git prints while cloning ("Receiving objects:  45% (…)"), without "remote: ". */
+export function cloneProgress(chunk: string): string | null {
+  const lines = chunk.split(/[\r\n]+/).map((l) => l.replace(/^remote:\s*/, '').trim()).filter((l) => /^(Cloning into|Enumerating|Counting|Compressing|Receiving|Resolving|Updating files)\b/.test(l));
+  return lines.length ? lines[lines.length - 1].replace(/,\s*done\.$/, '').slice(0, 120) : null;
+}
+
+/** git clone into `dir`, with progress for the window. Rejects when it fails, times out or is cancelled. */
+function clone(url: string, dir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const p = spawn('git', ['clone', '--progress', url, dir], { env: ghEnv(), windowsHide: true });
+    if (adding) adding.child = p;
+    let tail = '';
+    p.stderr.on('data', (d: Buffer) => {
+      const s = d.toString();
+      tail = (tail + s).slice(-2000);
+      const line = cloneProgress(s);
+      if (line && adding && adding.progress !== line) {
+        adding.progress = line;
+        repoEvents.emit('progress');
+      }
+    });
+    const timer = setTimeout(() => p.kill(), 30 * 60_000);
+    p.on('error', (e) => { clearTimeout(timer); reject(e); });
+    p.on('close', (code) => {
+      clearTimeout(timer);
+      if (adding?.cancelled) return reject(new Error(t('repo.err.cancelled')));
+      if (code === 0) return resolve();
+      const lines = tail.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
+      const why = lines.filter((l) => /^(fatal|error|remote: error)/i.test(l)).pop() || lines.pop() || String(code);
+      reject(new Error(`git clone failed: ${why.slice(0, 400)}`));
+    });
+  });
+}
+
+/** A folder a clone left behind; read-only pack files can need a retry on Windows. */
+function removeDir(dir: string) {
+  try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); } catch (e) { log.warn('remove folder', dir, e); }
+}
+
 /**
  * Register a repository. `url` is any git URL (https, ssh); "org/name" becomes a URL on the company GitHub host.
- * An existing local folder is registered without cloning.
+ * A clone goes to a temporary folder and takes its name only once it is complete, so a failed or cancelled one
+ * leaves nothing a later add would take for a clone. A local folder is registered as it is, but only with an
+ * `origin` remote that has its default branch: every Worker's worktree starts from `origin/<default branch>`.
  */
 export async function registerRepo(input: { url: string; name?: string; description?: string }): Promise<Repo> {
   let url = input.url.trim();
@@ -37,27 +98,55 @@ export async function registerRepo(input: { url: string; name?: string; descript
   const isLocal = fs.existsSync(url) && fs.statSync(url).isDirectory();
   const name = slug(input.name || path.basename(url).replace(/\.git$/, ''));
   if (store.repo(name)) throw new Error(t('repo.err.exists', { name }));
-  let dir: string;
-  if (isLocal) {
-    dir = path.resolve(url);
-    await runOk('git', ['rev-parse', '--git-dir'], { cwd: dir });
-    const origin = await run('git', ['remote', 'get-url', 'origin'], { cwd: dir });
-    if (origin.code === 0) url = origin.stdout.trim();
-  } else {
-    ensureDir(paths().repos);
-    dir = path.join(paths().repos, name);
-    if (!fs.existsSync(dir)) await runOk('git', ['clone', url, dir], { env: ghEnv(), timeoutMs: 30 * 60_000 });
+  if (adding) throw new Error(t('repo.err.adding', { name: adding.name }));
+  const job = { name, progress: '', child: null, cancelled: false };
+  adding = job;
+  repoEvents.emit('progress');
+  try {
+    let dir: string;
+    if (isLocal) {
+      dir = path.resolve(url);
+      await runOk('git', ['rev-parse', '--git-dir'], { cwd: dir });
+      const origin = await run('git', ['remote', 'get-url', 'origin'], { cwd: dir });
+      if (origin.code !== 0 || !origin.stdout.trim()) throw new Error(t('repo.err.noOrigin'));
+      url = origin.stdout.trim();
+    } else {
+      ensureDir(paths().repos);
+      dir = path.join(paths().repos, name);
+      if (fs.existsSync(dir)) {
+        // A clone kept from when this repository was registered before: used again only when it is one of this URL.
+        const origin = await run('git', ['remote', 'get-url', 'origin'], { cwd: dir });
+        if (origin.code !== 0 || origin.stdout.trim() !== url) throw new Error(t('repo.err.folder', { path: dir }));
+      } else {
+        const tmp = path.join(paths().repos, `.${name}.adding-${uid()}`);
+        try {
+          await clone(url, tmp);
+          fs.renameSync(tmp, dir);
+        } catch (e) {
+          removeDir(tmp);
+          throw e;
+        }
+      }
+    }
+    if (job.cancelled) throw new Error(t('repo.err.cancelled'));
+    await run('git', ['fetch', '-q', 'origin'], { cwd: dir, timeoutMs: 5 * 60_000 });
+    const branch = await defaultBranch(dir);
+    const has = await run('git', ['rev-parse', '--verify', '-q', `refs/remotes/origin/${branch}`], { cwd: dir });
+    if (has.code !== 0) throw new Error(t('repo.err.noBranch', { branch }));
+    if (job.cancelled) throw new Error(t('repo.err.cancelled'));
+    const repo: Repo = {
+      name, url, path: dir,
+      description: input.description?.trim() || '',
+      defaultBranch: branch,
+      addedAt: nowIso(),
+    };
+    store.data.repos.push(repo);
+    store.changed();
+    return repo;
+  } finally {
+    adding = null;
+    repoEvents.emit('progress');
   }
-  await run('git', ['fetch', '-q', 'origin'], { cwd: dir, timeoutMs: 5 * 60_000 });
-  const repo: Repo = {
-    name, url, path: dir,
-    description: input.description?.trim() || '',
-    defaultBranch: await defaultBranch(dir),
-    addedAt: nowIso(),
-  };
-  store.data.repos.push(repo);
-  store.changed();
-  return repo;
 }
 
 export function removeRepo(name: string) {

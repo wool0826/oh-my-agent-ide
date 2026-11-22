@@ -143,6 +143,8 @@ export const ui = {
   logSeen: null as { wid: string; n: number } | null,
   /** Asking before cancelling queued tasks: one task, or the whole queue. */
   cancelAsk: null as { ids: string[]; all: boolean } | null,
+  /** The in-app confirm dialog for archiving a Worker or removing a repository; no OK label: it only explains. */
+  confirmAsk: null as { title: string; body: string; ok: string | null; action: 'archive' | 'repo-remove'; id: string } | null,
 };
 
 /* ---------- helpers ---------- */

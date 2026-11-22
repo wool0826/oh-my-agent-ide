@@ -19,16 +19,23 @@ export function createDecision(d: Omit<Decision, 'id' | 'status' | 'answer' | 'c
   return dec;
 }
 
-/** Create a decision and wait for the answer. If the signal aborts, withdraw it. */
+/** Create a decision and wait for the answer. If the signal aborts, withdraw it; one aborted already asks nothing. */
 export function ask(d: Omit<Decision, 'id' | 'status' | 'answer' | 'createdAt' | 'answeredAt'>, signal?: AbortSignal): Promise<string> {
-  const dec = createDecision(d);
+  if (signal?.aborted) return Promise.reject(new Error('aborted'));
+  return waitFor(createDecision(d).id, signal);
+}
+
+/** Wait for the answer to a pending decision, such as one kept over a restart. If the signal aborts, withdraw it. */
+export function waitFor(id: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    waiters.set(dec.id, resolve);
-    signal?.addEventListener('abort', () => {
-      waiters.delete(dec.id);
-      withdraw(dec.id);
+    const gone = () => {
+      waiters.delete(id);
+      withdraw(id);
       reject(new Error('aborted'));
-    }, { once: true });
+    };
+    if (signal?.aborted) return gone();
+    waiters.set(id, resolve);
+    signal?.addEventListener('abort', gone, { once: true });
   });
 }
 

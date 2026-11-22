@@ -174,6 +174,8 @@ export interface Decision {
   summary?: PlanSummary | null;
   /** Why the user is asked (src/shared/askWhy.ts). The card, the sidebar row and the OS notification all show it. Unset on older decisions. */
   reason?: DecisionReason | null;
+  /** ci: the PR monitor asks whether to keep fixing CI. It is kept over a restart and waited for again. */
+  kind?: 'ci';
 }
 
 /** Why a decision needs the user, in one or two short sentences. */
@@ -351,6 +353,8 @@ export interface RunView {
 
 export interface AppState {
   ready: boolean;
+  /** A repository being added, with git's last progress line (src/main/repos.ts). */
+  repoAdding?: { name: string; progress: string } | null;
   /** How many of the launch checks failed (shared/preflight.ts); 0 before they have run. */
   preflightFailed?: number;
   /** Fake agent mode is on: every agent follows a script, and the window says so. */

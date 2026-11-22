@@ -617,3 +617,13 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Kept in** the window's localStorage (`oma.sideW`, `oma.insW`), like whether each sidebar is collapsed, not in settings.json: it is how this window looks, not a setting.
     - **Keys:** the handle is a focusable `separator`; the arrows move it 16px (64 with Shift), so on the right sidebar's handle Left widens it. Home and End go to the limits; double-click restores the default.
     - The rules are in `shared/panelWidth.ts` (tested); `ui/resize.ts` handles the pointer, with pointer capture so the drag goes on outside the handle.
+146. **Archiving, removing a repository, and the PR monitor no longer take work from under a Worker** (from the T-0006 bug audit: H2, M2, M4, M5, M6, M8, L5-L7, L9, L11).
+    - **Archive** is refused while the Worker is mid-turn or its task waits for an answer; the button is hidden then. It does not stop the task first: one click should not throw away a turn. A worktree with uncommitted changes is kept, and the in-app dialog asks before a folder is removed.
+    - **Auto-archive** skips Workers with a task that holds the worktree (queued, blocked, PR open) and keeps dirty folders. 0 days means never.
+    - **Removing a repository** is refused while any of its tasks is queued, running or waiting. Tasks with an open PR only produce a warning: nothing follows those PRs afterwards, so their clean worktrees are removed too.
+    - **Adding a repository** clones into `.<name>.adding-<id>` and renames it when the clone is complete. A failed or cancelled clone leaves nothing. A local folder needs an `origin` remote, and its default branch must be on origin.
+    - **The Dispatcher's new session** (a new day, or a model change) is announced in the chat. The first message to the new session starts with a recap of what the user and the Dispatcher said, clipped to 4000 characters. A busy session is never closed: the switch waits for the turn to end.
+    - **A CI question left open at a restart** is waited for again, with a generic body, because the failing logs from before the restart are gone. Other pending questions are withdrawn as before.
+    - **A merged PR's branch** is cleaned up only once its Worker is out of the worktree. The deferred cleanup is held in memory, so a restart drops it, and the branch is then left for the user.
+    - **`diag:text` and `pr:check`** exist only in fake-agent mode, where the end-to-end tests use them.
+    - **Not done (L10):** pushing state in pieces or pruning it means rewriting how the renderer receives state. It wants its own change.
