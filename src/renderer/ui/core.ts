@@ -149,6 +149,8 @@ export const ui = {
   /** Open decisions the user chose to send a normal message past, and the ones the Worker composer has shown (M7). */
   decAsMessage: new Set<string>(),
   decSeen: new Set<string>(),
+  /** The decision the Worker composer's strip names right now, which a send answers. */
+  decShown: null as { wid: string; id: string } | null,
   /** Why the last send from a composer, a new memo or a new automation failed; shown until it is dismissed or sent again (L8). */
   sendErr: { chat: '', ws: '' } as Record<'chat' | 'ws', string>,
   formErr: { memo: '', auto: '' } as Record<'memo' | 'auto', string>,

@@ -23,7 +23,6 @@ import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon,
 import { applyPanels, hideUsagePop, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
-import { composerAnswers, workerDecisions } from '../shared/inbox';
 import { canStop } from '../shared/canStop';
 
 /** Shows a view tab. Navigation goes through go(), which calls this. */
@@ -279,7 +278,9 @@ export async function act(el: HTMLElement, e: Event) {
       const msg = w ? reviewMessage(ui.diffNotes.get(w.id) ?? []) : '';
       if (!w || !msg) break;
       (el as HTMLButtonElement).disabled = true;
-      await call('worker:send', w.id, msg, []);
+      // A failed send keeps the notes to send again (L8).
+      const r = await tryCall('worker:send', w.id, msg, []);
+      if (!r.ok) { (el as HTMLButtonElement).disabled = false; toast(r.error, true); break; }
       ui.diffNotes.delete(w.id);
       ui.diffDraft = null;
       go({ wTab: 'chat' });
@@ -517,13 +518,16 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     const typed = input.value;
     const text = typed.trim() || (files.length ? t('attach.defaultText') : '');
     if (!text) return;
+    // The Worker composer is shared: what comes after the send belongs to the Worker it went to.
+    const target = box === 'ws' ? ui.wSel : null;
+    const reply = ui.reply[box];
     sending = true;
     const err = await send(text, files);
     sending = false;
+    if (box === 'ws' && ui.wSel !== target) { if (err) toast(err, true); return; }
     setSendErr(box, err ?? '');
     if (err) return;
-    ui.reply[box] = null;
-    renderReply(box);
+    if (ui.reply[box] === reply) { ui.reply[box] = null; renderReply(box); }
     // What was typed while it went stays.
     if (input.value === typed) input.value = '';
     ui.attach[box] = ui.attach[box].filter((f) => !files.includes(f));
@@ -776,9 +780,10 @@ export function init() {
   });
   bindComposer('ws', '#ws-form', '#ws-input', async (text, files) => {
     if (!ui.wSel) return null;
-    // The decision the strip above the text names, if any; otherwise a normal message (M7).
-    const answers = composerAnswers(workerDecisions(S?.decisions ?? [], ui.wSel), ui.decAsMessage);
-    const r = await tryCall('worker:send', ui.wSel, replyText('ws', text), files, answers?.id ?? null);
+    // The decision the strip above the text names, if any; otherwise a normal message (M7). Main answers it only
+    // while it is still open.
+    const answers = ui.decShown?.wid === ui.wSel ? ui.decShown.id : null;
+    const r = await tryCall('worker:send', ui.wSel, replyText('ws', text), files, answers);
     return r.ok ? null : r.error;
   });
   // The same button as the chat's: with nothing typed, it stops the Worker (L3).

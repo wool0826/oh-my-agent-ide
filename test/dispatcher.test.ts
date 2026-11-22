@@ -263,3 +263,17 @@ test('a Dispatcher turn the user stopped shows as stopped, not as a red error; a
   end();
   assert.equal(errors().length, 1);
 });
+
+test('a Stop whose turn ended without a status does not mark the next turn as stopped', async () => {
+  const s = () => dispatcher.session as unknown as { busy: boolean; handle(m: unknown): void };
+  const errors = () => store.data.chat.filter((c) => c.kind === 'error').length;
+  dispatcher.send('Plan the week');
+  const before = errors();
+  // Stop while busy, but the turn goes quiet with no result.
+  const pending = dispatcher.stop();
+  s().busy = false;
+  await pending;
+  dispatcher.send('Again');
+  s().handle({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Boom.' });
+  assert.equal(errors(), before + 1);
+});

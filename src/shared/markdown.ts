@@ -12,7 +12,8 @@ function spans(h: string) {
   return h.split(/(`[^`\n]+`)/).map((part, i) => {
     if (i % 2 === 1) return `<code>${part.slice(1, -1)}</code>`;
     let x = part.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
-    x = x.replace(/(^|[^*\w])\*(?=\S)([^*\n]*?\S)\*(?![*\w])/g, '$1<i>$2</i>');
+    // *italic* opens after a space, a bracket or the start, so a * inside a URL or a path stays as it is.
+    x = x.replace(/(^|[\s(\[;>])\*(?=\S)([^*\n]*?\S)\*(?![*\w])/g, '$1<i>$2</i>');
     // _italic_ only between spaces or punctuation, so snake_case names and URLs stay as they are.
     x = x.replace(/(^|[\s(])_(?=\S)([^_\n]*?\S)_(?=$|[\s.,;:!?)])/g, '$1<i>$2</i>');
     return linkify(x);

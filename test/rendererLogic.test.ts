@@ -30,6 +30,8 @@ test('md: italics, without touching snake_case, URLs or code', () => {
   assert.equal(mdHtml('snake_case_name and 2 * 3 * 4'), '<p>snake_case_name and 2 * 3 * 4</p>');
   assert.equal(mdHtml('`a*b*c`'), '<p><code>a*b*c</code></p>');
   assert.match(mdHtml('see https://x.dev/a_b_c'), /data-href="https:\/\/x.dev\/a_b_c"/);
+  assert.match(mdHtml('see https://x.dev/*all*/y'), /data-href="https:\/\/x.dev\/\*all\*\/y"/);
+  assert.equal(mdHtml('(*aside*) and **bold**'), '<p>(<i>aside</i>) and <b>bold</b></p>');
 });
 
 test('md: everything is escaped, headings and code blocks still work', () => {

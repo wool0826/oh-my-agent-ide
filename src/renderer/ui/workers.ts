@@ -392,6 +392,8 @@ export function renderComposerDecision() {
     if (inp.value.trim()) ui.decAsMessage.add(d.id);
   }
   const target = composerAnswers(open, ui.decAsMessage);
+  // Enter answers the one named here, not whichever comes first by then.
+  ui.decShown = w && target ? { wid: w.id, id: target.id } : null;
   const skipped = target ? null : open.find((d) => d.source !== 'permission') ?? null;
   const perm = open.find((d) => d.source === 'permission') ?? null;
   const q = (d: (typeof open)[number]) => esc(oneLine(d.summary?.what || d.title, 90));
