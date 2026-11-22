@@ -15,6 +15,7 @@ import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today } from '../util';
 import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
 import { hasSpend } from '../../shared/spend';
+import { sharedMemoDigest } from '../../shared/memos';
 import { describeCancel } from '../../shared/queue';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { kTokens } from '../../shared/context';
@@ -311,6 +312,9 @@ function systemPrompt() {
     '',
     'IDE memory digest',
     memoryDigest(5000) || '(empty)',
+    '',
+    'Memos the user shares with you (their own notes: follow them as you would a stated preference)',
+    sharedMemoDigest(store.data.memos ?? []) || '(none)',
   ].join('\n') + (loadSettings().claudeRules ? userRulesSection() : '');
 }
 

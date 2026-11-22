@@ -19,7 +19,8 @@ import { t } from './i18n';
 import { claudeHome, ruleFiles } from './claudeContext';
 import { listModels, setSessionModelSource } from './models';
 import { log } from './log';
-import { month, nowIso, oneLine } from './util';
+import { month, nowIso, oneLine, uid } from './util';
+import { cleanMemo } from '../shared/memos';
 import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
 import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
 import { notifyText } from '../shared/askWhy';
@@ -51,6 +52,7 @@ function snapshot(): AppState {
     chat: d.chat.slice(-CHAT_SNAPSHOT),
     // All of them, not only those in the chat snapshot, so the inspector's "Show more" reaches every one.
     results: d.chat.filter((c) => (c.kind === 'result' || (c.kind === 'error' && c.ref)) && !c.cleared),
+    memos: d.memos ?? [],
     memorySync: memorySync(),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
@@ -208,6 +210,35 @@ function registerIpc() {
   handle('memory:list', () => listMemory());
   handle('memory:read', (p: string) => readMemory(p));
   handle('memory:write', (p: string, c: string) => { writeMemory(p, c); dispatcher.refreshContext(); });
+  // Memos. A change to what is shared reaches the Dispatcher with its next message.
+  handle('memo:add', (text: string) => {
+    const clean = cleanMemo(text);
+    if (!clean) return null;
+    const at = nowIso();
+    const memo = { id: uid(), text: clean, shared: false, createdAt: at, updatedAt: at };
+    (store.data.memos ??= []).push(memo);
+    store.changed();
+    return memo.id;
+  });
+  handle('memo:update', (id: string, patch: { text?: string; shared?: boolean }) => {
+    const memo = store.data.memos?.find((m) => m.id === id);
+    if (!memo) return;
+    const wasShared = memo.shared;
+    if (patch.text !== undefined) {
+      const clean = cleanMemo(patch.text);
+      if (clean && clean !== memo.text) { memo.text = clean; memo.updatedAt = nowIso(); }
+    }
+    if (patch.shared !== undefined) memo.shared = !!patch.shared;
+    store.changed();
+    if (wasShared || memo.shared) dispatcher.refreshContext();
+  });
+  handle('memo:remove', (id: string) => {
+    const memo = store.data.memos?.find((m) => m.id === id);
+    if (!memo) return;
+    store.data.memos = store.data.memos!.filter((m) => m.id !== id);
+    store.changed();
+    if (memo.shared) dispatcher.refreshContext();
+  });
   handle('memory:sync', () => syncMemory());
   handle('memory:search', (q: string, offset?: number) => searchMemoryPage(q, Math.max(0, offset ?? 0), PAGE.memHits));
   handle('memory:promote', async (repoName: string) => {
