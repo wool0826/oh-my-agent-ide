@@ -198,14 +198,15 @@ export function usageCard(a: AccountView) {
 }
 
 /** The usage popover: every account's numbers while the pointer or the focus is on the rings. */
-export const usagePop = { shown: false, hover: null as string | null, timer: 0 };
+export const usagePop = { shown: false, hover: null as string | null, timer: 0, html: '' };
 
+/** Opens the popover. Once it is open, moving between the rings only moves the mark (hoverUsage): nothing is drawn again. */
 export function showUsagePop() {
+  if (usagePop.shown || !S?.accounts.length) return;
   const el = $('#usage-pop');
   clearTimeout(usagePop.timer);
-  if (!S?.accounts.length) return;
-  el.innerHTML = S.accounts.map(usageCard).join('');
-  if (usagePop.shown) return;
+  usagePop.html = S.accounts.map(usageCard).join('');
+  el.innerHTML = usagePop.html;
   usagePop.shown = true;
   el.classList.remove('out');
   el.hidden = false;
@@ -228,10 +229,23 @@ export function hideUsagePop() {
   usagePop.timer = window.setTimeout(() => { el.hidden = true; el.classList.remove('out'); }, ms('--dur-fast'));
 }
 
+/** New numbers while the popover is open: written in place, with no opening motion, and only if something changed. */
+function refreshUsagePop() {
+  if (!usagePop.shown || !S?.accounts.length) return;
+  const html = S.accounts.map(usageCard).join('');
+  if (html === usagePop.html) return;
+  usagePop.html = html;
+  const el = $('#usage-pop');
+  el.classList.remove('opening');
+  el.innerHTML = html;
+}
+
 /** Marks the account whose ring the pointer is on. */
 export function hoverUsage(id: string | null) {
   if (usagePop.hover === id) return;
   usagePop.hover = id;
+  // The mark is part of what was drawn; keep the record of it in step, so a refresh compares like with like.
+  if (usagePop.shown && S?.accounts.length) usagePop.html = S.accounts.map(usageCard).join('');
   document.querySelectorAll<HTMLElement>('#usage-pop .ua').forEach((s) => s.classList.toggle('on', s.dataset.id === id));
 }
 
@@ -250,7 +264,7 @@ export function renderUsage() {
   el.tabIndex = 0;
   el.setAttribute('aria-label', accs.map(usageTip).join('\n'));
   el.innerHTML = accs.map((a: AccountView) => `<span class="uacct${a.limited ? ' limited' : ''}" data-id="${esc(a.id)}">${ringsSvg(a)}</span>`).join('');
-  if (usagePop.shown) showUsagePop();
+  refreshUsagePop();
 }
 
 /** Put the sidebars away or back, and say so on their buttons. The right one's button counts open decisions while it is hidden. */

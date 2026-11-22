@@ -609,3 +609,6 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Why they did not:** the toolbar's control stays in the page, so its pill travels from where it was. The right sidebar is written whole on each draw, so its controls were new elements with no pill to start from, and the pill appeared in place.
     - **How:** `glide` remembers where each control's pill last was, by the control's name (its id, its hidden input's id, or its panel and label). A new control whose choice differs starts its pill there and lets it travel, with the same motion as the toolbar.
     - Nothing changes for a control drawn again with the same choice, or for one seen for the first time.
+144. **The usage popover is drawn once when it opens; moving between the rings only moves the mark** (reported by the user: the bars kept filling again).
+    - **Why they did:** every pointer move over the rings wrote the popover again, and cleared the timer that ends its opening motion, so each new write played the bars' fill.
+    - **Now:** an open popover is left alone by the pointer. New numbers from a state update are written in place, without the opening motion, and only when something changed.
