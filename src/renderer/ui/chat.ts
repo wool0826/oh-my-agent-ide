@@ -558,7 +558,7 @@ export function pasteFiles(box: Box, e: ClipboardEvent) {
   const items = files.map((f) => {
     let path = '';
     try { path = ide.pathForFile(f); } catch { /* clipboard data, not a local file */ }
-    return { path, type: f.type };
+    return { path, type: f.type, size: f.size };
   });
   const plan = planPaste(items, !!cd.getData('text/plain'));
   if (plan.kind === 'text') return;

@@ -18,6 +18,7 @@ test('planPaste: a bare screenshot is saved; text with an image of itself, or ot
   assert.deepEqual(planPaste([{ path: '', type: 'image/png' }], true), { kind: 'text' });
   assert.deepEqual(planPaste([{ path: '', type: 'application/pdf' }], false), { kind: 'text' });
   assert.deepEqual(planPaste([], false), { kind: 'text' });
+  assert.deepEqual(planPaste([{ path: '', type: 'image/png', size: PASTE_IMAGE_MAX + 1 }], false), { kind: 'text' });
 });
 
 test('pastedImageName: a dated name with the type\'s extension; unknown types are refused', () => {

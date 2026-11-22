@@ -1,7 +1,7 @@
 /** What a paste into a composer carries, decided from the clipboard alone so it can be tested without a window. */
 
 /** One clipboard file: its local path ('' for a screenshot or other data with no file behind it) and its type. */
-export interface PastedFile { path: string; type: string }
+export interface PastedFile { path: string; type: string; size?: number }
 
 export type PastePlan =
   /** Leave it to the textarea: plain text, or something we cannot attach. */
@@ -21,7 +21,7 @@ export function planPaste(files: PastedFile[], hasText: boolean): PastePlan {
   if (paths.length) return { kind: 'paths', paths };
   // Rich text from an editor or a page often brings an image of itself along; the text is what was meant.
   if (hasText) return { kind: 'text' };
-  const images = files.map((f, i) => (IMAGE_EXT[f.type] ? i : -1)).filter((i) => i >= 0);
+  const images = files.map((f, i) => (IMAGE_EXT[f.type] && (f.size ?? 0) <= PASTE_IMAGE_MAX ? i : -1)).filter((i) => i >= 0);
   return images.length ? { kind: 'images', files: images } : { kind: 'text' };
 }
 

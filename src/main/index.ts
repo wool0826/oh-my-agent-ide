@@ -449,7 +449,7 @@ function registerIpc() {
   });
   // A screenshot pasted into a composer is kept under the IDE home, so the agent can still read it later.
   handle('attach:pasteImage', (type: string, bytes: Uint8Array) => savePastedImage(path.join(paths().data, 'pasted'), type, bytes));
-  handle('reveal:path',(p: string) => shell.showItemInFolder(p));
+  handle('reveal:path', (p: string) => shell.showItemInFolder(p));
   handle('app:version', () => app.getVersion());
   // Settings > Models asks for a fresh list (at most a minute old), its Refresh button for a new one;
   // other callers take one up to 6 hours old.

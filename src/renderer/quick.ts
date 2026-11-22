@@ -104,7 +104,7 @@ input.addEventListener('paste', (e) => {
   const cd = e.clipboardData;
   const list = Array.from(cd?.files ?? []);
   if (!cd || !list.length) return;
-  const plan = planPaste(list.map((f) => { let path = ''; try { path = ide.pathForFile(f); } catch { /* clipboard data */ } return { path, type: f.type }; }), !!cd.getData('text/plain'));
+  const plan = planPaste(list.map((f) => { let path = ''; try { path = ide.pathForFile(f); } catch { /* clipboard data */ } return { path, type: f.type, size: f.size }; }), !!cd.getData('text/plain'));
   if (plan.kind === 'text') return;
   e.preventDefault();
   const take = (paths: string[]) => { for (const p of paths) if (p && !files.includes(p)) files.push(p); draw(); };
