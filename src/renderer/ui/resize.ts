@@ -57,7 +57,7 @@ function still() {
 
 function startDrag(p: Panel, h: HTMLElement, e: PointerEvent) {
   if (e.button !== 0) return;
-  // No text selection, and no focus ring from the press.
+  // No text selection starts from the press (.rz-drag keeps it off while dragging).
   e.preventDefault();
   const win = $('#win');
   const x0 = e.clientX;
