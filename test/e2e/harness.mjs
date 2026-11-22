@@ -105,8 +105,16 @@ export async function launch({ settings = {}, repos = [], gh = {} } = {}) {
     }
   }
 
-  // The first state has arrived and the window is drawn.
-  await until("!!document.querySelector('#chat-ins .segc')", 'the main window');
+  // The first state has arrived and the window is drawn. If it never is, the app must not be left running:
+  // a child still alive keeps the test process from ending.
+  try {
+    await until("!!document.querySelector('#chat-ins .segc')", 'the main window');
+  } catch (e) {
+    const page = await evaluate("document.readyState + ' | ' + location.href + ' | ide=' + typeof window.ide + ' | body=' + document.body.innerText.slice(0, 300)").catch((x) => String(x));
+    try { ws.close(); } catch { /* closed */ }
+    child.kill('SIGKILL');
+    throw new Error(`${e.message}\nPage: ${page}\nApp log: ${fs.readFileSync(path.join(dir, 'app.log'), 'utf8').slice(-3000)}`);
+  }
 
   return {
     dir, evaluate, until,
@@ -119,7 +127,8 @@ export async function launch({ settings = {}, repos = [], gh = {} } = {}) {
     async stop() {
       try { ws.close(); } catch { /* closed */ }
       child.kill();
-      await new Promise((r) => { child.once('exit', r); setTimeout(r, 3000); });
+      // A quit that hangs is ended for good, so nothing outlives the test.
+      await new Promise((r) => { child.once('exit', r); setTimeout(() => { child.kill('SIGKILL'); r(); }, 3000); });
       for (let i = 0; i < 5; i++) { try { fs.rmSync(dir, { recursive: true, force: true }); break; } catch { await sleep(300); } }
     },
   };
