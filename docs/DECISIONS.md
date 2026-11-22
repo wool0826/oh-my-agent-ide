@@ -409,3 +409,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Assign** sends the Dispatcher one message: the repository, the issue's number, title and link, and the ask to read the issue with its comments first and to have the PR close it (`issueMessage`). The task is then made the way every task is, so routing, plan-first and the queue apply unchanged.
     - **No new state:** nothing links a task to its issue beyond the text; the PR's "Closes #N" closes it on merge.
     - **GitHub only:** Linear and other trackers were left out; they need their own sign-in.
+112. **Automations: work that starts by itself.**
+    - **Two triggers:** every day at a local time (optionally weekdays only), or each time a PR the app watches is merged. Other tools offer cron lines, webhooks and chat triggers; these two cover "check something every morning" and "do this after each merge" without a server.
+    - **It is a message to the Dispatcher:** when one fires, the Dispatcher gets its prompt as a message starting with `[Automation: title]` (with the merged PR named, for a merge), shown in the chat like a typed one. Tasks are then made, routed and queued the way they always are, and the result lands in the inbox. Nothing runs outside the Dispatcher.
+    - **Where:** a third tab in the chat view's right sidebar, next to Inbox and Memos: a form (what to do, the trigger, the time), then the list, each with a switch and Delete (asked once, as for a memo). The Dispatcher can also create, list and remove them (`create_automation`, `list_automations`, `remove_automation`), so "check dependencies every weekday at nine" in the chat sets one up.
+    - **Missed runs:** the app must be open for a daily one to fire. One whose time passed while it was closed runs once at the next start, not once per missed day. Switching one back on counts from then.
+    - **Clock:** checked every 30 seconds against the stored next run (`isDue`, `nextRun` in local time).

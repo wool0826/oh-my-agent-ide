@@ -5,6 +5,7 @@ import { notifyInfo } from './notify';
 import { t } from './i18n';
 import { run, nowIso } from './util';
 import { log } from './log';
+import { automations } from './automations';
 import { ask } from './decisions';
 import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readiness, runsOf, type Check, type RollupItem } from './prchecks';
 import { adoptSeen, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
@@ -56,6 +57,8 @@ export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', h
   const { tasks } = watch;
   const first = tasks[0];
   const settling = watch.all.filter((x) => x.prState !== 'MERGED' && x.prState !== 'CLOSED');
+  // Automations waiting for a merge hear of it once per PR: only while some task still has it as open.
+  if (merged && settling.length) automations.onMerged(first);
   for (const task of settling) {
     asking.get(task.id)?.abort.abort(); // the CI question no longer applies
     task.prState = state;
