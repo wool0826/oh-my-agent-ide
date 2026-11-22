@@ -121,6 +121,8 @@ Build output goes to `dist/`, installers to `release/`.
 | `src/shared/i18n.ts` | English and Korean UI text |
 | `src/shared/askWhy.ts` | Why each decision needs the user, for its card, sidebar row and notification |
 | `src/shared/routing.ts` | Which idle Worker takes a new task, or whether to create one |
-| `src/renderer/` | The UI |
+| `src/renderer/app.ts` | The window's entry: draws every screen, what each control does, start-up |
+| `src/renderer/ui/` | One module per screen (`sidebar`, `chat`, `workers`, `repos`, `memory`, `settings`, `palette`), plus `core` (shared state and helpers), `controls` and `history` |
+| `test/e2e/` | End-to-end flows: the built app with fake agents and a stand-in for `gh` |
 | `src/main/agents/selfReview.ts` | Self-review before a PR: the task-message rule, skip limits, reviewer subagent |
 | `resources/plugin/` | Skills every Worker gets: token-saving habits and the self-review step |
