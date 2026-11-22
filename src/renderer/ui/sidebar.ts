@@ -2,7 +2,7 @@
 import type { Task, Worker, AccountView } from '../../shared/types';
 import { isQueued } from '../../shared/queue';
 import { canStop } from '../../shared/canStop';
-import { stepSegments, stepView } from '../../shared/steps';
+import { doneMask, stepper, stepView } from '../../shared/steps';
 import { queueWhy, queueWhyText } from '../../shared/queueWhy';
 import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
@@ -34,6 +34,7 @@ export function workerIcon(w: Worker) {
 
 export function renderSidebar() {
   const s = S!;
+  drawn = new Map();
   const pending = s.decisions.filter((d) => d.status === 'pending');
   const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
   // A Worker that waits for the Dispatcher's answer is listed too: its task is open and holds a slot.
@@ -64,15 +65,17 @@ export function renderSidebar() {
     const x = lastTask(w);
     const what = x?.title ?? w.title;
     const waits = w.status === 'waiting' || awaitsDispatcher(x);
-    // The steps its Worker planned for the open task, when it gave some: how far it is, under the title.
-    const v = x && OPEN.has(x.status) ? stepView(x) : null;
+    // The steps its Worker planned for the open task, when it gave some: how far it is, under the title. A Worker
+    // stopped by an error keeps them, so the row says at which step.
+    const failed = w.status === 'error';
+    const v = x && (OPEN.has(x.status) || failed) ? stepView(x) : null;
     const where = `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}`;
     const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}`
-      : v ? `${where} · ${v.allDone ? t('side.stepsDone', { total: v.total }) : t('side.stepOf', { n: v.at + 1, total: v.total, title: v.current })}`
+      : v ? `${where} · ${failed ? t('side.stoppedAt', { n: Math.min(v.at + 1, v.total), total: v.total }) : v.allDone ? t('side.stepsDone', { total: v.total }) : `${v.at + 1}/${v.total}`}`
       : `${where}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
-    const tip = w.status === 'error' ? w.statusText : v ? stepsTip(x!) : '';
+    const tip = [failed ? w.statusText : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
-    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` title="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepBar(x!, waits) : ''}</span></button>${workerActs(w)}</div>`;
+    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` title="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepperHtml(x!, failed ? 'err' : waits ? 'wait' : v.allDone ? 'all' : 'run') : ''}</span></button>${workerActs(w)}</div>`;
   };
   // Running Workers get one area per repository; the heading carries the repository's name and how many run in it.
   const runRows = groupByRepo(running, (w) => w.repo).map((g) =>
@@ -113,6 +116,7 @@ export function renderSidebar() {
     $('#side').innerHTML = `${live}${live ? '<span class="rail-sep"></span>' : ''}${hist('today', 'done', t('side.doneToday'), doneToday)}${hist('archived', 'arch', t('side.archived'), archived)}`;
     return;
   }
+  seen = drawn;
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(prTitle, prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
 }
 
@@ -136,15 +140,30 @@ export function doneList(done: Task[]) {
 
 const OPEN = new Set(['running', 'waiting', 'queued']);
 
+/** The steps the sidebar drew last time, by task, so a step done since then plays once (shared/steps.ts, stepper). */
+let seen = new Map<string, string>();
+let drawn = seen;
+
+const TICK = '<svg viewBox="0 0 10 10"><path d="M1.8 5.3l2.1 2.1 4.2-4.6"/></svg>';
+const CROSS = '<svg viewBox="0 0 10 10"><path d="M2.4 2.4l5.2 5.2M7.6 2.4l-5.2 5.2"/></svg>';
+
 /**
- * The bar under a Worker's row: one segment per step, done ones filled, the current one pulsing; a long plan is one
- * continuous bar. Its text is the row's small line, so the bar itself is hidden from screen readers.
+ * The Stepper under a Worker's row: the step done last, the current one and the next, rolling up a line when a step
+ * is done. Colour is the state: running, waiting (for the user or the Dispatcher), all done, or stopped by an error.
+ * The row's small line and tooltip carry the same in words, so it is hidden from screen readers.
  */
-function stepBar(x: Task, waits: boolean) {
-  const segs = stepSegments(x.steps ?? []);
-  const v = stepView(x)!;
-  const inner = segs ? segs.map((s) => `<i class="${s}"></i>`).join('') : `<i class="fill" style="width:${Math.round((v.done / v.total) * 100)}%"></i>`;
-  return `<span class="steps${segs ? '' : ' cont'}${waits ? ' wait' : ''}" aria-hidden="true">${inner}</span>`;
+function stepperHtml(x: Task, state: 'run' | 'wait' | 'all' | 'err') {
+  const steps = x.steps ?? [];
+  const v = stepper(steps, seen.get(x.id) ?? null);
+  drawn.set(x.id, doneMask(steps));
+  const lines = v.lines.map((l) => {
+    const glyph = l.seg === 'done' ? TICK : l.seg === 'cur' && state === 'err' ? CROSS : '';
+    return `<span class="s ${l.seg}${l.just ? ' just' : ''}"><i>${glyph}</i><em>${esc(l.title)}</em></span>`;
+  }).join('');
+  // The small line gives the count only; the current step's name is read from here.
+  const cur = stepView(x)!;
+  const said = cur.allDone ? '' : `<span class="sr-only">${esc(t('side.stepAria', { n: cur.at + 1, total: cur.total, title: cur.current }))}</span>`;
+  return `<span class="stp ${state}" style="--n:${v.size}" aria-hidden="true"><span class="stp-in${v.rolled ? ' adv' : ''}">${lines}</span></span>${said}`;
 }
 
 /** The row's tooltip: every step, done ones ticked, the current one marked. */
