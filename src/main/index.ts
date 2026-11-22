@@ -272,6 +272,7 @@ function registerIpc() {
   handle('worker:restore', (id: string, ref: string) => workers.restore(id, ref));
   handle('pr:merge', (taskId: string) => mergePr(taskId));
   handle('repo:issues', (name: string) => listIssues(name));
+  handle('task:revoke', (taskId: string, key: string) => workers.revokeGrant(taskId, key));
   handle('jira:issues', () => listJiraIssues());
   handle('jira:token', (token: string) => { setJiraToken(String(token ?? '')); pushState(); });
   // The user picked one of two attempts: it is told to open its PR, and the comparison is closed for both.

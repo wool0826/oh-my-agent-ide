@@ -33,7 +33,7 @@ import { afterDependency, cancelSet, describeCancel, isQueued, statusAfterCancel
 import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
-import { grantScope, type GrantScope } from '../../shared/grants';
+import { grantScope, hasGrant, withGrant, withoutGrant, type GrantScope } from '../../shared/grants';
 import { FakeSession } from './fakeSession';
 import { fakeMode } from '../fake';
 import type { Key } from '../../shared/i18n';
@@ -369,8 +369,14 @@ class WorkerManager {
     };
   }
 
-  /** Kinds of action the user allowed for the length of a task, by task id. Kept in memory: a restart asks again. */
-  private grants = new Map<string, Set<string>>();
+  /** The user took back an "Allow for this task": that kind of action is asked about again. */
+  revokeGrant(taskId: string, key: string) {
+    const task = store.task(taskId);
+    if (!task?.grants?.length) return;
+    task.grants = withoutGrant(task.grants, key);
+    if (task.workerId) store.log(task.workerId, 'event', t('log.grantRevoked'));
+    store.changed();
+  }
 
   /**
    * What "Allow for this task" would cover for this call, or null when it is not offered: an always-ask
@@ -403,7 +409,7 @@ class WorkerManager {
       const code = (req.kind === 'command' ? `$ ${req.command}` : req.files.join('\n')).slice(0, 1200);
       // One file names a folder; several files are asked about each time.
       const scope = this.taskScope(task, tool, req.kind === 'command' ? input : req.files.length === 1 ? { file_path: req.files[0] } : {});
-      if (task && scope && this.grants.get(task.id)?.has(scope.key)) {
+      if (task && scope && hasGrant(task, scope.key)) {
         if (w.status === 'waiting') w.status = prev === 'waiting' ? 'running' : prev;
         if (task.status === 'waiting') task.status = 'running';
         store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
@@ -421,7 +427,7 @@ class WorkerManager {
           reason: permissionReason(t, { who: w.id, task, tool, input, rule: alwaysAskRule(tool, input, loadSettings().askOff), decisionReason: req.reason }),
         });
         store.log(w.id, 'user', `${oneLine(code, 140)} → ${this.answerLabel(ans)}`);
-        if (ans === ALLOW_TASK && task && scope) this.grants.set(task.id, (this.grants.get(task.id) ?? new Set()).add(scope.key));
+        if (ans === ALLOW_TASK && task && scope) task.grants = withGrant(task.grants, scope);
         return ans === ALLOW || ans === ALLOW_TASK ? 'accept' : 'decline';
       } catch {
         return 'decline';
@@ -445,7 +451,7 @@ class WorkerManager {
       const task = this.currentTask(w);
       // Allowed for this task already: the same kind of action goes ahead, with a line in the conversation.
       const scope = this.taskScope(task, toolName, input);
-      if (task && scope && this.grants.get(task.id)?.has(scope.key)) {
+      if (task && scope && hasGrant(task, scope.key)) {
         store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
         return { behavior: 'allow', updatedInput: input };
       }
@@ -466,7 +472,7 @@ class WorkerManager {
           reason: permissionReason(t, { who: w.id, task, tool: toolName, input, rule: alwaysAskRule(toolName, input, loadSettings().askOff), blockedPath: opts.blockedPath, decisionReason: cc, impact: opts.description }),
         }, opts.signal);
         store.log(w.id, 'user', `${summarizeTool(toolName, input)} → ${this.answerLabel(ans)}`);
-        if (ans === ALLOW_TASK && task && scope) this.grants.set(task.id, (this.grants.get(task.id) ?? new Set()).add(scope.key));
+        if (ans === ALLOW_TASK && task && scope) task.grants = withGrant(task.grants, scope);
         if (ans === ALLOW || ans === ALLOW_TASK) return { behavior: 'allow', updatedInput: input };
         return { behavior: 'deny', message: ans === DENY ? 'The user denied this action. Find another way, or skip it if it is not needed.' : `The user denied this and said: ${ans}` };
       } catch {

@@ -998,3 +998,13 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .mini .bnd-f a:hover { text-decoration: underline; }
 .mini .bnd-f .pill { font-style: normal; flex: none; }
 .mini.bnd-act { align-items: flex-end; }
+
+/* ---------- what was allowed for a task ---------- */
+.mini .grants { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4) var(--space-6); margin-top: var(--space-4); }
+.mini .grants em { font-style: normal; font-size: var(--fs-caption2); color: var(--text-tertiary); }
+.mini .grants .pill { font-style: normal; display: inline-flex; align-items: center; gap: var(--space-2); padding-right: var(--space-2); max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.grant-x { position: relative; flex: none; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; display: grid; place-items: center; cursor: pointer; }
+.grant-x::after { content: ""; position: absolute; inset: -4px; }
+.grant-x svg { width: 7px; height: 7px; }
+.grant-x:hover { background: var(--danger-solid); color: var(--text-on-solid); }
+.grant-x:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }

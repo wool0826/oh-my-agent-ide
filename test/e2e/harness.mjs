@@ -130,6 +130,13 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
     state: () => evaluate("return await window.ide.call('state');"),
     workerLog: (wid) => evaluate(`return (await window.ide.call('worker:log', ${JSON.stringify(wid)})).items.map((x) => x.text).join('\\n');`),
     gh: () => JSON.parse(fs.readFileSync(ghFile, 'utf8')),
+    /** Saves a picture of the window, for looking at a screen while writing a test. */
+    async shot(file, width = 1440, height = 900) {
+      await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+      await sleep(400);
+      const m = await send('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(file, Buffer.from(m.result.data, 'base64'));
+    },
     async stop() {
       try { ws.close(); } catch { /* closed */ }
       child.kill();

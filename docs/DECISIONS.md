@@ -526,3 +526,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Unreadable at launch** (`Store.load`, rules in `shared/backup.ts`): the file is first copied aside as `data/state-broken-<time>.json`, so nothing is lost by what follows. Then the newest backup that can be read takes its place. With none, the app starts empty.
     - **It says so:** one error line in the chat names the day of the backup that was put back, or says that there was none, and that the unreadable file was kept. An empty or missing file is a first run and says nothing.
     - **What is not covered:** Worker conversations (`data/workers/*.jsonl`) and memory, which is its own git repository, are separate files and are not part of this copy.
+130. **An "Allow for this task" is kept on the task, shown, and can be taken back.**
+    - **Why:** the allowances of decision 119 lived in memory. Restarting the app in the middle of a task made it ask for everything again, and there was no place to see what had been allowed or to undo it.
+    - **Kept on the task:** `Task.grants` holds each allowed kind with the words shown for it, so it is saved with the state and outlasts a restart. It still ends with the task: a finished task's allowances allow nothing.
+    - **Shown where the task is:** in the Worker view, under a task still in progress, "Allowed for this task" lists them, each with a small button that takes it back. The next action of that kind asks again, and the Worker's conversation notes it.
+    - **Nothing wider:** there is still no allowance across tasks or for good. One that outlived its task would be a standing permission, which is what the always-ask rules and auto mode are there to decide.

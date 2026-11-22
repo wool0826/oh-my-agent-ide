@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanAskOff, grantScope } from '../src/shared/grants';
+import { cleanAskOff, grantScope, hasGrant, withGrant, withoutGrant } from '../src/shared/grants';
 
 const key = (tool: string, input: unknown) => grantScope(tool, input)?.key ?? null;
 
@@ -31,4 +31,15 @@ test('any other tool is its own kind', () => {
 test('switched-off rules keep only known keys', () => {
   assert.deepEqual(cleanAskOff(['ask.merge', 'nope', 'ask.forcePush']), ['ask.forcePush', 'ask.merge']);
   assert.deepEqual(cleanAskOff('ask.merge'), []);
+});
+
+test('a grant is kept once on its task and can be taken back', () => {
+  const a = { key: 'bash:npm install', label: 'npm install' };
+  const b = { key: 'bash:git commit', label: 'git commit' };
+  const list = withGrant(withGrant(withGrant(null, a), b), a);
+  assert.deepEqual(list.map((g) => g.key), ['bash:git commit', 'bash:npm install']);
+  assert.equal(hasGrant({ grants: list }, a.key), true);
+  assert.equal(hasGrant({ grants: withoutGrant(list, a.key) }, a.key), false);
+  assert.equal(hasGrant(null, a.key), false);
+  assert.equal(hasGrant({}, a.key), false);
 });
