@@ -75,6 +75,11 @@ const en = {
   'side.doneToday': 'Done today',
   'side.archived': 'Archived Workers',
   'side.emptyTitle': 'Nothing in progress',
+  'side.collapse': 'Collapse the sidebar ({key})',
+  'side.expand': 'Expand the sidebar ({key})',
+  'ins.collapse': 'Hide the right sidebar ({key})',
+  'ins.expand': 'Show the right sidebar ({key})',
+  'ins.expandDec': 'Show the right sidebar ({key}) · {n} waiting for you',
   'side.clearQueue': 'Clear',
   'side.clearQueueTip': 'Clear the queue',
 
@@ -623,6 +628,11 @@ const ko: Record<Key, string> = {
   'side.doneToday': '오늘 완료',
   'side.archived': '보관된 Worker',
   'side.emptyTitle': '진행 중인 일이 없어요',
+  'side.collapse': '사이드바 접기 ({key})',
+  'side.expand': '사이드바 펼치기 ({key})',
+  'ins.collapse': '오른쪽 사이드바 숨기기 ({key})',
+  'ins.expand': '오른쪽 사이드바 보이기 ({key})',
+  'ins.expandDec': '오른쪽 사이드바 보이기 ({key}) · 결정 {n}건 대기',
   'side.clearQueue': '비우기',
   'side.clearQueueTip': '대기열 비우기',
 
