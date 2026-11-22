@@ -1,11 +1,13 @@
 import fs from 'node:fs';
+import { EventEmitter } from 'node:events';
 import path from 'node:path';
 import { paths } from './paths';
 import { loadSettings } from './settings';
-import { debounce, ensureDir, month, run, today } from './util';
+import { debounce, ensureDir, month, nowIso, run, today } from './util';
+import { commitAll, syncRepo } from './memorySync';
 import { log } from './log';
 import { t } from './i18n';
-import type { MemoryFile, MemoryHit, MemoryHits } from '../shared/types';
+import type { MemoryFile, MemoryHit, MemoryHits, MemorySync } from '../shared/types';
 
 /**
  * IDE memory: markdown under <home>/memory is the source of truth, versioned with git.
@@ -27,22 +29,57 @@ export async function initMemory() {
     await run('git', ['add', '-A'], { cwd: root() });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'Start memory'], { cwd: root() });
   }
+  // What another PC saved comes in at launch; commits a failed push left behind go out.
+  void syncMemory();
 }
 
-const commitSoon = debounce(async (msg: string) => {
-  const cwd = root();
-  await run('git', ['add', '-A'], { cwd });
-  const st = await run('git', ['status', '--porcelain'], { cwd });
-  if (!st.stdout.trim()) return;
-  await run('git', [...GIT_ID, 'commit', '-q', '-m', msg], { cwd });
+/**
+ * 'synced' after each sync (the status changed), 'pulled' when a sync merged commits from the remote
+ * (memory files changed on disk, so whoever holds them in a prompt reads them again).
+ */
+export const memoryEvents = new EventEmitter();
+
+let sync: MemorySync = { remote: false, state: 'off', at: null, error: null, pulled: 0, pushed: 0, pending: 0 };
+export const memorySync = (): MemorySync => ({ ...sync, remote: !!loadSettings().memoryRemote.trim() });
+
+/** git runs one at a time on the folder: a commit never starts while a merge or push is under way. */
+let chain: Promise<unknown> = Promise.resolve();
+const inTurn = <T>(fn: () => Promise<T>): Promise<T> => {
+  const p = chain.then(fn, fn);
+  chain = p.catch(() => undefined);
+  return p;
+};
+
+async function syncNow() {
   const remote = loadSettings().memoryRemote.trim();
-  if (remote) {
-    const has = await run('git', ['remote', 'get-url', 'origin'], { cwd });
-    if (has.code !== 0) await run('git', ['remote', 'add', 'origin', remote], { cwd });
-    else if (has.stdout.trim() !== remote) await run('git', ['remote', 'set-url', 'origin', remote], { cwd });
-    const r = await run('git', ['push', '-q', '-u', 'origin', 'HEAD'], { cwd, timeoutMs: 60_000 });
-    if (r.code !== 0) log.warn('memory push failed', r.stderr.trim());
+  if (!remote) {
+    sync = { remote: false, state: 'off', at: null, error: null, pulled: 0, pushed: 0, pending: 0 };
+    memoryEvents.emit('synced');
+    return;
   }
+  sync = { ...sync, remote: true, state: 'syncing' };
+  memoryEvents.emit('synced');
+  const r = await syncRepo(root(), remote);
+  if (!r.ok) log.warn('memory sync failed', r.error ?? '');
+  sync = { remote: true, state: r.ok ? 'ok' : 'error', at: nowIso(), error: r.error, pulled: r.pulled, pushed: r.pushed, pending: r.pending };
+  if (r.pulled > 0) memoryEvents.emit('pulled');
+  memoryEvents.emit('synced');
+}
+
+/** Sync with the remote now: at launch, when its address changes, and from "Sync now". */
+export function syncMemory(): Promise<void> {
+  return inTurn(async () => {
+    await commitAll(root(), 'Memory changes');
+    await syncNow();
+  });
+}
+
+const commitSoon = debounce((msg: string) => {
+  void inTurn(async () => {
+    await commitAll(root(), msg);
+    // Also when nothing was committed: an earlier push may have failed and left commits behind.
+    await syncNow();
+  });
 }, 1500);
 
 function fileFor(scope: string, repo?: string | null) {

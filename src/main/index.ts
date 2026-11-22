@@ -5,7 +5,7 @@ import { loadSettings, updateSettings, settingsView, saveSettings } from './sett
 import { ensureHome, paths } from './paths';
 import { store } from './store';
 import { accounts } from './accounts';
-import { initMemory, listMemory, readMemory, writeMemory, searchMemoryPage, revisePreference, remember } from './memory';
+import { initMemory, listMemory, readMemory, writeMemory, searchMemoryPage, revisePreference, remember, memoryEvents, memorySync, syncMemory } from './memory';
 import { registerRepo, removeRepo, updateRepo } from './repos';
 import { installPlugin } from './runtime';
 import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisions, withdraw } from './decisions';
@@ -51,6 +51,7 @@ function snapshot(): AppState {
     chat: d.chat.slice(-CHAT_SNAPSHOT),
     // All of them, not only those in the chat snapshot, so the inspector's "Show more" reaches every one.
     results: d.chat.filter((c) => (c.kind === 'result' || (c.kind === 'error' && c.ref)) && !c.cleared),
+    memorySync: memorySync(),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }
@@ -207,6 +208,7 @@ function registerIpc() {
   handle('memory:list', () => listMemory());
   handle('memory:read', (p: string) => readMemory(p));
   handle('memory:write', (p: string, c: string) => { writeMemory(p, c); dispatcher.refreshContext(); });
+  handle('memory:sync', () => syncMemory());
   handle('memory:search', (q: string, offset?: number) => searchMemoryPage(q, Math.max(0, offset ?? 0), PAGE.memHits));
   handle('memory:promote', async (repoName: string) => {
     const repo = store.repo(repoName);
@@ -237,8 +239,11 @@ function registerIpc() {
       || (!!patch.dispatcherEffort && patch.dispatcherEffort !== before.dispatcherEffort)
       || (patch.effortPerTask !== undefined && patch.effortPerTask !== before.effortPerTask);
     const moreWorkers = patch.maxWorkers !== undefined && patch.maxWorkers > before.maxWorkers;
+    const remoteChanged = patch.memoryRemote !== undefined && patch.memoryRemote.trim() !== before.memoryRemote.trim();
     updateSettings(patch);
     if (langChanged) dispatcher.refreshContext();
+    // A new address is tried at once, so a wrong one shows its error here and not at the next memory write.
+    if (remoteChanged) void syncMemory();
     // A higher limit starts tasks waiting for a slot now; a lower one stops nothing that runs.
     if (moreWorkers) workers.fillSlots();
     pushState(); // apply changed settings (language, font) right away
@@ -285,6 +290,8 @@ async function boot() {
   pruneDecisions();
   // Questions and permission requests from the last run are withdrawn; Workers ask again as they continue.
   for (const d of [...store.data.decisions]) if (d.status === 'pending' && d.source !== 'dispatcher') withdraw(d.id);
+  memoryEvents.on('synced', pushState);
+  memoryEvents.on('pulled', () => dispatcher.refreshContext());
   await initMemory();
   installPlugin();
   store.on('changed', pushState);

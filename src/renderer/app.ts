@@ -1222,6 +1222,33 @@ async function addRepo() {
 
 /* ---------- memory ---------- */
 
+/** What the last sync with the remote did: "Synced, 2m, 3 in · 1 out", or the failure and the commits that wait. */
+function memSyncDetail() {
+  const m = S!.memorySync;
+  if (m.state === 'error') return m.pending ? t('mem.sync.pending', { n: m.pending }) : '';
+  if (m.state !== 'ok' || !m.at) return '';
+  return m.pulled || m.pushed ? `${ago(m.at)} · ${t('mem.sync.counts', { in: m.pulled, out: m.pushed })}` : ago(m.at);
+}
+
+/** The sync status in Settings (a row under the remote's address) and in the Memory view's header (a pill). */
+function renderMemSync() {
+  const m = S!.memorySync;
+  const detail = memSyncDetail();
+  const pill = $('#mem-sync');
+  if (pill) {
+    const tone = m.state === 'ok' ? ' green' : m.state === 'error' ? ' orange' : m.state === 'syncing' ? ' blue' : '';
+    const label = !m.remote ? t('mem.sync.off') : m.state === 'off' ? '' : t(`mem.sync.${m.state}` as Key);
+    pill.innerHTML = label ? `<span class="pill${tone}"${m.error ? ` title="${esc(m.error)}"` : ''}>${esc(detail ? `${label} · ${detail}` : label)}</span>` : '';
+  }
+  const row = document.getElementById('set-msync');
+  if (!row) return;
+  row.hidden = !m.remote || m.state === 'off';
+  if (row.hidden) { row.innerHTML = ''; return; }
+  const glyph = m.state === 'ok' ? sym('s-check', 'c-green') : m.state === 'error' ? sym('s-alert', 'c-orange') : ic('run');
+  const busy = m.state === 'syncing';
+  row.innerHTML = `<div class="srow"><span class="msync${m.state === 'error' ? ' bad' : ''}">${glyph}<b>${t(`mem.sync.${m.state}` as Key)}</b><span>${esc(detail)}</span></span><button class="btn" data-action="mem-sync"${busy ? ' disabled' : ''}>${t(m.state === 'error' ? 'mem.sync.retry' : 'mem.sync.now')}</button></div>${m.error ? `<div class="msync-err">${esc(m.error)}</div>` : ''}`;
+}
+
 async function loadMemory() {
   ui.memFiles = (await call<MemoryFile[]>('memory:list')) ?? [];
   renderMemory();
@@ -1646,6 +1673,7 @@ function settingsHtml() {
   const memory = `${grp(`
       ${row(t('set.memFolder'), 'set-memdir', `<span class="sval" id="set-memdir" title="${esc(st.home)}">${esc(shortPath(`${st.home}/memory`))}</span><button class="btn" data-action="reveal-memory">${t('set.open')}</button>`)}
       ${row(t('set.memRemote'), 'set-mem', `<input class="inp w" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}
+      <div id="set-msync" hidden></div>
       ${row(t('set.memSuggest'), 'set-msug', `<input class="switch" id="set-msug" type="checkbox" ${st.memorySuggest ? 'checked' : ''}>`)}`, t('set.ideMemory'))}
     ${grp(`
       ${row(t('set.claudeRules'), 'set-crules', `<span class="sval${ci && !ci.rules.length ? ' muted' : ''}" title="${esc(ci ? ci.home : '')}">${esc(rulesText)}</span><input class="switch" id="set-crules" type="checkbox" ${st.claudeRules ? 'checked' : ''}>`)}
@@ -1712,6 +1740,7 @@ function openSettings(pane?: Pane) {
   const scroll = root.querySelector('.spanes')?.scrollTop ?? 0;
   ui.settingsShown = true;
   root.innerHTML = settingsHtml();
+  renderMemSync();
   keep.forEach((v, id) => {
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (!el) return;
@@ -1896,6 +1925,7 @@ function renderAll(force = false) {
   if (langChanged) force = true;
   renderSidebar();
   renderUsage();
+  renderMemSync();
   if (ui.cancelAsk) renderCancelDialog();
   if (ui.view === 'chat') { renderChat(force); renderChatInspector(); }
   if (ui.view === 'worker') { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
@@ -2129,6 +2159,7 @@ async function act(el: HTMLElement, e: Event) {
     }
     // Picking the open file again reads it again (a Worker may have changed it).
     case 'mem-select': if (ui.memSel === id) void readMemFile(id); else go({ memSel: id }); break;
+    case 'mem-sync': await call('memory:sync'); break;
     case 'mem-save': {
       if (!ui.memSel) return;
       ui.memText = $<HTMLTextAreaElement>('#mem-edit').value;
