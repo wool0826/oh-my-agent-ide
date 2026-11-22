@@ -32,6 +32,8 @@ export interface StoredAccount {
 
 export interface Settings extends SettingsView {
   accounts: StoredAccount[];
+  /** The Jira API token, encrypted like an account token. */
+  jiraTokenEnc?: string;
 }
 
 export const dataDir = () => (process.env.OMA_DATA_DIR ? path.resolve(process.env.OMA_DATA_DIR) : app.getPath('userData'));
@@ -59,6 +61,9 @@ export const DEFAULTS: SettingsView = {
   askOff: [],
   updateCheck: true,
   quickKey: QUICK_KEY_DEFAULT,
+  jiraUrl: '',
+  jiraEmail: '',
+  jiraTokenSet: false,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
   claudeRules: true,
@@ -144,6 +149,18 @@ export function decryptToken(enc: string): string {
 }
 
 export function settingsView(): SettingsView {
-  const { accounts: _a, ...rest } = loadSettings();
-  return rest;
+  const { accounts: _a, jiraTokenEnc, ...rest } = loadSettings();
+  return { ...rest, jiraTokenSet: !!jiraTokenEnc };
+}
+
+/** Stores the Jira token encrypted; an empty one removes it. */
+export function updateJiraToken(token: string) {
+  const s = loadSettings();
+  s.jiraTokenEnc = token ? encryptToken(token) : '';
+  saveSettings();
+}
+
+export function jiraToken(): string {
+  const enc = loadSettings().jiraTokenEnc;
+  return enc ? decryptToken(enc) : '';
 }

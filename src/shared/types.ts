@@ -277,6 +277,11 @@ export interface SettingsView {
   updateCheck: boolean;
   /** System-wide shortcut for the quick message box, in Electron's spelling; empty = off. */
   quickKey: string;
+  /** Jira site address, and the account's email (Jira Cloud; empty for a Data Center personal access token). */
+  jiraUrl: string;
+  jiraEmail: string;
+  /** A Jira token is stored. The token itself never leaves the main process. */
+  jiraTokenSet: boolean;
   /** UI font. Empty = system font. Several can be listed, separated by commas. */
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */

@@ -15,6 +15,7 @@ import { patchLines, reviewMessage, type DiffNote } from '../shared/diffComment'
 import { canMerge, readyToMerge } from '../shared/prMerge';
 import { lastLines } from '../shared/runOutput';
 import { ghRepoRef, issueMessage, type Issue } from '../shared/issues';
+import { jiraBase, jiraMessage, type JiraIssue } from '../shared/jira';
 import { parseTime } from '../shared/automations';
 import type { Checkpoint } from '../shared/checkpoints';
 import { taskMinutes, workerTotals } from '../shared/workerSummary';
@@ -1710,19 +1711,48 @@ async function confirmCancel() {
 
 /* ---------- repositories ---------- */
 
+/* ---------- Jira issues assigned to the user (decision 125) ---------- */
+
+let jira: undefined | 'loading' | JiraIssue[] | { error: string };
+const jiraOn = () => !!S && !!jiraBase(S.settings.jiraUrl) && S.settings.jiraTokenSet;
+
+async function loadJira() {
+  jira = 'loading';
+  try {
+    jira = (await ide.call<JiraIssue[]>('jira:issues')) ?? [];
+  } catch (e) {
+    jira = { error: (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') };
+  }
+  if (ui.view === 'repo') renderRepos();
+}
+
+/** Under the repository list: the user's open Jira issues, each with a button that hands it to the Dispatcher. */
+function jiraHtml() {
+  if (!jiraOn()) return '';
+  if (jira === undefined) void loadJira();
+  const refresh = `<button class="clear-x always" data-action="jira-refresh" title="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
+  const head = (n: string) => `<div class="jira-h"><b>Jira</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
+  if (jira === undefined || jira === 'loading') return `${head('')}<div class="jira-list" role="status" aria-label="${t('issue.loading')}">${skel(3, 'file')}</div>`;
+  if (!Array.isArray(jira)) return `${head('')}<div class="jira-list"><div class="jira-msg err">${esc(jira.error)}</div></div>`;
+  if (!jira.length) return `${head('0')}<div class="jira-list"><div class="jira-msg">${t('jira.none')}</div></div>`;
+  const list = paged('jira', jira, 8);
+  return `${head(String(jira.length))}<div class="jira-list">${list.items.map((i) => `<div class="li jira">${ic('doc')}<span class="m"><b><a tabindex="0" role="link" data-action="open-url" data-href="${esc(i.url)}">${esc(i.key)}</a> ${esc(i.summary)}</b><span>${esc([i.type, i.updatedAt ? when(i.updatedAt) : ''].filter(Boolean).join(' · '))}</span></span>
+    <span class="r">${i.status ? `<span class="pill">${esc(i.status)}</span>` : ''}<button class="btn" data-action="jira-assign" data-id="${esc(i.key)}">${t('issue.assign')}</button></span></div>`).join('')}${list.more}</div>`;
+}
+
 function renderRepos() {
   const s = S!;
   const main = $('#repo-main');
   const addBtn = (cls: string) => `<button class="btn ${cls}" data-action="repo-add-open"${ui.repoAdd ? ' disabled' : ''}>${t('repo.add')}</button>`;
   if (!s.repos.length) {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('def')}</div>`;
+    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('def')}</div>${jiraHtml()}`;
   } else keepScroll(main, () => {
     main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
       return `<div tabindex="0" role="button" class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
-    }).join('')}</div>`;
+    }).join('')}${jiraHtml()}</div>`;
   });
   const ins = $('#repo-ins');
   if (ui.repoAdd) { keepInputs(ins, () => { ins.innerHTML = repoAddHtml(); }); return; }
@@ -2249,6 +2279,9 @@ function settingsHtml() {
       ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
       ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
       ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}`)}${grp(
+      `${row(t('set.jiraUrl'), 'set-jurl', `<input class="inp w" id="set-jurl" value="${esc(st.jiraUrl)}" placeholder="https://company.atlassian.net" spellcheck="false" autocomplete="off">`)}
+      ${row(t('set.jiraEmail'), 'set-jmail', `<input class="inp w" id="set-jmail" value="${esc(st.jiraEmail)}" placeholder="${t('set.jiraEmailPh')}" spellcheck="false" autocomplete="off">`)}
+      ${row(t('set.jiraToken'), 'set-jtok', `<input class="inp w" id="set-jtok" type="password" placeholder="${st.jiraTokenSet ? t('set.jiraTokenSet') : ''}" autocomplete="off" spellcheck="false">${st.jiraTokenSet ? `<button class="btn" data-action="jira-token-clear">${t('set.jiraTokenClear')}</button>` : ''}`)}`, 'Jira')}${grp(
       ASK_RULES.map((r) => row(cap1(t(r)), `ask-${r}`, `<input class="switch ask-rule" id="ask-${r}" data-rule="${r}" type="checkbox" ${st.askOff.includes(r) ? '' : 'checked'}>`)).join(''), t('set.alwaysAsk'))}`;
 
   const display = `${grp(`
@@ -2474,6 +2507,8 @@ function readSettingsForm() {
     updateCheck: ($('#set-upd') as HTMLInputElement).checked,
     // An unreadable shortcut keeps the one in use; the field shows it is not taken.
     quickKey: normalizeQuickKey(($('#set-qkey') as HTMLInputElement).value) ?? S!.settings.quickKey,
+    jiraUrl: v('set-jurl'),
+    jiraEmail: v('set-jmail'),
     askOff: [...document.querySelectorAll<HTMLInputElement>('.ask-rule')].filter((x) => !x.checked).map((x) => x.dataset.rule ?? ''),
     sound: v('set-sound') as SoundName,
     customSound: v('set-sfile'),
@@ -2844,6 +2879,17 @@ async function act(el: HTMLElement, e: Event) {
       go({ view: 'chat' });
       break;
     }
+    case 'jira-token-clear': await call('jira:token', ''); jira = undefined; S!.settings.jiraTokenSet = false; openSettings(); break;
+    case 'jira-refresh': void loadJira(); renderRepos(); break;
+    case 'jira-assign': {
+      const issue = Array.isArray(jira) ? jira.find((i) => i.key === id) : undefined;
+      if (!issue) break;
+      (el as HTMLButtonElement).disabled = true;
+      await call('chat:send', jiraMessage(issue), []);
+      toast(t('jira.sent', { key: issue.key }));
+      go({ view: 'chat' });
+      break;
+    }
     case 'run-start': await call('run:start', id); break;
     case 'run-stop': await call('run:stop', id); break;
     case 'run-clear': await call('run:clear', id); break;
@@ -3195,6 +3241,18 @@ function init() {
   document.addEventListener('change', async (e) => {
     const el = e.target as HTMLSelectElement;
     if (el.dataset.change === 'sound-kind') syncSoundRows();
+    // The Jira token goes to the main process by itself and is cleared from the field: it is never part of the page's state.
+    if (el.id === 'set-jtok') {
+      const tok = (el as unknown as HTMLInputElement).value.trim();
+      if (!tok) return;
+      (el as unknown as HTMLInputElement).value = '';
+      await call('jira:token', tok);
+      jira = undefined;
+      S!.settings.jiraTokenSet = true;
+      openSettings();
+      toast(t('set.jiraSaved'));
+      return;
+    }
     if (el.dataset.change === 'auto-toggle') { void call('auto:toggle', el.dataset.id, (el as unknown as HTMLInputElement).checked); return; }
     if (el.id === 'auto-wk') { ui.autoWk = (el as unknown as HTMLInputElement).checked; return; }
     if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; renderChatInspector(); return; }

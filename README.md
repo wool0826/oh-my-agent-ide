@@ -67,6 +67,7 @@ Settings opens. Sections are on the left. Changes are saved as you make them; a 
 - In the Repositories view, a setup command (for example `npm ci`) runs in every new worktree. `ROOT_PATH` points at the main checkout, so `cp $env:ROOT_PATH/.env .` (Windows) or `cp "$ROOT_PATH/.env" .` copies local config.
 - A repository can also have a run command (for example `npm run dev`). The Worker view then has a Run section: start it in that Worker's worktree to try its change, open the local address it prints, read the end of its output, and stop it. Quitting the app stops what is running.
 - A GitHub repository's open issues are listed in the Repositories view. "Assign" hands one to the Dispatcher as a task: the Worker reads the issue and its comments first, and its PR closes the issue.
+- With a Jira site set up in Settings → General (address, your email for Jira Cloud, and an API token you create in Jira), the Repositories view lists the open issues assigned to you. "Assign" hands one to the Dispatcher with its description, and the PR title carries the issue key. The app only reads Jira.
 - In the Memory view, review and edit preferences, repository notes and past decisions. Opening a repository note offers a button to have a Worker open a PR adding it to that repository's CLAUDE.md.
 
 ### Shortcuts

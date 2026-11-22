@@ -972,3 +972,17 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .side-sec h4 .h-act.go:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
 .side-sec h4 .h-act.go.sure { background: var(--success-solid); color: var(--text-on-solid); text-decoration: none; }
 .side-sec h4 .h-act.go:disabled { opacity: .45; cursor: default; text-decoration: none; }
+
+/* ---------- Jira issues under the repository list ---------- */
+.jira-h { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-24) var(--space-12) var(--space-8); }
+.jira-h b { font-size: var(--fs-headline); font-weight: 600; }
+.jira-h small { font-size: var(--fs-caption); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.jira-h .gap { flex: 1; }
+.jira-list { display: flex; flex-direction: column; }
+.jira-list .skel.file { margin-bottom: var(--space-8); }
+.li.jira { cursor: default; }
+.li.jira .m b a { color: var(--text-link); cursor: pointer; font-variant-numeric: tabular-nums; }
+.li.jira .m b a:hover { text-decoration: underline; }
+.li.jira .r { gap: var(--space-8); }
+.jira-msg { padding: var(--space-8) var(--space-12); font-size: var(--fs-caption); color: var(--text-secondary); }
+.jira-msg.err { color: var(--danger-text); }
