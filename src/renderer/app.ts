@@ -25,6 +25,7 @@ import { awayDigest, awayRows, type AwayDigest } from '../shared/away';
 import { bundleMergeOrder, openBundles } from '../shared/bundle';
 import { normalizeQuickKey, quickKeyLabel } from '../shared/quickKey';
 import { failedFirst, fixCommand, type Check } from '../shared/preflight';
+import { THEMES, cleanTheme } from '../shared/theme';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -2083,6 +2084,12 @@ function stepValue(id: string, delta: number) {
 /* ---------- settings ---------- */
 
 /** Apply the UI font and text size as CSS variables. Also used for the live preview in Settings. */
+/** Puts the chosen appearance on the page; the tokens do the rest (tokens.css). */
+function applyTheme(theme: string) {
+  const v = cleanTheme(theme);
+  if (document.documentElement.dataset.theme !== v) document.documentElement.dataset.theme = v;
+}
+
 function applyFont(family: string, size: number) {
   const font = fontStack(family), px = `${clampFontSize(size)}px`;
   // Every render calls this. Re-place the pills only when the text really changed size; a placement on
@@ -2347,6 +2354,7 @@ function settingsHtml() {
       ASK_RULES.map((r) => row(cap1(t(r)), `ask-${r}`, `<input class="switch ask-rule" id="ask-${r}" data-rule="${r}" type="checkbox" ${st.askOff.includes(r) ? '' : 'checked'}>`)).join(''), t('set.alwaysAsk'))}`;
 
   const display = `${grp(`
+      ${row(t('set.theme'), 'set-theme', segc('set-theme', st.theme, THEMES.map((v) => ({ value: v, label: t(`theme.${v}` as Key) })), t('set.theme')))}
       ${row(t('set.font'), 'set-font', `<span class="combo"><input class="inp" id="set-font" value="${esc(st.fontFamily)}" placeholder="${t('set.fontSystem')}" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"><button type="button" class="combo-btn" data-combo="set-font" tabindex="-1" aria-label="${t('set.font')}">${sym('s-updown')}</button></span>`)}
       ${row(t('set.fontSize'), 'set-fsize', `<button class="btn" data-action="font-reset">${t('set.fontReset')}</button>${stepper('set-fsize', st.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, t('set.fontSize'))}`)}`)}
     <div class="fprev" aria-hidden="true"><span class="me">${t('set.preview1')}</span><span class="ai">${t('set.preview2')}</span></div>`;
@@ -2495,6 +2503,7 @@ async function saveSettingsNow() {
   if (!Object.keys(patch).length) return;
   const langChanged = patch.language !== undefined;
   Object.assign(S.settings, patch); // the new values count before the state comes back (font, labels)
+  applyTheme(S.settings.theme);
   customCache = null;
   if (langChanged) { ui.settingsShown = false; applyStaticText(); openSettings(); }
   const r = await call<{ restart: boolean; quickKeyOk?: boolean }>('settings:save', patch);
@@ -2588,6 +2597,7 @@ function readSettingsForm() {
     waitSlotMinutes: clampWaitSlot(v('set-wslot')),
     fontFamily: normalizeFontFamily(v('set-font')),
     fontSize: clampFontSize(v('set-fsize')),
+    theme: cleanTheme(v('set-theme')),
     claudeRules: ($('#set-crules') as HTMLInputElement).checked,
     claudeMemory: ($('#set-cmem') as HTMLInputElement).checked,
   };
@@ -2746,6 +2756,7 @@ function renderAll(force = false) {
   const langChanged = ui.langApplied !== lang();
   applyStaticText();
   // Don't overwrite the preview while Settings is open.
+  applyTheme(S.settings.theme);
   if (!ui.settingsShown) applyFont(S.settings.fontFamily, S.settings.fontSize);
   if (langChanged) force = true;
   // A focused row is drawn again as a new element; the focus goes to the one that took its place.
