@@ -17,6 +17,7 @@ import { ghRepoRef, issueMessage, type Issue } from '../shared/issues';
 import { parseTime } from '../shared/automations';
 import type { Checkpoint } from '../shared/checkpoints';
 import { taskMinutes, workerTotals } from '../shared/workerSummary';
+import { canPick, openComparisons } from '../shared/compare';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -1072,6 +1073,7 @@ function renderChatInspector() {
     const autos = paged('autos', visibleAutos(), PAGE.autos);
     let html = '';
     if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map((d) => decisionHtml(d)).join('')}</div></div>`;
+    html += comparisonsHtml();
     if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" title="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.items.length) {
       html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
@@ -1102,6 +1104,24 @@ function memoHtml(m: Memo) {
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="memo-remove" data-id="${m.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
   return `<div class="memo" data-memo="${m.id}"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
     <span class="acts">${act('memo-share', 's-pin', t(m.shared ? 'memo.unshare' : 'memo.share'), m.shared ? ' on' : '')}${act('memo-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
+}
+
+/**
+ * Two attempts at one task, side by side in the inbox: each with its Worker and model, where it stands and its
+ * report, a way to its changes, and "Use this one" once it has finished. Picking closes the comparison.
+ */
+function comparisonsHtml() {
+  const groups = openComparisons(S!.tasks);
+  if (!groups.length) return '';
+  const cards = groups.map((g) => `<div class="cmp">${g.tasks.map((x) => {
+    const w = worker(x.workerId);
+    const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.status === 'done' ? ' green' : '';
+    return `<div class="cmp-side"><div class="cmp-h"><b>${esc(x.workerId ?? '')}</b><small>${esc(w ? modelLabel(w.model) : '')}</small><span class="pill${cls}">${taskLabel(x)}</span></div>
+      ${x.summary ? `<p>${inline(oneLine(x.summary, 220))}</p>` : ''}
+      <div class="cmp-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="cmp-changes" data-id="${esc(x.workerId)}">${t('cmp.changes')}</button>` : ''}<span class="gap"></span>${spendHtml(x.spend, true)}<button class="btn def" data-action="cmp-pick" data-id="${esc(x.id)}"${canPick(x) ? '' : ' disabled'}>${t('cmp.pick')}</button></div></div>`;
+  }).join('')}</div>`).join('');
+  const title = (g: (typeof groups)[number]) => esc(g.tasks[0].title.replace(/ \([^()]*\)$/, ''));
+  return `<div class="sect"><div class="ins-h"><b>${t('cmp.title')}</b><small>${groups.length === 1 ? title(groups[0]) : groups.length}</small></div><div class="group">${cards}</div></div>`;
 }
 
 /** "Daily 09:00", "Weekdays 09:00", "When a PR merges". */
@@ -2562,6 +2582,8 @@ async function act(el: HTMLElement, e: Event) {
     case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : el.dataset.v === 'auto' ? 'auto' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
     case 'memo-add': await addMemo(); break;
     case 'auto-add': await addAuto(); break;
+    case 'cmp-changes': if (id) go({ view: 'worker', wSel: id, wOpen: true, wTab: 'changes' }); break;
+    case 'cmp-pick': (el as HTMLButtonElement).disabled = true; await call('compare:pick', id); break;
     case 'auto-remove': if (ui.memoDel === id) { ui.memoDel = null; await call('auto:remove', id); } else askMemoDel(id ?? null); break;
     case 'memo-share': { const m = S!.memos.find((x) => x.id === id); if (m) await call('memo:update', id, { shared: !m.shared }); break; }
     case 'memo-edit': ui.memoEdit = id; ui.memoDel = null; renderChatInspector(); document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.focus(); break;

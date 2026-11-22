@@ -10,6 +10,7 @@ import { workers, modelLabel } from './workers';
 import { accounts } from '../accounts';
 import { store } from '../store';
 import { automations } from '../automations';
+import { COMPARE_NOTE, compareModels } from '../../shared/compare';
 import { createDecision } from '../decisions';
 import { remember, searchMemory, memoryDigest } from '../memory';
 import { memoryDirFor, searchClaudeMemory, userRulesSection } from '../claudeContext';
@@ -18,7 +19,7 @@ import { paths } from '../paths';
 import { loadSettings } from '../settings';
 import { attachmentBlock, registerAttachments } from '../attachments';
 import { limitResetText, t, langName } from '../i18n';
-import { nowIso, oneLine, today } from '../util';
+import { nowIso, oneLine, today, uid } from '../util';
 import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
 import { hasSpend } from '../../shared/spend';
 import { sharedMemoDigest } from '../../shared/memos';
@@ -105,7 +106,7 @@ export function assignedEvent(task: Task, w: Worker, continuing: boolean) {
 }
 
 /** Create a task and hand it to a Worker. Used by the Dispatcher tool and by UI buttons. */
-export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; new_worker?: boolean; model?: 'opus' | 'fable'; after_task_id?: string; effort?: Effort; plan_first?: boolean }) {
+export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; worker_id?: string; new_worker?: boolean; model?: 'opus' | 'fable'; model_id?: string; compare?: Task['compare']; after_task_id?: string; effort?: Effort; plan_first?: boolean }) {
   if (a.kind === 'code' && !a.repo) throw new Error('Code tasks need a repo. Check list_repos.');
   if (a.repo && !store.repo(a.repo)) throw new Error(`Repository is not registered: ${a.repo}`);
   let after: string | null = null;
@@ -118,7 +119,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     if (dep.prState !== 'MERGED') after = dep.id;
   }
   const s = loadSettings();
-  const model = a.model === 'fable' ? s.designModel : s.workerModel;
+  const model = a.model_id ?? (a.model === 'fable' ? s.designModel : s.workerModel);
   const task: Task = {
     id: store.nextTaskId(), title: a.title, prompt: a.prompt, kind: a.kind,
     repo: a.repo ? store.repo(a.repo)?.name ?? null : null,
@@ -127,6 +128,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     afterTaskId: after, mergedAt: null,
     effort: s.effortPerTask && a.effort ? a.effort : null,
     planFirst: !!a.plan_first,
+    ...(a.compare ? { compare: a.compare } : {}),
   };
   store.data.tasks.push(task);
   store.changed();
@@ -287,6 +289,27 @@ function boardTools(d: Dispatcher) {
         if (!task) return fail('No such task.');
         const spend = task.spend ? { ...task.spend, note: SPEND_NOTE } : undefined;
         return ok(JSON.stringify({ ...task, seenCommentIds: undefined, spend }, null, 2));
+      }),
+      tool('compare_task', 'Give one code task to two new Workers on different models, so the user can compare the two attempts and pick one. Each attempt commits on its own branch without pushing or opening a PR; the user picks in the inbox, and only the picked one opens a PR. It uses twice the usage, so use it only when the user asks to compare approaches or models, or for a design question with more than one reasonable answer.', {
+        title: z.string().describe('Short task name'),
+        prompt: z.string().describe('Instructions, the same for both attempts: background, desired result, definition of done.'),
+        repo: z.string().describe('Repository name'),
+      }, async (a) => {
+        try {
+          const st = loadSettings();
+          const pair = compareModels(st.workerModel, st.designModel, cachedModels().models.map((m) => ({ id: m.id, provider: providerOf(m.id, cachedModels().models) })), [...new Set(accounts.list().map((x) => x.provider))]);
+          if (!pair) return fail('A comparison needs two different models, and only one is available.');
+          const compare = { group: uid() };
+          const made = [];
+          for (const model_id of pair) {
+            made.push(await createTask({ title: `${a.title} (${modelLabel(model_id)})`, prompt: `${a.prompt}\n\n${COMPARE_NOTE}`, kind: 'code', repo: a.repo, new_worker: true, model_id, compare }));
+          }
+          d.acted();
+          for (const m of made) store.chat('event', assignedEvent(m.task, m.worker, false));
+          return ok(`Two attempts started: ${made.map((m) => `${m.task.id} on ${m.worker.id} (${modelLabel(m.worker.model)})`).join(' and ')}. Neither opens a PR. The user picks one in the inbox once they finish; do not pick for them.`);
+        } catch (e) {
+          return fail(`Could not start the comparison: ${(e as Error).message}`);
+        }
       }),
       tool('create_automation', 'Set up work that starts by itself: every day at a time, or each time a PR is merged. When it fires you get its prompt as a message starting with "[Automation: title]" and handle it like any request. Use it when the user asks for something to happen regularly or after merges.', {
         prompt: z.string().describe('What to do each time, written so it stands on its own.'),
