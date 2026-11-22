@@ -21,6 +21,7 @@ import { taskMinutes, workerTotals } from '../shared/workerSummary';
 import { canPick, openComparisons } from '../shared/compare';
 import { matchItems, stepIndex, type PaletteItem } from '../shared/palette';
 import { awayDigest, awayRows, type AwayDigest } from '../shared/away';
+import { normalizeQuickKey, quickKeyLabel } from '../shared/quickKey';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -2242,6 +2243,7 @@ function settingsHtml() {
       ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 1, 90, t('set.archive')))}
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
       ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
+      ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
       ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}`)}${grp(
       ASK_RULES.map((r) => row(cap1(t(r)), `ask-${r}`, `<input class="switch ask-rule" id="ask-${r}" data-rule="${r}" type="checkbox" ${st.askOff.includes(r) ? '' : 'checked'}>`)).join(''), t('set.alwaysAsk'))}`;
 
@@ -2396,7 +2398,8 @@ async function saveSettingsNow() {
   Object.assign(S.settings, patch); // the new values count before the state comes back (font, labels)
   customCache = null;
   if (langChanged) { ui.settingsShown = false; applyStaticText(); openSettings(); }
-  const r = await call<{ restart: boolean }>('settings:save', patch);
+  const r = await call<{ restart: boolean; quickKeyOk?: boolean }>('settings:save', patch);
+  if (patch.quickKey && r?.quickKeyOk === false) { toast(t('quick.taken'), true); $('#set-qkey')?.classList.add('bad'); }
   if (r?.restart && ui.settingsShown) { ui.restartAsk = true; openSettings(); }
 }
 
@@ -2465,6 +2468,8 @@ function readSettingsForm() {
     background: ($('#set-bg') as HTMLInputElement).checked,
     openAtLogin: ($('#set-login') as HTMLInputElement).checked,
     updateCheck: ($('#set-upd') as HTMLInputElement).checked,
+    // An unreadable shortcut keeps the one in use; the field shows it is not taken.
+    quickKey: normalizeQuickKey(($('#set-qkey') as HTMLInputElement).value) ?? S!.settings.quickKey,
     askOff: [...document.querySelectorAll<HTMLInputElement>('.ask-rule')].filter((x) => !x.checked).map((x) => x.dataset.rule ?? ''),
     sound: v('set-sound') as SoundName,
     customSound: v('set-sfile'),
@@ -3177,6 +3182,7 @@ function init() {
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
     if (el.id === 'cmdk-q') { renderPalette(el.value); return; }
+    if (el.id === 'set-qkey') el.classList.toggle('bad', normalizeQuickKey(el.value) === null);
     if (el.id === 'set-vol') syncSlider(el);
     if (el.id === 'set-fsize') previewFont();
     if (el.id === 'set-font') { markFont(el); previewFont(); void openFontPicker(el, false); }
