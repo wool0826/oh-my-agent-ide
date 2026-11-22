@@ -34,7 +34,6 @@ export function workerIcon(w: Worker) {
 
 export function renderSidebar() {
   const s = S!;
-  drawn = new Map();
   const pending = s.decisions.filter((d) => d.status === 'pending');
   const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
   // A Worker that waits for the Dispatcher's answer is listed too: its task is open and holds a slot.
@@ -71,7 +70,7 @@ export function renderSidebar() {
     const v = x && (OPEN.has(x.status) || failed) ? stepView(x) : null;
     const where = `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}`;
     const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}`
-      : v ? `${where} · ${failed ? t('side.stoppedAt', { n: Math.min(v.at + 1, v.total), total: v.total }) : v.allDone ? t('side.stepsDone', { total: v.total }) : `${v.at + 1}/${v.total}`}`
+      : v ? `${where} · ${failed && !v.allDone ? t('side.stoppedAt', { n: v.at + 1, total: v.total }) : v.allDone ? t('side.stepsDone', { total: v.total }) : `${v.at + 1}/${v.total}`}`
       : `${where}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
     const tip = [failed ? w.statusText : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
@@ -116,7 +115,8 @@ export function renderSidebar() {
     $('#side').innerHTML = `${live}${live ? '<span class="rail-sep"></span>' : ''}${hist('today', 'done', t('side.doneToday'), doneToday)}${hist('archived', 'arch', t('side.archived'), archived)}`;
     return;
   }
-  seen = drawn;
+  // Forget the plans of tasks that are gone.
+  for (const id of seen.keys()) if (!s.tasks.some((x) => x.id === id)) seen.delete(id);
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(prTitle, prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
 }
 
@@ -141,8 +141,7 @@ export function doneList(done: Task[]) {
 const OPEN = new Set(['running', 'waiting', 'queued']);
 
 /** The steps the sidebar drew last time, by task, so a step done since then plays once (shared/steps.ts, stepper). */
-let seen = new Map<string, string>();
-let drawn = seen;
+const seen = new Map<string, string>();
 
 const TICK = '<svg viewBox="0 0 10 10"><path d="M1.8 5.3l2.1 2.1 4.2-4.6"/></svg>';
 const CROSS = '<svg viewBox="0 0 10 10"><path d="M2.4 2.4l5.2 5.2M7.6 2.4l-5.2 5.2"/></svg>';
@@ -155,7 +154,7 @@ const CROSS = '<svg viewBox="0 0 10 10"><path d="M2.4 2.4l5.2 5.2M7.6 2.4l-5.2 5
 function stepperHtml(x: Task, state: 'run' | 'wait' | 'all' | 'err') {
   const steps = x.steps ?? [];
   const v = stepper(steps, seen.get(x.id) ?? null);
-  drawn.set(x.id, doneMask(steps));
+  seen.set(x.id, doneMask(steps));
   const lines = v.lines.map((l) => {
     const glyph = l.seg === 'done' ? TICK : l.seg === 'cur' && state === 'err' ? CROSS : '';
     return `<span class="s ${l.seg}${l.just ? ' just' : ''}"><i>${glyph}</i><em>${esc(l.title)}</em></span>`;

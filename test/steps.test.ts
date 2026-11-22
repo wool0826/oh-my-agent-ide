@@ -116,6 +116,16 @@ test('stepper: a three-line window on the plan that rolls up one line when a ste
   prev = doneMask(x.steps!);
   markDone(x, 5, AT);
   assert.deepEqual(view(prev), { rolled: false, lines: ['c:done', 'd:done', 'e:done!'] });
+  // Three steps done at once move the window by two lines: no roll, the last one done still pops.
+  setSteps(x, ['a', 'b', 'c', 'd', 'e']);
+  for (const st of x.steps!) st.doneAt = null;
+  prev = doneMask(x.steps!);
+  markDone(x, 1, AT); markDone(x, 2, AT); markDone(x, 3, AT);
+  assert.deepEqual(view(prev), { rolled: false, lines: ['c:done!', 'd:cur', 'e:todo'] });
+  // A doneAt that does not parse plays nothing.
+  prev = doneMask(x.steps!);
+  x.steps![3].doneAt = 'not a time';
+  assert.deepEqual(view(prev).lines, ['c:done', 'd:done', 'e:cur']);
   // A plan of one or two steps shows that many lines; a new plan of another length plays nothing.
   setSteps(x, ['only']);
   assert.deepEqual(view('00000'), { rolled: false, lines: ['only:cur'] });

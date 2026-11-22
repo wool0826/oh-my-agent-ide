@@ -319,7 +319,8 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
    for one render, so the resting look is the base style. */
 .stp { --c: var(--state-run); }
 .stp.wait { --c: var(--state-wait); } .stp.err { --c: var(--state-error); } .stp.all { --c: var(--state-done); }
-.row .t .stp { display: block; height: calc(var(--n) * 16px); margin-top: var(--space-4); overflow: hidden; }
+/* Padded out to the left so the current dot's halo and the pop are not cut by the clip. */
+.row .t .stp { display: block; height: calc(var(--n) * 16px); margin: var(--space-4) 0 0 calc(-1 * var(--space-6)); padding-left: var(--space-6); overflow: hidden; }
 .row-main:has(.stp) > .ic { align-self: flex-start; margin-top: 1px; }
 .stp-in { display: block; }
 .stp-in.adv { translate: 0 -16px; animation: roll-up var(--dur-glide) var(--ease-standard); }
