@@ -544,3 +544,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **What is taken out** (`shared/diagnostics.ts`, pinned by its test): anything shaped like a credential (Anthropic, OpenAI, GitHub and Atlassian tokens by their prefixes, `Bearer` and `Basic` values, `token`/`password`/`secret` fields, credentials inside a URL). Account labels are not listed. The company's GitHub host, the Jira site, the email, the memory remote and the OS user name are replaced by stand-ins wherever they appear, the log included; the settings say only whether each address is set.
     - **What is still in it:** repository and task names, and whatever else the log mentions by name. The report is for the user to read before sending, and it never leaves the computer by itself: the app saves a file and does nothing more with it.
     - **No conversations:** the chat and Workers' conversations are not included. They are the user's work, not the app's state, and are far larger.
+133. **Appearance: dark, light or the system's.**
+    - **Why:** the design system has had a light theme since it was written, with every pair checked for contrast, but the app was fixed to dark and forced the native frame dark to match.
+    - **Setting:** Settings → Display → Appearance, with Dark (the default, as before), Light and System. It applies at once, without a restart.
+    - **The page:** `data-theme` on the root element; the tokens do the rest. Nothing in the app's styles is written for one theme only, apart from white on accent fills, which is the same in both.
+    - **What the page cannot paint** (`applyTheme` in the main process, colours in `shared/theme.ts`): the native theme (frame, menus, dialogs), the window's backdrop before the page draws, and on Windows the caption buttons over the title bar. With System, these follow the OS when it changes.
+    - **The quick message box** takes the same theme each time it opens.
+    - **Checked by eye** in the light theme: the chat with a permission card and a result, the palette, and Settings → General. Other screens use the same components and tokens but were not all looked at.

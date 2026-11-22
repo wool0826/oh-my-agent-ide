@@ -3,12 +3,13 @@
   const form = document.getElementById('f');
   const input = document.getElementById('q');
   const go = document.getElementById('go');
-  let text = { ph: '', sent: '', lang: 'en' };
+  let text = { ph: '', sent: '', lang: 'en', theme: 'dark' };
   let busy = false;
 
   async function load() {
     try { text = await window.ide.call('quick:text'); } catch { /* keeps the last */ }
     document.documentElement.lang = text.lang;
+    document.documentElement.dataset.theme = text.theme || 'dark';
     input.placeholder = text.ph;
   }
 

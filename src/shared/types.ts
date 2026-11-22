@@ -290,6 +290,8 @@ export interface SettingsView {
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */
   fontSize: number;
+  /** Appearance: dark, light, or the system's (shared/theme.ts). */
+  theme: 'dark' | 'light' | 'system';
   /** Give agents the user's Claude Code rules (~/.claude/CLAUDE.md, rules/*.md). */
   claudeRules: boolean;
   /** Workers read and write the Claude Code memory of their repository's checkout. */

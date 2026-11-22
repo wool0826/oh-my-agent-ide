@@ -243,3 +243,17 @@ flow('the diagnostics report describes the app and holds no secrets', {
   await app.click('[data-action="pane"][data-id="general"]');
   assert.equal(await app.evaluate("document.querySelector('[data-action=\"diag-export\"]')?.textContent"), 'Save report…');
 });
+
+flow('the appearance follows the setting, at once and after a restart of the page', {}, async (app) => {
+  const canvas = () => app.evaluate("getComputedStyle(document.body).backgroundColor + ' | ' + document.documentElement.dataset.theme");
+  assert.match(await canvas(), /dark$/);
+  const dark = (await canvas()).split(' | ')[0];
+  await app.click('[data-action="open-settings"]');
+  await app.click('[data-action="pane"][data-id="display"]');
+  await app.click('button[data-segc="set-theme"][data-v="light"]');
+  await app.until("document.documentElement.dataset.theme === 'light'", 'the light theme on the page');
+  const light = (await canvas()).split(' | ')[0];
+  assert.notEqual(light, dark);
+  // Saved, not only shown.
+  await app.until("return (await window.ide.call('state')).settings.theme === 'light';", 'the setting saved');
+});

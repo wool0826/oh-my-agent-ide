@@ -4,6 +4,7 @@ import path from 'node:path';
 import { readJson, writeJsonAtomic, uid } from './util';
 import type { AccountPlan, Provider, SettingsView, UsageWindow } from '../shared/types';
 import { cleanAskOff } from '../shared/grants';
+import { cleanTheme } from '../shared/theme';
 import { QUICK_KEY_DEFAULT, normalizeQuickKey } from '../shared/quickKey';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
 import { MAX_WORKERS_DEFAULT, WAIT_SLOT_DEFAULT, clampMaxWorkers, clampWaitSlot } from '../shared/slots';
@@ -66,6 +67,7 @@ export const DEFAULTS: SettingsView = {
   jiraTokenSet: false,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
+  theme: 'dark',
   claudeRules: true,
   claudeMemory: true,
   memorySuggest: true,
@@ -100,6 +102,7 @@ function fix(s: SettingsView) {
   s.maxWorkers = clampMaxWorkers(s.maxWorkers);
   s.waitSlotMinutes = clampWaitSlot(s.waitSlotMinutes);
   s.askOff = cleanAskOff(s.askOff);
+  s.theme = cleanTheme(s.theme);
   s.quickKey = normalizeQuickKey(String(s.quickKey ?? '')) ?? QUICK_KEY_DEFAULT;
 }
 

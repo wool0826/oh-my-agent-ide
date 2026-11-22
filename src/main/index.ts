@@ -41,6 +41,7 @@ import { fakeMode } from './fake';
 import { lastPreflight, runPreflight } from './preflight';
 import { failedCount } from '../shared/preflight';
 import { diagnostics, exportDiagnostics } from './diagnostics';
+import { effectiveTheme, windowColors } from '../shared/theme';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -56,6 +57,19 @@ let answerByUser: (id: string, ans: string) => void = () => {};
 function onUpdate(u: { version: string }) {
   pushState();
   notifyInfo(t('upd.title', { v: u.version }), t('upd.body'));
+}
+
+/**
+ * The parts of the look the page cannot paint follow the theme: the native frame and menus (themeSource), the
+ * backdrop behind the page, and on Windows the caption buttons over the title bar.
+ */
+function applyTheme() {
+  const theme = loadSettings().theme;
+  nativeTheme.themeSource = theme;
+  const c = windowColors(effectiveTheme(theme, nativeTheme.shouldUseDarkColors));
+  if (!win || win.isDestroyed()) return;
+  win.setBackgroundColor(c.background);
+  if (process.platform !== 'darwin') { try { win.setTitleBarOverlay({ color: '#00000000', symbolColor: c.symbol, height: 44 }); } catch { /* no overlay on this platform */ } }
 }
 
 function quitApp() {
@@ -142,10 +156,10 @@ function pushState() {
 
 function createWindow() {
   const mac = process.platform === 'darwin';
-  // The UI is dark only, but Windows paints the window frame from the system theme: in light mode the
-  // outline turns light and a 1px #f3f3f3 strip shows on the left, right and bottom edges (on a monitor
-  // whose DPI differs from the primary one). A dark native theme gives the frame dark colors too.
-  if (process.platform === 'win32') nativeTheme.themeSource = 'dark';
+  // Windows paints the window frame from the native theme, so it is set to the app's own: a dark app in a
+  // light system otherwise gets a light outline and a 1px #f3f3f3 strip on its edges.
+  nativeTheme.themeSource = loadSettings().theme;
+  const look = windowColors(effectiveTheme(loadSettings().theme, nativeTheme.shouldUseDarkColors));
   win = new BrowserWindow({
     width: 1320,
     height: 860,
@@ -154,12 +168,12 @@ function createWindow() {
     title: 'Oh My Agent IDE',
     // Started by the OS at sign-in: stay in the tray until asked for.
     show: !(process.argv.includes(HIDDEN_ARG) && loadSettings().background),
-    // Matches --canvas, so nothing flashes before the page paints its backdrop.
-    backgroundColor: '#131316',
+    // Matches --bg-canvas, so nothing flashes before the page paints its backdrop.
+    backgroundColor: look.background,
     titleBarStyle: mac ? 'hiddenInset' : 'hidden',
     // Inside the floating sidebar panel.
     trafficLightPosition: mac ? { x: 22, y: 22 } : undefined,
-    titleBarOverlay: mac ? undefined : { color: '#00000000', symbolColor: '#a1a1a6', height: 44 },
+    titleBarOverlay: mac ? undefined : { color: '#00000000', symbolColor: look.symbol, height: 44 },
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       contextIsolation: true,
@@ -213,7 +227,7 @@ function registerIpc() {
   handle('chat:send', (text: string, files?: string[]) => dispatcher.send(text, files ?? []));
   handle('chat:stop', () => dispatcher.stop());
   // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
-  handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), lang: loadSettings().language }));
+  handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), lang: loadSettings().language, theme: loadSettings().theme }));
   handle('quick:send', (text: string) => dispatcher.send(String(text), []));
   handle('quick:close', () => closeQuick());
   handle('dispatcher:compact', () => dispatcher.compact());
@@ -371,6 +385,7 @@ function registerIpc() {
     updateSettings(patch);
     if (checkOn) void checkUpdate(onUpdate);
     const quickKeyOk = syncQuickKey(here);
+    if (patch.theme !== undefined) applyTheme();
     syncTray();
     syncLoginItem();
     if (langChanged) dispatcher.refreshContext();
@@ -482,6 +497,8 @@ else {
     }
     createWindow();
     syncTray();
+    // With System chosen, the window's own colours follow the OS when it changes.
+    nativeTheme.on('updated', () => { if (loadSettings().theme === 'system') applyTheme(); });
     syncLoginItem();
     if (!syncQuickKey(here)) log.warn('quick key not available', loadSettings().quickKey);
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); else showWindow(win); });
