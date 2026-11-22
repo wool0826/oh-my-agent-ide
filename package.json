@@ -44,6 +44,10 @@
       {
         "from": "resources/plugin",
         "to": "plugin"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "tray.png"
       }
     ],
     "asarUnpack": [

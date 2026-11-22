@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, nativeTheme } from 'electron';
+import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSettings, updateSettings, settingsView, saveSettings } from './settings';
@@ -29,9 +29,32 @@ import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
 import { ALLOW, DENY, type AccountPlan, type AppState, type ClaudeInfo, type SettingsView } from '../shared/types';
 import { notifyText } from '../shared/askWhy';
 import { workerDecisions } from '../shared/inbox';
+import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
+import { hasTray, showWindow, updateTray } from './tray';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
+/** A real quit is under way (the tray's Quit, Cmd+Q, the OS): closing the window then closes it. */
+let quitting = false;
+/** The "still running" notice was shown in this run. */
+let trayHinted = false;
+
+function quitApp() {
+  quitting = true;
+  app.quit();
+}
+
+function syncTray() {
+  if (!loadSettings().background) return;
+  updateTray(trayCounts(store.data), () => showWindow(win), quitApp);
+}
+
+/** The OS starts the app hidden at sign-in when asked to. Only the installed app registers itself. */
+function syncLoginItem() {
+  if (!app.isPackaged) return;
+  const on = loadSettings().openAtLogin;
+  if (app.getLoginItemSettings({ args: [HIDDEN_ARG] }).openAtLogin !== on) app.setLoginItemSettings({ openAtLogin: on, args: [HIDDEN_ARG] });
+}
 
 // Tests or a second profile: keep settings and data in another folder.
 if (process.env.OMA_DATA_DIR) app.setPath('userData', path.resolve(process.env.OMA_DATA_DIR));
@@ -90,6 +113,7 @@ function pushState() {
   pushTimer = setTimeout(() => {
     pushTimer = null;
     win?.webContents.send('state', snapshot());
+    syncTray();
   }, 120);
 }
 
@@ -105,6 +129,8 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 640,
     title: 'Oh My Agent IDE',
+    // Started by the OS at sign-in: stay in the tray until asked for.
+    show: !(process.argv.includes(HIDDEN_ARG) && loadSettings().background),
     // Matches --canvas, so nothing flashes before the page paints its backdrop.
     backgroundColor: '#131316',
     titleBarStyle: mac ? 'hiddenInset' : 'hidden',
@@ -122,6 +148,16 @@ function createWindow() {
   setWindow(win);
   win.loadFile(path.join(here, 'renderer', 'index.html'));
   win.on('focus', () => { win?.flashFrame(false); checkPrsSoon(); });
+  // With "keep running" on, closing the window hides it and the work goes on; the tray icon brings it back.
+  win.on('close', (e) => {
+    if (closeAction({ quitting, background: loadSettings().background && hasTray() }) !== 'hide') return;
+    e.preventDefault();
+    win?.hide();
+    if (!trayHinted && loadSettings().notifications && Notification.isSupported()) {
+      trayHinted = true;
+      new Notification({ title: t('tray.stillTitle'), body: t('tray.stillBody'), silent: true }).show();
+    }
+  });
   // Windows (and Linux) report Back/Forward keys, and the side buttons of some mice, as app commands.
   // The page steps through its screen history; a press it also gets as a mouse event counts once (decision 81).
   win.on('app-command', (_e, cmd) => {
@@ -298,6 +334,8 @@ function registerIpc() {
     const moreWorkers = patch.maxWorkers !== undefined && patch.maxWorkers > before.maxWorkers;
     const remoteChanged = patch.memoryRemote !== undefined && patch.memoryRemote.trim() !== before.memoryRemote.trim();
     updateSettings(patch);
+    syncTray();
+    syncLoginItem();
     if (langChanged) dispatcher.refreshContext();
     // A new address is tried at once, so a wrong one shows its error here and not at the next memory write.
     if (remoteChanged) void syncMemory();
@@ -381,7 +419,7 @@ async function boot() {
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
 else {
-  app.on('second-instance', () => { win?.show(); win?.focus(); });
+  app.on('second-instance', () => showWindow(win));
   app.whenReady().then(async () => {
     registerIpc();
     try {
@@ -391,10 +429,13 @@ else {
       dialog.showErrorBox(t('err.bootTitle'), String((e as Error).message));
     }
     createWindow();
-    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+    syncTray();
+    syncLoginItem();
+    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); else showWindow(win); });
   });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   app.on('before-quit', () => {
+    quitting = true;
     runs.stopAll();
     automations.stop();
     workers.closeAll();
