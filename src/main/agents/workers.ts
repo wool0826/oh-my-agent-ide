@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createSdkMcpServer, tool, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
+import { tool, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { AgentSession, summarizeTool, type SessionEvents } from './session';
-import { CodexSession, type CodexApproval, type CodexDecision, type CodexTool } from './codexSession';
+import { CodexSession, type CodexApproval, type CodexDecision } from './codexSession';
 import { codexClient } from '../codex/client';
 import { providerOf } from '../../shared/models';
 import { alwaysAskHook, alwaysAskRule, ALWAYS_ASK_PREFIX } from './permissions';
@@ -12,8 +11,8 @@ import { adviseOnQuestion } from './advisor';
 import { accounts } from '../accounts';
 import { store } from '../store';
 import { ask } from '../decisions';
-import { remember, searchMemory } from '../memory';
-import { memoryDirFor, searchClaudeMemory, userRulesSection } from '../claudeContext';
+import { remember } from '../memory';
+import { userRulesSection } from '../claudeContext';
 import { paths } from '../paths';
 import { loadSettings, claudeHelperModel } from '../settings';
 import { cachedModels } from '../models';
@@ -25,7 +24,7 @@ import { listCheckpoints, restoreCheckpoint, saveCheckpoint } from '../checkpoin
 import { checkpointLabel } from '../../shared/checkpoints';
 import { notifyInfo } from '../notify';
 import { isAttached, readPath } from '../attachments';
-import { t, langName, limitResetText } from '../i18n';
+import { t, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { ALLOW, ALLOW_TASK, DENY, type Task, type Worker } from '../../shared/types';
@@ -39,134 +38,12 @@ import { fakeMode } from '../fake';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
-
-const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
-const LIMIT_RESET_MSG = 'The usage limit has reset. Continue the task where you left off.';
-const SLOT_FREE_MSG = 'Continue the task where you left off.';
-/** A Worker that answered a question mid-task and stopped: the answer is no task result. */
-const GO_ON_MSG ='[Dispatcher] Your answer was delivered. Go on with your task where you left off, and report it with the RESULT lines when it is done.';
-
-/** Built-in tools a Worker never needs. Left out, their definitions are not re-read on every step. */
-const UNUSED_TOOLS = ['Workflow', 'ScheduleWakeup', 'ReportFindings', 'ListAgents'];
-/**
- * Environment for a Worker's Claude Code process (its subagents inherit it).
- * - A 5-minute prompt cache. A Worker steps every few seconds, so the cache stays warm while it works, and writing
- *   to it costs 1.25x input instead of the 2x of the 1-hour cache Claude Code uses on subscriptions. In 1,617 measured
- *   Worker steps only 4 came 5 to 60 minutes after the one before. The Dispatcher waits minutes between turns and
- *   keeps the 1-hour cache.
- * - No bundled skills (debug, verify, code-review, claude-api and others). Their listing is about 2,300 tokens sent
- *   with every request, and no Worker used one. The app's own skills and the repository's stay.
- */
-const WORKER_ENV = { FORCE_PROMPT_CACHING_5M: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1' };
-/** Command output a Worker gets inline; Claude Code saves the rest to a file it can read in parts (its default is 30,000). */
-const SHELL_OUTPUT_CHARS = 12_000;
-/** Requests from one task that each start a Dispatcher turn; later ones wait for its next turn. */
-const MAX_REQUEST_WAKES = 5;
-/** What the Dispatcher is told about a task that stopped for it: only a message to the Worker sets it going again. */
-const REPLY_NOTE = 'Its task stays open and keeps its Worker slot until the Worker hears from you: reply with send_to_worker, also after you did something else about it (create_task, request_decision).';
-
-export type TellKind = 'answer' | 'request' | 'note';
-
-/** Long text for the Dispatcher, cut where it would crowd its context; read_worker has the rest. */
-const clip = (text: string, max: number) => {
-  const s = text.trim().replace(/\r?\n/g, '\n  ');
-  return s.length > max ? `${s.slice(0, max)}… (cut; read_worker has the rest)` : s;
-};
-
-const QUESTION_TAG = '[Dispatcher question]';
-const question = (text: string) =>
-  `${QUESTION_TAG} ${text}\n\nAnswer with the tell_dispatcher tool (kind "answer"), then go on with what you were doing. This is a question, not a new task.`;
-
-const planNudge = (task: Task) =>
-  `[Plan needed] Your turn ended without a plan for ${task.id}. This task is plan-first, so it is not finished until the user approves a plan. Finish investigating and present your plan with ExitPlanMode now; if the user must decide something first, ask with AskUserQuestion. If you were told to hold, reply in one line and stop.`;
-
-/** The task message may say to plan only or to wait for approval; this is that approval. */
-const planApproved = (task: Task) =>
-  `[Plan approved] The user approved your plan for ${task.id}. That is the go-ahead this task was waiting for, even where the task message says to plan only: carry out the plan now in this session${task.kind === 'code' && task.branch ? ` on branch ${task.branch}` : ''}, and report the finished work as usual${task.kind === 'code' ? ', with the PR' : ''}. Do not stop at the plan.`;
-
-/** The user approves from these three lines; the full plan stays folded under them. */
-const planSummaryRule = () =>
-  `Start the plan with exactly three lines, one sentence each in ${langName()}: "WHAT: " what you will do, "HOW: " how you will do it, "OUTPUT: " what the user gets when it is done. Put the details below them.`;
+import { needsPlan, parseResult, taskStarted, workerPrompt } from './workerPrompt';
+import { clip, GO_ON_MSG, LIMIT_RESET_MSG, MAX_REQUEST_WAKES, planApproved, planNudge, planSummaryRule, question, QUESTION_TAG, REPLY_NOTE, RESUME_MSG, SHELL_OUTPUT_CHARS, SLOT_FREE_MSG, TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
+import { workerCodexTools, workerMemoryDir, workerTools } from './workerTools';
 
 /** A Worker's session: Claude Code, or Codex for a ChatGPT model. The owner uses what the two have in common. */
 export type WorkerSession = AgentSession | CodexSession | FakeSession;
-
-/** `codex`: the Worker runs on Codex, which has no AskUserQuestion, no subagents and no Claude Code memory. */
-function workerPrompt(w: Worker, codex = false) {
-  const s = loadSettings();
-  return [
-    `You are Worker ${w.id} in Oh My Agent IDE. The Dispatcher assigns your tasks; the user only sees results and the decisions that truly need them. Write all progress messages and reports in ${langName()}.`,
-    '',
-    'Task messages start with "[Task T-xxxx]". Messages starting with "[Dispatcher]", "[User message]", "[Review comments]" or "[CI failure]" are further instructions for the work in progress.',
-    'A message may end with an "[Attached files]" list of paths the user dropped in. Read them directly from those paths when relevant.',
-    '',
-    'Talking to the Dispatcher (tell_dispatcher tool). It does not see your conversation, so write each message complete on its own:',
-    '- "[Dispatcher question]" asks you something. Reply with kind "answer", then go on with what you were doing. It is not a new task and needs no RESULT lines.',
-    '- kind "request": you need the Dispatcher to do or answer something, such as what another Worker is doing, or a new task for work outside yours. Keep working on what does not depend on it; the answer comes as a "[Dispatcher]" message.',
-    '- kind "note": a milestone worth knowing that needs no reply. Use it rarely.',
-    ...(codex ? [] : ['- Do not start subagents or workflows to build work outside your task (other features, parallel lanes); ask for new tasks with a request. Subagents are for searching and for the self-review.']),
-    '',
-    'Keep your context small; every step reads all of it again:',
-    codex
-      ? '- Search for the place first (rg, git grep), then read only the lines around it. Do not print whole files, and do not read again what you already read or just edited.'
-      : '- Find the place with Grep or Glob, then Read only that range (offset and limit). Do not print whole files with cat, sed or Get-Content, and do not read again what you already read or just edited.',
-    '- Keep command output short: pipe long output through tail or head, and look at `git diff --stat` before the diff of one file.',
-    '- Make independent tool calls in the same step, not one at a time.',
-    '',
-    'Code tasks:',
-    '- The current folder is a git worktree of the repository. Create the branch named in the task message from the default branch and work there.',
-    codex
-      ? "- Follow the repository's AGENTS.md or CLAUDE.md (read CLAUDE.md yourself if there is one) and its conventions. Run the tests and linters and make them pass."
-      : "- Follow the repository's CLAUDE.md and conventions. Run the tests and linters and make them pass.",
-    `- When done, commit, push, and open a ready-for-review PR (not a draft) with \`gh pr create\`. Do not request reviewers.${s.githubHost ? ` GH_HOST is set to ${s.githubHost}.` : ''}`,
-    `- Write the PR title and body in the language the repository's recent PRs use; if there is no clear convention, use ${langName()}. The body lists what changed and which tests you ran.`,
-    '- Do not comment on or merge PRs.',
-    '- On "[Review comments]" or "[CI failure]", fix them on the same branch and push.',
-    '',
-    'Non-code tasks (research, documents, reports):',
-    '- Create the output folder named in the task message and save results there as files (usually markdown).',
-    '',
-    'Memory:',
-    "- Before choices the user may care about (naming, style, libraries, scope), search the user's preferences and past decisions with the recall tool.",
-    ...(s.claudeMemory && !codex
-      ? ["- Your Claude Code auto-memory folder is shared by every Worker on this repository and by the user's own Claude Code sessions in it. Save only durable facts about the repository or the user's preferences there; never task progress or anything specific to this branch. Update an existing memory instead of adding a duplicate."]
-      : []),
-    '',
-    'Questions:',
-    codex
-      ? '- Make minor choices yourself and mention them in the final report. When the user really must decide, end your turn with the BLOCKED line below and the question.'
-      : '- Use AskUserQuestion only when the user really must decide. Make minor choices yourself and mention them in the final report.',
-    '',
-    'Start your final message with these lines:',
-    'RESULT: one-line summary',
-    'PR: PR URL (if any)',
-    'FILE: absolute path of a result file (one line per file)',
-    'Then a short explanation below.',
-    codex
-      ? 'If you cannot finish without something only the Dispatcher or the user can give, start the final message with "BLOCKED: what you need" instead of the RESULT line. The task stays open and goes on when the answer comes.'
-      : 'If you cannot finish without something only the Dispatcher or the user can give, and AskUserQuestion does not fit, start the final message with "BLOCKED: what you need" instead of the RESULT line. The task stays open and goes on when the answer comes.',
-  ].join('\n');
-}
-
-/**
- * How a turn's last message reports the task: a RESULT line says it is finished, a BLOCKED line (without one)
- * that it cannot go on by itself.
- */
-function parseResult(text: string, cwd: string) {
-  const lines = text.split('\n').map((l) => l.trim());
-  const pick = (k: string) => lines.filter((l) => l.toUpperCase().startsWith(k + ':')).map((l) => l.slice(k.length + 1).trim()).filter(Boolean);
-  const reported = pick('RESULT').length > 0;
-  const stuck = lines.find((l) => l.toUpperCase().startsWith('BLOCKED:'));
-  const blocked = reported || stuck === undefined ? null : stuck.slice('BLOCKED:'.length).trim() || oneLine(text, 200);
-  const summary = pick('RESULT')[0] ?? oneLine(lines.find((l) => l && !l.startsWith('#')) ?? text, 200);
-  const prLine = pick('PR')[0];
-  const prUrl = (prLine?.match(/https?:\/\/\S+\/pull\/\d+/) ?? text.match(/https?:\/\/[^\s)>\]]+\/pull\/\d+/))?.[0] ?? null;
-  const files = pick('FILE')
-    .map((f) => f.replace(/^`|`$/g, ''))
-    .map((f) => (path.isAbsolute(f) ? f : path.join(cwd, f)))
-    .filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
-  return { summary, prUrl, files, reported, blocked };
-}
 
 class WorkerManager {
   sessions = new Map<string, WorkerSession>();
@@ -1399,84 +1276,6 @@ class WorkerManager {
   }
 
   ghEnv() { return ghEnv(); }
-}
-
-/** Claude Code memory of the repository's main checkout; Workers without a repository share the IDE home's. */
-function workerMemoryDir(w: Worker) {
-  const repo = w.repo ? store.repo(w.repo) : null;
-  return memoryDirFor(repo ? repo.path : paths().home);
-}
-
-/**
- * A Worker's own tools: read-only memory search (IDE memory plus the shared Claude Code memory) and its line to
- * the Dispatcher. Neither changes files, so both work in plan mode too.
- */
-function workerTools(memDir: string | null, tell: (kind: TellKind, text: string) => string) {
-  return createSdkMcpServer({
-    name: 'oma',
-    version: '0.5.0',
-    alwaysLoad: true,
-    tools: [
-      tool(
-        'tell_dispatcher',
-        'Say something to the Dispatcher without ending your turn. kind "answer": the answer to a "[Dispatcher question]". kind "request": something you need the Dispatcher to do or answer (what another Worker is doing, a new task for work outside yours); its reply comes later as a "[Dispatcher]" message. kind "note": news that needs no reply.',
-        {
-          kind: z.enum(['answer', 'request', 'note']),
-          text: z.string().describe('Complete on its own: the Dispatcher does not see your conversation.'),
-        },
-        async (a) => ({ content: [{ type: 'text' as const, text: tell(a.kind, a.text) }] }),
-        { annotations: { readOnlyHint: true } },
-      ),
-      tool('recall', "Search the user's memory: preferences, repository notes, past decisions and finished tasks (IDE memory), and the Claude Code memory shared for this repository.", { query: z.string() }, async (a) => {
-        const ide = searchMemory(a.query, 8).map((h) => `[ide] ${h.path}:${h.line} ${h.text}`);
-        const cc = memDir ? searchClaudeMemory(a.query, [memDir], 8).map((h) => `[claude] ${h.file}:${h.line} ${h.text}`) : [];
-        const lines = [...ide, ...cc];
-        return { content: [{ type: 'text' as const, text: lines.length ? lines.join('\n') : 'Nothing relevant in memory.' }] };
-      }),
-    ],
-  });
-}
-
-/** What the recall tool answers: IDE memory, plus the Claude Code memory shared for the repository. */
-function recallText(memDir: string | null, query: string) {
-  const ide = searchMemory(query, 8).map((h) => `[ide] ${h.path}:${h.line} ${h.text}`);
-  const cc = memDir ? searchClaudeMemory(query, [memDir], 8).map((h) => `[claude] ${h.file}:${h.line} ${h.text}`) : [];
-  const lines = [...ide, ...cc];
-  return lines.length ? lines.join('\n') : 'Nothing relevant in memory.';
-}
-
-/** The same two tools for a Worker that runs on Codex. */
-function workerCodexTools(memDir: string | null, tell: (kind: TellKind, text: string) => string): CodexTool[] {
-  return [
-    {
-      name: 'tell_dispatcher',
-      description: 'Say something to the Dispatcher without ending your turn. kind "answer": the answer to a "[Dispatcher question]". kind "request": something you need the Dispatcher to do or answer; its reply comes later as a "[Dispatcher]" message. kind "note": a milestone that needs no reply.',
-      inputSchema: {
-        type: 'object', additionalProperties: false, required: ['kind', 'text'],
-        properties: { kind: { type: 'string', enum: ['answer', 'request', 'note'] }, text: { type: 'string', description: 'Complete on its own: the Dispatcher does not see your conversation.' } },
-      },
-      run: (a) => {
-        const kind = (['answer', 'request', 'note'] as const).find((k) => k === a?.kind);
-        if (!kind || typeof a?.text !== 'string' || !a.text.trim()) throw new Error('tell_dispatcher needs kind (answer, request or note) and text.');
-        return tell(kind, a.text);
-      },
-    },
-    {
-      name: 'recall',
-      description: "Search the user's memory: preferences, repository notes, past decisions and finished tasks.",
-      inputSchema: { type: 'object', additionalProperties: false, required: ['query'], properties: { query: { type: 'string' } } },
-      run: (a) => recallText(memDir, String(a?.query ?? '')),
-    },
-  ];
-}
-
-function needsPlan(task: Task | null) {
-  return !!task?.planFirst && !task.planApproved;
-}
-
-/** Whether the task message reached the Worker. Tasks saved before startedAt existed count once the Worker has a session. */
-function taskStarted(w: Worker, task: Task) {
-  return task.startedAt === undefined ? !!w.sessionId : !!task.startedAt;
 }
 
 export function modelLabel(m: string) {
