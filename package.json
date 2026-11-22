@@ -12,6 +12,7 @@
     "dist": "node build.mjs && electron-builder",
     "dist:win": "node build.mjs && electron-builder --win",
     "dist:mac": "node build.mjs && electron-builder --mac",
+    "release": "node scripts/release.mjs",
     "icon": "node scripts/make-icon.mjs && electron scripts/render-icon.cjs"
   },
   "author": "",
