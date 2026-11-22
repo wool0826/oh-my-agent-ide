@@ -134,8 +134,8 @@ export async function jumpToChat(id: string) {
   const th = $('#chat-thread');
   const hit = th.querySelector<HTMLElement>(':scope > .bub, :scope > .rp, :scope > div:not(.empty-view)');
   hit?.scrollIntoView({ block: 'start' });
-  hit?.classList.add('hit');
-  setTimeout(() => hit?.classList.remove('hit'), 1600);
+  hit?.classList.add('found');
+  setTimeout(() => hit?.classList.remove('found'), 1600);
 }
 
 export function markPalette(scroll = true) {

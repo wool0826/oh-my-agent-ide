@@ -538,3 +538,10 @@
   --pr-closed-text: var(--text-secondary);
   --pr-closed-soft: var(--neutral-soft);
 }
+/* Account avatars: white initials on a fill that holds 4.5:1 in both themes. */
+:root, [data-theme] {
+  --avatar-1: var(--accent-solid);
+  --avatar-2: var(--success-solid);
+  --avatar-3: var(--ref-purple-600);
+  --avatar-4: var(--ref-orange-600);
+}

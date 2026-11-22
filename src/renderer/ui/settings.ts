@@ -52,7 +52,7 @@ export const PLAN_OPTS: Opt[] = [{ value: 'team', label: 'Team' }, { value: 'ent
 
 export const effortOpts = (): Opt[] => EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}` as Key) }));
 
-export const AVATAR = ['var(--blue)', 'var(--green)', 'var(--purple)', 'var(--orange)'];
+export const AVATAR = ['var(--avatar-1)', 'var(--avatar-2)', 'var(--avatar-3)', 'var(--avatar-4)'];
 
 /** Choices until the account's model list has been read once. */
 export const FALLBACK_MODELS = ['claude-fable-5-2', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'];

@@ -1,7 +1,8 @@
 // The quick message box: one line to the Dispatcher from anywhere, then it goes away (decisions 123 and 135).
 import { addRecent, completeRepo, recentStep } from '../shared/quickInput';
+import { clampFontSize, fontStack } from '../shared/font';
 
-interface QuickText { ph: string; sent: string; lang: string; theme: string; repos: string[]; files: string }
+interface QuickText { ph: string; sent: string; lang: string; theme: string; repos: string[]; files: string; fontFamily?: string; fontSize?: number }
 interface Bridge { call<T = unknown>(channel: string, ...args: unknown[]): Promise<T>; pathForFile(f: File): string }
 const ide = (window as unknown as { ide: Bridge }).ide;
 
@@ -28,6 +29,10 @@ async function load() {
   document.documentElement.lang = text.lang;
   document.documentElement.dataset.theme = text.theme || 'dark';
   input.placeholder = text.ph;
+  input.setAttribute('aria-label', text.ph);
+  // The font and size chosen in Settings, as the main window has them.
+  document.documentElement.style.setProperty('--font-sans', fontStack(text.fontFamily ?? ''));
+  document.documentElement.style.setProperty('--ui-font-size', `${clampFontSize(text.fontSize)}px`);
   draw();
 }
 
