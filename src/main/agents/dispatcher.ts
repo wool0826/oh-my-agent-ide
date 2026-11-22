@@ -142,7 +142,7 @@ function boardServer(d: Dispatcher) {
   return createSdkMcpServer({
     // 'ide' is reserved by Claude Code for IDE integration and its tools get filtered out.
     name: 'board',
-    version: '0.3.2',
+    version: '0.4.0',
     // Always visible (not deferred behind tool search). Cloning can take long, so the timeout is generous.
     alwaysLoad: true,
     timeout: 45 * 60_000,
