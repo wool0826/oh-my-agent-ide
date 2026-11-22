@@ -221,3 +221,25 @@ flow('Settings shows what is missing on this computer and the command that fixes
   assert.deepEqual(rows.slice(1).map((r) => r.replace(/ OK$/, '')), ['git', 'GitHub CLI (gh)', 'GitHub sign-in: github.com', 'IDE home folder']);
   assert.equal((await app.state()).preflightFailed, 1);
 });
+
+flow('the diagnostics report describes the app and holds no secrets', {
+  settings: { githubHost: 'github.company.com', jiraUrl: 'https://company.atlassian.net', jiraEmail: 'me@company.com', jiraTokenEnc: 'raw:c2VjcmV0LXRva2Vu' },
+  // The company host is signed out, so its name is in a failed check's own words too.
+  gh: { signedOut: ['github.company.com'] },
+}, async (app) => {
+  await app.say('@fake task - Note for the report\n@@fake result Done.');
+  await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
+  const text = await app.evaluate("return await window.ide.call('diag:text');");
+  assert.match(text, /^Oh My Agent IDE diagnostics, /);
+  assert.match(text, /\[app\][\s\S]*version: \d+\.\d+\.\d+[\s\S]*fake: true/);
+  assert.match(text, /\[checks\][\s\S]*ok {3}git/);
+  assert.match(text, /FAIL ghAuth \(company host\): You are not logged into any GitHub hosts on <company-github>\./);
+  assert.match(text, /tasks: \{"done":1\}/);
+  assert.match(text, /jiraUrl set: true/);
+  assert.match(text, /\[log\][\s\S]*INFO boot/);
+  assert.doesNotMatch(text, /company\.com|atlassian|me@|c2VjcmV0|secret-token/);
+  // The button is where it is said to be.
+  await app.click('[data-action="open-settings"]');
+  await app.click('[data-action="pane"][data-id="general"]');
+  assert.equal(await app.evaluate("document.querySelector('[data-action=\"diag-export\"]')?.textContent"), 'Save report…');
+});

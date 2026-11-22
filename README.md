@@ -21,7 +21,7 @@ npm run dist:mac
 
 ## First run
 
-Settings opens. Sections are on the left. The Status group at the top of General shows what this computer still needs (git, the GitHub CLI and its sign-in, an account, a writable home folder) and how to fix it; a red dot on the gear means one of them is missing. Changes are saved as you make them; a new IDE home folder is used after a restart.
+Settings opens. Sections are on the left. The Status group at the top of General shows what this computer still needs (git, the GitHub CLI and its sign-in, an account, a writable home folder) and how to fix it; a red dot on the gear means one of them is missing. "Save report…" under Diagnostics there writes a text file describing the app and the end of its log, with tokens and the names of your company's hosts removed, for when something goes wrong. Changes are saved as you make them; a new IDE home folder is used after a restart.
 
 1. **Accounts.** Up to 4. For each Team or Enterprise account, run `claude setup-token` in a terminal and paste the token, then pick its plan. To use the Claude Code login already on this PC, choose "Use this PC's login". To use a ChatGPT account, install the Codex CLI, sign in with `codex login`, and choose "ChatGPT (Codex)": the app runs your Codex CLI and stores no token for it. One ChatGPT account can be registered.
 2. **General.** Language, IDE home folder (clones, worktrees, results and memory live here; default `~/oh-my-agent-ide`), company GitHub host such as `github.company.com` (log in first with `gh auth login --hostname github.company.com`), and how long idle Workers stay before they are archived.

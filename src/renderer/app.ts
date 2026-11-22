@@ -2339,6 +2339,7 @@ function settingsHtml() {
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
       ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
       ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
+      ${row(t('set.diag'), 'set-diag', `<button class="btn" id="set-diag" data-action="diag-export">${t('set.diagExport')}</button>`)}
       ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}`)}${grp(
       `${row(t('set.jiraUrl'), 'set-jurl', `<input class="inp w" id="set-jurl" value="${esc(st.jiraUrl)}" placeholder="https://company.atlassian.net" spellcheck="false" autocomplete="off">`)}
       ${row(t('set.jiraEmail'), 'set-jmail', `<input class="inp w" id="set-jmail" value="${esc(st.jiraEmail)}" placeholder="${t('set.jiraEmailPh')}" spellcheck="false" autocomplete="off">`)}
@@ -2941,6 +2942,13 @@ async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'grant-revoke': await call('task:revoke', id, el.dataset.key); break;
+    case 'diag-export': {
+      (el as HTMLButtonElement).disabled = true;
+      const file = await call<string | null>('diag:export');
+      (el as HTMLButtonElement).disabled = false;
+      if (file) toast(t('set.diagSaved'));
+      break;
+    }
     case 'preflight-run': void loadPreflight(); break;
     case 'jira-token-clear': await call('jira:token', ''); jira = undefined; S!.settings.jiraTokenSet = false; openSettings(); break;
     case 'jira-refresh': void loadJira(); renderRepos(); break;
