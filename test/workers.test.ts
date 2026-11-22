@@ -1137,6 +1137,18 @@ test('a queued task whose archived Worker cannot get its worktree back fails onc
   }
 });
 
+test('progress steps are required: the Worker prompt and every task message ask for them, small tasks included (T-0033)', async () => {
+  const { workerPrompt } = await import('../src/main/agents/workerPrompt');
+  const w = addWorker({});
+  const x = addTask(w, { kind: 'other' });
+  const prompt = workerPrompt(w);
+  assert.match(prompt, /required for every task, small ones included/);
+  assert.match(prompt, /Within your first few actions, declare the expected steps \(at least 2/);
+  assert.doesNotMatch(prompt, /Skip this for small tasks/);
+  const msg = (workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x);
+  assert.match(msg, /Progress: declare your expected steps with set_steps within your first few actions, even for a small task/);
+});
+
 test('local-only repository: the task message has no fetch, push or PR, and a finished task is done on its branch, not a PR (T-0027)', async () => {
   const { workerPrompt } = await import('../src/main/agents/workerPrompt');
   store.data.repos.push({ name: 'loc', url: tmp, path: tmp, description: '', defaultBranch: 'trunk', addedAt: now, local: true });
