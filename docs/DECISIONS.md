@@ -386,3 +386,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Nothing under 11px:** inline code inside small text and the account count in Settings were 10px.
     - **Smaller things:** the 18px round X has a larger place to hit; "Effort" is written one way in the Korean Settings labels.
     - **Seen and left:** Settings' title is centred on the window, not on its content column; hints stay in native `title` tooltips everywhere but the usage rings; below the window's minimum width (1040px) the chat column gets tight.
+108. **Review comments on a Worker's diff.** Research on other agent tools put review ahead of writing as the bottleneck; the Changes tab could only be read.
+    - **A click on a line** of a file's diff opens a box under it. Comments are kept under their lines and sent together with "Send N comments", as one message to the Worker; the view then goes to the conversation.
+    - **The message** lists each comment with its file and line number, the line itself, and the text, in file and line order (`reviewMessage`). Line numbers come from the hunk headers (`patchLines`): the new file's for added and unchanged lines, the old file's for removed ones.
+    - **Not stored:** comments not sent yet live in the window only and are gone on restart, like text typed in a composer.
+    - **Selecting text** in the diff is not a click on its line. Enter adds the comment, Shift+Enter is a new line, Escape closes the box.

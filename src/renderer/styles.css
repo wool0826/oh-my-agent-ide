@@ -807,3 +807,13 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 /* The small round X keeps its look and gets a larger place to hit. */
 .clear-x { position: relative; }
 .clear-x::after { content: ""; position: absolute; inset: -5px; }
+
+/* ---------- review comments on a diff ---------- */
+/* A line takes a click to comment on it. Comments sit under their line, in the UI font, and are sent together. */
+.dl.can { cursor: pointer; }
+.dl.can:hover { box-shadow: inset 2px 0 0 var(--accent); filter: brightness(1.12); }
+.dnote { position: sticky; left: 0; width: min(100%, 640px); margin: var(--space-4) var(--space-12); padding: var(--space-6) var(--space-8) var(--space-6) var(--space-10); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--rim), inset 2px 0 0 var(--accent); display: flex; align-items: flex-start; gap: var(--space-8); font-family: var(--font); font-size: var(--fs-caption); line-height: var(--lh-body); white-space: normal; animation: rise-in var(--dur-base) var(--ease-out); }
+.dnote p { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dnote .clear-x { opacity: 1; margin-top: 1px; }
+.dnote.edit { flex-direction: column; align-items: stretch; box-shadow: var(--rim); }
+.dnote.edit textarea.inp { min-height: 52px; }

@@ -10,6 +10,7 @@ import { prsInReview } from '../shared/prs';
 import { reasonText } from '../shared/askWhy';
 import { linkify } from '../shared/linkify';
 import { RING, ringArc, untilReset } from '../shared/usageRing';
+import { patchLines, reviewMessage, type DiffNote } from '../shared/diffComment';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -105,6 +106,9 @@ const ui = {
   wTab: 'chat' as 'chat' | 'changes',
   diffs: new Map<string, DiffView | 'loading' | null>(),
   diffOpen: new Set<string>(),
+  /** Review comments not sent yet, per Worker, and the line a comment is being written for. */
+  diffNotes: new Map<string, DiffNote[]>(),
+  diffDraft: null as { wid: string; path: string; at: number } | null,
   /** Plan cards whose full plan is unfolded below the summary, by decision id. */
   planOpen: new Set<string>(),
   /** Queued tasks whose request is shown in full on the Worker view's waiting card. */
@@ -1264,11 +1268,33 @@ function renderSession(force = false, older = false) {
   watchTop(th, () => { if (ui.wSel) void olderLog(ui.wSel); });
 }
 
-function diffLines(patch: string) {
-  return patch.replace(/\n+$/, '').split('\n').map((l) => {
-    const c = l.startsWith('@@') ? 'h' : l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : l.startsWith('\\') ? 'h' : '';
-    return `<span class="dl ${c}">${esc(l) || ' '}</span>`;
+/** A file's diff. Each line takes a click to comment on it; the comments and the one being written sit under their lines. */
+function diffLines(wid: string, path: string, patch: string) {
+  const key = esc(`${wid}:${path}`);
+  const notes = (ui.diffNotes.get(wid) ?? []).filter((n) => n.path === path);
+  const draft = ui.diffDraft?.wid === wid && ui.diffDraft.path === path ? ui.diffDraft.at : -1;
+  return patchLines(patch).map((l, i) => {
+    const c = l.kind === 'ctx' ? '' : l.kind;
+    const line = l.kind === 'h'
+      ? `<span class="dl h">${esc(l.text) || ' '}</span>`
+      : `<span class="dl ${c} can" data-action="diff-note" data-id="${key}" data-i="${i}" title="${t('diff.note')}">${esc(l.text) || ' '}</span>`;
+    const said = notes.filter((n) => n.at === i).map((n) => `<div class="dnote"><p>${esc(n.text)}</p><button class="clear-x" data-action="diff-note-del" data-id="${key}" data-i="${i}" title="${t('diff.noteDel')}" aria-label="${t('diff.noteDel')}"><svg><use href="#s-x"/></svg></button></div>`).join('');
+    const box = draft === i ? `<div class="dnote edit"><textarea class="inp" id="dnote-in" data-keep="dnote-${key}-${i}" data-enter="diff-note-add" placeholder="${t('diff.note')}" aria-label="${t('diff.note')}"></textarea><div class="btns"><button class="btn" data-action="diff-note-cancel">${t('cancel')}</button><button class="btn def" data-action="diff-note-add">${t('diff.noteAdd')}</button></div></div>` : '';
+    return line + said + box;
   }).join('');
+}
+
+/** Keep the comment being written as one of the Worker's review comments. */
+function addDiffNote() {
+  const d = ui.diffDraft;
+  const text = $<HTMLTextAreaElement>('#dnote-in')?.value.trim();
+  const w = worker(ui.wSel);
+  if (!d || !w) return;
+  const v = ui.diffs.get(d.wid);
+  const line = v && v !== 'loading' ? patchLines(v.files.find((f) => f.path === d.path)?.patch ?? '')[d.at] : undefined;
+  ui.diffDraft = null;
+  if (text && line) ui.diffNotes.set(d.wid, [...(ui.diffNotes.get(d.wid) ?? []), { path: d.path, at: d.at, no: line.no, code: line.text, text }]);
+  renderDiff(w);
 }
 
 function renderDiff(w: Worker) {
@@ -1279,7 +1305,8 @@ function renderDiff(w: Worker) {
   if (v === null) { root.innerHTML = `<div class="empty-view"><span>${t('diff.noRepo')}</span></div>`; return; }
   if (v.error) { root.innerHTML = `<div class="empty-view"><span>${t('diff.missing')}</span></div>`; return; }
   const add = v.files.reduce((n, f) => n + f.added, 0), del = v.files.reduce((n, f) => n + f.removed, 0);
-  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
+  const nNotes = ui.diffNotes.get(w.id)?.length ?? 0;
+  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span>${nNotes ? `<button class="btn def" data-action="diff-notes-send">${t('diff.noteSend', { n: nNotes })}</button>` : ''}<button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
   if (!v.files.length) { root.innerHTML = `${head}<div class="empty-view"><span>${t('diff.none', { base: v.base })}</span></div>`; return; }
   const files = v.files.map((f) => {
     const key = `${w.id}:${f.path}`;
@@ -1287,10 +1314,10 @@ function renderDiff(w: Worker) {
     const st = f.status === '?' ? 'A' : f.status;
     return `<div class="df${open ? ' open' : ''}">
       <button class="df-h" data-action="diff-file" data-id="${esc(key)}" aria-expanded="${open}"><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg><span class="st st-${st}">${st}</span><span class="p" title="${esc(f.path)}">${esc(f.path)}</span>${f.status === '?' ? `<small>${t('diff.untracked')}</small>` : ''}<span class="n"><b class="plus">+${f.added}</b> <b class="minus">−${f.removed}</b></span></button>
-      ${open ? `<pre class="df-b" data-scroll="diff-${esc(key)}">${f.patch ? diffLines(f.patch) : `<span class="dl h">${t('diff.binary')}</span>`}</pre>` : ''}
+      ${open ? `<pre class="df-b" data-scroll="diff-${esc(key)}">${f.patch ? diffLines(w.id, f.path, f.patch) : `<span class="dl h">${t('diff.binary')}</span>`}</pre>` : ''}
     </div>`;
   }).join('');
-  keepScroll(root, () => { root.innerHTML = `${head}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}<div class="dfs">${files}</div>`; });
+  keepInputs(root, () => { root.innerHTML = `${head}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}<div class="dfs">${files}</div>`; });
 }
 
 async function loadDiff(id: string) {
@@ -2418,6 +2445,37 @@ async function act(el: HTMLElement, e: Event) {
     case 'close-session': go({ wOpen: false }); break;
     case 'ws-tab': go({ wTab: el.dataset.v as Screen['wTab'] }); break;
     case 'diff-refresh': ui.diffs.delete(id); renderSession(true); break;
+    case 'diff-note': {
+      // Selecting text in the diff is not a click on its line.
+      if (String(getSelection() ?? '')) break;
+      const w = worker(ui.wSel);
+      if (!w || !id) break;
+      ui.diffDraft = { wid: w.id, path: id.slice(w.id.length + 1), at: Number(el.dataset.i) };
+      renderDiff(w);
+      $<HTMLTextAreaElement>('#dnote-in')?.focus();
+      break;
+    }
+    case 'diff-note-add': addDiffNote(); break;
+    case 'diff-note-cancel': { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); break; }
+    case 'diff-note-del': {
+      const w = worker(ui.wSel);
+      if (!w || !id) break;
+      const path = id.slice(w.id.length + 1), at = Number(el.dataset.i);
+      ui.diffNotes.set(w.id, (ui.diffNotes.get(w.id) ?? []).filter((n) => !(n.path === path && n.at === at)));
+      renderDiff(w);
+      break;
+    }
+    case 'diff-notes-send': {
+      const w = worker(ui.wSel);
+      const msg = w ? reviewMessage(ui.diffNotes.get(w.id) ?? []) : '';
+      if (!w || !msg) break;
+      (el as HTMLButtonElement).disabled = true;
+      await call('worker:send', w.id, msg, []);
+      ui.diffNotes.delete(w.id);
+      ui.diffDraft = null;
+      go({ wTab: 'chat' });
+      break;
+    }
     case 'diff-file': {
       if (ui.diffOpen.has(id)) ui.diffOpen.delete(id); else ui.diffOpen.add(id);
       const w = worker(ui.wSel);
@@ -2743,13 +2801,15 @@ function init() {
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyB' && !ui.settingsShown) { e.preventDefault(); togglePanel(e.altKey ? 'ins' : 'side'); return; }
     if (el.id === 'set-font' && e.key === 'ArrowDown') { e.preventDefault(); void openFontPicker(el as HTMLInputElement, true); return; }
     if (el.classList.contains('step-v') && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); stepValue(el.id, e.key === 'ArrowUp' ? 1 : -1); return; }
-    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && el.dataset?.enter) {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && el.dataset?.enter && !(e.shiftKey && el.tagName === 'TEXTAREA')) {
       e.preventDefault();
       if (el.dataset.enter === 'answer-custom') {
         const v = (el as HTMLInputElement).value.trim();
         if (v) void call('decision:answer', el.dataset.id, v);
       } else if (el.dataset.enter === 'repo-add') {
         void addRepo();
+      } else if (el.dataset.enter === 'diff-note-add') {
+        addDiffNote();
       } else if (el.dataset.enter === 'memo-add') {
         void addMemo();
       } else if (el.dataset.enter === 'sug-save') {
@@ -2768,6 +2828,7 @@ function init() {
       if (pop.el) { closePop(true); return; }
       hideUsagePop();
       if (ui.memoDel) askMemoDel(null);
+      if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
       if (ui.settingsShown) closeSettings();
