@@ -70,7 +70,7 @@
     <span class="seg nodrag" role="group" aria-label="Views">
       <button data-v="chat" aria-pressed="true" data-i18n="nav.chat">Chat</button><button data-v="worker" aria-pressed="false">Worker</button><button data-v="repo" aria-pressed="false" data-i18n="nav.repo">Repositories</button><button data-v="memory" aria-pressed="false" data-i18n="nav.memory">Memory</button>
     </span>
-    <div class="usage nodrag" id="usage" aria-label="Usage per account"></div>
+    <div class="usage nodrag" id="usage" tabindex="0" aria-label="Usage per account" aria-describedby="usage-pop"></div>
     <button class="tbtn nodrag" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
   </header>
 
@@ -123,6 +123,7 @@
 
 <div class="settings-win" id="sheet" role="dialog" aria-modal="true" hidden></div>
 <div class="ctxmenu" id="ctxmenu" role="menu" hidden></div>
+<div class="upop" id="usage-pop" role="tooltip" hidden></div>
 <div id="dlg" hidden></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
