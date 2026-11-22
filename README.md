@@ -2,9 +2,9 @@
 
 Tell a Dispatcher what needs doing in one window, and it hands the work to Worker agents. You see only the decisions that need you and the results. Built with Electron and the Claude Agent SDK; runs on Windows and macOS. The UI is in English by default, with Korean available in Settings.
 
-![Oh My Agent IDE main window: sidebar with decisions, running Workers, PRs in review and the queue; the Dispatcher chat with result cards and auto-answers; the decision inbox and results on the right](docs/images/main-screen.png)
+![Oh My Agent IDE main window: sidebar with decisions, running Workers grouped by repository with step progress, PRs in review and the queue; the Dispatcher chat with result cards and auto-answers; usage rings in the toolbar; the Inbox tab with a plan to approve, a command to allow and results on the right](docs/images/main-screen.png)
 
-The main window with sample data (taken at 0.2; the toolbar has since gained a search button, and the right side its Memos and Automations tabs): the sidebar lists what waits for you, running Workers, PRs in review and the queue; the chat holds the Dispatcher conversation and result cards; the right side holds decisions (a plan to approve, a command to allow) and results.
+The main window with sample data (taken at 0.6.2): the sidebar lists what waits for you, running Workers grouped by repository with their step progress, PRs in review and the queue; the chat holds the Dispatcher conversation and result cards; the toolbar has search and a usage ring per account (5-hour window outside, 7-day inside); the right side's Inbox tab holds decisions (a plan to approve, a command to allow) and results, next to the Memos and Automations tabs.
 
 Decisions made during implementation are in [docs/DECISIONS.md](docs/DECISIONS.md). The design system (an audit of the current UI, the v1 "Graphite Glass" spec and tokens, and a self-contained `design-system.html`) is in [docs/design-system/](docs/design-system/README.md); the app's styles are built on its tokens. What has to be checked by hand with real accounts, because no automated test can reach it, is in [docs/REAL-USE-CHECKLIST.md](docs/REAL-USE-CHECKLIST.md).
 
