@@ -25,6 +25,8 @@ declare global {
       onDecisionAlert(fn: (loud: boolean) => void): void;
       /** Back or Forward from the OS (mouse side buttons and Back keys arrive as app commands on Windows and Linux). */
       onNav(fn: (dir: NavDir) => void): void;
+      /** The window entered or left full screen (macOS hides the traffic lights then). */
+      onFullScreen(fn: (on: boolean) => void): void;
       pathForFile(f: File): string;
     };
   }

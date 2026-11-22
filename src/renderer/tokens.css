@@ -126,6 +126,12 @@
   --toolbar-h: 52px;
   --panel-inset: 8px;
   --settings-nav-w: 240px;
+  /* The macOS traffic lights (trafficLightPosition x in src/main/index.ts): 12px buttons with 8px gaps are 52px
+     wide, and macOS 26 draws them larger (about 60px), so the wider figure is kept. Things at the top left of the
+     window start at --lights-end; styles.css sets it on macOS outside full screen only. */
+  --lights-x: 22px;
+  --lights-w: 60px;
+  --lights-gap: 14px;
   --settings-max: 680px;
   --dur-instant: 80ms;
   --dur-fast: 120ms;
