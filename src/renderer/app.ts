@@ -7,6 +7,7 @@ import { cancelSet, followersOf, isQueued, statusAfterCancel, type CancelReport 
 import { queueWhy, queueWhyText, type QueueCtx } from '../shared/queueWhy';
 import { prsInReview } from '../shared/prs';
 import { reasonText } from '../shared/askWhy';
+import { linkify } from '../shared/linkify';
 import { workerDecisions } from '../shared/inbox';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
@@ -111,10 +112,6 @@ function esc(s: unknown) {
 /** Escaped one-line text with `code` spans, for summaries written by agents. */
 function inline(s: unknown) {
   return esc(s).replace(/`([^`\n]+)`/g, '<code>$1</code>');
-}
-
-function linkify(html: string) {
-  return html.replace(/(https?:\/\/[^\s<>"')\]]+)/g, (u) => `<a data-action="open-url" data-href="${u}">${u}</a>`);
 }
 
 /** Tiny markdown: code blocks, inline code, headings, bold, links, line breaks */
