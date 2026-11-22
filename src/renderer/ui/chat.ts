@@ -2,6 +2,8 @@
 import type { Automation, Memo } from '../../shared/types';
 import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, Task, Worker } from '../../shared/types';
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
+import { stepView } from '../../shared/steps';
+import { lastFailed, plainStatus } from '../../shared/workerState';
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars, type Spend } from '../../shared/spend';
 import { linkify } from '../../shared/linkify';
@@ -72,13 +74,31 @@ export function resultGlyph(x: Task | null, err = false) {
   return x?.prUrl ? sym('s-pr', x.prState === 'CLOSED' ? 'c-pr-closed' : 'c-pr-open') : x?.files.length ? sym('s-doc', 'c-teal') : sym('s-check', 'c-green');
 }
 
+/**
+ * A task that failed, as a card: what it was, the step it stopped at, the error, and what to do about it. Told apart by
+ * its alert tile and "Failed" pill. Null for an error that is not about a Worker's task, which stays a line.
+ */
+function failureHtml(c: ChatItem) {
+  const x = task(c.ref);
+  const w = x?.workerId ? worker(x.workerId) : null;
+  if (!x || !w) return null;
+  // Still where it failed: the card says where and offers to go on. Once the task moved on, it is history.
+  const still = x.status === 'failed' && !x.stopped;
+  const v = still ? stepView(x) : null;
+  const at = v && !v.allDone ? t('wk.stoppedAt', { n: v.at + 1, total: v.total }) : '';
+  const why = still ? plainStatus(x.summary) : c.text;
+  const last = w.taskIds[w.taskIds.length - 1] === x.id;
+  const go = still && last && lastFailed(w, x) ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
+  return `<div class="attach fail"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill red">${t('st.failed')}</span></b><span class="sm">${esc([at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a></span></span></div>`;
+}
+
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
     case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
     case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text);
     case 'event': return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
-    case 'error': return `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
+    case 'error': return failureHtml(c) ?? `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
     case 'auto': {
       const a = S!.autoAnswers.find((x) => x.id === c.ref);
       return `<button class="event self" data-action="aa-select" data-id="${c.ref ?? ''}" title="${t('chat.showRight')}">${sym('s-check', 'c-green')}<span><b>${a?.corrected ? t('chat.autoCorrected') : t('chat.auto')}</b> ${esc(c.text)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;

@@ -122,7 +122,8 @@ Dark 400s were nudged so glyphs keep 3:1 on selected glass rows: blue `#0a84ff �
 | `--review-soft` | `rgba(196, 99, 243, .14)` | `rgba(175, 82, 222, .12)` |
 | `--neutral-soft` | `rgba(255, 255, 255, .08)` | `rgba(0, 0, 0, .06)` |
 | **Agent states and kinds** | | |
-| `--state-ask` | red.400 `#ff4a40` | red.600 `#d42a20` |
+| `--state-ask` | blue.400 `#1a8cff` | blue.600 `#0a6ae8` |
+| `--text-on-ask` | gray.950 `#131316` | gray.0 `#ffffff` |
 | `--state-run` | blue.400 `#1a8cff` | blue.600 `#0a6ae8` |
 | `--state-review` | purple.400 `#c463f3` | purple.600 `#9442c4` |
 | `--state-wait` | orange.400 `#ff9f0a` | orange.600 `#c25400` |
@@ -158,7 +159,7 @@ Gradients built from these: `--accent-fill` (top → bottom), `--danger-fill`, `
 - Colored text always uses a `*-text` role (`--danger-text`, `--accent-text` …); colored glyphs, bars and dots use the base role (`--danger`, `--state-run` …); white text sits only on `*-solid` or `*-fill` roles.
 - Pills and tags: background `*-soft` (hue at 14% dark / 12–14% light) + text `*-text`.
 - Status never relies on color alone: glyphs differ in shape, pills carry words, meters show numbers.
-- **Agent states**: ask = red, run = blue, review (PR) = purple, wait = orange, done = green, idle/archived = gray, error = red. Kinds: repo = indigo, preference = pink, document = teal. `--state-ask` and `--state-error` are separate tokens with the same value today so they can diverge (see 2.12).
+- **Agent states**: ask = a solid accent fill (`--state-ask` under `--text-on-ask`: the glyph disc, the "Waiting for you" pill and the decision count badges), run = blue, review (PR) = purple, wait = orange, done = green, idle/archived = gray, error = red. Kinds: repo = indigo, preference = pink, document = teal. Red is for errors only: `--state-ask` was red like `--state-error` until T-0045, which split them so "needs you" and "broke" do not look alike. Ask and run share the hue and differ by fill and glyph (a solid disc with "!", a spinning arc).
 - **Usage meter levels** (one rule for the toolbar and account cards): ≤30 `ok`, ≤50 `caution`, ≤80 `warn`, >80 `critical`, set with `data-level` on `.meter`.
 
 ## 2.4 Typography
@@ -376,4 +377,4 @@ The window grid, panel widths, glass look and the glide script stay as they are.
 - The accent gradient is darker (`#3d9bff → #0a6cff` becomes `#1570ea → #0659d4`). This is the most visible change and the only way to keep white text on blue bubbles and buttons above 4.5:1.
 - Secondary and tertiary text are slightly brighter (`#a7a7ad → #b4b4bb`, `#8d8d93 → #a1a1a8`), so the gap between them is smaller; size and weight carry more of the hierarchy.
 - The usage meter keeps the toolbar thresholds (30/50/80) and applies them to account cards too.
-- "Waiting for you" and "Error" stay red as today, under separate tokens (`--state-ask`, `--state-error`) so they can be split later.
+- "Waiting for you" and "Error" were both red under separate tokens (`--state-ask`, `--state-error`); T-0045 split them: "Waiting for you" is a solid accent fill, and red is kept for errors.

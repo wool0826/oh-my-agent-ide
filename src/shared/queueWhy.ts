@@ -1,5 +1,6 @@
 // Why a queued or blocked task waits, and what starts it, in one short sentence each.
-// The Worker view's "Waiting" card and the sidebar queue row's tooltip show it. Built only from the app state.
+// The Worker view's "Waiting" card and the sidebar queue row's tooltip show it; the row itself and the Worker list
+// show the short form (queueLine). Built only from the app state.
 
 import { taskRef, type Say } from './askWhy';
 import { afterDependency, hasOpenPr, isQueued } from './queue';
@@ -80,4 +81,50 @@ export function queueWhy(say: Say, task: Task, ctx: QueueCtx): QueueWhy | null {
 /** Both sentences on one line, for a tooltip. */
 export function queueWhyText(q: QueueWhy): string {
   return [q.why, q.starts, q.again].filter(Boolean).join(' ');
+}
+
+export interface QueueLine {
+  /** Its place among the tasks waiting for a slot (1 is next); null when something else holds it (a merge, a usage limit). */
+  pos: number | null;
+  /** What starts it, in a few words: "next, when a slot frees", "starts when PR #7 merges". */
+  text: string;
+  /** It will never start (decision 92). */
+  cancelled: boolean;
+}
+
+/** English ordinals for the place in line: 2nd, 3rd, 11th. */
+export function ordinal(n: number): string {
+  const t = n % 100;
+  const s = t >= 11 && t <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
+  return `${n}${s}`;
+}
+
+/** The queue row's second line and its place number. Null for a task that does not wait in the queue. */
+export function queueLine(say: Say, task: Task, ctx: QueueCtx): QueueLine | null {
+  if (!isQueued(task)) return null;
+  const now = ctx.now ?? Date.now();
+  const soon = (pos: number | null): QueueLine => ({ pos, text: say('ql.soon'), cancelled: false });
+
+  if (task.status === 'blocked') {
+    const depId = task.afterTaskId ?? '';
+    const dep = ctx.tasks.find((x) => x.id === depId) ?? null;
+    const next = afterDependency(dep);
+    if (next === 'cancel') return { pos: null, text: say('ql.cancelled', { id: dep?.id ?? depId }), cancelled: true };
+    if (next === 'start') return soon(null);
+    if (dep && hasOpenPr(dep)) return { pos: null, text: say('ql.afterPr', { n: prNo(dep.prUrl) }), cancelled: false };
+    return { pos: null, text: say('ql.afterTask', { id: depId }), cancelled: false };
+  }
+
+  if (waitsForSlot(task)) {
+    const pos = queuePlace(ctx.tasks, task.id)?.pos ?? 1;
+    if (canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers)) return soon(pos);
+    return { pos, text: pos === 1 ? say('ql.next') : say('ql.place', { pos, ord: ordinal(pos) }), cancelled: false };
+  }
+
+  const ends = ctx.accounts.map((a) => (a.limitedUntil ? Date.parse(a.limitedUntil) : 0));
+  if (!ends.length || ends.some((e) => !(e > now))) {
+    return canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers) ? soon(null) : { pos: null, text: say('ql.limitSlot'), cancelled: false };
+  }
+  const at = Math.min(...ends);
+  return { pos: null, text: say('ql.limit', { account: ctx.accounts[ends.indexOf(at)].label, time: ctx.time(at) }), cancelled: false };
 }

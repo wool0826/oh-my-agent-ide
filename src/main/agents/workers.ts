@@ -163,7 +163,7 @@ class WorkerManager {
     if (existing && !existing.closed) return existing.ready() ? existing : null;
     // Fake agent mode: a scripted session with the Worker's real permission, question and plan handler. No account.
     if (fakeMode()) {
-      const fake = new FakeSession({ label: w.id, model: w.model, cwd: w.cwd, accountId: null, resume: w.sessionId, canUseTool: this.permissionHandler(w), permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto' }, this.sessionEvents(w));
+      const fake = new FakeSession({ label: w.id, model: w.model, cwd: w.cwd, accountId: null, resume: w.sessionId, steps: (op) => this.steps(w, op), canUseTool: this.permissionHandler(w), permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto' }, this.sessionEvents(w));
       this.sessions.set(w.id, fake);
       return fake;
     }

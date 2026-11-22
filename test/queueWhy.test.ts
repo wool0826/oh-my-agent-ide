@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tr } from '../src/shared/i18n';
 import type { Say } from '../src/shared/askWhy';
-import { queuePlace, queueWhy, queueWhyText, type QueueCtx } from '../src/shared/queueWhy';
+import { ordinal, queueLine, queuePlace, queueWhy, queueWhyText, type QueueCtx } from '../src/shared/queueWhy';
 import type { Task } from '../src/shared/types';
 
 const en: Say = (k, v) => tr('en', k, v);
@@ -133,4 +133,35 @@ test('queueWhy: Korean task ids and PR numbers are not followed by a particle th
     run(T('T-0005', { status: 'done', prUrl: 'https://github.com/o/r/pull/12', prState: 'MERGED' })).starts,
   ];
   for (const s of texts) assert.doesNotMatch(s, /(T-0005|#12)[이가은는을를]/, s);
+});
+
+test('queueLine: a task in line shows its place, and the first one that it is next', () => {
+  const tasks = [T('R1'), T('R2'), slot('Q1', 20), slot('Q2', 5), slot('Q3', 10)];
+  assert.deepEqual(queueLine(en, tasks[2], ctx(tasks)), { pos: 1, text: 'next, when a slot frees', cancelled: false });
+  assert.deepEqual(queueLine(en, tasks[4], ctx(tasks)), { pos: 2, text: '2nd in line', cancelled: false });
+  assert.deepEqual(queueLine(en, tasks[3], ctx(tasks)), { pos: 3, text: '3rd in line', cancelled: false });
+  assert.equal(queueLine(ko, tasks[3], ctx(tasks))!.text, '3번째 차례');
+  // A free slot: it keeps its place and starts shortly.
+  const free = [T('R1'), slot('Q1', 3)];
+  assert.deepEqual(queueLine(en, free[1], ctx(free)), { pos: 1, text: 'starts shortly', cancelled: false });
+  assert.equal(queueLine(en, T('A'), ctx([])), null);
+});
+
+test('queueLine: a task held by a merge or a usage limit has no place in line', () => {
+  const b = T('B', { status: 'blocked', afterTaskId: 'T-0005' });
+  const line = (dep: Task) => queueLine(en, b, ctx([dep, b]))!;
+  assert.deepEqual(line(T('T-0005', { status: 'running' })), { pos: null, text: 'starts after T-0005', cancelled: false });
+  assert.deepEqual(line(T('T-0005', { status: 'pr_open', prUrl: 'https://github.com/o/r/pull/12', prState: 'OPEN' })), { pos: null, text: 'starts when PR #12 merges', cancelled: false });
+  assert.deepEqual(line(T('T-0005', { status: 'done', prUrl: 'https://github.com/o/r/pull/12', prState: 'MERGED' })), { pos: null, text: 'starts shortly', cancelled: false });
+  assert.deepEqual(line(T('T-0005', { status: 'failed' })), { pos: null, text: 'cannot start: T-0005 ended without a merge', cancelled: true });
+
+  const q = T('L', { status: 'queued', queueReason: 'limit' });
+  const accounts = [{ label: 'Team A', limitedUntil: new Date(NOW + 90 * 60_000).toISOString() }, { label: 'Team B', limitedUntil: new Date(NOW + 30 * 60_000).toISOString() }];
+  assert.deepEqual(queueLine(en, q, ctx([q], { accounts })), { pos: null, text: 'when the Team B limit resets at 12:30', cancelled: false });
+  assert.equal(queueLine(en, q, ctx([q]))!.text, 'starts shortly');
+  assert.equal(queueLine(en, q, ctx([T('R1'), T('R2'), q]))!.text, 'limit reset, waiting for a slot');
+});
+
+test('ordinal: English places in line', () => {
+  assert.deepEqual([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal), ['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st', '111th']);
 });

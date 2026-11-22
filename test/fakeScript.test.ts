@@ -39,3 +39,10 @@ test('a blocked or failed turn says so', () => {
   assert.equal(fakeReport(parseFakeScript('@fake blocked Needs the API key')), 'BLOCKED: Needs the API key');
   assert.deepEqual(parseFakeScript('@fake fail boom'), [{ do: 'fail', message: 'boom' }]);
 });
+
+test('a Worker script can declare its plan and mark steps done', () => {
+  assert.deepEqual(parseFakeScript('@fake steps Read the code | Write tests |  | Open the PR\n@fake step 1\n@fake step 0\n@fake steps'), [
+    { do: 'steps', steps: ['Read the code', 'Write tests', 'Open the PR'] },
+    { do: 'step', n: 1 },
+  ]);
+});

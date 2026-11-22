@@ -267,6 +267,12 @@ export function ago(iso: string) {
   return t('time.day', { n: Math.round(h / 24) });
 }
 
+/** "5m ago", and "just now" on its own: the word for under a minute already says when. */
+export function agoText(iso: string) {
+  const d = ago(iso);
+  return d === t('time.now') ? d : t('time.ago', { d });
+}
+
 export function k(n: number) { return `${Math.round(n / 1000)}K`; }
 
 export function ring(frac: number) {

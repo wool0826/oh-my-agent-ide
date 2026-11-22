@@ -16,6 +16,10 @@ export type FakeStep =
   | { do: 'commit'; message: string }
   | { do: 'wait'; ms: number }
   | { do: 'tokens'; n: number }
+  /** Worker only: declares its plan (set_steps), labels split by "|". */
+  | { do: 'steps'; steps: string[] }
+  /** Worker only: marks step n done (step_done). */
+  | { do: 'step'; n: number }
   /** Dispatcher only: creates a task. `prompt` is the Worker's own script. */
   | { do: 'task'; repo: string | null; title: string; prompt: string; bundle: string | null }
   /** Lines of the turn's last message: what a real Worker reports with. */
@@ -59,6 +63,12 @@ export function parseFakeScript(text: string): FakeStep[] {
       case 'commit': out.push({ do: 'commit', message: arg || 'Fake change' }); break;
       case 'wait': out.push({ do: 'wait', ms: Math.min(60_000, Math.max(0, Number(arg) || 0)) }); break;
       case 'tokens': out.push({ do: 'tokens', n: Math.max(0, Number(arg) || 0) }); break;
+      case 'steps': {
+        const steps = arg.split('|').map((s) => s.trim()).filter(Boolean);
+        if (steps.length) out.push({ do: 'steps', steps });
+        break;
+      }
+      case 'step': if (Number(arg) >= 1) out.push({ do: 'step', n: Math.floor(Number(arg)) }); break;
       case 'task': {
         // "@fake task <repo or -> [bundle=<name>] <title>"
         if (!head || !tail) break;

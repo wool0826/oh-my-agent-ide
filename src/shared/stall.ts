@@ -16,4 +16,4 @@ export function isStalled(w: Worker, task: Task | null, session: { busy: boolean
 }
 
 /** What the window shows: flagged as stalled, and still idle on it. */
-export const shownStalled = (w: Worker) => !!w.stalledAt && w.status === 'idle';
+export const shownStalled = (w: Pick<Worker, 'stalledAt' | 'status'>) => !!w.stalledAt && w.status === 'idle';
