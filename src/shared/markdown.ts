@@ -150,7 +150,7 @@ function blockLines(lines: string[]): string {
         items.push({ indent: m[1].replace(/\t/g, '    ').length, marker: m[2], html: spans(m[3]) });
         i++;
         // A line that only continues the item goes with it.
-        while (i < lines.length && lines[i].trim() && /^\s{2,}\S/.test(lines[i]) && !LIST.test(lines[i])) { items[items.length - 1].html += `<br>${spans(lines[i].trim())}`; i++; }
+        while (i < lines.length && lines[i].trim() && /^(?:\t|\s{2,})\s*\S/.test(lines[i]) && !LIST.test(lines[i])) { items[items.length - 1].html += `<br>${spans(lines[i].trim())}`; i++; }
       }
       i--;
       for (let k = 0; k < items.length; ) { const [h, next] = listHtml(items, k); out.push(h); k = next; }

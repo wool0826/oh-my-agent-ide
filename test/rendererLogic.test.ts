@@ -27,6 +27,12 @@ test('md: nested lists, ordered and unordered mixed, as real lists inside their 
   assert.equal(mdHtml('- a\n    3. c\n       more'), '<ul><li>a<ol start="3"><li>c<br>more</li></ol></li></ul>');
   // A tab counts as indentation.
   assert.equal(mdHtml('- a\n\t- b'), '<ul><li>a<ul><li>b</li></ul></li></ul>');
+  assert.equal(mdHtml('- a\n\tmore'), '<ul><li>a<br>more</li></ul>');
+  // Another kind inside a nested level: a second list in the same item.
+  assert.equal(mdHtml('- a\n  - b\n  1. c'), '<ul><li>a<ul><li>b</li></ul><ol><li>c</li></ol></li></ul>');
+  // Uneven indents: nothing is lost; a shallower item after a deeper one opens a list of its own.
+  assert.equal(mdHtml('- a\n    - b\n  - c'), '<ul><li>a<ul><li>b</li></ul><ul><li>c</li></ul></li></ul>');
+  assert.equal(mdHtml('  - a\n- b'), '<ul><li>a</li></ul><ul><li>b</li></ul>');
   // Another kind at the same level starts a new list; one space is not nesting.
   assert.equal(mdHtml('- a\n1. b'), '<ul><li>a</li></ul><ol><li>b</li></ol>');
   assert.equal(mdHtml('- a\n - b'), '<ul><li>a</li><li>b</li></ul>');
@@ -38,6 +44,7 @@ test('md: nested lists, ordered and unordered mixed, as real lists inside their 
 test('md: strikethrough, and only marked text is bold', () => {
   assert.equal(mdHtml('~~old~~ and ~~two words~~'), '<p><s>old</s> and <s>two words</s></p>');
   assert.equal(mdHtml('a ~~ b ~~ c, ~x, `~~code~~`'), '<p>a ~~ b ~~ c, ~x, <code>~~code~~</code></p>');
+  assert.match(mdHtml('~~see https://x.dev/a~~'), /^<p><s>see <a [^>]*data-href="https:\/\/x.dev\/a"[^>]*>https:\/\/x.dev\/a<\/a><\/s><\/p>$/);
   assert.equal(mdHtml('[~~gone~~](https://a.io)'), '<p><a data-action="open-url" data-href="https://a.io" title="https://a.io"><s>gone</s></a></p>');
   // The full sample from the bug report: <b> wraps only the bold word and the heading.
   const h = mdHtml('## Title\n**bold**, *italic*, ~~strike~~, `code`, [link](https://x.dev) end.\n\n> quote\n\n1. one\n2. two\n   - nested\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n---\n\n```ts\nconst ok = true;\n```');
