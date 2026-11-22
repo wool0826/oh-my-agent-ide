@@ -297,7 +297,9 @@ test('a plan-first turn that ends while its subagents run leaves the task open; 
   assert.equal(x.finishedAt, null);
   assert.equal(sent.get(w.id), undefined);
   assert.equal(store.data.chat.filter((c) => c.kind === 'result').length, 0);
-  assert.equal(w.status, 'idle');
+  // Still at work: the subagents start a turn by themselves when they report.
+  assert.equal(w.status, 'running');
+  assert.equal(w.statusText, 'Waiting for 3 subagent(s) to report');
   // The explorers report back and Claude Code starts a turn by itself: the Worker is at work again.
   feed(s, agents(0), said('Got the reports. Writing the plan.'));
   assert.equal(w.status, 'running');
@@ -319,6 +321,59 @@ test('a plan-first turn that ends while its subagents run leaves the task open; 
   assert.equal(x.summary, 'Built it');
   // Its own result, not a follow-up on a task that had closed early.
   assert.deepEqual(store.data.chat.filter((c) => c.kind === 'result').map((c) => c.text), ['Built it']);
+});
+
+test('a message mid-wait for subagents leaves the Worker running on its task, not idle', () => {
+  // As T-0045 went: explorers in the background, a correction from the Dispatcher, a short reply, then the turn ends.
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  feed(s, agents(3), said('Waiting for the three explorers to report.'), turnEnd(''));
+  assert.equal(w.status, 'running');
+  s.send('[Dispatcher] A correction: keep the selection visible.');
+  feed(s, said("Noted. I'll fold it into the plan once the explorers report back."), turnEnd("Noted. I'll fold it into the plan once the explorers report back."));
+  assert.equal(x.status, 'running');
+  assert.equal(x.finishedAt, null);
+  assert.equal(w.status, 'running');
+  assert.equal(w.statusText, 'Waiting for 3 subagent(s) to report');
+  // Nothing is stalled while they run, however long they take.
+  workers.sweepStalled(Date.now() + 60 * 60_000);
+  assert.equal(sent.get(w.id)!.length, 1);
+  assert.equal(w.stalledAt ?? null, null);
+  feed(s, agents(1));
+  assert.equal(w.statusText, 'Waiting for 1 subagent(s) to report');
+  // The last one reports and its turn starts: at work again.
+  feed(s, agents(0), said('Got the reports.'));
+  assert.equal(w.status, 'running');
+  assert.equal(w.statusText, 'Got the reports.');
+});
+
+test('an open task with nothing running it: the Worker is reminded once, then shown as stalled and the Dispatcher told', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  feed(s, agents(2), said('Waiting for the explorers.'), turnEnd(''));
+  // The subagents settle, but no turn of theirs starts (the case the watchdog is for).
+  feed(s, agents(0));
+  assert.equal(w.status, 'idle');
+  workers.sweepStalled(Date.now() + 60_000);
+  assert.equal(sent.get(w.id), undefined);
+  workers.sweepStalled(Date.now() + 6 * 60_000);
+  assert.match(sent.get(w.id)![0], new RegExp(`^\\[Dispatcher\\] Your task ${x.id} is still open, but your session has been idle for \\d+ min`));
+  assert.equal(w.status, 'running');
+  // The reminder's turn goes nowhere either: no second reminder; it shows as stalled, and the Dispatcher hears it.
+  s.busy = false;
+  s.ev.onStatus!('idle', '');
+  workers.sweepStalled(Date.now() + 12 * 60_000);
+  assert.equal(sent.get(w.id)!.length, 1);
+  assert.ok(w.stalledAt);
+  assert.match(store.data.pendingUpdates.at(-1)!, new RegExp(`${w.id} \\(${x.id} "Task"\\) looks stalled: .*even after a reminder`));
+  workers.sweepStalled(Date.now() + 20 * 60_000);
+  assert.equal(store.data.pendingUpdates.filter((u) => u.includes('looks stalled')).length, 1);
+  // Its next turn clears the flag.
+  s.send('Go on.');
+  assert.equal(w.stalledAt, null);
+  assert.equal(w.status, 'running');
 });
 
 test('a plan-first turn that ends without a plan is reminded once, then waits for instructions without closing', () => {

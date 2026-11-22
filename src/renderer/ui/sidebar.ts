@@ -19,12 +19,14 @@ import { screen } from './history';
 import { cmdk } from './palette';
 import { glide } from './settings';
 import { queueCtx } from './workers';
+import { shownStalled } from '../../shared/stall';
 
 export function workerIcon(w: Worker) {
   if (w.status === 'running' || w.status === 'starting') return ic('run');
   if (w.status === 'waiting') return ic('ask');
   if (w.status === 'error') return ic('err');
   if (w.status === 'archived') return ic('arch');
+  if (shownStalled(w)) return ic('ask');
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
   if (x?.status === 'queued' || x?.status === 'blocked' || awaitsDispatcher(x)) return ic('wait');
   if (x?.status === 'pr_open') return ic('pr');
@@ -63,13 +65,14 @@ export function renderSidebar() {
   const workerRow = (w: Worker, grouped = false) => {
     const x = lastTask(w);
     const what = x?.title ?? w.title;
-    const waits = w.status === 'waiting' || awaitsDispatcher(x);
+    const stalled = shownStalled(w);
+    const waits = w.status === 'waiting' || awaitsDispatcher(x) || stalled;
     // The steps its Worker planned for the open task, when it gave some: how far it is, under the title. A Worker
     // stopped by an error keeps them, so the row says at which step.
     const failed = w.status === 'error';
     const v = x && (OPEN.has(x.status) || failed) ? stepView(x) : null;
     const where = `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}`;
-    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}`
+    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : stalled ? `${w.id}, ${t('st.stalled')}`
       : v ? `${where} · ${t(v.allDone ? 'side.stepsDone' : failed ? 'side.stoppedAt' : 'side.stepsCount', { done: v.done, total: v.total })}`
       : `${where}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
     const tip = [failed ? w.statusText : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');

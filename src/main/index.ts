@@ -509,7 +509,7 @@ async function boot() {
   workers.resumeAfterRestart();
   startPrMonitor();
   // A Worker that waits too long for an answer gives its slot to the queue (decision 118).
-  setInterval(() => workers.sweepWaiting(), 30_000);
+  setInterval(() => { workers.sweepWaiting(); workers.sweepStalled(); }, 30_000);
   startUpdateCheck(onUpdate);
   // What the app needs on this computer: checked once the window is up, so a missing tool shows before a task fails on it.
   setTimeout(() => void runPreflight().then(() => pushState()).catch((e) => log.warn('preflight', e)), 3_000);
