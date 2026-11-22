@@ -1,5 +1,5 @@
-// The small markdown agents write in reports and chat: code blocks, headings, lists, tables, bold, italics, links,
-// quotes and rules.
+// The small markdown agents write in reports and chat: code blocks, headings, lists (nested), tables, bold, italics,
+// strikethrough, links, quotes and rules.
 // Shared so it can be tested; the renderer's md() (ui/core.ts) is this.
 
 import { linkify } from './linkify';
@@ -8,9 +8,10 @@ export function escHtml(s: unknown) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 }
 
-/** Bold and italics in escaped text. */
+/** Bold, italics and ~~strikethrough~~ in escaped text. */
 function emphasis(h: string) {
-  let x = h.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<b><i>$1</i></b>');
+  let x = h.replace(/~~(?=\S)([^~\n]*?\S)~~/g, '<s>$1</s>');
+  x = x.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<b><i>$1</i></b>');
   x = x.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
   // *italic* opens after a space, a bracket or the start, so a * inside a URL or a path stays as it is.
   x = x.replace(/(^|[\s(\[;>])\*(?=\S)([^*\n]*?\S)\*(?![*\w])/g, '$1<i>$2</i>');
@@ -80,6 +81,35 @@ function blocks(text: string) {
 const QUOTE = /^\s*&gt; ?(.*)$/;
 const HR = /^\s*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/;
 
+interface Item { indent: number; marker: string; html: string }
+
+/**
+ * One list from items[k]: its items at that indent, each with the deeper items after it as a list of its own
+ * (ordered or not, by their marker). It ends at a shallower item, or one of the other kind at its level.
+ * Returns the HTML and the index after it.
+ */
+function listHtml(items: Item[], k: number): [string, number] {
+  const base = items[k].indent;
+  const ordered = /\d/.test(items[k].marker);
+  const start = ordered ? Number(items[k].marker.replace(/\D/g, '')) : 1;
+  const lis: string[] = [];
+  while (k < items.length && items[k].indent >= base) {
+    const it = items[k];
+    // Two or more spaces past this level: a list inside the item before it.
+    if (it.indent >= base + 2 && lis.length) {
+      const [sub, next] = listHtml(items, k);
+      lis[lis.length - 1] += sub;
+      k = next;
+      continue;
+    }
+    if (/\d/.test(it.marker) !== ordered) break;
+    lis.push(it.html);
+    k++;
+  }
+  const body = lis.map((h) => `<li>${h}</li>`).join('');
+  return [ordered ? `<ol${start !== 1 ? ` start="${start}"` : ''}>${body}</ol>` : `<ul>${body}</ul>`, k];
+}
+
 function blockLines(lines: string[]): string {
   const out: string[] = [];
   let para: string[] = [];
@@ -113,23 +143,17 @@ function blockLines(lines: string[]): string {
       out.push(`<div class="md-table"><table><thead><tr>${th}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`);
       continue;
     }
-    const li = line.match(LIST);
-    if (li) {
+    if (LIST.test(line)) {
       flush();
-      const ordered = /\d/.test(li[2]);
-      const items: string[] = [];
-      let m: RegExpMatchArray | null = li;
-      while (i < lines.length && (m = lines[i].match(LIST)) && /\d/.test(m[2]) === ordered) {
-        // A deeper item is shown under the one before it, indented.
-        const deep = m[1].length >= 2;
-        items.push(`<li${deep ? ' class="sub"' : ''}>${spans(m[3])}</li>`);
+      const items: Item[] = [];
+      for (let m; i < lines.length && (m = lines[i].match(LIST)); ) {
+        items.push({ indent: m[1].replace(/\t/g, '    ').length, marker: m[2], html: spans(m[3]) });
         i++;
         // A line that only continues the item goes with it.
-        while (i < lines.length && lines[i].trim() && /^\s{2,}\S/.test(lines[i]) && !LIST.test(lines[i])) { items[items.length - 1] = items[items.length - 1].replace(/<\/li>$/, `<br>${spans(lines[i].trim())}</li>`); i++; }
+        while (i < lines.length && lines[i].trim() && /^(?:\t|\s{2,})\s*\S/.test(lines[i]) && !LIST.test(lines[i])) { items[items.length - 1].html += `<br>${spans(lines[i].trim())}`; i++; }
       }
       i--;
-      const start = ordered ? Number(li[2].replace(/\D/g, '')) : 1;
-      out.push(ordered ? `<ol${start !== 1 ? ` start="${start}"` : ''}>${items.join('')}</ol>` : `<ul>${items.join('')}</ul>`);
+      for (let k = 0; k < items.length; ) { const [h, next] = listHtml(items, k); out.push(h); k = next; }
       continue;
     }
     para.push(line.trim());
