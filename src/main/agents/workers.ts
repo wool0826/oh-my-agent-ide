@@ -1400,7 +1400,7 @@ function workerMemoryDir(w: Worker) {
 function workerTools(memDir: string | null, tell: (kind: TellKind, text: string) => string) {
   return createSdkMcpServer({
     name: 'oma',
-    version: '0.4.0',
+    version: '0.5.0',
     alwaysLoad: true,
     tools: [
       tool(
