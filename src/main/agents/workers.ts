@@ -254,6 +254,9 @@ class WorkerManager {
         this.turnEnded(w, r.text, r.isError, !!r.background);
       },
       onLimited: () => this.pause(w, this.currentTask(w)),
+      // Messages sent while a stopped turn was ending: its task is stopped now, so they go out as new messages do
+      // (a follow-up reopens it, or waits for a slot).
+      onResend: (texts) => texts.forEach((m) => this.post(w, m)),
       // Shown in the Worker's conversation. A failed compaction leaves the task alone (it is retried later).
       onCompact: (e) => {
         if (e.phase === 'start') {
@@ -884,7 +887,8 @@ class WorkerManager {
       if (!w || !waitsForSlot(task) || !this.hasSlot(w)) continue;
       // Its worktree is made again first; the queue is filled again once it is there.
       if (w.status === 'archived') {
-        void this.restoreWorker(w).then((ok) => ok && this.fillSlots());
+        // Without its worktree the task cannot run: it fails once, rather than every time the queue is filled.
+        void this.restoreWorker(w).then((err) => (err === null ? this.fillSlots() : this.fail(w, task, err)));
         continue;
       }
       const s = this.ensureSession(w);
@@ -1011,13 +1015,15 @@ class WorkerManager {
     // The Worker is on another task: the turn that handled this would settle that one. It waits until that is settled.
     const other = this.currentTask(w);
     if (other && other.id !== task.id) {
-      this.feedback.set(w.id, [...(this.feedback.get(w.id) ?? []), { taskId: task.id, body, kind }]);
+      const list = this.feedback.get(w.id) ?? [];
+      if (list.some((f) => f.taskId === task.id && f.kind === kind && f.body === body)) return;
+      this.feedback.set(w.id, [...list, { taskId: task.id, body, kind }]);
       store.log(w.id, 'event', t('log.feedbackHeld', { id: task.id, other: other.id }));
       return store.changed();
     }
     if (w.status === 'archived') {
-      void this.restoreWorker(w).then((ok) => {
-        if (ok) this.sendReview(task, body, kind);
+      void this.restoreWorker(w).then((err) => {
+        if (err === null) this.sendReview(task, body, kind);
         else store.pushUpdate(`${w.id} could not get its worktree back, so the ${kind === 'ci' ? 'CI failure' : kind === 'conflict' ? 'merge conflict' : 'review comments'} on ${task.id} "${task.title}" (${task.prUrl}) did not reach it.`, true);
       });
       return;
@@ -1076,11 +1082,12 @@ class WorkerManager {
     const w = store.worker(workerId);
     const task = w ? this.currentTask(w) : null;
     if (!w || !task || (task.status !== 'running' && task.status !== 'waiting')) return 'idle';
+    // Idle first: failing the task frees the slot, and fillSlots may hand this Worker held feedback or queued work.
+    w.status = 'idle';
+    w.statusText = '';
     this.stopping.set(w.id, by);
     this.fail(w, task, '');
     this.stopping.delete(w.id);
-    w.status = 'idle';
-    w.statusText = '';
     this.touch(w);
     return 'stopped';
   }
@@ -1263,17 +1270,18 @@ class WorkerManager {
     return run;
   }
 
-  /** unarchive() for work the app hands on by itself: false, with a line in the Worker's conversation, when it failed. */
-  private async restoreWorker(w: Worker): Promise<boolean> {
+  /** unarchive() for work the app hands on by itself: null, or why it failed (also said in the Worker's conversation). */
+  private async restoreWorker(w: Worker): Promise<string | null> {
     try {
       await this.unarchive(w);
-      return true;
+      return null;
     } catch (e) {
       const msg = oneLine((e as Error).message ?? String(e), 200);
       log.warn(`unarchive ${w.id} failed`, msg);
-      store.log(w.id, 'event', t('log.unarchiveFailed', { msg }));
+      const why = t('log.unarchiveFailed', { msg });
+      store.log(w.id, 'event', why);
       store.changed();
-      return false;
+      return why;
     }
   }
 

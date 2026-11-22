@@ -1062,3 +1062,37 @@ test('a follow-up to an idle Worker waits for a slot like a new task when every 
   assert.equal(last.status, 'running');
   assert.ok(sent.get(w.id)!.some((m) => m.includes('[User message] One more change, please.')));
 });
+
+test('Stop between turns hands the Worker its held PR feedback, and shows it running on that', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const a = addTask(w, { title: 'A', status: 'pr_open', prUrl: 'https://github.com/o/r/pull/3', prState: 'OPEN', branch: 'a', finishedAt: now });
+  const b = addTask(w, { title: 'B' });
+  const s = workers.ensureSession(w)!;
+  s.send('Working on B.');
+  s.busy = false;
+  s.ev.onTurnEnd!({ text: 'BLOCKED: I need the staging URL.', isError: false, internal: false });
+  s.ev.onStatus!('idle', '');
+  workers.sendReview(a, 'Please rename x.');
+  assert.equal(a.status, 'pr_open');
+  assert.equal(await workers.stop(w.id, 'user'), 'stopped');
+  assert.deepEqual([b.status, b.stopped], ['failed', true]);
+  assert.deepEqual([a.status, w.status], ['running', 'running']);
+  assert.match(sent.get(w.id)!.at(-1)!, /^\[Review comments\]/);
+});
+
+test('a queued task whose archived Worker cannot get its worktree back fails once, instead of retrying on every fill', async () => {
+  const repo = { name: 'gone2', path: path.join(tmp, 'no-such-repo-2'), url: '', defaultBranch: 'main', description: '' } as never;
+  store.data.repos.push(repo);
+  try {
+    const w = addWorker({ sessionId: 'sid', repo: 'gone2', status: 'archived', cwd: path.join(tmp, 'no-such-worktree-2') });
+    const x = addTask(w, { status: 'queued', queueReason: 'slot', startedAt: null });
+    workers.fillSlots();
+    for (let i = 0; i < 100 && x.status === 'queued'; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(x.status, 'failed');
+    assert.match(x.summary ?? '', /Could not restore the worktree/);
+    assert.equal(w.status, 'archived');
+    assert.equal(sent.get(w.id), undefined);
+  } finally {
+    store.data.repos.splice(store.data.repos.indexOf(repo), 1);
+  }
+});

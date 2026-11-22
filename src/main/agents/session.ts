@@ -58,6 +58,8 @@ export interface SessionEvents {
   onAccount?(accountId: string | null): void;
   onStatus?(status: 'busy' | 'idle' | 'error', text: string): void;
   onLimited?(): void;
+  /** Sent after Stop, while the stopped turn was ending: the input queue was dropped, so the owner sends them again. */
+  onResend?(texts: string[]): void;
   /** Compaction started or ended. A failed one never fails the turn: the conversation stays as it was. */
   onCompact?(e: CompactEvent): void;
 }
@@ -71,7 +73,7 @@ function userMsg(text: string): SDKUserMessage {
  * (a result's error text, a failed compaction, the process's own error), never the assistant's words: its work may
  * well mention issue #429 or a rate limiter.
  */
-export const LIMIT_RE = /rate.?limit|usage limit|limit reached|429|5-hour|weekly limit|out of extra usage/i;
+export const LIMIT_RE = /rate.?limit|usage limit|limit reached|\b429\b|5-hour|weekly limit|out of extra usage/i;
 
 /** Turn ends Claude Code reports for a turn that was interrupted. */
 const ABORTED = new Set(['aborted_streaming', 'aborted_tools']);
@@ -176,6 +178,8 @@ export class AgentSession {
   send(text: string) {
     if (this.closed) throw new Error('Session is closed.');
     if (!this.q) this.start();
+    // A Stop that came after its turn had ended stops nothing later.
+    if (!this.busy) this.interrupted = false;
     this.busy = true;
     this.ev.onStatus?.('busy', '');
     if (this.interrupted) this.afterStop.push(text);
@@ -383,7 +387,13 @@ export class AgentSession {
         this.ev.onTurnEnd?.({ text: finalText || text, isError, internal, queued, background: this.background > 0 });
         // What was sent once Stop was pressed is new work, not part of the stopped turn: it goes out after the
         // stopped turn has settled.
-        if (resend.length && !this.q) setImmediate(() => { if (!this.closed) resend.forEach((r) => this.send(r)); });
+        if (resend.length && !this.q) {
+          setImmediate(() => {
+            if (this.closed) return;
+            if (this.ev.onResend) this.ev.onResend(resend);
+            else resend.forEach((r) => this.send(r));
+          });
+        }
         void this.readPlanUsage();
         // A failed /compact is not a failed turn: the session stays usable and its task goes on.
         const failed = isError && !internal;

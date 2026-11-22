@@ -57,7 +57,7 @@ beforeEach(() => {
 });
 
 test('the limit pattern matches what Claude Code says about a limit, and 429 only as a whole number', () => {
-  for (const text of ["You've hit your 5-hour limit · resets 3pm", 'Claude AI usage limit reached|1760000000', 'API Error: 429 {"type":"rate_limit_error"}']) {
+  for (const text of ["You've hit your 5-hour limit · resets 3pm", 'Claude AI usage limit reached|1760000000', 'API Error: 429 Too Many Requests']) {
     assert.ok(LIMIT_RE.test(text), text);
   }
   for (const text of ['Listening on port 14290.', 'Moved 4290 rows.']) assert.ok(!LIMIT_RE.test(text), text);
