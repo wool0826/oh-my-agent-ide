@@ -14,6 +14,7 @@ import { memoSections } from '../../shared/memos';
 import { CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
 import { canStop } from '../../shared/canStop';
+import { planPaste } from '../../shared/paste';
 import { act } from '../app';
 import { $, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go } from './history';
@@ -543,10 +544,34 @@ export function renderChips(box: Box) {
 
 export function addFiles(box: Box, list: FileList | null) {
   if (!list?.length) return;
-  for (const f of Array.from(list)) {
-    let p = '';
-    try { p = ide.pathForFile(f); } catch { /* not a local file */ }
-    if (p && !ui.attach[box].includes(p)) ui.attach[box].push(p);
-  }
+  addPaths(box, Array.from(list, (f) => { try { return ide.pathForFile(f); } catch { return ''; /* not a local file */ } }));
+}
+
+/**
+ * Paste into a composer. Files copied in Explorer or Finder attach exactly as a drop does;
+ * a bare screenshot is saved first and its file attached. Anything else pastes as text.
+ */
+export function pasteFiles(box: Box, e: ClipboardEvent) {
+  const cd = e.clipboardData;
+  const files = Array.from(cd?.files ?? []);
+  if (!cd || !files.length) return;
+  const items = files.map((f) => {
+    let path = '';
+    try { path = ide.pathForFile(f); } catch { /* clipboard data, not a local file */ }
+    return { path, type: f.type };
+  });
+  const plan = planPaste(items, !!cd.getData('text/plain'));
+  if (plan.kind === 'text') return;
+  e.preventDefault();
+  if (plan.kind === 'paths') { addPaths(box, plan.paths); return; }
+  void Promise.all(plan.files.map(async (i) => {
+    const r = await tryCall<string>('attach:pasteImage', files[i].type, new Uint8Array(await files[i].arrayBuffer()));
+    if (!r.ok) { toast(r.error, true); return ''; }
+    return r.v;
+  })).then((paths) => addPaths(box, paths.filter(Boolean)));
+}
+
+function addPaths(box: Box, paths: string[]) {
+  for (const p of paths) if (p && !ui.attach[box].includes(p)) ui.attach[box].push(p);
   renderChips(box);
 }

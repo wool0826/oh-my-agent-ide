@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { store } from './store';
+import { uid } from './util';
+import { PASTE_IMAGE_MAX, pastedImageName } from '../shared/paste';
 
 /**
  * Files the user dragged into a message. We pass their paths, not their contents;
@@ -26,6 +28,17 @@ export function isAttached(p: string): boolean {
     const base = norm(a);
     return target === base || target.startsWith(base + path.sep);
   });
+}
+
+/** Writes an image pasted from the clipboard (a screenshot, no file behind it) under `dir` and returns its path. */
+export function savePastedImage(dir: string, type: string, bytes: Uint8Array, at = new Date()): string {
+  const name = pastedImageName(type, at, uid());
+  if (!name) throw new Error(`Cannot attach a pasted ${type || 'file'}`);
+  if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > PASTE_IMAGE_MAX) throw new Error('Pasted image is empty or too large');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, bytes);
+  return file;
 }
 
 /** The text block appended to a message that carries attachments. */

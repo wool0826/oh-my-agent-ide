@@ -12,7 +12,7 @@ import { focusSelector } from '../shared/focusKey';
 import { PAGE, pagesFor, slideOlder } from '../shared/paging';
 import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
-import { addAuto, addFiles, addMemo, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, saveSug, setAway, spendHtml, updateSendButton, visibleAutos } from './ui/chat';
+import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, saveSug, setAway, spendHtml, updateSendButton, visibleAutos } from './ui/chat';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue } from './ui/controls';
 import { $, announce, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
@@ -512,6 +512,8 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     if (thread && atEnd) scrollQuietly(thread, thread.scrollHeight);
   }).observe(form);
   input.addEventListener('input', () => { autosize(input); updateSendButton(); });
+  // Files copied in Explorer or Finder attach as if dropped here.
+  input.addEventListener('paste', (e) => pasteFiles(box, e));
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();

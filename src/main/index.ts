@@ -21,7 +21,7 @@ import type { AutoTrigger } from '../shared/types';
 import { startPrMonitor, checkPrs, checkPrsNow, checkPrsSoon, mergePr, prWatchChanged, resumeCiQuestion } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { notifyActions } from '../shared/notifyActions';
-import { attachmentBlock, registerAttachments } from './attachments';
+import { attachmentBlock, registerAttachments, savePastedImage } from './attachments';
 import { t } from './i18n';
 import { claudeHome, ruleFiles } from './claudeContext';
 import { listModels, setSessionModelSource } from './models';
@@ -447,7 +447,9 @@ function registerIpc() {
     const err = await shell.openPath(p);
     if (err) throw new Error(err);
   });
-  handle('reveal:path', (p: string) => shell.showItemInFolder(p));
+  // A screenshot pasted into a composer is kept under the IDE home, so the agent can still read it later.
+  handle('attach:pasteImage', (type: string, bytes: Uint8Array) => savePastedImage(path.join(paths().data, 'pasted'), type, bytes));
+  handle('reveal:path',(p: string) => shell.showItemInFolder(p));
   handle('app:version', () => app.getVersion());
   // Settings > Models asks for a fresh list (at most a minute old), its Refresh button for a new one;
   // other callers take one up to 6 hours old.
