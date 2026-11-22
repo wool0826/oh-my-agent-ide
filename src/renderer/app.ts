@@ -8,6 +8,7 @@ import { queueWhy, queueWhyText, type QueueCtx } from '../shared/queueWhy';
 import { prsInReview } from '../shared/prs';
 import { reasonText } from '../shared/askWhy';
 import { linkify } from '../shared/linkify';
+import { RING, ringArc } from '../shared/usageRing';
 import { workerDecisions } from '../shared/inbox';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, clampMaxWorkers, slotsUsed, waitsForSlot } from '../shared/slots';
 import { CONTEXT_WINDOW } from '../shared/context';
@@ -38,6 +39,14 @@ const isMac = ide.platform === 'darwin';
 let S: AppState | null = null;
 const lang = (): Lang => S?.settings.language ?? 'en';
 const t = (key: Key, vars?: Record<string, string | number>) => tr(lang(), key, vars);
+
+/** A yes/no kept in this window's storage; false when storage is not available. */
+function stored(key: string) {
+  try { return localStorage.getItem(key) === '1'; } catch { return false; }
+}
+function store(key: string, on: boolean) {
+  try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* not kept */ }
+}
 
 type Pane = 'accounts' | 'general' | 'display' | 'alerts' | 'memory' | 'models';
 const ui = {
@@ -99,6 +108,9 @@ const ui = {
   models: { models: [], fetchedAt: null, error: null } as ModelList,
   modelsLoading: false,
   restartAsk: false,
+  /** The left sidebar is a rail of glyphs, and the right one is hidden (kept across launches). */
+  sideMin: stored('oma.sideMin'),
+  insMin: stored('oma.insMin'),
   /** Asking before cancelling queued tasks: one task, or the whole queue. */
   cancelAsk: null as { ids: string[]; all: boolean } | null,
 };
@@ -488,6 +500,22 @@ function renderSidebar() {
     <div class="row${filterCls('today', doneToday)}" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></div>
     <div class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
+  if (ui.sideMin) {
+    // One glyph per section with its count; a section with nothing in it is left out, History always shows.
+    const rail = (kind: string, label: string, n: number, extra = '', red = false) =>
+      `<button class="rail-b${extra}" data-action="side-toggle" title="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}<span class="n${red ? ' red' : ''}">${n}</span></button>`;
+    const live = [
+      pending.length ? rail('ask', t('side.decisions'), pending.length, ' sec-dec', true) : '',
+      running.length ? rail('run', t('side.running'), running.length) : '',
+      prs.length ? rail('pr', t('side.prs'), prs.length) : '',
+      queued.length ? rail('wait', t('side.queue'), queued.length) : '',
+      failed.length ? rail('err', t('side.errors'), failed.length) : '',
+    ].join('');
+    const hist = (f: WorkerFilter, kind: string, label: string, n: number) =>
+      `<button class="rail-b${filterCls(f, n)}" data-action="worker-filter" data-v="${f}" title="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}${n ? `<span class="n">${n}</span>` : ''}</button>`;
+    $('#side').innerHTML = `${live}${live ? '<span class="rail-sep"></span>' : ''}${hist('today', 'done', t('side.doneToday'), doneToday)}${hist('archived', 'arch', t('side.archived'), archived)}`;
+    return;
+  }
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(t('side.prs'), prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
 }
 
@@ -524,13 +552,45 @@ function renderUsage() {
     el.innerHTML = `<a data-action="open-settings">${t('usage.addAccount')}</a>`;
     return;
   }
-  // Up to two accounts: one row each with 5h/7d labels. Three or more: two accounts per row, bars in the same order, numbers in the tooltip.
-  const compact = accs.length > 2;
-  el.className = `usage nodrag${compact ? ' compact' : ''}`;
-  const lbl = (s: string) => (compact ? '' : `<span>${s}</span>`);
-  el.innerHTML = accs.map((a: AccountView) => `<span class="acct${a.limited ? ' limited' : ''}" title="${esc(usageTip(a))}"><span class="nm">${esc(a.label)}</span>` +
-    `${lbl('5h')}<span class="cap"><i class="${lv(a.fiveHour.utilization)}" style="width:${a.fiveHour.utilization ?? 0}%"></i></span><span class="pc">${pct(a.fiveHour.utilization)}</span>` +
-    `${lbl('7d')}<span class="cap"><i class="${lv(a.sevenDay.utilization)}" style="width:${a.sevenDay.utilization ?? 0}%"></i></span><span class="pc">${pct(a.sevenDay.utilization)}</span></span>`).join('');
+  // One ring per account, in the order of Settings: 7d outside, 5h inside. The name and the numbers are in the tooltip.
+  const arc = (v: number | null, r: number) => {
+    const d = ringArc(v, r);
+    return `<circle class="trk" cx="12" cy="12" r="${r}"/>${d ? `<circle class="${lv(v)}" cx="12" cy="12" r="${r}" stroke-dasharray="${d}"/>` : ''}`;
+  };
+  el.className = 'usage nodrag';
+  el.innerHTML = accs.map((a: AccountView) => {
+    const tip = esc(usageTip(a));
+    return `<span class="uacct${a.limited ? ' limited' : ''}" role="img" title="${tip}" aria-label="${tip}"><svg viewBox="0 0 24 24" aria-hidden="true">${arc(a.sevenDay.utilization, RING.sevenDay)}${arc(a.fiveHour.utilization, RING.fiveHour)}</svg></span>`;
+  }).join('');
+}
+
+/** Put the sidebars away or back, and say so on their buttons. The right one's button counts open decisions while it is hidden. */
+function applyPanels() {
+  const win = $('#win');
+  win.classList.toggle('side-min', ui.sideMin);
+  win.classList.toggle('ins-min', ui.insMin);
+  const left = $('#side-toggle');
+  const leftTip = t(ui.sideMin ? 'side.expand' : 'side.collapse', { key: isMac ? '⌘B' : 'Ctrl+B' });
+  left.title = leftTip;
+  left.setAttribute('aria-label', leftTip);
+  left.setAttribute('aria-expanded', String(!ui.sideMin));
+  const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
+  const right = $('#ins-toggle');
+  const key = isMac ? '⌥⌘B' : 'Ctrl+Alt+B';
+  const rightTip = !ui.insMin ? t('ins.collapse', { key }) : n ? t('ins.expandDec', { key, n }) : t('ins.expand', { key });
+  right.title = rightTip;
+  right.setAttribute('aria-label', rightTip);
+  right.setAttribute('aria-expanded', String(!ui.insMin));
+  const badge = $('#ins-count');
+  badge.hidden = !n;
+  badge.textContent = n ? String(n) : '';
+}
+
+function togglePanel(which: 'side' | 'ins') {
+  if (which === 'side') { ui.sideMin = !ui.sideMin; store('oma.sideMin', ui.sideMin); }
+  else { ui.insMin = !ui.insMin; store('oma.insMin', ui.insMin); }
+  applyPanels();
+  if (S) renderSidebar();
 }
 
 /* ---------- chat ---------- */
@@ -1923,6 +1983,7 @@ function renderAll(force = false) {
   // Don't overwrite the preview while Settings is open.
   if (!ui.settingsShown) applyFont(S.settings.fontFamily, S.settings.fontSize);
   if (langChanged) force = true;
+  applyPanels();
   renderSidebar();
   renderUsage();
   renderMemSync();
@@ -2020,6 +2081,8 @@ async function act(el: HTMLElement, e: Event) {
     case 'view': go({ view: el.dataset.v as View }); break;
     case 'worker-filter': go({ view: 'worker', wOpen: false, wFilter: (el.dataset.v || null) as WorkerFilter | null }); break;
     case 'open-settings': openSettings(); break;
+    case 'side-toggle': togglePanel('side'); break;
+    case 'ins-toggle': togglePanel('ins'); break;
     case 'reveal-memory': await call('open:path', `${S!.settings.home}/memory`); break;
     case 'reveal-claude': if (ui.claude) await call('open:path', ui.claude.home); break;
     case 'ctx-menu': {
@@ -2356,6 +2419,8 @@ function init() {
   document.addEventListener('keydown', (e) => {
     const el = e.target as HTMLElement;
     if (popKeys(e)) return;
+    // Ctrl/Cmd+B puts the left sidebar away, with Alt the right one. Not while Settings covers them.
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyB' && !ui.settingsShown) { e.preventDefault(); togglePanel(e.altKey ? 'ins' : 'side'); return; }
     if (el.id === 'set-font' && e.key === 'ArrowDown') { e.preventDefault(); void openFontPicker(el as HTMLInputElement, true); return; }
     if (el.classList.contains('step-v') && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); stepValue(el.id, e.key === 'ArrowUp' ? 1 : -1); return; }
     if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && el.dataset?.enter) {
@@ -2460,6 +2525,11 @@ function init() {
     if (S) void playSound(S.settings.sound, S.settings.soundVolume, S.settings.customSound);
     document.querySelector('.sec-dec')?.classList.add('blink');
     $('#dec-count')?.classList.add('pulse');
+    // The right sidebar stays hidden when a decision arrives; its button's count pulses instead.
+    const badge = $('#ins-count');
+    badge.classList.remove('pulse');
+    void badge.offsetWidth;
+    badge.classList.add('pulse');
     setTimeout(() => { document.querySelector('.sec-dec')?.classList.remove('blink'); }, 3500);
   });
   window.addEventListener('focus', () => renderAll());
