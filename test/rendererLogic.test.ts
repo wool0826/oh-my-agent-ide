@@ -53,12 +53,17 @@ test('md: [text](url) links, with brackets in the text and parentheses in the UR
   assert.equal(mdHtml('[x](https://a.io/"onmouseover="y)'), '<p>[x](<a data-action="open-url" data-href="https://a.io/">https://a.io/</a>&quot;onmouseover=&quot;y)</p>');
   assert.equal(mdHtml('[<img src=x>](https://a.io)'), `<p>${a('https://a.io', '&lt;img src=x&gt;')}</p>`);
   assert.equal(mdHtml('`[a](https://a.io)`'), '<p><code>[a](https://a.io)</code></p>');
+  assert.equal(mdHtml('[`foo.ts`](https://a.io) 2 [b](https://b.io?x=1&y=_2_)'), `<p>${a('https://a.io', '<code>foo.ts</code>')} 2 ${a('https://b.io?x=1&amp;y=_2_', 'b')}</p>`);
+  assert.equal(mdHtml('\u00000\u0000 [[x](https://a.io)'), `<p>0 [${a('https://a.io', 'x')}</p>`);
+  assert.equal(mdHtml('['.repeat(20000)).length, 20007);
 });
 
 test('md: quotes, rules and bold italics', () => {
   assert.equal(mdHtml('> quoted **text**\n> - item\n\nafter'), '<blockquote><p>quoted <b>text</b></p><ul><li>item</li></ul></blockquote><p>after</p>');
   assert.equal(mdHtml('one\n\n---\n\ntwo'), '<p>one</p><hr><p>two</p>');
   assert.equal(mdHtml('***'), '<hr>');
+  assert.equal(mdHtml('> > deep'), '<blockquote><blockquote><p>deep</p></blockquote></blockquote>');
+  assert.match(mdHtml('| a | b |\n|---|---|\n| 1 | 2 |'), /^<div class="md-table">/);
   assert.equal(mdHtml('***both***'), '<p><b><i>both</i></b></p>');
 });
 

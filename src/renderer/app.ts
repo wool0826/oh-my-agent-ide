@@ -536,6 +536,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     if (box === 'ws' && ui.wSel !== target) { if (err) toast(err, true); return; }
     setSendErr(box, err ?? '');
     if (err) return;
+    if (thread) scrollQuietly(thread, thread.scrollHeight);
     if (ui.reply[box] === reply) { ui.reply[box] = null; renderReply(box); }
     // What was typed while it went stays.
     if (input.value === typed) input.value = '';

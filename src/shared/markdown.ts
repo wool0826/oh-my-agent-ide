@@ -22,7 +22,8 @@ function emphasis(h: string) {
 /** Where the bracket or parenthesis opened at `at` closes, counting pairs inside; -1 when it does not on this line. */
 function closing(h: string, at: number, open: string, close: string, stop: RegExp) {
   let depth = 0;
-  for (let j = at; j < h.length && !stop.test(h[j]); j++) {
+  // Capped, so a long line of unclosed brackets does not cost a scan to its end for each one.
+  for (let j = at; j < h.length && j - at < 2000 && !stop.test(h[j]); j++) {
     if (h[j] === open) depth++;
     else if (h[j] === close && --depth === 0) return j;
   }
@@ -56,12 +57,12 @@ function mdLinks(h: string, links: string[]) {
 
 /** Links, bold and italics in escaped text; `code` spans are kept as they are. */
 function spans(h: string) {
-  return h.split(/(`[^`\n]+`)/).map((part, i) => {
-    if (i % 2 === 1) return `<code>${part.slice(1, -1)}</code>`;
-    const links: string[] = [];
-    const x = linkify(emphasis(mdLinks(part.replace(/\u0000/g, ''), links)));
-    return x.replace(/\u0000(\d+)\u0000/g, (_, n) => links[Number(n)]);
-  }).join('');
+  // Code spans become \u0001n\u0001 first, so link text may hold them ("[`foo.ts`](…)") and nothing touches their inside.
+  const codes: string[] = [];
+  const h0 = h.replace(/[\u0000\u0001]/g, '').replace(/`([^`\n]+)`/g, (_, c) => `\u0001${codes.push(`<code>${c}</code>`) - 1}\u0001`);
+  const links: string[] = [];
+  const x = linkify(emphasis(mdLinks(h0, links)));
+  return x.replace(/\u0000(\d+)\u0000/g, (_, n) => links[Number(n)]).replace(/\u0001(\d+)\u0001/g, (_, n) => codes[Number(n)]);
 }
 
 const LIST = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/;
