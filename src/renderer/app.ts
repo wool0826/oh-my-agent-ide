@@ -535,23 +535,23 @@ function renderSidebar() {
     const x = task(d.taskId);
     // Why it is asked, the same text as on the card and in the notification; the whole of it in the tooltip.
     const small = d.reason ? `${d.workerId ?? 'Dispatcher'} · ${d.reason.why}` : [d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', ');
-    return `<div class="row" data-action="goto-decision" data-id="${d.id}"${d.reason ? ` title="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(d.summary?.what || d.title, 60))}</b><small>${esc(small)}</small></span></div>`;
+    return `<div tabindex="0" role="button" class="row" data-action="goto-decision" data-id="${d.id}"${d.reason ? ` title="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(d.summary?.what || d.title, 60))}</b><small>${esc(small)}</small></span></div>`;
   }).join('');
   const workerRow = (w: Worker, grouped = false) => {
     const x = lastTask(w);
     const what = x?.title ?? w.title;
     const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
-    return `<div class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}" data-ctx="worker"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span>${workerActs(w)}</div>`;
+    return `<div tabindex="0" role="button" class="row${selCls(w.id)}" data-action="open-worker" data-id="${w.id}" data-ctx="worker"${w.status === 'error' ? ` title="${esc(w.statusText)}"` : ''}>${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small></span>${workerActs(w)}</div>`;
   };
   // Running Workers get one area per repository; the heading carries the repository's name and how many run in it.
   const runRows = groupByRepo(running, (w) => w.repo).map((g) =>
     `<div class="rg"><div class="rg-h">${ic('repo', 'box')}<b>${esc(g.repo ?? t('general'))}</b><span class="n">${g.items.length}</span></div>${g.items.map((w) => workerRow(w, true)).join('')}</div>`).join('');
   const errRows = failed.map((w) => workerRow(w)).join('');
-  const prRows = prs.map((x) => `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
+  const prRows = prs.map((x) => `<div tabindex="0" role="button" class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
   const qRows = queued.map((x) => {
     const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''}, ${queuedLabel(x)}`;
     const why = queueWhy(t, x, queueCtx());
-    return `<div class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}"${why ? ` title="${esc(queueWhyText(why))}"` : ''}>${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span>${cancelX(x)}</div>`;
+    return `<div tabindex="0" role="button" class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}"${why ? ` title="${esc(queueWhyText(why))}"` : ''}>${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span>${cancelX(x)}</div>`;
   }).join('');
   const qTitle = `${t('side.queue')}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
   const any = decRows || runRows || prRows || qRows || errRows;
@@ -559,8 +559,8 @@ function renderSidebar() {
   // A filter's row is selected while the Worker list it filters is on screen.
   const filterCls = (f: WorkerFilter, n: number) => `${n ? '' : ' zero'}${ui.view === 'worker' && !ui.wOpen && ui.wFilter === f ? ' sel' : ''}`;
   const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
-    <div class="row${filterCls('today', doneToday)}" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span>${doneToday ? `<button class="disc" data-action="done-toggle" aria-expanded="${ui.doneOpen}" title="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}" aria-label="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>` : ''}</div>${doneToday && ui.doneOpen ? doneList(doneTasks) : ''}
-    <div class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
+    <div tabindex="0" role="button" class="row${filterCls('today', doneToday)}" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span>${doneToday ? `<button class="disc" data-action="done-toggle" aria-expanded="${ui.doneOpen}" title="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}" aria-label="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>` : ''}</div>${doneToday && ui.doneOpen ? doneList(doneTasks) : ''}
+    <div tabindex="0" role="button" class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
   if (ui.sideMin) {
     // One glyph per section with its count; a section with nothing in it is left out, History always shows.
@@ -592,7 +592,7 @@ function doneList(done: Task[]) {
   const rows = recentlyFinished(done).map((x) => {
     const line = doneLine(x);
     const at = new Date(x.finishedAt!).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `<div class="row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" title="${esc(`${x.title}\n${line}`)}"><span class="t"><b>${esc(x.title)}</b><small>${esc(line)}</small></span><time>${at}</time></div>`;
+    return `<div tabindex="0" role="button" class="row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" title="${esc(`${x.title}\n${line}`)}"><span class="t"><b>${esc(x.title)}</b><small>${esc(line)}</small></span><time>${at}</time></div>`;
   }).join('');
   const more = done.length > 5 ? `<button class="linkbtn" data-action="worker-filter" data-v="today">${t('side.doneAll', { n: done.length })}</button>` : '';
   return `<div class="sub">${rows}${more}</div>`;
@@ -878,7 +878,7 @@ function renderChat(force = false, older = false) {
     last = ts;
     html += n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
   }
-  if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><span>${t('chat.emptyBody')}</span></div>`;
+  if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b></div>`;
   if (s.dispatcher.busy) html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(s.dispatcher.statusText ? oneLine(s.dispatcher.statusText, 80) : '')}</div>`;
   ui.chatSeen = tail;
   setThread(th, html, nearBottom || force, older);
@@ -1160,8 +1160,8 @@ function renderWorkerList() {
   arch.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   const li = (w: Worker) => {
     const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
-    return `<div class="li${ui.wSel === w.id ? ' sel' : ''}${w.status === 'archived' ? ' dim' : ''}" data-action="select-worker" data-id="${w.id}">${workerIcon(w)}
-      <span class="m"><b>${esc(w.id)} ${esc(x?.title ?? w.title)}</b><span>${esc([w.repo ?? t('general'), modelLabel(w.model), acctLabel(w.accountId), w.statusText && w.status === 'running' ? w.statusText : ''].filter(Boolean).join(', '))}</span></span>
+    return `<div tabindex="0" role="button" class="li${ui.wSel === w.id ? ' sel' : ''}${w.status === 'archived' ? ' dim' : ''}" data-action="select-worker" data-id="${w.id}">${workerIcon(w)}
+      <span class="m"><b>${esc(w.id)} ${esc(x?.title ?? w.title)}</b><span>${esc([w.repo ?? t('general'), modelLabel(w.model), w.accountId && S?.accounts.some((a) => a.id === w.accountId) ? acctLabel(w.accountId) : '', w.statusText && w.status === 'running' ? w.statusText : ''].filter(Boolean).join(', '))}</span></span>
       <span class="r">${w.status !== 'archived' ? ring(w.contextTokens / CONTEXT_WINDOW) + k(w.contextTokens) : ''}${statusPill(w)}</span></div>`;
   };
   if (!s.workers.length) {
@@ -1467,13 +1467,13 @@ function renderRepos() {
   const main = $('#repo-main');
   const addBtn = (cls: string) => `<button class="btn ${cls}" data-action="repo-add-open"${ui.repoAdd ? ' disabled' : ''}>${t('repo.add')}</button>`;
   if (!s.repos.length) {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b><span>${t('repo.emptyBody')}</span>${addBtn('def')}</div>`;
+    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('def')}</div>`;
   } else keepScroll(main, () => {
     main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
-      return `<div class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
+      return `<div tabindex="0" role="button" class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}</div>`;
   });
   const ins = $('#repo-ins');
@@ -1586,7 +1586,7 @@ function renderMemory() {
       ? ui.memHits.map((h) => `<div class="hit" data-action="mem-select" data-id="${esc(h.path)}"><small>${esc(h.path)}:${h.line}</small><span>${esc(h.text)}</span></div>`).join('') + moreBtn('mem-hits', ui.memTotal - ui.memHits.length, PAGE.memHits)
       : `<div class="empty-view"><span>${t('mem.noHits')}</span></div>`;
   } else {
-    list.innerHTML = ui.memFiles.map((f) => `<div class="li${ui.memSel === f.path ? ' sel' : ''}" data-action="mem-select" data-id="${esc(f.path)}">${memIcon(f.kind)}<span class="m"><b>${esc(f.title)}</b><span>${esc(f.path)}</span></span><span class="r">${hhmm(f.updatedAt)}</span></div>`).join('')
+    list.innerHTML = ui.memFiles.map((f) => `<div tabindex="0" role="button" class="li${ui.memSel === f.path ? ' sel' : ''}" data-action="mem-select" data-id="${esc(f.path)}">${memIcon(f.kind)}<span class="m"><b>${esc(f.title)}</b><span>${esc(f.path)}</span></span><span class="r">${hhmm(f.updatedAt)}</span></div>`).join('')
       || `<div class="empty-view">${sym('s-sparkle')}<b>${t('mem.emptyTitle')}</b></div>`;
   }
   const ins = $('#mem-ins');
@@ -1894,7 +1894,7 @@ function slider(id: string, value: number, label: string) {
 
 function meter(label: string, v: number | null) {
   const w = v ?? 0;
-  return `<span>${label}</span><span class="meter"><i style="width:${w}%"${w >= 80 ? ' class="hot"' : ''}></i></span><span class="mv${w >= 80 ? ' hot' : ''}">${pct(v)}</span>`;
+  return `<span>${label}</span><span class="cap"><i class="${lv(v)}" style="width:${Math.min(100, w)}%"></i></span><span class="mv${w > 80 ? ' hot' : ''}">${pct(v)}</span>`;
 }
 
 function initials(label: string) {
@@ -2244,6 +2244,10 @@ function renderAll(force = false) {
   // Don't overwrite the preview while Settings is open.
   if (!ui.settingsShown) applyFont(S.settings.fontFamily, S.settings.fontSize);
   if (langChanged) force = true;
+  // A focused row is drawn again as a new element; the focus goes to the one that took its place.
+  const focused = document.activeElement instanceof HTMLElement && document.activeElement.matches('div[data-action][tabindex]') ? document.activeElement : null;
+  const focusKey = focused ? `div[data-action="${focused.dataset.action}"][tabindex]${focused.dataset.id ? `[data-id="${CSS.escape(focused.dataset.id)}"]` : ''}${focused.dataset.v ? `[data-v="${CSS.escape(focused.dataset.v)}"]` : ''}` : '';
+  const focusRoot = focused?.closest<HTMLElement>('.sidebar, .view');
   applyPanels();
   renderSidebar();
   renderUsage();
@@ -2253,6 +2257,7 @@ function renderAll(force = false) {
   if (ui.view === 'worker') { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
   if (ui.view === 'repo') renderRepos();
   if (ui.view === 'memory' && force) renderMemory();
+  if (focused && !focused.isConnected && document.activeElement === document.body) focusRoot?.querySelector<HTMLElement>(focusKey)?.focus({ preventScroll: true });
 }
 
 function openWorker(id: string) {
@@ -2732,6 +2737,8 @@ function init() {
   document.addEventListener('keydown', (e) => {
     const el = e.target as HTMLElement;
     if (popKeys(e)) return;
+    // A row that acts on a click does the same on Enter or Space.
+    if ((e.key === 'Enter' || e.key === ' ') && !e.isComposing && el.matches?.('div[data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
     // Ctrl/Cmd+B puts the left sidebar away, with Alt the right one. Not while Settings covers them.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyB' && !ui.settingsShown) { e.preventDefault(); togglePanel(e.altKey ? 'ins' : 'side'); return; }
     if (el.id === 'set-font' && e.key === 'ArrowDown') { e.preventDefault(); void openFontPicker(el as HTMLInputElement, true); return; }

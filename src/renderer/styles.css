@@ -26,7 +26,7 @@ body { --font-sans: var(--font); }
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { background: var(--bg-backdrop); color: var(--text-primary); font-family: var(--font); font-size: var(--fs-body); line-height: var(--lh-ui); -webkit-font-smoothing: antialiased; user-select: none; }
 p { margin: 0; }
-code { font-family: var(--font-mono); font-size: .9em; background: var(--surface-code-inline); padding: 1px var(--space-4); border-radius: var(--radius-xs); }
+code { font-family: var(--font-mono); font-size: max(.9em, var(--fs-caption2)); background: var(--surface-code-inline); padding: 1px var(--space-4); border-radius: var(--radius-xs); }
 pre { font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code); background: var(--surface-code); padding: var(--space-8) var(--space-10); border-radius: var(--radius-sm); overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: var(--space-4) 0; user-select: text; }
 svg.sym { width: 1em; height: 1em; flex: none; }
 a { color: var(--text-link); text-decoration: none; cursor: pointer; }
@@ -481,7 +481,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .pane { display: flex; flex-direction: column; gap: var(--space-24); }
 .pane h2 { margin: 0; font-size: var(--fs-display); font-weight: 700; line-height: var(--lh-title); }
 .scap { margin: 0 var(--space-4) var(--space-6); font-size: var(--fs-caption); font-weight: 600; color: var(--text-secondary); display: flex; gap: var(--space-8); align-items: baseline; }
-.scap small { font-weight: 500; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.scap small { font-size: var(--fs-caption2); font-weight: 500; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .sgrp { background: var(--surface-card); border-radius: var(--radius-lg); box-shadow: var(--rim); display: flex; flex-direction: column; }
 .sgrp > * + * { border-top: .5px solid var(--border-subtle); }
 .srow { display: flex; align-items: center; gap: var(--space-8); min-height: 46px; padding: 7px 14px; }
@@ -527,11 +527,9 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .acc-card.editing .acc-main { flex-basis: 340px; }
 .acc-edit .inp { width: 180px; height: var(--control-md); }
 .acc-meters { flex: 1 1 220px; display: grid; grid-template-columns: 22px minmax(0, 1fr) 36px; align-items: center; column-gap: var(--space-8); row-gap: var(--space-6); font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.meter { height: 5px; border-radius: 3px; background: var(--meter-track); overflow: hidden; }
-.meter i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
-.meter i.hot { background: var(--meter-warn); }
+.acc-meters .cap { height: 5px; }
 .mv { text-align: right; }
-.mv.hot { color: var(--warning-text); font-weight: 600; }
+.mv.hot { color: var(--danger-text); font-weight: 600; }
 .acc-more { position: relative; flex: none; }
 .amenu { position: absolute; right: 0; top: 36px; z-index: var(--z-menu); min-width: 200px; padding: var(--space-6); border-radius: var(--radius-lg); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-4); display: flex; flex-direction: column; animation: pop-in var(--dur-fast) var(--ease-out); }
 .amenu button { display: flex; align-items: center; gap: var(--space-6); height: var(--control-md); padding: 0 var(--space-12) 0 28px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-primary); font-size: var(--fs-body); text-align: left; cursor: default; white-space: nowrap; }
@@ -801,3 +799,11 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .row, .snav-i { transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .send, .tbtn, .foot-btn { transition: scale var(--dur-instant) var(--ease-out), color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); }
 .btn:active:not(:disabled), .send:active:not(:disabled), .tbtn:active, .foot-btn:active, .mact:active { scale: .95; }
+
+/* ---------- keyboard and pointer reach ---------- */
+/* Rows that act on a click take the focus too (tabindex in the markup); Enter and Space press them (app.ts). */
+.row:focus-visible, .li:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.allclear .goto:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+/* The small round X keeps its look and gets a larger place to hit. */
+.clear-x { position: relative; }
+.clear-x::after { content: ""; position: absolute; inset: -5px; }
