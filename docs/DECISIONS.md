@@ -461,3 +461,11 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **When it is not offered:** an action under an always-ask rule is asked every time, which is what the rule means. So is a shell line that chains, pipes, redirects or substitutes commands, since its first word says little about what runs.
     - **Always-ask rules in Settings → General:** one switch per rule (force push, push to a protected branch, PR merge, dropping a table, DELETE without WHERE, production database, Kubernetes, infrastructure, deployment, deleting a repository or release, deleting the root or home folder), all on by default. A rule switched off leaves the call to auto mode's own judgement.
     - **Notification buttons** stay Allow and Deny: three buttons with a scope to read do not fit a toast.
+120. **The app says when a newer version exists.**
+    - **Why:** there was no way to learn of a new version short of building one. Each version was built and installed by hand.
+    - **The check** (`main/update.ts`): one anonymous GET of the public repository's latest release, 20 seconds after launch and every six hours. It sends nothing about the user or the app's data. No releases yet (404) or a rate limit simply means no answer.
+    - **What counts** (`shared/update.ts`): a published release (not a draft or pre-release) whose tag is three plain numbers greater than the running version.
+    - **What the user sees:** a dot on the gear, "Get 0.5.0" beside the version in Settings, and one notification. The link opens the release page in the browser.
+    - **No automatic install.** The installer is unsigned, and an app that downloads and runs an unsigned installer by itself is a worse habit than a link. Auto-update can follow code signing.
+    - **Publishing:** `npm run release` uploads the installer of the current version from `release/` as a GitHub release with `gh`. It is run by hand after `npm run dist:win`.
+    - **Off switch:** "Check for new versions" in Settings → General.

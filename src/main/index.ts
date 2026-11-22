@@ -32,6 +32,8 @@ import { notifyText } from '../shared/askWhy';
 import { workerDecisions } from '../shared/inbox';
 import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
 import { hasTray, showWindow, updateTray } from './tray';
+import { startUpdateCheck, checkUpdate, updateInfo } from './update';
+import { notifyInfo } from './notify';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -42,6 +44,12 @@ let trayHinted = false;
 
 /** The user's answer to a decision, from the inbox or a notification button. Set once the handlers exist. */
 let answerByUser: (id: string, ans: string) => void = () => {};
+
+/** A newer release was found: the gear and Settings show it, and one notification says so. */
+function onUpdate(u: { version: string }) {
+  pushState();
+  notifyInfo(t('upd.title', { v: u.version }), t('upd.body'));
+}
 
 function quitApp() {
   quitting = true;
@@ -87,6 +95,7 @@ function snapshot(): AppState {
     automations: automations.list(),
     runs: runs.views(),
     memorySync: memorySync(),
+    update: updateInfo(),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }
@@ -338,7 +347,9 @@ function registerIpc() {
       || (patch.effortPerTask !== undefined && patch.effortPerTask !== before.effortPerTask);
     const moreWorkers = patch.maxWorkers !== undefined && patch.maxWorkers > before.maxWorkers;
     const remoteChanged = patch.memoryRemote !== undefined && patch.memoryRemote.trim() !== before.memoryRemote.trim();
+    const checkOn = patch.updateCheck === true && !before.updateCheck;
     updateSettings(patch);
+    if (checkOn) void checkUpdate(onUpdate);
     syncTray();
     syncLoginItem();
     if (langChanged) dispatcher.refreshContext();
@@ -418,6 +429,7 @@ async function boot() {
   startPrMonitor();
   // A Worker that waits too long for an answer gives its slot to the queue (decision 118).
   setInterval(() => workers.sweepWaiting(), 30_000);
+  startUpdateCheck(onUpdate);
   automations.start((text) => dispatcher.send(text));
   setInterval(retryAfterLimits, 2 * 60_000).unref();
   scheduleLimitRetry();

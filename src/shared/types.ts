@@ -273,6 +273,8 @@ export interface SettingsView {
   waitSlotMinutes: number;
   /** Always-ask rules the user switched off (keys of shared/grants.ts ASK_RULES). */
   askOff: string[];
+  /** Look for a newer release on GitHub. */
+  updateCheck: boolean;
   /** UI font. Empty = system font. Several can be listed, separated by commas. */
   fontFamily: string;
   /** Base text size (px). Other sizes scale with it. */
@@ -331,6 +333,8 @@ export interface RunView {
 
 export interface AppState {
   ready: boolean;
+  /** A newer release than the one running, when the check found one. */
+  update?: { version: string; url: string } | null;
   setupNeeded: boolean;
   settings: SettingsView;
   accounts: AccountView[];

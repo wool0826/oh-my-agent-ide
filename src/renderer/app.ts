@@ -769,6 +769,8 @@ function applyPanels() {
   left.setAttribute('aria-label', leftTip);
   left.setAttribute('aria-expanded', String(!ui.sideMin));
   const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
+  // The gear carries a dot while a newer release waits.
+  document.querySelector('.foot-btn[data-action="open-settings"]')?.classList.toggle('has-update', !!S?.update);
   const find = $('#cmdk-btn');
   find.title = t('cmdk.tip', { key: isMac ? '⌘K' : 'Ctrl+K' });
   find.setAttribute('aria-label', find.title);
@@ -2201,7 +2203,8 @@ function settingsHtml() {
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
       ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 1, 90, t('set.archive')))}
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
-      ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}`)}${grp(
+      ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
+      ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}`)}${grp(
       ASK_RULES.map((r) => row(cap1(t(r)), `ask-${r}`, `<input class="switch ask-rule" id="ask-${r}" data-rule="${r}" type="checkbox" ${st.askOff.includes(r) ? '' : 'checked'}>`)).join(''), t('set.alwaysAsk'))}`;
 
   const display = `${grp(`
@@ -2249,7 +2252,7 @@ function settingsHtml() {
       <nav class="snav" aria-label="${t('set.title')}">
         <label class="ssearch">${sym('s-search')}<input id="set-q" type="search" placeholder="${t('set.search')}" aria-label="${t('set.search')}" value="${esc(ui.setQ)}"></label>
         ${PANES.map((p) => `<button class="snav-i${ui.pane === p.id ? ' on' : ''}" data-action="pane" data-id="${p.id}"${ui.pane === p.id ? ' aria-current="page"' : ''}>${sym(p.glyph)}<span>${t(p.key)}</span>${p.id === 'accounts' && s.setupNeeded ? '<i class="dot"></i>' : ''}</button>`).join('')}
-        <span class="ver">${ui.version ? `v${esc(ui.version)}` : ''}</span>
+        <span class="ver"><span id="ver-n">${ui.version ? `v${esc(ui.version)}` : ''}</span>${s.update ? `<a class="upd" tabindex="0" role="link" data-action="open-url" data-href="${esc(s.update.url)}">${t('upd.get', { v: s.update.version })}</a>` : ''}</span>
       </nav>
       <main class="spanes"><div class="sinner">${pane('accounts', accounts)}${pane('general', general)}${pane('display', display)}${pane('alerts', alerts)}${pane('memory', memory)}${pane('models', models)}</div></main>
     </div>
@@ -2310,7 +2313,7 @@ function openSettings(pane?: Pane) {
   filterPanes();
   root.hidden = false;
   document.body.classList.add('modal');
-  if (!ui.version) void call<string>('app:version').then((v) => { if (v) { ui.version = v; const el = root.querySelector('.ver'); if (el) el.textContent = `v${v}`; } });
+  if (!ui.version) void call<string>('app:version').then((v) => { if (v) { ui.version = v; const el = root.querySelector('#ver-n'); if (el) el.textContent = `v${v}`; } });
   void installedFonts().then(() => { const f = document.getElementById('set-font') as HTMLInputElement | null; if (f) markFont(f); });
 }
 
@@ -2423,6 +2426,7 @@ function readSettingsForm() {
     notifications: ($('#set-noti') as HTMLInputElement).checked,
     background: ($('#set-bg') as HTMLInputElement).checked,
     openAtLogin: ($('#set-login') as HTMLInputElement).checked,
+    updateCheck: ($('#set-upd') as HTMLInputElement).checked,
     askOff: [...document.querySelectorAll<HTMLInputElement>('.ask-rule')].filter((x) => !x.checked).map((x) => x.dataset.rule ?? ''),
     sound: v('set-sound') as SoundName,
     customSound: v('set-sfile'),

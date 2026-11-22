@@ -56,6 +56,7 @@ export const DEFAULTS: SettingsView = {
   maxWorkers: MAX_WORKERS_DEFAULT,
   waitSlotMinutes: WAIT_SLOT_DEFAULT,
   askOff: [],
+  updateCheck: true,
   fontFamily: '',
   fontSize: FONT_SIZE_DEFAULT,
   claudeRules: true,

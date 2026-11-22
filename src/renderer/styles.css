@@ -950,3 +950,9 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .skel.file:nth-child(3) i { width: 26%; }
 @media (prefers-reduced-motion: reduce) { .skel i { animation: none; } }
 :root[data-motion="reduced"] .skel i { animation: none; }
+
+/* ---------- a newer release ---------- */
+.snav .ver .upd { margin-left: var(--space-8); color: var(--text-link); cursor: pointer; font-weight: 600; }
+.snav .ver .upd:hover { text-decoration: underline; }
+.foot-btn { position: relative; }
+.foot-btn.has-update::after { content: ""; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg-canvas); }
