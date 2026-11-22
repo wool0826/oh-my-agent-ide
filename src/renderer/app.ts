@@ -309,7 +309,10 @@ export async function act(el: HTMLElement, e: Event) {
       document.querySelector<HTMLButtonElement>(`[data-action="plan-toggle"][data-id="${CSS.escape(id)}"]`)?.focus();
       break;
     }
-    case 'open-url': e.preventDefault(); await call('open:external', el.dataset.href); break;
+    case 'open-url': e.preventDefault();
+      // A drag that selected text and ended on the link copies it; it does not open it.
+      if (String(getSelection() ?? '')) break;
+      await call('open:external', el.dataset.href); break;
     case 'open-file': e.preventDefault(); await call('open:path', el.dataset.path); break;
     case 'reveal': e.preventDefault(); await call('reveal:path', el.dataset.path); break;
     case 'unattach': {
@@ -786,6 +789,20 @@ export function init() {
     const r = await tryCall('chat:send', replyText('chat', text), files);
     return r.ok ? null : r.error;
   });
+  // Text selected in a conversation is copied when the mouse is let go, as in a terminal; Ctrl/Cmd+C still works.
+  // A click (nothing selected) on a link or button does nothing extra.
+  for (const sel of ['#chat-thread', '#ws-thread']) {
+    const th = $(sel);
+    th.addEventListener('mouseup', (e) => {
+      if (e.button !== 0) return;
+      setTimeout(() => {
+        const s = getSelection();
+        const text = s && !s.isCollapsed ? String(s) : '';
+        if (!text.trim() || !s!.anchorNode || !th.contains(s!.anchorNode)) return;
+        void navigator.clipboard.writeText(text).then(() => toast(t('sel.copied')), () => {});
+      });
+    });
+  }
   $('#chat-send').addEventListener('click', (e) => {
     if ($('#chat-send').classList.contains('stop')) { e.preventDefault(); void call('chat:stop'); }
   });
