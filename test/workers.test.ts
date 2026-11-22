@@ -674,6 +674,14 @@ test('steps: a Codex Worker has the same tools, with their input checked', () =>
   assert.deepEqual(ops, [{ kind: 'set', steps: ['a', 'b'] }, { kind: 'done', step: 2 }]);
 });
 
+test('steps: a follow-up on a finished task starts without the old plan, even one left half marked', () => {
+  const { w, x } = talking(finished);
+  x.steps = [{ title: 'Code', doneAt: now }, { title: 'Test', doneAt: null }];
+  workers.send(w.id, 'dispatcher', 'Also fix the README.');
+  assert.equal(x.status, 'running');
+  assert.equal(x.steps, null);
+});
+
 test('steps: a Worker without an open task has none to set', () => {
   const { w } = talking(finished);
   assert.match(workers.steps(w, { kind: 'set', steps: ['a'] }), /^No task in progress/);

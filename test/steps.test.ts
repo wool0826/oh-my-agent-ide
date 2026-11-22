@@ -25,6 +25,9 @@ test('setSteps: a revised plan keeps the steps already done that it still names'
   markDone(x, 1, AT);
   setSteps(x, ['plan', 'Code the parser', 'Test', 'Open PR']);
   assert.deepEqual(x.steps!.map((s) => s.doneAt), [AT, null, null, null]);
+  // A repeated title takes the done step once.
+  setSteps(x, ['Plan', 'Plan']);
+  assert.deepEqual(x.steps!.map((s) => s.doneAt), [AT, null]);
 });
 
 test('markDone: 1-based, idempotent, and out of range or without steps is an error', () => {
@@ -56,11 +59,16 @@ test('stepView, stepsLine and stepSegments: where the Worker is, also when it fi
   assert.equal(stepSegments([]), null);
 });
 
-test('reopenSteps: a finished plan is cleared when its task goes back to work; a half-done one is kept', () => {
+test('reopenSteps: a finished task going back to work starts without steps; a plan cut short is kept', () => {
   const done = T({ status: 'pr_open' });
   setSteps(done, ['a', 'b']); markDone(done, 1, AT); markDone(done, 2, AT);
   reopenSteps(done, 'running');
   assert.equal(done.steps, null);
+  // Finished with a step left unmarked: still a new round.
+  const left = T({ status: 'done' });
+  setSteps(left, ['a', 'b']); markDone(left, 1, AT);
+  reopenSteps(left, 'running');
+  assert.equal(left.steps, null);
 
   const half = T({ status: 'failed' });
   setSteps(half, ['a', 'b']); markDone(half, 1, AT);

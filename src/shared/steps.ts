@@ -25,8 +25,12 @@ export function setSteps(task: Task, titles: unknown): string | null {
     .map((x) => (x.length > STEP_LEN ? `${x.slice(0, STEP_LEN - 1)}…` : x));
   if (!list.length) return 'Give at least one step.';
   if (list.length > MAX_STEPS) return `Give at most ${MAX_STEPS} steps; merge the small ones.`;
-  const doneBefore = new Map((task.steps ?? []).filter((s) => s.doneAt).map((s) => [key(s.title), s.doneAt]));
-  task.steps = list.map((title) => ({ title, doneAt: doneBefore.get(key(title)) ?? null }));
+  // Each step done before counts once, so a title the new plan repeats is not done twice.
+  const doneBefore = (task.steps ?? []).filter((s) => s.doneAt);
+  task.steps = list.map((title) => {
+    const i = doneBefore.findIndex((s) => key(s.title) === key(title));
+    return { title, doneAt: i < 0 ? null : doneBefore.splice(i, 1)[0].doneAt };
+  });
   return null;
 }
 
@@ -50,11 +54,12 @@ export function stepView(task: Pick<Task, 'steps'> | null | undefined): StepView
 }
 
 /**
- * A task that goes back to work after its plan was finished (review comments, a CI fix, a follow-up) starts a new
- * round without steps. A plan left half done (stopped, then resumed) is kept, so it goes on where it was.
+ * A finished task that goes back to work (review comments, a CI fix, a follow-up) starts a new round without steps,
+ * even when its Worker left some unmarked. A plan cut short (stopped or failed, then resumed) is kept, so it goes on
+ * where it was.
  */
 export function reopenSteps(task: Task, to: Task['status']) {
-  if (to === 'running' && task.status !== 'running' && task.status !== 'waiting' && stepView(task)?.allDone) task.steps = null;
+  if (to === 'running' && (task.status === 'pr_open' || task.status === 'done')) task.steps = null;
 }
 
 /** The tool's reply and the Dispatcher's line after a change. */
