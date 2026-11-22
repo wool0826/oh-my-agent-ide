@@ -42,12 +42,13 @@ test('prPoll: one query per host reads every PR, grouped by repository', () => {
   assert.deepEqual([...gh.keys.keys()], ['r0.p1', 'r0.p2', 'r1.p7']);
 
   const out = readPrStates(JSON.stringify({ data: { r0: { p1: { state: 'MERGED', headRefName: 'agent/t-1' }, p2: { state: 'OPEN', headRefName: 'b' } }, r1: { p7: null } } }), gh.keys);
-  assert.deepEqual(Object.fromEntries(out), {
+  assert.deepEqual(Object.fromEntries(out!), {
     'https://github.com/o/a/pull/1': { state: 'MERGED', headRefName: 'agent/t-1' },
     'https://github.com/o/a/pull/2': { state: 'OPEN', headRefName: 'b' },
   });
-  assert.equal(readPrStates('[]', gh.keys).size, 0);
-  assert.equal(readPrStates('not json', gh.keys).size, 0);
+  assert.equal(readPrStates('[]', gh.keys), null);
+  assert.equal(readPrStates('not json', gh.keys), null);
+  assert.equal(readPrStates(JSON.stringify({ data: { r0: null } }), gh.keys)!.size, 0);
 });
 
 test('prPoll: eachLimited runs at most the limit at once and every item once', async () => {

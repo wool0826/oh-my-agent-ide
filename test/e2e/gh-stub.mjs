@@ -44,6 +44,20 @@ try {
   } else if (args[0] === 'auth' && args[1] === 'status') {
     const host = args[args.indexOf('--hostname') + 1];
     if ((db.signedOut ?? []).includes(host)) { process.stderr.write(`You are not logged into any GitHub hosts on ${host}.`); code = 1; }
+  } else if (args[0] === 'api' && args[1] === 'graphql') {
+    // The PR monitor's state query: `rN: repository(owner: "o", name: "r") { pN: pullRequest(number: N) {...} ... }`.
+    const query = (args.find((a) => a.startsWith('query=')) ?? '').slice(6);
+    const host = process.env.GH_HOST || 'github.com';
+    const data = {};
+    for (const part of query.split(/(?=r\d+: repository\()/).slice(1)) {
+      const [, alias, owner, name] = part.match(/^(r\d+): repository\(owner: "([^"]+)", name: "([^"]+)"\)/);
+      data[alias] = {};
+      for (const [, num] of part.matchAll(/p(\d+): pullRequest\(number: \d+\)/g)) {
+        const p = pr(`https://${host}/${owner}/${name}/pull/${num}`);
+        data[alias][`p${num}`] = { state: p.state, headRefName: p.head ?? 'feature' };
+      }
+    }
+    out({ data });
   } else if (args[0] === 'api') {
     out([]);
   } else {

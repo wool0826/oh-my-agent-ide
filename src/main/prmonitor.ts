@@ -288,28 +288,34 @@ let started = false;
 /** Callers waiting for the round in progress (and the one it asked for) to end. */
 const roundWaiters: (() => void)[] = [];
 
-/** The state of every watched PR in one call per host. Null when the call failed: nothing is known. */
-async function readStates(urls: string[]): Promise<Map<string, PrState> | null> {
-  const out = new Map<string, PrState>();
+/**
+ * The state of every watched PR, in one call per host. A PR missing from the map is unknown: its host's call
+ * failed (then `failed` is set), or the answer had no state for it (deleted, no access, or a URL the query skips).
+ */
+async function readStates(urls: string[]): Promise<{ states: Map<string, PrState>; failed: boolean }> {
+  const states = new Map<string, PrState>();
+  let failed = false;
   for (const q of prStateQueries(urls)) {
     const r = await run('gh', ['api', 'graphql', '-f', `query=${q.query}`], { env: { ...ghEnv(), GH_HOST: q.host }, timeoutMs: 60_000 });
     // A PR that is gone makes gh exit 1 while the others are still in the answer.
     const got = readPrStates(r.stdout, q.keys);
-    if (r.code !== 0 && !got.size) {
+    if (!got) {
+      failed = true;
       log.warn('pr states failed', q.host, r.stderr.trim().slice(0, 200));
-      return null;
+      continue;
     }
-    for (const [url, s] of got) out.set(url, s);
+    if (isRateLimited(r.stderr)) failed = true;
+    for (const [url, s] of got) states.set(url, s);
   }
-  return out;
+  return { states, failed };
 }
 
 /**
  * One round. Every round reads all watched PRs' states in one call and settles the merged and closed ones at once.
  * A full round (asked for, or every PR_POLL.full) also reads CI, conflicts and review comments of the open ones,
- * a few PRs at a time. A PR the state call could not read gets the full check in any round.
+ * a few PRs at a time, and checks the PRs the state call could not read (only then: not one call per PR every round).
  */
-export async function checkPrs(opts: { full?: boolean } = {}) {
+export async function checkPrs(opts: { full?: boolean } = {}): Promise<void> {
   if (opts.full) fullAsked = true;
   if (running) { again = true; return; }
   running = true;
@@ -322,18 +328,22 @@ export async function checkPrs(opts: { full?: boolean } = {}) {
     const full = isFullRound(Date.now(), lastFull, fullAsked);
     fullAsked = false;
     if (full) lastFull = Date.now();
-    const states = watches.length ? await readStates(watches.map((x) => x.url)) : new Map<string, PrState>();
-    if (!states) roundFailed = true;
+    const { states, failed } = watches.length ? await readStates(watches.map((x) => x.url)) : { states: new Map<string, PrState>(), failed: false };
+    if (failed) roundFailed = true;
     const rest: PrWatch<Task>[] = [];
     for (const watch of watches) {
-      const s = states?.get(watch.url);
+      const s = states.get(watch.url);
       if (s && s.state !== 'OPEN') {
         try { await settleInTurn(watch, s.state, s.headRefName); } catch (e) { log.warn('pr settle', watch.url, (e as Error).message); }
-      } else if (full || (states && !s)) rest.push(watch);
+      } else if (full) rest.push(watch);
     }
     await eachLimited(rest, PR_POLL.parallel, async (watch) => {
       try { await checkOne(watch); } catch (e) { log.warn('pr check', watch.url, (e as Error).message); }
     });
+  } catch (e) {
+    // Not thrown on: callers fire and forget, and the round still counts as failed for the backoff.
+    roundFailed = true;
+    log.warn('pr round', (e as Error).message);
   } finally {
     running = false;
     failures = roundFailed ? failures + 1 : 0;
@@ -361,6 +371,8 @@ export function checkPrsSoon() {
 
 /** "Check PRs now": a full round at once, whenever the last one was. Resolves (true) once that round is over. */
 export function checkPrsNow(): Promise<boolean> {
+  // Clicked again right after a full round: that one is still news enough, and each full round costs calls per PR.
+  if (!running && Date.now() - lastFull < PR_POLL.focus) return Promise.resolve(true);
   return new Promise((done) => {
     roundWaiters.push(() => done(true));
     void checkPrs({ full: true });

@@ -70,12 +70,15 @@ export function prStateQueries(urls: string[]): { host: string; query: string; k
   return out;
 }
 
-/** The states the query's answer holds, by PR URL. A PR it could not read (deleted, no access) is missing. */
-export function readPrStates(stdout: string, keys: Map<string, string>): Map<string, PrState> {
+/**
+ * The states the query's answer holds, by PR URL. A PR it could not read (deleted, no access) is missing.
+ * Null when there is no answer at all (not JSON, or no `data`): the call failed.
+ */
+export function readPrStates(stdout: string, keys: Map<string, string>): Map<string, PrState> | null {
   const out = new Map<string, PrState>();
   let data: Record<string, Record<string, PrState | null> | null> | undefined;
-  try { data = (JSON.parse(stdout) as { data?: typeof data }).data; } catch { return out; }
-  if (!data) return out;
+  try { data = (JSON.parse(stdout) as { data?: typeof data }).data; } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
   for (const [alias, url] of keys) {
     const [r, p] = alias.split('.');
     const pr = data[r]?.[p];
