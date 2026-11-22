@@ -74,7 +74,6 @@
     <span class="pill orange" id="fake-badge" title="OMA_FAKE_AGENT=1" hidden>Fake agents</span>
     <button class="tbtn nodrag" id="cmdk-btn" data-action="cmdk-open" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#s-search"/></svg></button>
     <div class="usage nodrag" id="usage" tabindex="0" aria-label="Usage per account" aria-describedby="usage-pop"></div>
-    <button class="tbtn nodrag" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
   </header>
 
   <!-- chat -->
@@ -123,6 +122,8 @@
     <div class="lst scroll" id="mem-list"></div>
   </main>
   <aside class="inspector view" data-view="memory" id="mem-ins" hidden></aside>
+  <!-- After the right sidebars, so the keyboard reaches it after their content. -->
+  <button class="tbtn" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
 </div>
 
 <div class="settings-win" id="sheet" role="dialog" aria-modal="true" hidden></div>
