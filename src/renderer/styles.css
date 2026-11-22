@@ -865,3 +865,23 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .ckpt-ask b { font-size: var(--fs-caption); font-weight: 600; }
 .ckpt-ask small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ckpt-ask .btn { flex: none; height: 26px; padding: 0 var(--space-12); font-size: var(--fs-caption); }
+
+/* ---------- a Worker's Summary tab ---------- */
+.sum-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-8); }
+.sum-stat { padding: var(--space-10) var(--space-12); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.sum-stat small { font-size: var(--fs-caption2); color: var(--text-secondary); }
+.sum-stat b { font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sum-task { padding: var(--space-12) var(--space-16); border-radius: var(--radius-xl); background: var(--surface-card); box-shadow: var(--rim); display: flex; flex-direction: column; gap: var(--space-6); }
+.sum-task header { display: flex; align-items: baseline; gap: var(--space-8); }
+.sum-task header b { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 600; overflow-wrap: anywhere; }
+.sum-task header .pill { flex: none; }
+.sum-meta { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.sum-ask summary { font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; width: max-content; border-radius: var(--radius-xs); }
+.sum-ask summary:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.sum-prompt { margin-top: var(--space-6); padding: var(--space-8) var(--space-10); border-radius: var(--radius-md); background: var(--surface-sunken); font-size: var(--fs-caption); line-height: var(--lh-body); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; max-height: 240px; overflow: auto; }
+.sum-report { font-size: var(--fs-body); line-height: var(--lh-body); user-select: text; overflow-wrap: anywhere; }
+.sum-report p + p { margin-top: var(--space-6); }
+.sum-report ul, .sum-report ol { margin: var(--space-4) 0; padding-left: var(--space-20); }
+.sum-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4) var(--space-12); font-size: var(--fs-caption); }
+.sum-links a { color: var(--text-link); cursor: pointer; }
+.sum-task .spend { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
