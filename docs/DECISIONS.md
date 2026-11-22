@@ -404,3 +404,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Stopping** ends the whole process tree (`taskkill /T` on Windows, the process group elsewhere), since the command is usually a script that starts the real server. A run the user stopped says "Stopped", not its exit code.
     - **Output** is kept without terminal colour codes, to its last 6000 characters (`appendOutput`); the address is the first one on this machine in it (`localUrl`), with `0.0.0.0` shown as `localhost`.
     - **Left out:** a built-in browser preview. The address opens in the user's browser.
+111. **A task from an issue.**
+    - **Where:** a GitHub repository's inspector lists its open issues (50 at most, the most recently updated first, six shown before "Show more"), read with `gh issue list` when the inspector first shows them and on Refresh. A repository registered from a local folder has no list.
+    - **Assign** sends the Dispatcher one message: the repository, the issue's number, title and link, and the ask to read the issue with its comments first and to have the PR close it (`issueMessage`). The task is then made the way every task is, so routing, plan-first and the queue apply unchanged.
+    - **No new state:** nothing links a task to its issue beyond the text; the PR's "Closes #N" closes it on merge.
+    - **GitHub only:** Linear and other trackers were left out; they need their own sign-in.

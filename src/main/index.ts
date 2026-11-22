@@ -6,7 +6,7 @@ import { ensureHome, paths } from './paths';
 import { store } from './store';
 import { accounts } from './accounts';
 import { initMemory, listMemory, readMemory, writeMemory, searchMemoryPage, revisePreference, remember, memoryEvents, memorySync, syncMemory } from './memory';
-import { registerRepo, removeRepo, updateRepo } from './repos';
+import { registerRepo, removeRepo, updateRepo, listIssues } from './repos';
 import { installPlugin } from './runtime';
 import { answer as answerDecision, onDecisionCreated, onLateAnswer, pruneDecisions, withdraw } from './decisions';
 import { dispatcher, createTask, assignedEvent } from './agents/dispatcher';
@@ -205,6 +205,7 @@ function registerIpc() {
   handle('queue:clear', () => workers.clearQueue('user'));
   handle('worker:diff', (id: string) => workers.diff(id));
   handle('pr:merge', (taskId: string) => mergePr(taskId));
+  handle('repo:issues', (name: string) => listIssues(name));
   handle('worker:archive', (id: string) => { runs.stop(id); return workers.archive(id); });
   handle('run:start', (id: string) => runs.start(id));
   handle('run:stop', (id: string) => runs.stop(id));
