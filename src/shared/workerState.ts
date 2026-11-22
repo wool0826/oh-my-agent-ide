@@ -98,8 +98,11 @@ export function workerLine(say: Say, w: W, last: T | null | undefined, o: { ask?
   }
 }
 
-/** How many Workers are in each state the list's heading counts; archived ones are left out. */
+/**
+ * How many Workers are in each state the list's heading counts. Archived and idle ones are left out, and so are the
+ * ones waiting for the Dispatcher: they hold their slot, so they are not queued, and their pill says what they wait for.
+ */
 export function stateCounts(states: WorkerState[]) {
   const n = (...of: WorkerState[]) => states.filter((s) => of.includes(s)).length;
-  return { ask: n('ask'), run: n('run'), failed: n('failed'), stalled: n('stalled'), queued: n('queued', 'asked'), done: n('pr', 'done') };
+  return { ask: n('ask'), run: n('run'), failed: n('failed'), stalled: n('stalled'), queued: n('queued'), done: n('pr', 'done') };
 }

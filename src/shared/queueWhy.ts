@@ -116,9 +116,10 @@ export function queueLine(say: Say, task: Task, ctx: QueueCtx): QueueLine | null
   }
 
   if (waitsForSlot(task)) {
-    const pos = queuePlace(ctx.tasks, task.id)?.pos ?? 1;
+    // No place when the task is not among ctx.tasks: it is shown as held, never as a second "next".
+    const pos = queuePlace(ctx.tasks, task.id)?.pos ?? null;
     if (canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers)) return soon(pos);
-    return { pos, text: pos === 1 ? say('ql.next') : say('ql.place', { pos, ord: ordinal(pos) }), cancelled: false };
+    return { pos, text: pos === null || pos === 1 ? say('ql.next') : say('ql.place', { pos, ord: ordinal(pos) }), cancelled: false };
   }
 
   const ends = ctx.accounts.map((a) => (a.limitedUntil ? Date.parse(a.limitedUntil) : 0));

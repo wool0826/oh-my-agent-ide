@@ -145,6 +145,8 @@ test('queueLine: a task in line shows its place, and the first one that it is ne
   const free = [T('R1'), slot('Q1', 3)];
   assert.deepEqual(queueLine(en, free[1], ctx(free)), { pos: 1, text: 'starts shortly', cancelled: false });
   assert.equal(queueLine(en, T('A'), ctx([])), null);
+  // A task the list does not hold has no place, so two of them never both read as number 1.
+  assert.equal(queueLine(en, slot('X', 1), ctx([T('R1'), T('R2')]))!.pos, null);
 });
 
 test('queueLine: a task held by a merge or a usage limit has no place in line', () => {

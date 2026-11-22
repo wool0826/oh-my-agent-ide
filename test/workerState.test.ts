@@ -90,8 +90,8 @@ test('a finished Worker shows its one-line result, and one with no news what it 
   assert.equal(workerLine(en, w('archived'), x('done', { summary: 'Done long ago' }), { about }).text, about);
 });
 
-test('the heading counts states: queued includes the ones waiting for the Dispatcher, done includes open PRs', () => {
-  assert.deepEqual(stateCounts(['ask', 'ask', 'run', 'failed', 'queued', 'asked', 'pr', 'done', 'idle', 'stopped']), { ask: 2, run: 1, failed: 1, stalled: 0, queued: 2, done: 2 });
+test('the heading counts states: done includes open PRs, and a Worker waiting for the Dispatcher is not queued', () => {
+  assert.deepEqual(stateCounts(['ask', 'ask', 'run', 'failed', 'queued', 'asked', 'pr', 'done', 'idle', 'stopped']), { ask: 2, run: 1, failed: 1, stalled: 0, queued: 1, done: 2 });
   assert.deepEqual(stateCounts([]), { ask: 0, run: 0, failed: 0, stalled: 0, queued: 0, done: 0 });
 });
 

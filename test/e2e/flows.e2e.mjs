@@ -107,6 +107,7 @@ flow('with one slot, the second task waits and starts when the first ends', { se
   assert.match(side, /1\/1 slots/);
   assert.match(side, /next, when a slot frees/);
   assert.equal(await app.evaluate("document.querySelector('#side .q-row.next .q-pos')?.textContent"), '1');
+  assert.equal(await app.evaluate("document.querySelectorAll('#side .q-slots i').length + ':' + document.querySelectorAll('#side .q-slots i.on').length"), '1:1');
   await app.click(answer('allow'));
   // The first finishes, the second takes the slot and asks in its turn.
   await app.until(`(document.querySelector('${DEC}')?.innerText ?? '').includes('npm run two')`, "the second task's permission card");
