@@ -21,6 +21,8 @@ import { modelLabel as labelFor } from '../../shared/models';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
 import { dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork';
 import { worktreeDiff } from '../gitdiff';
+import { listCheckpoints, restoreCheckpoint, saveCheckpoint } from '../checkpoints';
+import { checkpointLabel } from '../../shared/checkpoints';
 import { notifyInfo } from '../notify';
 import { isAttached, readPath } from '../attachments';
 import { t, langName, limitResetText } from '../i18n';
@@ -167,6 +169,8 @@ class WorkerManager {
   sessions = new Map<string, WorkerSession>();
   /** Review fixes, CI fixes and follow-ups on finished tasks get different result-card wording. */
   private reviewing = new Set<string>();
+  /** Workers whose files were put back to a checkpoint since their last message. */
+  private restored = new Set<string>();
   private ciFixing = new Set<string>();
   private followups = new Set<string>();
   /** Plan-first tasks whose Worker was reminded to present its plan, until it presents one. */
@@ -482,6 +486,32 @@ class WorkerManager {
       if (task && task.status === 'waiting') task.status = 'running';
       store.changed();
     }
+  }
+
+  /**
+   * Save a repository Worker's files before it is handed something, named after it. Not waited for: git finishes
+   * long before the agent's first edit, and a message must not wait on it. Equal states are saved once.
+   */
+  private checkpoint(w: Worker, about: string) {
+    if (!w.repo) return;
+    void saveCheckpoint(w.cwd, w.id, checkpointLabel(about)).catch((e) => log.warn('checkpoint failed', (e as Error).message));
+  }
+
+  checkpoints(workerId: string) {
+    const w = store.worker(workerId);
+    return w?.repo ? listCheckpoints(w.cwd, w.id) : Promise.resolve([]);
+  }
+
+  /** Put a Worker's files back to a checkpoint. Not while it works: the agent would be editing the same files. */
+  async restore(workerId: string, ref: string) {
+    const w = store.worker(workerId);
+    if (!w?.repo) throw new Error(t('ckpt.err.none'));
+    if (w.status === 'running' || w.status === 'starting') throw new Error(t('ckpt.err.busy'));
+    await restoreCheckpoint(w.cwd, w.id, ref);
+    store.log(w.id, 'event', t('log.restored'));
+    // The agent still remembers the files as it left them: its next message says they changed under it.
+    this.restored.add(w.id);
+    store.changed();
   }
 
   async diff(workerId: string) {
@@ -833,6 +863,7 @@ class WorkerManager {
   /** Send the task message, with the task's effort and plan mode in place first; `after` follows it. */
   private startTask(w: Worker, s: WorkerSession, task: Task, after: string[] = []) {
     task.startedAt = nowIso();
+    this.checkpoint(w, task.title);
     s.setEffort(this.effortFor(task));
     // Plan mode must be in place before the task message arrives.
     void s.setMode(needsPlan(task) ? 'plan' : 'auto').then(() => {
@@ -896,6 +927,7 @@ class WorkerManager {
    */
   private deliver(w: Worker, s: WorkerSession, msgs: string[], task = this.currentTask(w)) {
     const out = [...(this.held.get(w.id) ?? []), ...msgs];
+    this.checkpoint(w, out[0] ?? task?.title ?? '');
     const paused = task?.status === 'queued';
     const slot = !!task && waitsForSlot(task);
     if (paused || this.held.has(w.id)) {
@@ -1158,6 +1190,7 @@ class WorkerManager {
   private notes = new Map<string, string[]>();
 
   private withNotes(w: Worker, msg: string) {
+    if (this.restored.delete(w.id)) msg = `[Files restored] The user put the files in your worktree back to an earlier checkpoint. What you remember of them may be out of date: read a file again before you edit it.\n\n${msg}`;
     const ids = this.notes.get(w.id);
     if (!ids?.length) return msg;
     this.notes.delete(w.id);

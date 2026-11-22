@@ -857,3 +857,11 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .memo.auto .meta { min-height: var(--control-md); }
 .memo.auto .acts { opacity: 1; align-items: center; gap: var(--space-8); }
 .memo.auto.off p, .memo.auto.off .meta > span:first-child { color: var(--text-tertiary); }
+
+/* ---------- checkpoints ---------- */
+/* Picking a checkpoint asks here, under the Changes tab's header, before the files are put back. */
+.ckpt-ask { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); animation: rise-in var(--dur-base) var(--ease-out); }
+.ckpt-ask > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ckpt-ask b { font-size: var(--fs-caption); font-weight: 600; }
+.ckpt-ask small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ckpt-ask .btn { flex: none; height: 26px; padding: 0 var(--space-12); font-size: var(--fs-caption); }
