@@ -129,6 +129,8 @@ export interface Task {
   conflictSeen?: string;
   /** Times the Worker was sent failed CI checks to fix. */
   ciFixAttempts?: number;
+  /** One of two attempts at the same task (shared/compare.ts): its group, and the attempt the user picked once they did. */
+  compare?: { group: string; picked?: string | null };
   /** It failed because the user pressed Stop, not because of an error. Shown as stopped, not in red. */
   stopped?: boolean;
 }

@@ -14,6 +14,7 @@ import { workers } from './agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
 import { runs } from './runs';
 import { automations } from './automations';
+import { PICK_MESSAGE, canPick } from '../shared/compare';
 import type { AutoTrigger } from '../shared/types';
 import { startPrMonitor, checkPrs, checkPrsSoon, mergePr } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
@@ -211,6 +212,15 @@ function registerIpc() {
   handle('worker:restore', (id: string, ref: string) => workers.restore(id, ref));
   handle('pr:merge', (taskId: string) => mergePr(taskId));
   handle('repo:issues', (name: string) => listIssues(name));
+  // The user picked one of two attempts: it is told to open its PR, and the comparison is closed for both.
+  handle('compare:pick', (taskId: string) => {
+    const picked = store.task(taskId);
+    if (!picked?.compare || picked.compare.picked || !canPick(picked) || !picked.workerId) return;
+    for (const x of store.data.tasks) if (x.compare?.group === picked.compare.group) x.compare.picked = picked.id;
+    store.chat('event', t('ev.comparePicked', { id: picked.workerId, title: picked.title }));
+    store.changed();
+    return workers.send(picked.workerId, 'user', PICK_MESSAGE);
+  });
   handle('auto:add', (prompt: string, trigger: AutoTrigger) => { automations.add({ prompt, trigger }); });
   handle('auto:toggle', (id: string, on: boolean) => automations.setEnabled(id, on));
   handle('auto:remove', (id: string) => { automations.remove(id); });
