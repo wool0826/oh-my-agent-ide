@@ -380,7 +380,7 @@ export async function act(el: HTMLElement, e: Event) {
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
     case 'repo-select': if (!ui.repoAdding) ui.repoAdd = false; go({ repoSel: id }); renderRepos(); break;
-    case 'repo-add-open': ui.repoAdd = true; renderRepos(); $('#repo-add-url').focus(); break;
+    case 'repo-add-open': ui.repoAdd = true; ui.repoAddError = ''; renderRepos(); $('#repo-add-url').focus(); break;
     case 'repo-add-cancel':
       // During a clone, Cancel stops it; the form stays with what was typed.
       if (ui.repoAdding) { await call('repo:addCancel'); break; }

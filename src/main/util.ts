@@ -17,7 +17,7 @@ export const month = () => today().slice(0, 7);
 export interface RunResult { code: number; stdout: string; stderr: string; missing?: boolean }
 
 /** Run a program without a shell. Never throws; reports failure through `code`. */
-export function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}): Promise<RunResult> {
+export function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<RunResult> {
   let env = opts.env ?? process.env;
   // End-to-end tests put a script in gh's place (test/e2e/gh-stub.mjs), run by this same executable as Node.
   if (cmd === 'gh' && process.env.OMA_GH_STUB) {
@@ -28,12 +28,13 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Nod
   const name = cmd;
   cmd = toolCommand(cmd);
   return new Promise((resolve) => {
-    execFile(cmd, args, {
+    const p = execFile(cmd, args, {
       cwd: opts.cwd,
       env,
       timeout: opts.timeoutMs ?? 10 * 60_000,
       maxBuffer: 32 * 1024 * 1024,
       windowsHide: true,
+      signal: opts.signal,
     }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as any).code === 'number' ? (err as any).code : 1) : 0;
       // "spawn gh ENOENT" says nothing to the user: name what was searched and how to install it instead.
@@ -41,6 +42,9 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Nod
       if ((err as any)?.code === 'ENOENT' && process.platform !== 'win32' && (!opts.cwd || fs.existsSync(opts.cwd))) return resolve({ code, stdout: '', stderr: notFoundMessage(name, String(env.PATH ?? '')), missing: true });
       resolve({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') + (err && !stderr ? String(err.message) : '') });
     });
+    // Nothing is ever typed in: a command that asks for input reads the end at once instead of waiting.
+    p.stdin?.on('error', () => {});
+    p.stdin?.end();
   });
 }
 

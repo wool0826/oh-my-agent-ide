@@ -49,6 +49,8 @@ export interface Repo {
   description: string;
   defaultBranch: string;
   addedAt: string;
+  /** A local folder with no `origin` remote: Workers branch from the local default branch, and nothing is pushed or opened as a PR. */
+  local?: boolean;
   /** Shell command run in each new worktree (install dependencies, copy .env, ...). */
   setup?: string;
   /** Shell command that runs the project (a dev server, the app), started in a Worker's worktree on request. */

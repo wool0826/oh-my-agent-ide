@@ -4,11 +4,11 @@ import { run } from './util';
 import type { DiffFile, DiffView } from '../shared/types';
 
 /** Files changed on the worktree's branch against the default branch, committed or not, plus untracked files. */
-export async function worktreeDiff(defaultBranch: string, dir: string): Promise<DiffView> {
+export async function worktreeDiff(defaultBranch: string, dir: string, local = false): Promise<DiffView> {
   const view: DiffView = { base: defaultBranch, branch: '', files: [], truncated: false };
   if (!fs.existsSync(path.join(dir, '.git'))) return { ...view, error: 'missing' };
   view.branch = (await run('git', ['branch', '--show-current'], { cwd: dir })).stdout.trim();
-  const mb = await run('git', ['merge-base', 'HEAD', `origin/${defaultBranch}`], { cwd: dir });
+  const mb = await run('git', ['merge-base', 'HEAD', local ? defaultBranch : `origin/${defaultBranch}`], { cwd: dir });
   const baseRef = mb.code === 0 ? mb.stdout.trim() : 'HEAD';
   const num = await run('git', ['diff', '--numstat', '-z', '-M', baseRef], { cwd: dir });
   const status = await run('git', ['diff', '--name-status', '-z', '-M', baseRef], { cwd: dir });

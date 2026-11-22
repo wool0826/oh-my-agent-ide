@@ -1136,3 +1136,39 @@ test('a queued task whose archived Worker cannot get its worktree back fails onc
     store.data.repos.splice(store.data.repos.indexOf(repo), 1);
   }
 });
+
+test('local-only repository: the task message has no fetch, push or PR, and a finished task is done on its branch, not a PR (T-0027)', async () => {
+  const { workerPrompt } = await import('../src/main/agents/workerPrompt');
+  store.data.repos.push({ name: 'loc', url: tmp, path: tmp, description: '', defaultBranch: 'trunk', addedAt: now, local: true });
+  try {
+    const w = addWorker({ repo: 'loc' });
+    const x = addTask(w, { kind: 'code', repo: 'loc', branch: 'agent/t-9' });
+    const msg = (workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x);
+    assert.match(msg, /git switch -c agent\/t-9 trunk`/);
+    assert.match(msg, /local only/);
+    assert.doesNotMatch(msg, /git fetch origin|origin\/trunk/);
+    assert.doesNotMatch(workerPrompt(w), /gh pr create/);
+    assert.match(workerPrompt(w), /local only/);
+    workers.ensureSession(w);
+    // A PR line in the report is ignored: there is no remote to have opened it on.
+    report(w, 'RESULT: Built it\nPR: https://github.com/o/x/pull/7');
+    assert.equal(x.status, 'done');
+    assert.equal(x.prUrl, null);
+    assert.equal(x.prState, null);
+    assert.match(x.summary!, /^Built it .*agent\/t-9.*git merge agent\/t-9/);
+  } finally {
+    store.data.repos = store.data.repos.filter((r) => r.name !== 'loc');
+  }
+});
+
+test('a repository with origin keeps the fetch and origin base in its task message', () => {
+  store.data.repos.push({ name: 'rem', url: 'https://github.com/o/rem', path: tmp, description: '', defaultBranch: 'main', addedAt: now });
+  try {
+    const w = addWorker({ repo: 'rem' });
+    const x = addTask(w, { kind: 'code', repo: 'rem', branch: 'agent/t-8' });
+    const msg = (workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x);
+    assert.match(msg, /git fetch origin.*origin\/main/);
+  } finally {
+    store.data.repos = store.data.repos.filter((r) => r.name !== 'rem');
+  }
+});

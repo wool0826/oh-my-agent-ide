@@ -69,6 +69,8 @@ export const ui = {
   /** The Repositories view's add form is open in its right panel, and whether an add is under way (a clone can take minutes). */
   repoAdd: false,
   repoAdding: false,
+  /** Why the last add failed, shown in the form until the next try. */
+  repoAddError: '',
   memSel: null as string | null,
   memFiles: [] as MemoryFile[],
   memHits: null as MemoryHit[] | null,

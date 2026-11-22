@@ -7,12 +7,26 @@ import { paths } from '../paths';
 import { loadSettings } from '../settings';
 import { langName } from '../i18n';
 import { oneLine } from '../util';
+import { store } from '../store';
 import { type Task, type Worker } from '../../shared/types';
 import { question } from './workerText';
 
 /** `codex`: the Worker runs on Codex, which has no AskUserQuestion, no subagents and no Claude Code memory. */
 export function workerPrompt(w: Worker, codex = false) {
   const s = loadSettings();
+  // A repository with no remote: nothing to push and no PR, so the work stays on the task branch.
+  const local = !!(w.repo && store.repo(w.repo)?.local);
+  const deliver = local
+    ? [
+      '- This repository is local only: it has no remote. Do not fetch, push or open a PR, and do not run `gh`.',
+      '- When done, commit your work on the task branch and report with the RESULT line and no PR line; the user merges the branch locally.',
+    ]
+    : [
+      `- When done, commit, push, and open a ready-for-review PR (not a draft) with \`gh pr create\`. Do not request reviewers.${s.githubHost ? ` GH_HOST is set to ${s.githubHost}.` : ''}`,
+      `- Write the PR title and body in the language the repository's recent PRs use; if there is no clear convention, use ${langName()}. The body lists what changed and which tests you ran.`,
+      '- Do not comment on or merge PRs.',
+      '- On "[Review comments]" or "[CI failure]", fix them on the same branch and push.',
+    ];
   return [
     `You are Worker ${w.id} in Oh My Agent IDE. The Dispatcher assigns your tasks; the user only sees results and the decisions that truly need them. Write all progress messages and reports in ${langName()}.`,
     '',
@@ -39,10 +53,7 @@ export function workerPrompt(w: Worker, codex = false) {
     codex
       ? "- Follow the repository's AGENTS.md or CLAUDE.md (read CLAUDE.md yourself if there is one) and its conventions. Run the tests and linters and make them pass."
       : "- Follow the repository's CLAUDE.md and conventions. Run the tests and linters and make them pass.",
-    `- When done, commit, push, and open a ready-for-review PR (not a draft) with \`gh pr create\`. Do not request reviewers.${s.githubHost ? ` GH_HOST is set to ${s.githubHost}.` : ''}`,
-    `- Write the PR title and body in the language the repository's recent PRs use; if there is no clear convention, use ${langName()}. The body lists what changed and which tests you ran.`,
-    '- Do not comment on or merge PRs.',
-    '- On "[Review comments]" or "[CI failure]", fix them on the same branch and push.',
+    ...deliver,
     '',
     'Non-code tasks (research, documents, reports):',
     '- Create the output folder named in the task message and save results there as files (usually markdown).',

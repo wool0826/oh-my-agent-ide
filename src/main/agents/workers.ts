@@ -43,6 +43,7 @@ import { needsPlan, parseResult, taskStarted, workerPrompt } from './workerPromp
 import { clip, GO_ON_MSG, LIMIT_RESET_MSG, MAX_REQUEST_WAKES, planApproved, planNudge, planSummaryRule, question, QUESTION_TAG, REPLY_NOTE, RESUME_MSG, SHELL_OUTPUT_CHARS, SLOT_FREE_MSG, TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
 import { workerCodexTools, workerMemoryDir, workerTools, type StepsOp } from './workerTools';
 import { markDone, mergeProgress, reopenSteps, setSteps, stepsLine, stepView } from '../../shared/steps';
+import { isLocalRepo, localTaskLines } from '../../shared/localRepo';
 
 /** A Worker's session: Claude Code, or Codex for a ChatGPT model. The owner uses what the two have in common. */
 export type WorkerSession = AgentSession | CodexSession | FakeSession;
@@ -476,7 +477,7 @@ class WorkerManager {
     const w = store.worker(workerId);
     const repo = w?.repo ? store.repo(w.repo) : null;
     if (!w || !repo) return null;
-    return worktreeDiff(repo.defaultBranch, w.cwd);
+    return worktreeDiff(repo.defaultBranch, w.cwd, isLocalRepo(repo));
   }
 
   private async answerQuestions(w: Worker, input: Record<string, unknown>, signal: AbortSignal) {
@@ -684,7 +685,13 @@ class WorkerManager {
 
   private finalize(w: Worker, task: Task, text: string, isError: boolean) {
     if (isError) return this.fail(w, task, text);
-    const { summary, prUrl, files } = parseResult(text, w.cwd);
+    const parsed = parseResult(text, w.cwd);
+    const repo = task.repo ? store.repo(task.repo) : null;
+    // A local-only repository has no PR: the result is the branch the work is on, which the user merges.
+    const local = task.kind === 'code' && isLocalRepo(repo) && !!task.branch;
+    const prUrl = local ? null : parsed.prUrl;
+    const summary = local ? `${parsed.summary} ${t('res.localBranch', { branch: task.branch!, base: repo!.defaultBranch })}` : parsed.summary;
+    const { files } = parsed;
     task.updatedAt = nowIso();
     const wasReview = this.reviewing.delete(task.id);
     const wasCi = this.ciFixing.delete(task.id);
@@ -816,8 +823,9 @@ class WorkerManager {
     const head = [`[Task ${task.id}] ${task.title}`];
     if (task.kind === 'code' && repo) {
       head.push(`Repository: ${repo.name} (default branch ${repo.defaultBranch})`);
-      head.push(`Branch: ${task.branch}. Start with \`git fetch origin\` then \`git switch -c ${task.branch} origin/${repo.defaultBranch}\`. If you are already on that branch, continue there.`);
-      const review = selfReviewLine(loadSettings().selfReview, repo.defaultBranch);
+      if (isLocalRepo(repo)) head.push(...localTaskLines(repo, task.branch!));
+      else head.push(`Branch: ${task.branch}. Start with \`git fetch origin\` then \`git switch -c ${task.branch} origin/${repo.defaultBranch}\`. If you are already on that branch, continue there.`);
+      const review = selfReviewLine(loadSettings().selfReview, repo.defaultBranch, isLocalRepo(repo));
       if (review) head.push(review);
     } else {
       head.push(`Output folder: ${path.join(w.cwd, task.id)}`);
@@ -827,6 +835,8 @@ class WorkerManager {
       const dep = store.task(task.afterTaskId);
       if (dep?.prUrl && dep.prState === 'MERGED') head.push(`This task builds on ${dep.prUrl}, which has been merged into the default branch.`);
       else if (dep?.status === 'done') head.push(`This task waited for ${dep.id} "${dep.title}", which finished without a PR: ${dep.summary ?? ''}${dep.files.length ? ` Files: ${dep.files.join(', ')}` : ''}`);
+      // A local-only repository's finished work is on its branch until the user merges it: build on that branch.
+      if (dep?.status === 'done' && dep.branch && isLocalRepo(repo) && task.branch) head.push(`Its work is on branch ${dep.branch}, which may not be merged into ${repo!.defaultBranch} yet: unless it is, start your branch from it (\`git switch -c ${task.branch} ${dep.branch}\`) instead of ${repo!.defaultBranch}.`);
     }
     return `${head.join('\n')}\n\n${task.prompt}`;
   }
@@ -1232,7 +1242,7 @@ class WorkerManager {
     const repo = task.repo ? store.repo(task.repo) : null;
     if (!repo || w.repo !== repo.name) return;
     const wt = fs.existsSync(path.join(w.cwd, '.git')) ? w.cwd : null;
-    const b = await inspectBranch(repo.path, wt, repo.defaultBranch, task.branch);
+    const b = await inspectBranch(repo.path, wt, repo.defaultBranch, task.branch, isLocalRepo(repo));
     if (holdsWork(b)) {
       r.kept = { branch: task.branch, commits: b.commits, dirty: b.dirty, path: wt ?? repo.path };
       store.log(w.id, 'event', t('log.cancelKept', { branch: task.branch }));
@@ -1240,7 +1250,7 @@ class WorkerManager {
     }
     // A Worker busy in the worktree stays on its branch; that branch is the cancelled one only in odd states.
     if (b.checkedOut && this.working(w)) return;
-    await dropBranch(repo.path, wt, repo.defaultBranch, task.branch, b, ghEnv());
+    await dropBranch(repo.path, wt, repo.defaultBranch, task.branch, b, ghEnv(), isLocalRepo(repo));
   }
 
   /**
