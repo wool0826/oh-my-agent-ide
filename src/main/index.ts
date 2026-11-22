@@ -207,6 +207,8 @@ function registerIpc() {
   handle('task:cancel', (id: string) => workers.cancelTask(id, 'user'));
   handle('queue:clear', () => workers.clearQueue('user'));
   handle('worker:diff', (id: string) => workers.diff(id));
+  handle('worker:checkpoints', (id: string) => workers.checkpoints(id));
+  handle('worker:restore', (id: string, ref: string) => workers.restore(id, ref));
   handle('pr:merge', (taskId: string) => mergePr(taskId));
   handle('repo:issues', (name: string) => listIssues(name));
   handle('auto:add', (prompt: string, trigger: AutoTrigger) => { automations.add({ prompt, trigger }); });

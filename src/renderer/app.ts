@@ -15,6 +15,7 @@ import { canMerge } from '../shared/prMerge';
 import { lastLines } from '../shared/runOutput';
 import { ghRepoRef, issueMessage, type Issue } from '../shared/issues';
 import { parseTime } from '../shared/automations';
+import type { Checkpoint } from '../shared/checkpoints';
 import { groupByRepo, recentlyFinished } from '../shared/sidebar';
 import { memoSections } from '../shared/memos';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../shared/reply';
@@ -116,6 +117,8 @@ const ui = {
   /** The task whose Merge button is asking "Merge it?", and the tasks being merged. */
   /** Open issues per repository, read when its inspector first shows them. */
   issues: new Map<string, Issue[] | 'loading' | { error: string }>(),
+  /** The checkpoint the Changes tab is asking about before it puts the files back. */
+  ckptAsk: null as { wid: string; ref: string; at: string; label: string } | null,
   mergeAsk: null as string | null,
   merging: new Set<string>(),
   /** Plan cards whose full plan is unfolded below the summary, by decision id. */
@@ -1338,6 +1341,26 @@ function diffLines(wid: string, path: string, patch: string) {
   }).join('');
 }
 
+/** "Put the files back to 14:02?" under the Changes tab's header, once a checkpoint is picked. */
+function ckptAskHtml(w: Worker) {
+  const a = ui.ckptAsk;
+  if (!a || a.wid !== w.id) return '';
+  return `<div class="ckpt-ask" role="alertdialog" aria-label="${t('ckpt.title')}"><span><b>${esc(t('ckpt.ask', { t: hhmm(a.at) }))}</b><small>${esc(a.label)}</small></span><button class="btn" data-action="ckpt-cancel">${t('cancel')}</button><button class="btn danger-fill" data-action="ckpt-restore">${t('ckpt.restore')}</button></div>`;
+}
+
+/** The Worker's checkpoints as a list under the button: picking one asks before anything changes. */
+async function openCheckpoints(owner: HTMLElement, wid: string) {
+  const list = (await call<Checkpoint[]>('worker:checkpoints', wid)) ?? [];
+  if (!list.length) { toast(t('ckpt.none')); return; }
+  openPop(owner, list.map((c) => ({ value: c.ref, label: c.label || t('ckpt.title'), sub: hhmm(c.at) })), '', (ref) => {
+    const c = list.find((x) => x.ref === ref);
+    const w = worker(wid);
+    if (!c || !w) return;
+    ui.ckptAsk = { wid, ref, at: c.at, label: c.label };
+    renderDiff(w);
+  }, 300);
+}
+
 /** Keep the comment being written as one of the Worker's review comments. */
 function addDiffNote() {
   const d = ui.diffDraft;
@@ -1360,8 +1383,8 @@ function renderDiff(w: Worker) {
   if (v.error) { root.innerHTML = `<div class="empty-view"><span>${t('diff.missing')}</span></div>`; return; }
   const add = v.files.reduce((n, f) => n + f.added, 0), del = v.files.reduce((n, f) => n + f.removed, 0);
   const nNotes = ui.diffNotes.get(w.id)?.length ?? 0;
-  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span>${nNotes ? `<button class="btn def" data-action="diff-notes-send">${t('diff.noteSend', { n: nNotes })}</button>` : ''}<button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
-  if (!v.files.length) { root.innerHTML = `${head}<div class="empty-view"><span>${t('diff.none', { base: v.base })}</span></div>`; return; }
+  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span>${nNotes ? `<button class="btn def" data-action="diff-notes-send">${t('diff.noteSend', { n: nNotes })}</button>` : ''}<button class="btn" data-action="ckpt-menu" data-id="${w.id}" aria-haspopup="listbox">${t('ckpt.title')}</button><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
+  if (!v.files.length) { root.innerHTML = `${head}${ckptAskHtml(w)}<div class="empty-view"><span>${t('diff.none', { base: v.base })}</span></div>`; return; }
   const files = v.files.map((f) => {
     const key = `${w.id}:${f.path}`;
     const open = ui.diffOpen.has(key);
@@ -1371,7 +1394,7 @@ function renderDiff(w: Worker) {
       ${open ? `<pre class="df-b" data-scroll="diff-${esc(key)}">${f.patch ? diffLines(w.id, f.path, f.patch) : `<span class="dl h">${t('diff.binary')}</span>`}</pre>` : ''}
     </div>`;
   }).join('');
-  keepInputs(root, () => { root.innerHTML = `${head}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}<div class="dfs">${files}</div>`; });
+  keepInputs(root, () => { root.innerHTML = `${head}${ckptAskHtml(w)}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}<div class="dfs">${files}</div>`; });
 }
 
 async function loadDiff(id: string) {
@@ -2579,6 +2602,19 @@ async function act(el: HTMLElement, e: Event) {
       ui.diffDraft = { wid: w.id, path: id.slice(w.id.length + 1), at: Number(el.dataset.i) };
       renderDiff(w);
       $<HTMLTextAreaElement>('#dnote-in')?.focus();
+      break;
+    }
+    case 'ckpt-menu': if (id) await openCheckpoints(el, id); break;
+    case 'ckpt-cancel': { ui.ckptAsk = null; const w = worker(ui.wSel); if (w) renderDiff(w); break; }
+    case 'ckpt-restore': {
+      const a = ui.ckptAsk;
+      if (!a) break;
+      (el as HTMLButtonElement).disabled = true;
+      const done = await call('worker:restore', a.wid, a.ref).then(() => true, () => false);
+      ui.ckptAsk = null;
+      ui.diffs.delete(a.wid);
+      if (done !== false) toast(t('ckpt.done', { t: hhmm(a.at) }));
+      renderSession(true);
       break;
     }
     case 'diff-note-add': addDiffNote(); break;
