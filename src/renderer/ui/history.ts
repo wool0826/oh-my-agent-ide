@@ -1,7 +1,7 @@
 // Screen history: every navigation goes through go(), so Back and Forward can retrace it.
 import type { Worker } from '../../shared/types';
 import { History, NavInput, sameScreen, type NavDir, type NavSource, type Screen } from '../../shared/history';
-import { setView } from '../app';
+import { autosize, setView, swapDraft } from '../app';
 import { closePop } from './controls';
 import { $, call, isMac, S, ui, worker } from './core';
 import { renderMemory } from './memory';
@@ -33,6 +33,7 @@ export function go(next: Partial<Screen>) {
 export function show(to: Screen, from: Screen) {
   const conv = (s: Screen) => (s.view === 'worker' && s.wOpen ? s.wSel : null);
   Object.assign(ui, to);
+  if (to.wSel !== from.wSel) swapDraft(from.wSel, to.wSel);
   const opened = conv(to);
   if (opened && opened !== conv(from)) { ui.lastLogKey = ''; void loadLog(opened); }
   if (to.wTab !== from.wTab) ui.lastLogKey = '';
@@ -43,6 +44,8 @@ export function show(to: Screen, from: Screen) {
     if (to.memSel) void readMemFile(to.memSel);
   }
   setView(to.view);
+  // The composer fits the draft that came back, measured now that it is on screen.
+  if (opened && (to.wSel !== from.wSel || !conv(from))) autosize($<HTMLTextAreaElement>('#ws-input'));
 }
 
 export async function readMemFile(id: string) {

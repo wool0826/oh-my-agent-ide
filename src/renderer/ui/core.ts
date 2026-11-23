@@ -176,7 +176,7 @@ export const ui = {
   /** Asking before cancelling queued tasks: one task, or the whole queue. */
   cancelAsk: null as { ids: string[]; all: boolean } | null,
   /** The in-app confirm dialog for archiving a Worker or removing a repository; no OK label: it only explains. */
-  confirmAsk: null as { title: string; body: string; ok: string | null; action: 'archive' | 'repo-remove'; id: string } | null,
+  confirmAsk: null as { title: string; body: string; ok: string | null; action: 'archive' | 'repo-remove' | 'ctx-clear'; id: string } | null,
   /** Open decisions the user chose to send a normal message past, and the ones the Worker composer has shown (M7). */
   decAsMessage: new Set<string>(),
   decSeen: new Set<string>(),

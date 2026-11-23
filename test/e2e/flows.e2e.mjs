@@ -709,3 +709,78 @@ flow('the sidebar tab pill follows the sidebar width while it changes', {}, asyn
     assert.deepEqual(await app.evaluate(where), [0, 0, 1], `at ${w}px`);
   }
 });
+
+flow('what is typed for one Worker waits for that Worker while another one is open', {}, async (app) => {
+  await app.say('@fake task - First\n@@fake result Done.\n@fake task - Second\n@@fake result Done.');
+  await app.until("document.querySelectorAll('#chat-ins .res').length >= 2", 'both tasks done');
+  await app.click('#side [data-action="done-toggle"]');
+  await app.until("document.querySelectorAll('#side [data-action=\"open-worker\"]').length >= 2", 'both Workers in the sidebar');
+  const [a, b] = (await app.state()).workers.map((w) => w.id);
+  const open = async (id) => {
+    await app.click(`#side [data-action="open-worker"][data-id="${id}"]`);
+    await app.until(`!!document.querySelector('#ws-form').offsetParent && document.querySelector('#ws-title').textContent.startsWith('${id} ')`, `the conversation of ${id}`);
+  };
+  const typed = () => app.evaluate("document.querySelector('#ws-input').value");
+  const type = (v) => app.evaluate(`const i = document.querySelector('#ws-input'); i.focus(); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  await open(a);
+  await type('Only for the first Worker\nand its second line');
+  const tall = await app.evaluate("document.querySelector('#ws-input').offsetHeight");
+  // The other Worker starts with an empty box, one line high.
+  await open(b);
+  assert.equal(await typed(), '');
+  assert.ok((await app.evaluate("document.querySelector('#ws-input').offsetHeight")) < tall, 'the box is back to one line');
+  await type('For the second');
+  // Back at the first: its text, and the box as tall as the text.
+  await open(a);
+  assert.equal(await typed(), 'Only for the first Worker\nand its second line');
+  assert.equal(await app.evaluate("document.querySelector('#ws-input').offsetHeight"), tall);
+  // Another view in between changes nothing.
+  await app.click('button[data-v="chat"]');
+  await open(b);
+  assert.equal(await typed(), 'For the second');
+  // Sent, it goes to the Worker it was written for and leaves the box; the other draft still waits.
+  await app.evaluate("document.querySelector('#ws-form').requestSubmit(); return 1;");
+  await app.until("document.querySelector('#ws-thread').innerText.includes('For the second') && document.querySelector('#ws-input').value === ''", 'the message sent to the second Worker');
+  await open(a);
+  assert.equal(await typed(), 'Only for the first Worker\nand its second line');
+  assert.equal(await app.evaluate("document.querySelector('#ws-thread').innerText.includes('For the second')"), false);
+  await open(b);
+  assert.equal(await typed(), '');
+});
+
+flow('starting a new conversation asks first, and the context menu opens only with something in it', {}, async (app) => {
+  // No context and nothing spent: the meter has no menu to open.
+  assert.equal(await app.evaluate("document.querySelector('#chat-ctx').disabled"), true);
+  await app.say('Remember the pineapple rule\n@fake tokens 60000\n@fake say Noted.');
+  await app.until("!document.querySelector('#chat-ctx').disabled", 'the meter with a context');
+  const openMenu = async () => {
+    await app.click('#chat-ctx');
+    await app.until("!document.querySelector('#ctxmenu').hidden", 'the context menu');
+  };
+  await openMenu();
+  const menu = await app.evaluate("const m = document.querySelector('#ctxmenu'); const r = m.getBoundingClientRect(); const b = document.querySelector('#chat-ctx').getBoundingClientRect(); return { roles: [...m.querySelectorAll('button')].map((x) => x.getAttribute('role')), off: m.querySelectorAll('button:disabled').length, left: r.left, top: r.top, right: r.right, bottom: r.bottom, meterTop: b.top, meterRight: b.right, vw: innerWidth, focus: document.activeElement?.dataset.action ?? '' };");
+  assert.deepEqual(menu.roles, ['menuitem', 'menuitem']);
+  assert.equal(menu.off, 0);
+  assert.equal(menu.focus, 'ctx-compact');
+  // Placed from its measured size: above the meter, right edges together, inside the window.
+  assert.ok(menu.bottom <= menu.meterTop && menu.top >= 8, 'above the meter');
+  assert.ok(Math.abs(menu.right - menu.meterRight) <= 1 && menu.left >= 8 && menu.right <= menu.vw - 8, 'at the meter, inside the window');
+  // "Start new conversation" asks, with what is lost and what goes on; Cancel leaves the context as it is.
+  await app.click('#ctxmenu [data-action="ctx-clear"]');
+  await app.until("!!document.querySelector('#dlg .dlg')", 'the question');
+  assert.equal(await app.evaluate("document.querySelector('#ctxmenu').hidden"), true);
+  assert.match(await app.evaluate("document.querySelector('#dlg .dlg').innerText"), /forgets this conversation[\s\S]*running tasks go on/);
+  assert.equal(await app.evaluate("document.querySelector('#dlg .btn.danger-fill').dataset.action"), 'confirm-ok');
+  await app.click('#dlg .dlg-btns [data-action="confirm-dismiss"]');
+  await app.until("document.querySelector('#dlg').hidden", 'the question closed');
+  assert.equal((await app.state()).dispatcher.contextTokens, 60000);
+  // Confirmed, the Dispatcher starts again and the chat on screen stays.
+  await openMenu();
+  await app.click('#ctxmenu [data-action="ctx-clear"]');
+  await app.until("!!document.querySelector('#dlg .dlg')", 'the question again');
+  await app.click('#dlg [data-action="confirm-ok"]');
+  await app.until("document.querySelector('#chat-thread').innerText.includes('Started a new Dispatcher conversation')", 'the new conversation');
+  assert.equal((await app.state()).dispatcher.contextTokens, 0);
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Remember the pineapple rule')"), true);
+  await app.until("document.querySelector('#chat-ctx').disabled", 'the meter closed again');
+});

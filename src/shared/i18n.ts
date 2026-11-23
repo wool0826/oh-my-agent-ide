@@ -159,6 +159,8 @@ const en = {
   // chat
   'ctx.compact': 'Compact conversation',
   'ctx.clear': 'Start new conversation',
+  'ctx.clearTitle': 'Start a new conversation?',
+  'ctx.clearBody': 'The Dispatcher forgets this conversation. The messages stay on screen, and running tasks go on.',
   'st.compacting': 'Compacting the conversation…',
   'ev.compacted': 'Compacted the Dispatcher conversation ({a} → {b}).',
   'ev.compactFailed': 'Could not compact the Dispatcher conversation ({msg}). Nothing was lost; it can be compacted again later.',
@@ -1129,6 +1131,8 @@ const ko: Record<Key, string> = {
 
   'ctx.compact': '대화 압축',
   'ctx.clear': '새 대화 시작',
+  'ctx.clearTitle': '새 대화를 시작할까요?',
+  'ctx.clearBody': 'Dispatcher가 이 대화를 잊어요. 화면의 메시지는 그대로 남고, 진행 중인 작업은 계속돼요.',
   'st.compacting': '대화를 압축하는 중…',
   'ev.compacted': 'Dispatcher 대화를 압축했어요 ({a} → {b}).',
   'ev.compactFailed': 'Dispatcher 대화를 압축하지 못했어요 ({msg}). 대화는 그대로이고, 나중에 다시 압축할 수 있어요.',

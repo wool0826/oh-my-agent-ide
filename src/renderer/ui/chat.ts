@@ -306,7 +306,8 @@ function renderCtxMeter() {
   const label = t('chat.ctxLabel', { a: k(ctx), b: k(CONTEXT_WINDOW) });
   btn.setAttribute('aria-label', label);
   setTip(btn, label);
-  btn.disabled = !!S!.dispatcher.busy;
+  // Its menu compacts or starts again, and says what was spent: with none of the three it has nothing to open.
+  btn.disabled = !!S!.dispatcher.busy || (!ctx && !hasSpend(S!.dispatcher.spend));
 }
 
 /** "0:18", "12:05", "1:02:09": how long the Dispatcher has been at it. */
