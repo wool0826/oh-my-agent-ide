@@ -385,13 +385,15 @@ export async function tryCall<T = any>(ch: string, ...args: unknown[]): Promise<
   }
 }
 
-/** Keep typed values and focus across re-renders (only inputs with data-keep), and scroll offsets (keepScroll). */
+/** Keep typed values and focus across re-renders (inputs with data-keep, rows with data-focus), and scroll offsets (keepScroll). */
 export function keepInputs(root: HTMLElement, render: () => void) {
   const vals = new Map<string, string>();
   root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep]').forEach((el) => vals.set(el.dataset.keep!, el.value));
   const active = document.activeElement as HTMLInputElement | null;
   const focusKey = active && root.contains(active) ? active.dataset.keep : undefined;
   const sel = focusKey ? [active!.selectionStart, active!.selectionEnd] : null;
+  // A row that is not an input but holds the keyboard (data-focus) gets it back too.
+  const rowKey = active && root.contains(active) && !focusKey ? active.dataset.focus : undefined;
   // Scroll offsets go back last: setting a value resets a textarea's, and focusing scrolls root.
   keepScroll(root, () => {
     render();
@@ -403,6 +405,7 @@ export function keepInputs(root: HTMLElement, render: () => void) {
       const el = root.querySelector<HTMLInputElement>(`[data-keep="${CSS.escape(focusKey)}"]`);
       if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch { /* not selectable */ } }
     }
+    if (rowKey && !root.contains(document.activeElement)) root.querySelector<HTMLElement>(`[data-focus="${CSS.escape(rowKey)}"]`)?.focus({ preventScroll: true });
   });
 }
 
