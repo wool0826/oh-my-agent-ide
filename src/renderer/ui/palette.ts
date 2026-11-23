@@ -125,7 +125,7 @@ export function searchSaid(q: string) {
  * Shows the chat from a message on, loading older pages until it is there (at most 40), and marks it for a moment.
  */
 
-export async function jumpToChat(id: string) {
+export async function jumpToChat(id: string): Promise<boolean> {
   go({ view: 'chat' });
   for (let i = 0; i < 40 && !chatAll().some((c) => c.id === id); i++) {
     const first = chatAll()[0]?.id;
@@ -134,7 +134,7 @@ export async function jumpToChat(id: string) {
     if (!r?.items.length) break;
     ui.chatOlder = [...r.items, ...ui.chatOlder];
   }
-  if (!chatAll().some((c) => c.id === id)) return;
+  if (!chatAll().some((c) => c.id === id)) return false;
   ui.chatFrom = id;
   ui.lastChatKey = '';
   renderChat(false, true);
@@ -143,6 +143,7 @@ export async function jumpToChat(id: string) {
   hit?.scrollIntoView({ block: 'start' });
   hit?.classList.add('found');
   setTimeout(() => hit?.classList.remove('found'), 1600);
+  return true;
 }
 
 export function markPalette(scroll = true) {

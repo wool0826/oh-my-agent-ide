@@ -20,12 +20,13 @@ import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo } from '.
 import { $, announce, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
-import { closePalette, Cmd, cmdk, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
+import { closePalette, Cmd, cmdk, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
+import { isPlacing, nextRow, watchPanes } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 import { canStop } from '../shared/canStop';
 
@@ -88,6 +89,31 @@ export function gotoResult(taskId: string) {
   if (w) openWorker(w);
 }
 
+/**
+ * Selects an item of the right sidebar's Inbox, Memos or Automations: from its list row (two panes) or a click on its
+ * card (one column). A switch, a link or a button inside a card does its own thing.
+ */
+async function pick(el: HTMLElement, e: Event) {
+  const tgt = e.target as HTMLElement;
+  if (tgt !== el && tgt.closest('input, a, button, textarea')) return;
+  const id = el.dataset.id ?? '';
+  const row = el.classList.contains('li');
+  if (el.dataset.tab === 'inbox') { markDecision(id); (row ? el : decisionCard(id))?.focus(); return; }
+  if (el.dataset.tab === 'memo') {
+    if (ui.memoSel === id) return;
+    // A memo being edited stays open with its draft; it is only no longer the selected one.
+    ui.memoSel = id;
+  } else {
+    if (ui.autoSel === id) return;
+    ui.autoSel = id;
+  }
+  ui.memoDel = null;
+  renderChatInspector();
+  const slot = document.querySelector<HTMLElement>(`#chat-ins .pk[data-pick="${CSS.escape(id)}"]`);
+  const card = document.querySelector<HTMLElement>(`#chat-ins .pk-c[data-from="${CSS.escape(id)}"]`) ?? slot?.querySelector<HTMLElement>('.pk-c');
+  (row ? slot?.querySelector<HTMLElement>(':scope > .li') : card?.querySelector<HTMLElement>('textarea, input, button, a'))?.focus({ preventScroll: !row });
+}
+
 /* ---------- actions ---------- */
 
 export async function act(el: HTMLElement, e: Event) {
@@ -143,12 +169,14 @@ export async function act(el: HTMLElement, e: Event) {
     case 'dec-as-message': if (id) { ui.decAsMessage.add(id); renderComposerDecision(); $('#ws-input').focus(); } break;
     case 'dec-answer-it': if (id) { ui.decAsMessage.delete(id); renderComposerDecision(); $('#ws-input').focus(); } break;
     case 'memo-add': await addMemo(); break;
+    case 'pick': await pick(el, e); break;
+    case 'open-chat': if (id && !(await jumpToChat(id))) toast(t('auto.runGone')); break;
     case 'auto-add': await addAuto(); break;
     case 'cmp-changes': if (id) go({ view: 'worker', wSel: id, wOpen: true, wTab: 'changes' }); break;
     case 'cmp-pick': (el as HTMLButtonElement).disabled = true; await call('compare:pick', id); break;
     case 'auto-remove': if (ui.memoDel === id) { ui.memoDel = null; await call('auto:remove', id); } else askMemoDel(id ?? null); break;
     case 'memo-share': { const m = S!.memos.find((x) => x.id === id); if (m) await call('memo:update', id, { shared: !m.shared }); break; }
-    case 'memo-edit': ui.memoEdit = id; ui.memoDel = null; renderChatInspector(); document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.focus(); break;
+    case 'memo-edit': ui.memoEdit = id; ui.memoSel = id; ui.memoDel = null; renderChatInspector(); document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.focus(); break;
     case 'memo-edit-cancel': ui.memoEdit = null; renderChatInspector(); break;
     case 'memo-save': {
       const text = document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.value ?? '';
@@ -655,6 +683,7 @@ export function init() {
   // Before the first paint, so a sidebar that was put away does not animate shut at launch.
   applyPanels();
   initResize();
+  watchPanes();
   document.addEventListener('click', (e) => {
     const tgt = e.target as HTMLElement;
     const segBtn = tgt.closest<HTMLButtonElement>('[data-segc]');
@@ -762,6 +791,7 @@ export function init() {
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
   // A card that gets the focus (a click, Tab, a button in it) becomes the selected one.
   document.addEventListener('focusin', (e) => {
+    if (isPlacing()) return;
     const card = (e.target as HTMLElement).closest?.<HTMLElement>('#chat-ins [data-dec]');
     if (card && card.dataset.dec !== ui.decSel) markDecision(card.dataset.dec ?? null);
   });
@@ -795,6 +825,13 @@ export function init() {
       }
     }
     if (popKeys(e)) return;
+    // ↑/↓ in the right sidebar's list rows (two panes) select the next row.
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.altKey && !e.ctrlKey && !e.metaKey && el.matches?.('#chat-ins .pk > .li')) {
+      e.preventDefault();
+      const r = nextRow(el, e.key === 'ArrowDown' ? 1 : -1);
+      if (r && r !== el) void act(r, e);
+      return;
+    }
     // K1: the focused inbox card answers to keys while no text field has the focus. Enter on one of its buttons is
     // left to that button.
     const card = el.closest?.<HTMLElement>('#chat-ins [data-dec]');

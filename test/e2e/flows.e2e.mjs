@@ -88,6 +88,62 @@ flow('decision cards take the keys: ↓ moves the selection, Enter allows, the n
   await app.until("document.querySelector('#dlg').hidden", 'the shortcut list closed');
 });
 
+flow('from 560 wide the selected memo opens beside the list, and a draft keeps its text and caret across 560', {}, async (app) => {
+  await app.evaluate("await window.ide.call('memo:add', 'Release notes go out on Thursdays'); await window.ide.call('memo:add', 'Prefer pnpm in new repositories'); return 1;");
+  await app.click('[data-action="ins-tab"][data-v="memo"]');
+  await app.until("document.querySelectorAll('#chat-ins .pk').length === 2", 'both memos');
+  // The sidebar's width from its handle's keys: Home is 320, each Shift+← 64 wider.
+  await app.size(1600);
+  await app.evaluate("document.querySelector('#rz-ins').focus(); return 1;");
+  const handle = async (code, vk, shift = false) => app.key(code, code, vk, shift ? 8 : 0);
+  const where = () => app.evaluate(`const ta = document.querySelector('#chat-ins textarea[data-keep^="memo-"]'); return {
+    split: !!document.querySelector('#chat-ins .ins-cols.split'),
+    detail: document.querySelector('#chat-ins .ins-detail')?.innerText ?? '',
+    rows: [...document.querySelectorAll('#chat-ins .pk > .li')].filter((r) => r.offsetParent).length,
+    inDetail: !!ta?.closest('.ins-detail'), value: ta?.value, focus: !!ta && document.activeElement === ta, caret: ta?.selectionStart };`);
+  // One column at 320: no rows, no detail pane.
+  await handle('Home', 36);
+  await app.until("!document.querySelector('#chat-ins .ins-cols.split')", 'one column');
+  assert.equal((await where()).rows, 0);
+  // At 576 the list is rows and the first memo, selected, is in the detail pane; a row selects another one.
+  for (let i = 0; i < 4; i++) await handle('ArrowLeft', 37, true);
+  await app.until("!!document.querySelector('#chat-ins .ins-cols.split')", 'two panes');
+  let w = await where();
+  assert.equal(w.rows, 2);
+  assert.match(w.detail, /Prefer pnpm|Release notes/);
+  const other = await app.evaluate("return [...document.querySelectorAll('#chat-ins .pk')].find((p) => !p.classList.contains('sel')).dataset.pick;");
+  await app.click(`#chat-ins .li[data-id="${other}"]`);
+  await app.until(`document.querySelector('#chat-ins .ins-detail .pk-c')?.dataset.from === '${other}'`, 'the other memo in the detail pane');
+  // Edit it, type, and narrow the window so the sidebar gives way under 560, then widen it again: the same field
+  // keeps its text, the focus and the caret.
+  await app.click('#chat-ins .ins-detail [data-action="memo-edit"]');
+  await app.until("document.activeElement?.matches('.ins-detail textarea')", 'the edit field');
+  await app.evaluate("const ta = document.activeElement; ta.value = 'Draft that must survive'; ta.setSelectionRange(5, 5); return 1;");
+  await app.size(1100);
+  await app.until("!document.querySelector('#chat-ins .ins-cols.split')", 'one column again');
+  w = await where();
+  assert.deepEqual([w.inDetail, w.value, w.focus, w.caret], [false, 'Draft that must survive', true, 5]);
+  await app.size(1600);
+  await app.until("!!document.querySelector('#chat-ins .ins-cols.split')", 'two panes again');
+  w = await where();
+  assert.deepEqual([w.inDetail, w.value, w.focus, w.caret], [true, 'Draft that must survive', true, 5]);
+  assert.match(await app.evaluate(`document.querySelector('#chat-ins .pk.sel > .li').innerText`), /editing/);
+  // Selecting the other memo leaves the draft open and marked, not lost.
+  await app.click(`#chat-ins .pk:not([data-pick="${other}"]) > .li`);
+  await app.until(`document.querySelector('#chat-ins .ins-detail .pk-c')?.dataset.from !== '${other}'`, 'the first memo in the detail pane');
+  assert.equal((await where()).value, 'Draft that must survive');
+  assert.match(await app.evaluate(`document.querySelector('#chat-ins .pk[data-pick="${other}"] > .li').innerText`), /editing/);
+  // Inbox in two panes: ↓ on the card in the detail pane selects the next decision, which takes the pane and the focus.
+  await app.say('@fake task - Install one\n@@fake permission npm install a\n@@fake result Installed.\n@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.');
+  await app.click('[data-action="ins-tab"][data-v="inbox"]');
+  await app.until("document.querySelectorAll('#chat-ins [data-dec]').length === 2 && !!document.querySelector('#chat-ins .ins-detail [data-dec]')", 'two decisions, one in the detail pane');
+  const first = await app.evaluate("const c = document.querySelector('#chat-ins .ins-detail [data-dec]'); c.focus(); return c.dataset.dec;");
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  const after = await app.evaluate("const c = document.querySelector('#chat-ins .ins-detail [data-dec]'); return { id: c?.dataset.dec, focus: document.activeElement === c, sel: document.querySelector('#chat-ins .pk.sel')?.dataset.pick };");
+  assert.notEqual(after.id, first);
+  assert.deepEqual([after.focus, after.sel], [true, after.id]);
+});
+
 flow('a plan waits for approval before the work goes on', {}, async (app) => {
   await app.say('@fake task - Plan the change\n@@fake plan WHAT: rename the field\\nHOW: one commit\\nOUTPUT: a PR\n@@fake result Carried out the plan.');
   await app.until(`!!document.querySelector('${DEC}')`, 'the plan card');
