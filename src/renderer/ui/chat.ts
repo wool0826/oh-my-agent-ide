@@ -3,8 +3,10 @@ import type { Automation, Memo } from '../../shared/types';
 import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, Task, Worker } from '../../shared/types';
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
 import { stepView } from '../../shared/steps';
+import { taskMinutes } from '../../shared/workerSummary';
 import { askLine, lastFailed, plainStatus } from '../../shared/workerState';
 import { dayWord, keepPick } from '../../shared/insPanes';
+import { handoutCounts, handoutFolded, handoutRuns, handoutSettled, handoutState, isHandout, runTasks, type HandoutState } from '../../shared/handouts';
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars, type Spend } from '../../shared/spend';
 import { linkify } from '../../shared/linkify';
@@ -14,7 +16,7 @@ import { canPick, openComparisons } from '../../shared/compare';
 import { awayDigest, awayRows, type AwayDigest } from '../../shared/away';
 import { bundleMergeOrder, openBundles } from '../../shared/bundle';
 import { memoSections } from '../../shared/memos';
-import { CONTEXT_WINDOW } from '../../shared/context';
+import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
 import { canStop } from '../../shared/canStop';
 import { threadLayout } from '../../shared/thread';
@@ -73,6 +75,23 @@ export function spendHtml(s: Spend | null | undefined, short = false) {
   return `<span class="spend" title="${esc(tip)}">${esc(text)}</span>`;
 }
 
+/** How a finished task went, beside its title: how long it took and how much of its plan it did. */
+function resultMeta(x: Task | null) {
+  if (!x?.finishedAt) return '';
+  const mins = taskMinutes(x);
+  const v = stepView(x);
+  const parts = [mins !== null ? tookText(mins) : '', v ? t('sum.steps', { done: v.done, total: v.total }) : ''].filter(Boolean);
+  return parts.length ? `<span class="rmeta">${esc(parts.join(' · '))}</span>` : '';
+}
+
+/** An inbox result's report without the RESULT: label; a long one opens in place. */
+function resultSummary(c: ChatItem) {
+  const full = plainStatus(c.text);
+  if (full.length <= 140) return `<span>${inline(full)}</span>`;
+  const open = ui.resOpen.has(c.id);
+  return `<span>${inline(open ? full : oneLine(full, 140))} <button type="button" class="linkbtn" data-action="res-more" data-id="${esc(c.id)}" aria-expanded="${open}">${t(open ? 'res.less' : 'res.more')}</button></span>`;
+}
+
 export function resultGlyph(x: Task | null, err = false) {
   if (err) return sym('s-alert', 'c-red');
   if (stoppedTask(x)) return sym('s-stop', 'c-gray');
@@ -103,11 +122,61 @@ function replyLink(x: Task, text: string) {
   return `<a tabindex="0" role="link" data-action="reply" data-box="chat" data-who="${esc(x.workerId ?? x.id)}" data-quote="${esc(replyExcerpt(`${x.title}: ${text}`))}" data-task="${esc(x.id)}">${t('chat.reply')}</a>`;
 }
 
+/** The hand-out runs of the thread drawn last, by their first line (shared/handouts.ts). */
+let runs = new Map<string, ChatItem[]>();
+
+const HAND_PILL: Record<HandoutState, [string, Key]> = { ask: ['ask', 'st.waitingMe'], run: ['blue', 'st.running'], failed: ['red', 'st.failed'], queued: ['orange', 'st.queued'], done: ['green', 'task.done'], stopped: ['', 'task.stopped'] };
+const HAND_ICON: Record<HandoutState, [string, string]> = { ask: ['ask', 'ask'], run: ['run', 'run'], failed: ['err', 'err'], queued: ['wait', 'wait'], done: ['done', 'done'], stopped: ['idle', 'idle'] };
+
+/** Each task of a run with where it stands now; tasks no longer in the state are left out. */
+function handoutRows(run: ChatItem[]) {
+  const pending = S!.decisions.filter((d) => d.status === 'pending');
+  return runTasks(run).map((id) => task(id)).filter((x): x is Task => !!x).map((x) => {
+    const d = pending.find((p) => p.taskId === x.id) ?? null;
+    return { x, d, st: handoutState(x, !!d) };
+  });
+}
+
+/** What a run's block depends on, so the thread is drawn again when one of its tasks moves. */
+function handoutKey() {
+  return [...runs.values()].map((run) => handoutRows(run).map(({ x, d, st }) => `${x.id}${st}${d?.id ?? ''}${stepView(x)?.done ?? ''}`).join()).join('|');
+}
+
+/**
+ * A run of hand-outs as one block: how many tasks and where they stand, then a row per task that opens its Worker.
+ * It stays open while something is left to follow and folds to its heading once all are done; the heading toggles it.
+ */
+function handoutHtml(c: ChatItem) {
+  const run = runs.get(c.id) ?? [c];
+  const rows = handoutRows(run);
+  if (!rows.length) return run.map((e) => `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(e.text))}</span></span>`).join('');
+  const states = rows.map((r) => r.st);
+  // Folding is kept by the run's first task, which stays the same when older pages load and the run starts earlier.
+  const key = runTasks(run)[0] ?? c.id;
+  const open = handoutSettled(states) === ui.handToggled.has(key);
+  const sum = handoutCounts(states).map(([s, n]) => t(`ho.${s}` as Key, { n })).join(' · ');
+  const row = ({ x, d, st }: (typeof rows)[number]) => {
+    const w = worker(x.workerId);
+    const v = stepView(x);
+    const detail = st === 'ask' && d ? oneLine(askLine(d), 100)
+      : st === 'run' && v && !v.allDone ? `${v.at + 1}/${v.total} · ${v.current}`
+      : st === 'failed' && v && !v.allDone ? t('wk.stoppedAt', { n: v.at + 1, total: v.total })
+      : st === 'queued' ? taskLabel(x)
+      : st === 'done' && x.prUrl ? `PR #${prNum(x.prUrl)}` : '';
+    const [cls, label] = st === 'queued' && x.status === 'blocked' ? ['orange', 'st.afterMerge' as Key] : st === 'done' && x.prUrl && x.prState === 'OPEN' ? ['pr-open', 'st.prOpen' as Key] : HAND_PILL[st];
+    const sub = [x.workerId, w?.repo ?? t('general'), detail].filter(Boolean).join(' · ');
+    const body = `${ic(...HAND_ICON[st])}<span class="t"><b>${esc(x.title)}</b><small>${esc(sub)}</small></span><span class="pill${cls ? ` ${cls}` : ''}">${t(label)}</span>`;
+    return w ? `<button type="button" class="hrow" data-action="open-worker" data-id="${esc(w.id)}">${body}</button>` : `<div class="hrow">${body}</div>`;
+  };
+  const head = `<button type="button" class="hand-h" data-action="hand-fold" data-id="${esc(key)}" aria-expanded="${open}">${sym('s-cpu', 'c-blue')}<b>${t(rows.length === 1 ? 'ho.titleOne' : 'ho.title', { n: rows.length })}</b><span>${esc(sum)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
+  return `<div class="hand${open ? ' open' : ''}" role="group" aria-label="${esc(t(rows.length === 1 ? 'ho.titleOne' : 'ho.title', { n: rows.length }))}">${head}${open ? `<div class="hand-rows">${rows.map(row).join('')}</div>` : ''}</div>`;
+}
+
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
     case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
     case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.replyTo);
-    case 'event': return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
+    case 'event': return isHandout(c) ? handoutHtml(c) : `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
     case 'error': return failureHtml(c) ?? `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
     case 'auto': {
@@ -120,7 +189,7 @@ export function chatItemHtml(c: ChatItem) {
       const links = resultLinks(x);
       if (x?.workerId) links.push(`<a tabindex="0" role="link" data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
       if (x) links.push(replyLink(x, c.text));
-      return `<div class="attach" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${inline(c.text)}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
+      return `<div class="attach" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}${resultMeta(x)}</b><span class="sm">${inline(plainStatus(c.text))}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
     }
   }
 }
@@ -168,15 +237,22 @@ export function renderChat(force = false, older = false) {
   // Pages no longer shown are let go; scrolling up loads them again.
   if (ui.chatOlder.length && from >= ui.chatOlder.length) ui.chatOlder = [];
   const earlier = from > 0 || chatHasEarlier(all);
+  runs = handoutRuns(all.slice(from));
   const key = `${lang()}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${shellKey(all.slice(from))}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
-  if (!force && !older && key === ui.lastChatKey) return;
+  // The hand-out blocks follow their tasks: a step done or a decision answered draws them again.
+  const hands = `${handoutKey()}:${[...ui.handToggled].join()}`;
+  if (!force && !older && key === ui.lastChatKey && hands === ui.lastHandKey) return;
   ui.lastChatKey = key;
+  ui.lastHandKey = hands;
   let html = earlier ? olderBtn('chat', ui.loadingOlder.has('chat')) : '';
   let last = 0;
+  const folded = handoutFolded(runs);
   // The same error said again right after itself (e.g. every account at its limit) shows once with a count.
   const items: { c: ChatItem; n: number }[] = [];
   for (const c of all.slice(from)) {
     const prev = items[items.length - 1];
+    // A later hand-out of the turn is drawn in the block its first line opens.
+    if (folded.has(c.id)) continue;
     if (prev && c.kind === 'error' && prev.c.kind === 'error' && prev.c.text === c.text && !c.ref && !prev.c.ref) { prev.n++; continue; }
     items.push({ c, n: 1 });
   }
@@ -205,15 +281,69 @@ export function renderChat(force = false, older = false) {
     html += replyRow(c, one, slot.start && !slot.late ? slot.root! : null, lateGroup);
     if (slots[i + 1]?.depth !== 1 || slots[i + 1].start) html += '</div>';
   }
-  if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b></div>`;
-  if (s.dispatcher.busy) html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(s.dispatcher.statusText ? oneLine(s.dispatcher.statusText, 80) : '')}</div>`;
+  // A first start: a few starts that fill the composer for the user to finish. Nothing is sent.
+  if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><div class="starts">${STARTS.map((key) => `<button type="button" class="btn" data-action="chat-start" data-text="${esc(t(key))}">${t(key)}</button>`).join('')}</div></div>`;
   ui.chatSeen = tail;
   setThread(th, html, nearBottom || force, older);
   watchTop(th, () => void olderChat());
-  const ctx = s.dispatcher.contextTokens;
-  $('#chat-ctx').innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${k(ctx)} / ${k(CONTEXT_WINDOW)}`;
-  $<HTMLButtonElement>('#chat-ctx').disabled = !!s.dispatcher.busy;
+  renderCtxMeter();
   updateSendButton();
+}
+
+const STARTS: Key[] = ['chat.start1', 'chat.start2', 'chat.start3'];
+
+/**
+ * The Dispatcher's context in the composer: the ring alone under half the window, the numbers from there, and in
+ * orange with a "Compact" chip from where it is compacted. Its label always has the numbers.
+ */
+function renderCtxMeter() {
+  const ctx = S!.dispatcher.contextTokens;
+  const btn = $<HTMLButtonElement>('#chat-ctx');
+  const hot = ctx >= COMPACT_AT, quiet = ctx < CONTEXT_WINDOW / 2;
+  btn.innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${quiet ? '' : `${k(ctx)} / ${k(CONTEXT_WINDOW)}`}${hot ? `<span class="pill orange">${t('chat.compactChip')}</span>` : ''}`;
+  btn.classList.toggle('hot', hot);
+  btn.setAttribute('aria-label', t('chat.ctxLabel', { a: k(ctx), b: k(CONTEXT_WINDOW) }));
+  btn.disabled = !!S!.dispatcher.busy;
+}
+
+/** "0:18", "12:05", "1:02:09": how long the Dispatcher has been at it. */
+export function elapsed(ms: number) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}
+
+let dstatKey = '';
+
+/**
+ * While the Dispatcher works: a line on the composer (what it does, for how long, Stop) and a dot on the Chat tab,
+ * so it shows from any view and when the thread is scrolled up. The clock ticks on its own (tickDispatcher).
+ */
+export function renderDispatcherStatus() {
+  const d = S!.dispatcher;
+  const busy = !!d.busy;
+  document.querySelector('.seg button[data-v="chat"]')?.classList.toggle('busy', busy);
+  const input = $<HTMLTextAreaElement>('#chat-input');
+  const ph = t(busy ? 'chat.phBusy' : 'chat.ph');
+  if (input.placeholder !== ph) input.placeholder = ph;
+  const el = $('#chat-dstat');
+  const key = `${lang()}:${busy}:${d.busySince ?? ''}:${d.statusText}`;
+  if (key === dstatKey) return;
+  dstatKey = key;
+  el.hidden = !busy;
+  if (!busy) { el.innerHTML = ''; return; }
+  const what = d.statusText ? oneLine(d.statusText, 120) : t('chat.working');
+  el.innerHTML = `<span class="pulse-dot" aria-hidden="true"></span><b>Dispatcher</b><span class="what" title="${esc(what)}">${esc(what)}</span><time></time><button type="button" class="linkbtn" data-action="chat-stop" aria-label="${esc(t('chat.stop'))}">${t('chat.stopShort')}</button>`;
+  tickDispatcher();
+}
+
+/** The status line's clock, every second while the Dispatcher works; only its own text changes. */
+export function tickDispatcher() {
+  const since = S?.dispatcher.busy ? S.dispatcher.busySince : null;
+  const el = document.querySelector<HTMLTimeElement>('#chat-dstat time');
+  if (!el) return;
+  el.hidden = !since;
+  if (since) el.textContent = elapsed(Date.now() - Date.parse(since));
 }
 
 /** Show the chat page before the first one shown: from the items held, else from the store (chat:page). */
@@ -247,7 +377,10 @@ export async function olderChat() {
   if (ui.view === 'chat') renderChat(false, true);
 }
 
-/** Both composers: with nothing typed, the send button stops what is at work (the Dispatcher, or the Worker by canStop). */
+/**
+ * The Worker's composer: with nothing typed, the send button stops the Worker (canStop). The chat's stays Send, since
+ * a message to a busy Dispatcher joins its request; its Stop is on the status line (renderDispatcherStatus).
+ */
 export function updateSendButton() {
   const set = (btn: HTMLButtonElement | null, stop: boolean, label: string) => {
     if (!btn) return;
@@ -262,7 +395,7 @@ export function updateSendButton() {
   // Shell mode: the button runs the line.
   if (ui.shell) {
     if (send.getAttribute('aria-label') !== t('shell.run')) { send.classList.remove('stop'); send.innerHTML = sym('s-play'); send.setAttribute('aria-label', t('shell.run')); send.title = ''; }
-  } else set(send, !!S?.dispatcher.busy && empty('chat'), t('chat.stop'));
+  } else set(send, false, t('chat.stop'));
   const w = worker(ui.wSel);
   const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
   set($<HTMLButtonElement>('#ws-send'), !!w && canStop(w, cur) && empty('ws'), t('wk.stop'));
@@ -557,7 +690,7 @@ export function renderChatInspector() {
       html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
         const lk = resultLinks(x);
-        return `<div class="res" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" title="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}<span>${inline(oneLine(c.text, 140))}</span>${spendHtml(x?.spend, true)}</span></div>`;
+        return `<div class="res" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" title="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span></div>`;
       }).join('')}${results.more}</div></div>`;
     }
     if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;

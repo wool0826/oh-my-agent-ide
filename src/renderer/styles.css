@@ -285,6 +285,23 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .quote b { font-size: var(--fs-caption2); font-weight: 600; }
 .quote span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; opacity: .86; }
 .rchip { flex: 1 1 100%; display: flex; align-items: center; gap: var(--space-8); margin: var(--space-2) var(--space-2) 0 -6px; padding: 5px var(--space-6) 5px var(--space-10); border-radius: var(--radius-lg); background: var(--surface-sunken); box-shadow: var(--well); font-size: var(--fs-caption); min-width: 0; }
+/* The Dispatcher at work (S1): on top of the composer, what it does, for how long, and Stop. A dot on the Chat tab says the same from other views. */
+.dstat { flex: 0 0 100%; display: flex; align-items: center; gap: var(--space-8); min-width: 0; margin-left: calc(-1 * var(--space-6)); padding: var(--space-2) var(--space-4) var(--space-6); font-size: var(--fs-caption); color: var(--text-secondary); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
+.dstat b { flex: none; color: var(--text-primary); font-weight: 600; }
+.dstat .what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dstat time { flex: none; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.dstat .linkbtn { flex: none; font-size: var(--fs-caption); font-weight: 600; }
+.pulse-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--state-run); box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-run) 26%, transparent); animation: pulse var(--dur-attention) var(--ease-in-out) infinite; }
+.seg button.busy::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: var(--space-6); border-radius: 50%; background: var(--state-run); vertical-align: 1px; animation: pulse var(--dur-attention) var(--ease-in-out) infinite; }
+@media (prefers-reduced-motion: reduce) { .pulse-dot, .seg button.busy::after { animation: none; } }
+:root[data-motion="reduced"] :is(.pulse-dot, .seg button.busy::after) { animation: none; }
+/* The context meter (U2): orange with a Compact chip from where the session is compacted. */
+button.ctx.hot { color: var(--warning-text); }
+button.ctx.hot .val { stroke: var(--meter-warn); }
+button.ctx .pill { margin-left: var(--space-2); }
+/* Starts in an empty chat (E1). */
+.empty-view .starts { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-8); margin-top: var(--space-10); max-width: 520px; }
+.empty-view .starts .btn { margin-top: 0; }
 .rchip > .sym { flex: none; font-size: var(--icon-sm); color: var(--accent-text); }
 .rchip b { flex: none; font-weight: 600; }
 .rchip > span { flex: 1; min-width: 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -320,6 +337,31 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .attach.fail .links { align-items: center; margin-top: var(--space-6); }
 .attach .body .spend, .res .body .spend, .ctxmenu .note .spend { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .tile { width: 22px; display: grid; place-items: start center; flex: none; }
+/* How a result went (R1): how long, how much of the plan. */
+.rmeta { font-size: var(--fs-caption2); font-weight: 400; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.attach .body b .rmeta { margin-left: var(--space-8); }
+.res .body .rmeta { font-size: var(--fs-caption2); color: var(--text-tertiary); }
+.res .body .linkbtn { font-size: var(--fs-caption2); }
+/* A run of hand-outs (C1): one card listing the tasks and where each stands now; it folds to its heading once all are done. */
+.hand { align-self: flex-start; width: min(560px, 92%); background: var(--surface-card); box-shadow: var(--rim); border-radius: var(--radius-xl); padding: var(--space-6); display: flex; flex-direction: column; }
+.hand-h { display: flex; align-items: center; gap: var(--space-8); width: 100%; padding: var(--space-4) var(--space-8); border: 0; border-radius: var(--radius-md); background: none; font: inherit; font-size: var(--fs-caption); color: var(--text-secondary); text-align: left; cursor: pointer; min-width: 0; }
+.hand.open .hand-h { padding-bottom: var(--space-6); }
+.hand-h:hover { background: var(--surface-hover); }
+.hand-h:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.hand-h b { flex: none; color: var(--text-primary); font-weight: 600; }
+.hand-h .sym { flex: none; font-size: var(--fs-body); }
+.hand-h > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hand-h .chev { flex: none; width: 7px; height: 11px; color: var(--text-tertiary); transition: rotate var(--dur-fast) var(--ease-standard); }
+.hand.open .hand-h .chev { rotate: 90deg; }
+.hand-rows { display: flex; flex-direction: column; }
+.hrow { display: flex; align-items: center; gap: var(--space-8); width: 100%; padding: var(--space-4) var(--space-8); border: 0; border-radius: var(--radius-md); background: none; font: inherit; color: inherit; text-align: left; min-width: 0; }
+button.hrow { cursor: pointer; }
+button.hrow:hover { background: var(--surface-hover); }
+button.hrow:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.hrow .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hrow .t b { font-size: var(--fs-caption); font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hrow .t small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hrow .pill { flex: none; }
 
 /* Floating glass capsule; whatever scrolls beneath it shows through, blurred. */
 .composer { position: absolute; left: var(--space-16); right: var(--space-16); bottom: var(--space-16); z-index: var(--z-composer); display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-8); padding: var(--space-6) var(--space-6) var(--space-6) var(--space-16); border-radius: var(--radius-2xl); background: var(--surface-composer); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-3); transition: box-shadow var(--dur-base) var(--ease-standard), background var(--dur-base) var(--ease-standard); }
@@ -808,6 +850,11 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .step button:active { background: var(--surface-pressed); }
 .step-v { width: 42px; border: 0; border-left: .5px solid var(--border-subtle); border-right: .5px solid var(--border-subtle); background: none; color: var(--text-primary); font: inherit; font-size: var(--fs-caption); text-align: center; font-variant-numeric: tabular-nums; outline: none; user-select: text; }
 .step:focus-within { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+/* A stepper with a unit (G1): the unit sits beside the number; at 0 the field reads "Never" and the unit goes. */
+.step.unit .step-v { width: 34px; padding-right: var(--space-4); text-align: right; border-right: 0; }
+.step.unit .step-v:has(+ .step-u[hidden]) { width: 72px; padding-right: 0; text-align: center; border-right: .5px solid var(--border-subtle); }
+.step-u { display: flex; align-items: center; padding-right: var(--space-10); font-size: var(--fs-caption); color: var(--text-secondary); border-right: .5px solid var(--border-subtle); white-space: nowrap; }
+.step-u[hidden] { display: none; }
 
 /* slider */
 .slider-wrap { flex: 1; display: flex; align-items: center; gap: var(--space-12); min-width: 0; }
@@ -846,8 +893,16 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .ctxmenu button:disabled { color: var(--text-disabled); }
 .ctxmenu hr { border: 0; height: .5px; background: var(--border-subtle); margin: var(--space-4) var(--space-8); }
 .ctxmenu .note { padding: var(--space-4) var(--space-10) var(--space-2); font-size: var(--fs-caption); color: var(--text-secondary); max-width: 300px; }
-.toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); color: var(--text-primary); padding: var(--space-8) var(--space-16); border-radius: var(--radius-full); font-size: var(--fs-caption); box-shadow: var(--rim-strong), var(--shadow-3); z-index: var(--z-toast); max-width: 70vw; }
-.toast.err { color: var(--danger-text); }
+/* Toasts (T1): up to three, newest at the bottom, each with its own timer. An error stays until it is dismissed. */
+.toasts { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: center; gap: var(--space-6); max-width: 70vw; pointer-events: none; }
+.toast { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--space-12); max-width: 100%; background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); color: var(--text-primary); padding: var(--space-8) var(--space-16); border-radius: var(--radius-full); font-size: var(--fs-caption); box-shadow: var(--rim-strong), var(--shadow-3); }
+.toast > span { min-width: 0; overflow-wrap: anywhere; }
+.toast.err { color: var(--danger-text); padding-right: var(--space-8); }
+.toast .linkbtn { flex: none; font-weight: 600; }
+.toast .toast-x { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+.toast .toast-x:hover { background: var(--text-secondary); color: var(--bg-canvas); }
+.toast .toast-x:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.toast .toast-x svg { width: 8px; height: 8px; }
 kbd { font: inherit; font-size: var(--fs-caption2); font-weight: 600; padding: 0 var(--space-4); border-radius: var(--radius-xs); background: var(--surface-code-inline); }
 
 /* scrollbars: shown only while their element scrolls, vertical and horizontal alike. app.ts (showBar) marks the

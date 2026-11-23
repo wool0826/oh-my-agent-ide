@@ -232,7 +232,7 @@ function boardTools(d: Dispatcher) {
         try {
           const { task, worker: w, reused } = await createTask(a);
           d.acted();
-          store.chat('event', assignedEvent(task, w, !!a.worker_id || !!reused));
+          store.handout(assignedEvent(task, w, !!a.worker_id || !!reused), task.id);
           const wait = waitsForSlot(task)
             ? ` All ${loadSettings().maxWorkers} Worker slots are in use; it waits in the queue and starts by itself when one frees up.`
             : task.status === 'queued' ? ' Every account is held by a usage limit; it starts when the first one resets.'
@@ -353,7 +353,7 @@ function boardTools(d: Dispatcher) {
             }
           }
           d.acted();
-          for (const m of made) store.chat('event', assignedEvent(m.task, m.worker, false));
+          for (const m of made) store.handout(assignedEvent(m.task, m.worker, false), m.task.id);
           return ok(`Two attempts started: ${made.map((m) => `${m.task.id} on ${m.worker.id} (${modelLabel(m.worker.model)})`).join(' and ')}. Neither opens a PR. The user picks one in the inbox once they finish; do not pick for them.`);
         } catch (e) {
           return fail(`Could not start the comparison: ${(e as Error).message}`);
@@ -451,6 +451,9 @@ class Dispatcher {
   private replyTo: string | null = null;
   /** The same for input queued behind the turn in progress; undefined while nothing is queued. */
   private queuedReply: string | null | undefined = undefined;
+  /** When the work in progress started: the composer's status line counts from it. Null while idle. */
+  private busyAt: string | null = null;
+  get busySince() { return this.busy ? this.busyAt : null; }
 
   /** What the Dispatcher's session reports, whichever agent runs it. */
   private sessionEvents(): SessionEvents {
@@ -509,6 +512,8 @@ class Dispatcher {
           this.autoActed = false;
         }
         if (st !== 'busy') this.statusText = '';
+        // Queued turns follow each other without an idle between them: the clock runs from the first.
+        this.busyAt = st === 'busy' ? this.busyAt ?? nowIso() : null;
         store.changed();
       },
       onLimited: () => {
@@ -542,7 +547,7 @@ class Dispatcher {
         createTask: async (a) => {
           const { task, worker: w, reused } = await createTask(a);
           this.acted();
-          store.chat('event', assignedEvent(task, w, !!reused));
+          store.handout(assignedEvent(task, w, !!reused), task.id);
           return `${task.id} assigned to ${w.id}.`;
         },
       }, this.sessionEvents());

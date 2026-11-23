@@ -11,7 +11,7 @@ import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clamp
 import { fitAll } from './fit';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, clampFontSize, fontStack, normalizeFontFamily } from '../../shared/font';
 import { away } from './chat';
-import { closePop, installedFonts, markFont, openPop, Opt, pop } from './controls';
+import { closePop, installedFonts, markFont, openPop, Opt, pop, stepNum } from './controls';
 import { $, applyStaticText, call, cap1, esc, ic, isMac, k, lang, lv, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
 import { nav, show } from './history';
 import { renderMemSync } from './memory';
@@ -226,8 +226,15 @@ export function glide(c: HTMLElement, animate: boolean) {
   }
 }
 
-export function stepper(id: string, value: number, min: number, max: number, label: string) {
-  return `<span class="step" role="group" aria-label="${esc(label)}"><button type="button" data-step="-1" data-for="${id}" aria-label="-">${sym('s-minus')}</button><input id="${id}" class="step-v" inputmode="numeric" value="${value}" data-min="${min}" data-max="${max}" aria-label="${esc(label)}"><button type="button" data-step="1" data-for="${id}" aria-label="+">${sym('s-plus')}</button></span>`;
+/**
+ * A number with - and +. `unit` goes beside the number ("min", "days"), and 0 then reads "Never" (G1): the label
+ * names the setting only.
+ */
+export function stepper(id: string, value: number, min: number, max: number, label: string, unit?: Key) {
+  const never = !!unit && value === 0;
+  const extra = unit ? ` data-never="${esc(t('set.never'))}" aria-describedby="${id}-u"` : '';
+  const u = unit ? `<span class="step-u" id="${id}-u"${never ? ' hidden' : ''}>${t(unit)}</span>` : '';
+  return `<span class="step${unit ? ' unit' : ''}" role="group" aria-label="${esc(label)}"><button type="button" data-step="-1" data-for="${id}" aria-label="-">${sym('s-minus')}</button><input id="${id}" class="step-v${never ? ' never' : ''}" inputmode="numeric" value="${never ? esc(t('set.never')) : value}" data-min="${min}" data-max="${max}"${extra} aria-label="${esc(label)}">${u}<button type="button" data-step="1" data-for="${id}" aria-label="+">${sym('s-plus')}</button></span>`;
 }
 
 export function slider(id: string, value: number, label: string) {
@@ -308,7 +315,7 @@ export function settingsHtml() {
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
       ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
-      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 0, 90, t('set.archive')))}
+      ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 0, 90, t('set.archive'), 'set.unitDays'))}
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
       ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
       ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
@@ -358,7 +365,7 @@ export function settingsHtml() {
       ${row(t('set.effortPerTask'), 'set-ept', `<input class="switch" id="set-ept" type="checkbox" ${st.effortPerTask ? 'checked' : ''}>`)}
       ${row(t('set.selfReview'), 'set-srev', `<input class="switch" id="set-srev" type="checkbox" ${st.selfReview ? 'checked' : ''}>`)}
       ${row(t('set.maxWorkers'), 'set-maxw', stepper('set-maxw', st.maxWorkers, MAX_WORKERS_MIN, MAX_WORKERS_MAX, t('set.maxWorkers')))}
-      ${row(t('set.waitSlot'), 'set-wslot', stepper('set-wslot', st.waitSlotMinutes, 0, WAIT_SLOT_MAX, t('set.waitSlot')))}`, t('set.workers'))}`;
+      ${row(t('set.waitSlot'), 'set-wslot', stepper('set-wslot', st.waitSlotMinutes, 0, WAIT_SLOT_MAX, t('set.waitSlot'), 'set.unitMin'))}`, t('set.workers'))}`;
 
   return `<header class="stopbar drag">
       <button class="btn sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
@@ -544,7 +551,7 @@ export function readSettingsForm() {
     home: v('set-home') || S!.settings.home,
     githubHost: hostOnly(v('set-gh')),
     // 0 = never.
-    archiveDays: Math.min(90, Math.max(0, Math.round(Number(v('set-arch'))))) || 0,
+    archiveDays: Math.min(90, Math.max(0, Math.round(stepNum($<HTMLInputElement>('#set-arch'))))) || 0,
     notifications: ($('#set-noti') as HTMLInputElement).checked,
     notifyDone: ($('#set-nres') as HTMLInputElement).checked,
     quietFrom: cleanTime(v('set-qfrom')),
@@ -571,7 +578,7 @@ export function readSettingsForm() {
     effortPerTask: ($('#set-ept') as HTMLInputElement).checked,
     selfReview: ($('#set-srev') as HTMLInputElement).checked,
     maxWorkers: clampMaxWorkers(v('set-maxw')),
-    waitSlotMinutes: clampWaitSlot(v('set-wslot')),
+    waitSlotMinutes: clampWaitSlot(stepNum($<HTMLInputElement>('#set-wslot'))),
     fontFamily: normalizeFontFamily(v('set-font')),
     fontSize: clampFontSize(v('set-fsize')),
     theme: cleanTheme(v('set-theme')),

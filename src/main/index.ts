@@ -129,7 +129,7 @@ function snapshot(): AppState {
     fake: fakeMode(),
     preflightFailed: failedCount(lastPreflight() ?? []),
     repoAdding: addingRepo(),
-    dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, spend: d.dispatcher.spend?.[month()] ?? null },
+    dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, busySince: dispatcher.busySince, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }
 
@@ -399,7 +399,7 @@ function registerIpc() {
         notes,
       ].join('\n'),
     });
-    store.chat('event', assignedEvent(task, worker, !!reused));
+    store.handout(assignedEvent(task, worker, !!reused), task.id);
     return task.id;
   });
   handle('settings:save', (patch: Partial<SettingsView>) => {

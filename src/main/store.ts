@@ -138,6 +138,13 @@ class Store extends EventEmitter {
     return item;
   }
 
+  /** A Worker made or a task handed out (`ref`: the task): the chat folds these into one block (shared/handouts.ts). */
+  handout(text: string, ref?: string) {
+    const item = this.chat('event', text, ref);
+    item.sub = 'handout';
+    return item;
+  }
+
   log(workerId: string, from: WorkerLogItem['from'], text: string) {
     const item: WorkerLogItem = { ts: nowIso(), from, text };
     ensureDir(paths().workerLogs);
