@@ -167,9 +167,9 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
       await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', code, key, windowsVirtualKeyCode: vk, modifiers });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', code, key, windowsVirtualKeyCode: vk, modifiers });
     },
-    /** Rests the pointer on an element, as the mouse does (trusted events, :hover included). */
+    /** Rests the pointer on an element, or on a point of the window, as the mouse does (trusted events, :hover included). */
     async hover(selector) {
-      const p = await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+      const p = typeof selector !== 'string' ? selector : await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(p.x), y: Math.round(p.y) });
     },
     /** Sets the page's size, as resizing the window does. */
