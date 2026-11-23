@@ -25,8 +25,9 @@ let showTimer = 0;
 let hideTimer = 0;
 let goneTimer = 0;
 let watch = 0;
-let hiddenAt = 0;
-let pressedAt = 0;
+// Nothing was hidden or pressed yet: the page's first moments are not "right after" either.
+let hiddenAt = -Infinity;
+let pressedAt = -Infinity;
 
 const clipped = (x: HTMLElement) => x.scrollWidth > x.clientWidth + 1 || x.scrollHeight > x.clientHeight + 1;
 const shown = (x: HTMLElement) => (x.innerText ?? x.textContent ?? '').trim();

@@ -488,8 +488,9 @@ flow('the palette finds something said and shows the chat from that message', {}
   await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'pineapple fridays'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
   const row = await app.until("[...document.querySelectorAll('.cmdk-it')].findIndex((el) => el.innerText.includes('no pineapple on Fridays')) + 1", 'the message among the results');
   await app.click(`#cmdk-${row - 1}`);
-  await app.until("!!document.querySelector('#chat-thread .found')", 'the message marked in the chat');
-  assert.match(await app.evaluate("document.querySelector('#chat-thread .found').innerText"), /no pineapple on Fridays/);
+  // Read in the same look that finds it: the mark is taken off again a moment later.
+  const found = await app.until("document.querySelector('#chat-thread .found')?.innerText ?? ''", 'the message marked in the chat');
+  assert.match(found, /no pineapple on Fridays/);
   // The thread now starts at that message: what was said before it is above, not shown.
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Please remember the pineapple rule')"), false);
 });

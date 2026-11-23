@@ -170,7 +170,18 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
     /** Rests the pointer on an element, or on a point of the window, as the mouse does (trusted events, :hover included). */
     async hover(selector) {
       const p = typeof selector !== 'string' ? selector : await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
-      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(p.x), y: Math.round(p.y) });
+      const x = Math.round(p.x), y = Math.round(p.y);
+      // A window that has just opened takes a move late or not at all: send it until the page has the pointer there.
+      for (let i = 0; ; i++) {
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        const end = Date.now() + 1500;
+        while (Date.now() < end) {
+          if (await evaluate(`!!document.elementFromPoint(${x}, ${y})?.matches(':hover')`)) return;
+          await sleep(50);
+        }
+        if (i === 5) throw new Error(`The pointer did not reach ${JSON.stringify(selector)}`);
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x > 1 ? x - 1 : x + 1, y });
+      }
     },
     /** Sets the page's size, as resizing the window does. */
     async size(width, height = 900) {
