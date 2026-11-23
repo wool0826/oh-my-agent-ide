@@ -4,14 +4,26 @@ import { loadSettings, saveSettings, encryptToken, decryptToken, type StoredAcco
 import { log } from './log';
 import { nowIso, uid } from './util';
 import { t } from './i18n';
-import { chooseAccount, isExhausted, limitEnd, liveWindow, nextFreeAtFor } from '../shared/usage';
+import { chooseAccount, clampUsageMins, isExhausted, limitEnd, liveWindow, nextFreeAtFor, type UsageClock } from '../shared/usage';
+import { readUnifiedHeaders } from '../shared/usageHeaders';
 import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type Provider, type UsageWindow } from '../shared/types';
 import { codexClient } from './codex/client';
 import { limitWindows, type CodexRateLimits } from '../shared/codexEvents';
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
+const MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
+/** The model of the one-token request that reads a token's usage headers: the cheapest one. */
+const PROBE_MODEL = 'claude-haiku-5-5';
+
+/** What one read of a token account came to. */
+type Read = { ok: true } | { ok: false; status: number; retryAfter?: string | null };
 
 class Accounts extends EventEmitter {
+  /** The rounds of reading usage, for the popover's foot. */
+  clock: UsageClock = { checkedAt: null, nextAt: null, running: false };
+  private timer: NodeJS.Timeout | null = null;
+  private round: Promise<void> | null = null;
+
   list(): StoredAccount[] {
     return loadSettings().accounts;
   }
@@ -24,7 +36,7 @@ class Accounts extends EventEmitter {
     return this.list().map((a) => ({
       id: a.id, label: a.label, kind: a.kind, plan: a.plan, provider: a.provider, planLabel: a.planLabel ?? null, windowMins: a.windowMins ?? null,
       fiveHour: liveWindow(a.fiveHour), sevenDay: liveWindow(a.sevenDay),
-      usageUpdatedAt: a.usageUpdatedAt, usageSource: a.usageSource,
+      usageUpdatedAt: a.usageUpdatedAt, usageSource: a.usageSource, usageBackoffUntil: a.usageBackoffUntil ?? null,
       limited: this.isLimited(a), limitedUntil: this.isLimited(a) ? a.limitedUntil : null, lastError: a.lastError,
     }));
   }
@@ -222,7 +234,7 @@ class Accounts extends EventEmitter {
       win.utilization = Math.round(pct);
       if (resets) win.resetsAt = resets;
       a.usageUpdatedAt = nowIso();
-      if (a.usageSource !== 'endpoint') a.usageSource = 'events';
+      if (a.usageSource !== 'endpoint' && a.usageSource !== 'probe') a.usageSource = 'events';
     }
     if (info.status === 'rejected') this.markLimited(a.id, info.resetsAt ? (info.resetsAt > 1e12 ? info.resetsAt : info.resetsAt * 1000) : undefined);
     saveSettings();
@@ -240,12 +252,15 @@ class Accounts extends EventEmitter {
     if (f) a.fiveHour = f;
     if (s) a.sevenDay = s;
     a.usageUpdatedAt = nowIso();
-    if (a.kind !== 'token' || a.usageSource !== 'endpoint') a.usageSource = 'events';
+    if (a.kind !== 'token' || (a.usageSource !== 'endpoint' && a.usageSource !== 'probe')) a.usageSource = 'events';
     saveSettings();
     this.emit('changed');
   }
 
-  /** Read 5h/7d usage for token accounts from the usage endpoint Claude Code uses. */
+  /**
+   * Read 5h/7d usage for token accounts: from the usage endpoint Claude Code uses, or, for a token the endpoint
+   * refuses (an inference-only setup token), from the headers of a one-token request. The account remembers which.
+   */
   async refresh(id?: string) {
     if (fakeMode()) return;
     for (const a of this.list()) {
@@ -253,36 +268,25 @@ class Accounts extends EventEmitter {
       if (a.kind !== 'token' || a.provider !== 'claude') continue;
       if (a.usageBackoffUntil && Date.parse(a.usageBackoffUntil) > Date.now()) continue;
       try {
-        const res = await fetch(USAGE_URL, {
-          headers: {
-            Authorization: `Bearer ${decryptToken(a.tokenEnc)}`,
-            'anthropic-beta': 'oauth-2025-04-20',
-            'Content-Type': 'application/json',
-          },
-        });
-        if (res.status === 429) {
-          // The usage endpoint's own request limit, not the account's usage limit.
+        let r = a.usageProbe ? await this.probe(a) : await this.readEndpoint(a);
+        if (!r.ok && !a.usageProbe && (r.status === 401 || r.status === 403)) {
+          r = await this.probe(a);
+          if (r.ok) a.usageProbe = true;
+        }
+        if (r.ok) { a.lastError = null; continue; }
+        if (r.status === 429) {
+          // The server's own request limit, not the account's usage limit.
           // Keep the last values and back off (Retry-After, else 15 minutes).
-          const ra = Number(res.headers.get('retry-after'));
+          const ra = Number(r.retryAfter);
           const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : 15 * 60_000;
           a.usageBackoffUntil = new Date(Date.now() + wait).toISOString();
           a.lastError = null;
-          log.info('usage endpoint 429', a.label, `retry in ${Math.round(wait / 60000)} min`);
+          log.info('usage 429', a.label, `retry in ${Math.round(wait / 60000)} min`);
           continue;
         }
-        if (!res.ok) {
-          a.lastError = res.status === 401 || res.status === 403
-            ? t('acc.err.usageScope')
-            : t('acc.err.usage', { msg: String(res.status) });
-          continue;
-        }
-        const j: any = await res.json();
-        const w = (x: any): UsageWindow => ({ utilization: typeof x?.utilization === 'number' ? Math.round(x.utilization) : null, resetsAt: x?.resets_at ?? null });
-        a.fiveHour = w(j.five_hour);
-        a.sevenDay = w(j.seven_day);
-        a.usageUpdatedAt = nowIso();
-        a.usageSource = 'endpoint';
-        a.lastError = null;
+        a.lastError = r.status === 401 || r.status === 403
+          ? t('acc.err.usageScope')
+          : t('acc.err.usage', { msg: String(r.status) });
       } catch (e) {
         a.lastError = t('acc.err.usage', { msg: (e as Error).message });
         log.warn('usage refresh', a.label, (e as Error).message);
@@ -292,13 +296,94 @@ class Accounts extends EventEmitter {
     this.emit('changed');
   }
 
+  private async readEndpoint(a: StoredAccount): Promise<Read> {
+    const res = await fetch(USAGE_URL, {
+      headers: {
+        Authorization: `Bearer ${decryptToken(a.tokenEnc)}`,
+        'anthropic-beta': 'oauth-2025-04-20',
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!res.ok) return { ok: false, status: res.status, retryAfter: res.headers.get('retry-after') };
+    const j: any = await res.json();
+    const w = (x: any): UsageWindow => ({ utilization: typeof x?.utilization === 'number' ? Math.round(x.utilization) : null, resetsAt: x?.resets_at ?? null });
+    a.fiveHour = w(j.five_hour);
+    a.sevenDay = w(j.seven_day);
+    a.usageUpdatedAt = nowIso();
+    a.usageSource = 'endpoint';
+    return { ok: true };
+  }
+
+  /**
+   * A one-token request to the cheapest model, sent as Claude Code (an OAuth token serves Claude Code only), for the
+   * usage headers on its answer. A refusal by a usage limit carries them too: then the account is limited.
+   */
+  private async probe(a: StoredAccount): Promise<Read> {
+    const res = await fetch(MESSAGES_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${decryptToken(a.tokenEnc)}`,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'oauth-2025-04-20',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: PROBE_MODEL,
+        max_tokens: 1,
+        system: "You are Claude Code, Anthropic's official CLI for Claude.",
+        messages: [{ role: 'user', content: '.' }],
+      }),
+    });
+    // The answer itself is not needed.
+    void res.body?.cancel().catch(() => {});
+    const u = readUnifiedHeaders((n) => res.headers.get(n));
+    if (!u || (!u.fiveHour && !u.sevenDay && !u.rejected)) return { ok: false, status: res.ok ? 502 : res.status, retryAfter: res.headers.get('retry-after') };
+    if (u.fiveHour) a.fiveHour = u.fiveHour;
+    if (u.sevenDay) a.sevenDay = u.sevenDay;
+    a.usageUpdatedAt = nowIso();
+    a.usageSource = 'probe';
+    if (u.rejected) this.markLimited(a.id, u.rejectedUntil ?? undefined);
+    return { ok: true };
+  }
+
+  /**
+   * One round: every token account and the ChatGPT account. A round asked for while one runs joins it. Afterwards
+   * the next round is set from now, so a refresh by hand also moves the next one.
+   */
+  refreshAll(): Promise<void> {
+    if (this.round) return this.round;
+    this.clock.running = true;
+    this.emit('changed');
+    this.round = (async () => {
+      try {
+        await Promise.all([this.refresh(), this.refreshCodex()]);
+      } finally {
+        this.clock.checkedAt = nowIso();
+        this.clock.running = false;
+        this.round = null;
+        this.arm();
+        this.emit('changed');
+      }
+    })();
+    return this.round;
+  }
+
+  /** Set the next round from the interval in Settings; none when it is "only by hand". */
+  arm() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    const mins = clampUsageMins(loadSettings().usageRefreshMins);
+    this.clock.nextAt = mins ? new Date(Date.now() + mins * 60_000).toISOString() : null;
+    if (mins) {
+      this.timer = setTimeout(() => { void this.refreshAll(); }, mins * 60_000);
+      this.timer.unref();
+    }
+  }
+
   startPolling() {
-    if (fakeMode()) return; // no usage to read, and no Codex CLI to start
-    void this.refresh();
-    void this.refreshCodex();
-    // Codex also reports the usage as it changes during a turn.
-    codexClient().on('rateLimits', (rl: CodexRateLimits | null) => this.applyCodex(rl));
-    setInterval(() => { void this.refresh(); void this.refreshCodex(); }, 5 * 60_000).unref();
+    // Fake agents: no usage to read and no Codex CLI to start; a round only moves the clock.
+    if (!fakeMode()) codexClient().on('rateLimits', (rl: CodexRateLimits | null) => this.applyCodex(rl));
+    void this.refreshAll();
   }
 }
 
