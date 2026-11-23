@@ -332,7 +332,9 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
   await app.click('#set-nres');
   const s = await app.until("return (await window.ide.call('state')).settings.quietTo === '07:30' && (await window.ide.call('state'));", 'the hours saved');
   assert.equal(s.settings.quietFrom, '22:00');
-  assert.equal(s.settings.notifyResults, false);
+  // The harness saves the old `notifications: false`, which turns task-end notifications off too (notifyDoneFrom); the click turns them on.
+  assert.equal(s.settings.notifyDone, true);
+  assert.equal(s.settings.notifications, false);
 });
 
 // Every control on a screen has a name a screen reader can say. Returns what does not, as short HTML.

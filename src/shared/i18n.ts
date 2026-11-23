@@ -575,8 +575,9 @@ const en = {
   'set.home': 'IDE home folder',
   'set.ghHost': 'Company GitHub host',
   'set.archive': 'Archive after (days, 0 = never)',
-  'set.osNoti': 'OS notifications',
+  'set.osNoti': 'Notify when your answer is needed',
   'set.sound': 'Decision sound',
+  'set.doneSound': 'Task end sound',
   'set.soundTest': 'Play',
   'set.soundFile': 'Sound file',
   'set.soundMissing': 'Cannot play the sound file. Check the path and format.',
@@ -654,6 +655,7 @@ const en = {
   'sound.chime': 'Chime',
   'sound.bell': 'Bell',
   'sound.ping': 'Ping',
+  'sound.soft': 'Soft',
   'sound.custom': 'Custom file',
   'sound.none': 'None',
 
@@ -820,6 +822,9 @@ const en = {
   'noti.workerWaits': '{id} is waiting for your decision',
   'noti.merged': 'PR merged',
   'noti.closed': 'PR closed',
+  'noti.failed': 'failed',
+  'noti.pr': 'PR #{n}',
+  'noti.noPr': 'no PR',
 
   // errors
   'err.noRepo': 'Repository is not registered: {name}',
@@ -1407,8 +1412,9 @@ const ko: Record<Key, string> = {
   'set.home': 'IDE 홈 폴더',
   'set.ghHost': '사내 GitHub 호스트',
   'set.archive': '보관 기간(일, 0 = 안 함)',
-  'set.osNoti': 'OS 알림',
+  'set.osNoti': '확인이 필요하면 알림',
   'set.sound': '결정 알림 소리',
+  'set.doneSound': '작업 완료 소리',
   'set.soundTest': '들어 보기',
   'set.soundFile': '소리 파일',
   'set.soundMissing': '소리 파일을 재생할 수 없어요. 경로와 형식을 확인해 주세요.',
@@ -1486,6 +1492,7 @@ const ko: Record<Key, string> = {
   'sound.chime': '차임',
   'sound.bell': '벨',
   'sound.ping': '핑',
+  'sound.soft': '잔잔하게',
   'sound.custom': '파일 지정',
   'sound.none': '없음',
 
@@ -1646,6 +1653,9 @@ const ko: Record<Key, string> = {
   'noti.workerWaits': '{id}가 결정을 기다려요',
   'noti.merged': 'PR이 머지됐어요',
   'noti.closed': 'PR이 닫혔어요',
+  'noti.failed': '실패',
+  'noti.pr': 'PR #{n}',
+  'noti.noPr': 'PR 없음',
 
   'err.noRepo': '등록되지 않은 저장소예요: {name}',
   'err.noWorker': '없는 Worker예요: {id}',

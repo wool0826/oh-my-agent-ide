@@ -1,6 +1,7 @@
 // When the app stays quiet: do-not-disturb hours, and notifications that come in a burst (decision 136).
 
 import { parseTime } from './automations';
+import type { Say } from './askWhy';
 
 /** A "HH:MM" as minutes of the day, or null. */
 function minutes(v: string): number | null {
@@ -39,4 +40,27 @@ export class Burst {
     this.last.set(source, now);
     return prev === undefined || now - prev >= this.windowMs;
   }
+}
+
+/**
+ * Whether task-end notifications are on. Settings saved before they had a switch of their own let them through only
+ * when both old switches did ("OS notifications", which now means decisions only, and "Notify when a task ends").
+ */
+export function notifyDoneFrom(raw: { notifyDone?: unknown; notifications?: unknown; notifyResults?: unknown }): boolean {
+  if (typeof raw.notifyDone === 'boolean') return raw.notifyDone;
+  return raw.notifications !== false && raw.notifyResults !== false;
+}
+
+/**
+ * A task-end notification: who ended it and how (done, or failed), with its PR or "no PR" for code, then the task's
+ * title over one short line of its result.
+ */
+export function doneNotice(say: Say, a: { who: string; title: string; summary: string; ok: boolean; label?: string; code?: boolean; prUrl?: string | null }) {
+  const num = a.prUrl?.match(/\/pull\/(\d+)/)?.[1];
+  const pr = num ? say('noti.pr', { n: num }) : a.ok && a.code ? say('noti.noPr') : '';
+  const line = a.summary.replace(/\s+/g, ' ').trim();
+  return {
+    title: [`${a.who} ${a.ok ? a.label ?? say('res.doneLabel') : say('noti.failed')}`, pr].filter(Boolean).join(' · '),
+    body: [a.title, line.length > 120 ? `${line.slice(0, 119)}…` : line].filter(Boolean).join('\n'),
+  };
 }

@@ -74,7 +74,7 @@ export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', h
     for (const id of new Set(tasks.map((x) => x.workerId))) if (id && store.worker(id)) store.log(id, 'event', text);
     const also = tasks.length > 1 ? ` (also recorded by ${tasks.slice(1).map((x) => x.id).join(', ')})` : '';
     store.pushUpdate(`${first.id} "${first.title}" PR ${merged ? 'merged' : 'closed without merging'}${also}; branch cleaned up`);
-    notifyInfo(merged ? t('noti.merged') : t('noti.closed'), first.title);
+    notifyInfo(merged ? t('noti.merged') : t('noti.closed'), first.title, undefined, first.id);
   }
   // Tasks waiting (after_task_id) on any of them start, or are cancelled if the PR was closed. Before the branch
   // cleanup below, which fetches and pushes: the board and the waiting tasks should not wait for the network.

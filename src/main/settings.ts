@@ -5,7 +5,8 @@ import { readJson, writeJsonAtomic, uid } from './util';
 import type { AccountPlan, Provider, SettingsView, UsageWindow } from '../shared/types';
 import { cleanAskOff } from '../shared/grants';
 import { cleanTheme } from '../shared/theme';
-import { cleanTime } from '../shared/notifyRules';
+import { cleanTime, notifyDoneFrom } from '../shared/notifyRules';
+import { DONE_SOUND_DEFAULT, cleanDoneSound } from '../shared/sounds';
 import { QUICK_KEY_DEFAULT, normalizeQuickKey } from '../shared/quickKey';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
 import { MAX_WORKERS_DEFAULT, WAIT_SLOT_DEFAULT, clampMaxWorkers, clampWaitSlot } from '../shared/slots';
@@ -46,10 +47,11 @@ export const DEFAULTS: SettingsView = {
   home: path.join(os.homedir(), 'oh-my-agent-ide'),
   githubHost: '',
   notifications: true,
-  notifyResults: true,
+  notifyDone: true,
   quietFrom: '',
   quietTo: '',
   sound: 'chime',
+  doneSound: DONE_SOUND_DEFAULT,
   soundVolume: 70,
   customSound: '',
   archiveDays: 7,
@@ -95,6 +97,9 @@ export function loadSettings(): Settings {
   if (cache) return cache;
   const raw = readJson<Partial<Settings>>(file(), {});
   cache = { ...DEFAULTS, ...raw, accounts: (raw.accounts ?? []).map(fixAccount) };
+  // Task-end notifications got a switch of their own; the old one they shared with decisions is dropped.
+  cache.notifyDone = notifyDoneFrom(raw);
+  delete (cache as { notifyResults?: boolean }).notifyResults;
   fix(cache);
   return cache;
 }
@@ -109,6 +114,7 @@ function fix(s: SettingsView) {
   s.theme = cleanTheme(s.theme);
   s.quietFrom = cleanTime(s.quietFrom);
   s.quietTo = cleanTime(s.quietTo);
+  s.doneSound = cleanDoneSound(s.doneSound);
   s.quickKey = normalizeQuickKey(String(s.quickKey ?? '')) ?? QUICK_KEY_DEFAULT;
 }
 
