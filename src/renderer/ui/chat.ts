@@ -19,6 +19,7 @@ import { canStop } from '../../shared/canStop';
 import { threadLayout } from '../../shared/thread';
 import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, nextCard, slotClock, type DecisionKind } from '../../shared/decisionView';
+import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
 import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
@@ -111,6 +112,7 @@ export function chatItemHtml(c: ChatItem) {
       const a = S!.autoAnswers.find((x) => x.id === c.ref);
       return `<button class="event self" data-action="aa-select" data-id="${c.ref ?? ''}" title="${t('chat.showRight')}">${sym('s-check', 'c-green')}<span><b>${a?.corrected ? t('chat.autoCorrected') : t('chat.auto')}</b> ${esc(c.text)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
     }
+    case 'shell': return shellBlockHtml(c);
     case 'result': {
       const x = task(c.ref);
       const links = resultLinks(x);
@@ -164,7 +166,7 @@ export function renderChat(force = false, older = false) {
   // Pages no longer shown are let go; scrolling up loads them again.
   if (ui.chatOlder.length && from >= ui.chatOlder.length) ui.chatOlder = [];
   const earlier = from > 0 || chatHasEarlier(all);
-  const key = `${lang()}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
+  const key = `${lang()}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${shellKey(all.slice(from))}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
   if (!force && !older && key === ui.lastChatKey) return;
   ui.lastChatKey = key;
   let html = earlier ? olderBtn('chat', ui.loadingOlder.has('chat')) : '';
@@ -254,7 +256,11 @@ export function updateSendButton() {
     btn.title = stop ? label : '';
   };
   const empty = (box: Box) => !$<HTMLTextAreaElement>(box === 'chat' ? '#chat-input' : '#ws-input').value.trim() && !ui.attach[box].length;
-  set($<HTMLButtonElement>('#chat-send'), !!S?.dispatcher.busy && empty('chat'), t('chat.stop'));
+  const send = $<HTMLButtonElement>('#chat-send');
+  // Shell mode: the button runs the line.
+  if (ui.shell) {
+    if (send.getAttribute('aria-label') !== t('shell.run')) { send.classList.remove('stop'); send.innerHTML = sym('s-play'); send.setAttribute('aria-label', t('shell.run')); send.title = ''; }
+  } else set(send, !!S?.dispatcher.busy && empty('chat'), t('chat.stop'));
   const w = worker(ui.wSel);
   const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
   set($<HTMLButtonElement>('#ws-send'), !!w && canStop(w, cur) && empty('ws'), t('wk.stop'));

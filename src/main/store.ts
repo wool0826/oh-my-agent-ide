@@ -220,6 +220,8 @@ class Store extends EventEmitter {
 
   takeUpdates(): string[] {
     const u = this.data.pendingUpdates.splice(0);
+    // Shell runs waiting for this turn: the Dispatcher has them now (main/shell.ts).
+    for (const c of this.data.chat.slice(-200)) if (c.shell?.sent === 'queued') c.shell.sent = 'sent';
     if (u.length) this.changed();
     return u;
   }

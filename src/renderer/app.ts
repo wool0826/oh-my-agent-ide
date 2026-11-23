@@ -16,6 +16,7 @@ import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAwa
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue } from './ui/controls';
+import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo } from './ui/shell';
 import { $, announce, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
@@ -107,6 +108,19 @@ export async function act(el: HTMLElement, e: Event) {
     // The chip over a late reply: back to the report it answers.
     // A task can have several cards (a result, then a follow-up): the one the group answers is the last one above it.
     case 'goto-report': flashCard([...document.querySelectorAll<HTMLElement>(`#chat-thread .attach[data-task="${CSS.escape(id)}"]`)].filter((c) => c.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop() ?? null); break;
+    case 'shell-cwd': pickShellFolder(el); break;
+    case 'shell-stop': (el as HTMLButtonElement).disabled = true; void tryCall('shell:stop', id); break;
+    case 'shell-fold': if (!ui.shellOpen.delete(id)) ui.shellOpen.add(id); renderChat(true); break;
+    case 'shell-copy': {
+      const r = S?.chat.find((c) => c.id === id)?.shell;
+      if (r) void navigator.clipboard.writeText(`$ ${r.cmd}\n${r.out}`).then(() => toast(t('sel.copied')), () => {});
+      break;
+    }
+    case 'shell-again': {
+      const r = S?.chat.find((c) => c.id === id)?.shell;
+      if (r) void tryCall('shell:run', r.cmd, r.repo || null).then((x) => { if (!x.ok) toast(x.error, true); });
+      break;
+    }
     case 'reply-cancel': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
       ui.reply[box] = null;
@@ -549,10 +563,11 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     host.style.setProperty('--composer-h', h);
     if (thread && atEnd) scrollQuietly(thread, thread.scrollHeight);
   }).observe(form);
-  input.addEventListener('input', () => { autosize(input); updateSendButton(); });
+  input.addEventListener('input', () => { if (box === 'chat') shellInput(input); autosize(input); updateSendButton(); });
   // Files copied in Explorer or Finder attach as if dropped here.
   input.addEventListener('paste', (e) => pasteFiles(box, e));
   input.addEventListener('keydown', (e) => {
+    if (box === 'chat' && shellKeys(e, input)) { updateSendButton(); return; }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       form.requestSubmit();
@@ -561,7 +576,9 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (sending) return;
-    const files = [...ui.attach[box]];
+    // A shell line takes no files and no reply: they stay for the next message.
+    const sh = box === 'chat' && ui.shell;
+    const files = sh ? [] : [...ui.attach[box]];
     const typed = input.value;
     const text = typed.trim() || (files.length ? t('attach.defaultText') : '');
     if (!text) return;
@@ -580,7 +597,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     setSendErr(box, err ?? '');
     if (err) return;
     if (thread) scrollQuietly(thread, thread.scrollHeight);
-    if (ui.reply[box] === reply) { ui.reply[box] = null; renderReply(box); }
+    if (!sh && ui.reply[box] === reply) { ui.reply[box] = null; renderReply(box); }
     // What was typed while it went stays.
     if (input.value === typed) input.value = '';
     ui.attach[box] = ui.attach[box].filter((f) => !files.includes(f));
@@ -874,6 +891,11 @@ export function init() {
   });
 
   bindComposer('chat', '#chat-form', '#chat-input', async (text, files) => {
+    if (ui.shell) {
+      const r = await tryCall<string>('shell:run', text, shellRepo());
+      if (r.ok) leaveShell();
+      return r.ok ? null : r.error;
+    }
     const r = await tryCall('chat:send', replyText('chat', text), files, ui.reply.chat?.task ?? null);
     return r.ok ? null : r.error;
   });

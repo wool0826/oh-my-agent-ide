@@ -94,6 +94,10 @@ export class FakeSession {
     const signal = this.abort.signal;
     for (const step of steps) {
       if (signal.aborted) return { text: 'Interrupted.', isError: true };
+      if (step.do === 'echo') {
+        this.ev.onText?.(message.split(/\r?\n/).filter((l) => l.includes(step.match) && !/@fake/i.test(l)).join('\n') || '(none)');
+        continue;
+      }
       try {
         const failed = await this.step(step, signal);
         if (failed) return { text: failed, isError: true };
