@@ -561,7 +561,7 @@ export function askRepoRemove(name: string) {
   renderConfirmDialog();
 }
 
-/** The confirm dialog for archiving and removing (ui.confirmAsk); without an OK label it only explains. */
+/** The confirm dialog for archiving, removing and starting a new conversation (ui.confirmAsk); without an OK label it only explains. */
 export function renderConfirmDialog() {
   const root = $('#dlg');
   const ask = ui.confirmAsk;
@@ -591,6 +591,7 @@ export async function confirmOk() {
   renderConfirmDialog();
   if (!ask?.ok) return;
   if (ask.action === 'archive') return archiveWorker(ask.id, true);
+  if (ask.action === 'ctx-clear') { await call('dispatcher:clear'); return; }
   const kept = await call<string[]>('repo:remove', ask.id);
   if (kept === undefined) return;
   if (ui.repoSel === ask.id) ui.repoSel = null;

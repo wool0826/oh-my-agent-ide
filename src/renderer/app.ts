@@ -11,7 +11,9 @@ import { cleanTime } from '../shared/notifyRules';
 import { focusSelector } from '../shared/focusKey';
 import { PAGE, pagesFor, slideOlder } from '../shared/paging';
 import { FONT_SIZE_DEFAULT } from '../shared/font';
+import { Drafts } from '../shared/drafts';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
+import { menuPlace } from '../shared/menu';
 import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, moveDecision, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
@@ -209,19 +211,23 @@ export async function act(el: HTMLElement, e: Event) {
     case 'ctx-menu': {
       const menu = $('#ctxmenu');
       if (!menu.hidden && menu.dataset.for === 'ctx') { menu.hidden = true; break; }
-      const empty = !S!.dispatcher.contextTokens;
       menu.dataset.for = 'ctx';
-      const spent = hasSpend(S!.dispatcher.spend) ? `<div class="note">${t('spend.dispatcher')}<br>${spendHtml(S!.dispatcher.spend)}</div><hr>` : '';
-      menu.innerHTML = `${spent}<button data-action="ctx-compact"${empty ? ' disabled' : ''}>${t('ctx.compact')}</button><button data-action="ctx-clear"${empty ? ' disabled' : ''}>${t('ctx.clear')}</button>`;
-      menu.hidden = false;
+      const spent = hasSpend(S!.dispatcher.spend) ? `<div class="note">${t('spend.dispatcher')}<br>${spendHtml(S!.dispatcher.spend)}</div>` : '';
+      // With no context there is nothing to compact or to start again: only what was spent is left to show.
+      const items = S!.dispatcher.contextTokens ? `<button role="menuitem" data-action="ctx-compact">${t('ctx.compact')}</button><button role="menuitem" data-action="ctx-clear">${t('ctx.clear')}…</button>` : '';
+      menu.innerHTML = `${spent}${spent && items ? '<hr>' : ''}${items}`;
+      // Above the meter, its right edge on the meter's.
       const r = el.getBoundingClientRect();
-      menu.style.left = `${Math.max(8, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
-      menu.style.top = `${r.top - menu.offsetHeight - 6}px`;
-      menu.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+      openCtxMenu((w) => r.right - w, (h) => r.top - h - 6, el);
       break;
     }
-    case 'ctx-compact': $('#ctxmenu').hidden = true; await call('dispatcher:compact'); break;
-    case 'ctx-clear': $('#ctxmenu').hidden = true; await call('dispatcher:clear'); break;
+    case 'ctx-compact': closeCtxMenu(); await call('dispatcher:compact'); break;
+    case 'ctx-clear':
+      // The Dispatcher's context is gone for good: ask first (B2).
+      closeCtxMenu();
+      ui.confirmAsk = { title: t('ctx.clearTitle'), body: `<p>${esc(t('ctx.clearBody'))}</p>`, ok: t('ctx.clear'), action: 'ctx-clear', id: '' };
+      renderConfirmDialog();
+      break;
     case 'close-settings': closeSettings(); break;
     case 'pane': showPane(id as Pane); break;
     case 'goto-decision': {
@@ -600,14 +606,20 @@ export async function act(el: HTMLElement, e: Event) {
   }
 }
 
-/** Shows the context menu at (x, y) and moves the focus into it; closing gives the focus back (L14). */
+/**
+ * Shows the context menu and moves the focus into it; closing gives the focus back (L14). It goes at (x, y), each a
+ * number or worked out from the menu's measured size, and stays inside the window.
+ */
 let ctxReturn: HTMLElement | null = null;
-function openCtxMenu(x: number, y: number, h: number) {
+type MenuAt = number | ((size: number) => number);
+function openCtxMenu(x: MenuAt, y: MenuAt, back = document.activeElement as HTMLElement | null) {
   const menu = $('#ctxmenu');
-  ctxReturn = document.activeElement as HTMLElement | null;
-  menu.style.left = `${Math.min(x, innerWidth - 200)}px`;
-  menu.style.top = `${Math.min(y, innerHeight - h)}px`;
+  ctxReturn = back;
   menu.hidden = false;
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  const p = menuPlace(typeof x === 'number' ? x : x(w), typeof y === 'number' ? y : y(h), w, h, innerWidth, innerHeight);
+  menu.style.left = `${p.left}px`;
+  menu.style.top = `${p.top}px`;
   menu.querySelector<HTMLElement>('button')?.focus();
 }
 export function closeCtxMenu(refocus = false) {
@@ -616,6 +628,28 @@ export function closeCtxMenu(refocus = false) {
   menu.hidden = true;
   if (refocus && ctxReturn?.isConnected) ctxReturn.focus();
   ctxReturn = null;
+}
+
+/** What is written for each Worker that is not on screen: the Worker composer is one field for all of them. */
+const wsDrafts = new Drafts<NonNullable<typeof ui.reply.ws>>();
+
+/**
+ * Another Worker is selected: the composer's text, files and reply stay with the Worker it leaves, and what was
+ * written for the one it comes to is back.
+ */
+export function swapDraft(from: string | null, to: string | null) {
+  if (from === to) return;
+  const input = $<HTMLTextAreaElement>('#ws-input');
+  if (from) wsDrafts.put(from, { text: input.value, files: ui.attach.ws, reply: ui.reply.ws });
+  wsDrafts.keep((id) => !!worker(id));
+  const d = to ? wsDrafts.take(to) : { text: '', files: [], reply: null };
+  input.value = d.text;
+  ui.attach.ws = d.files;
+  ui.reply.ws = d.reply;
+  // A failed send is said where it failed; what was not sent is in that Worker's draft.
+  setSendErr('ws', '');
+  renderReply('ws');
+  renderChips('ws');
 }
 
 /** The composer grows with its text up to half the window; past that it scrolls with no visible bar. */
@@ -669,7 +703,11 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     }
     const err = await send(text, files);
     sending = false;
-    if (box === 'ws' && ui.wSel !== target) { if (err) toast(err, true); return; }
+    if (box === 'ws' && ui.wSel !== target) {
+      // Another Worker is on screen by now: what went leaves the draft kept for the one it went to.
+      if (err) toast(err, true); else if (target) wsDrafts.sent(target, typed, files, reply as typeof ui.reply.ws);
+      return;
+    }
     setSendErr(box, err ?? '');
     if (err) return;
     if (thread) scrollQuietly(thread, thread.scrollHeight);
@@ -969,12 +1007,12 @@ export function init() {
       const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
       menu.dataset.for = 'worker';
       menu.innerHTML = `<button role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && canStop(w, cur) ? `<button role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
-      openCtxMenu(x, y, 70);
+      openCtxMenu(x, y);
       return;
     }
     menu.dataset.for = 'aa';
     menu.innerHTML = `<button role="menuitem" data-action="aa-edit" data-id="${id}">${t('aa.correct')}…</button><button role="menuitem" data-action="view" data-v="memory">${t('aa.viewMemory')}</button>`;
-    openCtxMenu(x, y, 90);
+    openCtxMenu(x, y);
   });
   // The menu keeps the keyboard: arrows move between its items, Tab closes it (L14).
   $('#ctxmenu').addEventListener('keydown', (e) => {
