@@ -1,6 +1,7 @@
 // Controls built by hand: the popover list and the font picker.
 import { FONT_SUGGESTIONS, normalizeFontFamily } from '../../shared/font';
 import { esc, sym, t, when } from './core';
+import { setTip } from './tip';
 import { previewFont } from './settings';
 
 export type Opt = { value: string; label: string; font?: string; sub?: string };
@@ -87,7 +88,7 @@ export function markFont(input: HTMLInputElement) {
   const names = input.value.split(',').map((x) => x.trim()).filter(Boolean);
   const bad = !!fontList && names.some((n) => !fontList!.some((f) => f.toLowerCase() === n.toLowerCase()));
   input.classList.toggle('bad', bad);
-  input.title = bad ? t('set.fontMissing') : '';
+  setTip(input, bad ? t('set.fontMissing') : '');
 }
 
 /** Arrow keys, Enter and Escape inside an open popover. Returns true when handled. */

@@ -107,7 +107,7 @@ export function shellBlockHtml(c: ChatItem) {
     : `<span class="sh-dlv wait"><i></i>${t('shell.willSend')}</span>`;
   const acts = r.running ? '' : `<span class="gap"></span><a tabindex="0" role="link" data-action="shell-copy" data-id="${esc(c.id)}">${t('shell.copy')}</a><a tabindex="0" role="link" data-action="shell-again" data-id="${esc(c.id)}">${t('shell.again')}</a>`;
   const out = shown ? `<pre class="sh-out">${esc(shown)}${r.running ? '<span class="sh-caret" aria-hidden="true"></span>' : ''}</pre>` : '';
-  return `<div class="sh-run${r.running ? ' live' : ''}" data-id="${esc(c.id)}" role="group" aria-label="${esc(t('shell.blockAria', { cmd: r.cmd }))}"><header><span class="sh-bang" aria-hidden="true">!</span><code title="${esc(r.cmd)}">${esc(r.cmd)}</code><span class="sh-in">${t('shell.in', { where: esc(where) })}</span>${pill}${time}${stop}</header>${fold}${out}<footer>${dlv}${acts}</footer></div>`;
+  return `<div class="sh-run${r.running ? ' live' : ''}" data-id="${esc(c.id)}" role="group" aria-label="${esc(t('shell.blockAria', { cmd: r.cmd }))}"><header><span class="sh-bang" aria-hidden="true">!</span><code>${esc(r.cmd)}</code><span class="sh-in">${t('shell.in', { where: esc(where) })}</span>${pill}${time}${stop}</header>${fold}${out}<footer>${dlv}${acts}</footer></div>`;
 }
 
 /** What makes a run's block change: drawn again when it does. */

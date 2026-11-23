@@ -146,6 +146,7 @@
   --z-toast: 60;
   --z-popover: 80;
   --z-ctxmenu: 90;
+  --z-tooltip: 100;
 }
 
 /* 3. Semantic roles — dark (default) */

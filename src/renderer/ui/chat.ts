@@ -26,6 +26,7 @@ import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
 import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { setTip } from './tip';
 import { go } from './history';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
@@ -42,7 +43,7 @@ export function prBadges(x: Task) {
   if (!c || x.prState !== 'OPEN') return '';
   const b: string[] = [];
   const ci = CI_BADGE[c.ci];
-  if (ci) b.push(`<i class="${ci[0]}"${c.failed.length ? ` title="${esc(c.failed.join(', '))}"` : ''}>${t(ci[1])}</i>`);
+  if (ci) b.push(`<i class="${ci[0]}"${c.failed.length ? ` data-tip="${esc(c.failed.join(', '))}"` : ''}>${t(ci[1])}</i>`);
   if (c.conflicts) b.push(`<i class="bad">${t('pr.conflicts')}</i>`);
   const rv = c.review ? REVIEW_BADGE[c.review] : null;
   if (rv) b.push(`<i class="${rv[0]}">${t(rv[1])}</i>`);
@@ -62,7 +63,7 @@ export function resultLinks(x: Task | null) {
     const badges = prBadges(x);
     if (badges) links.push(badges);
   }
-  for (const f of x?.files ?? []) links.push(`<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${esc(base(f))}</a>`);
+  for (const f of x?.files ?? []) links.push(`<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" data-tip="${esc(f)}">${esc(base(f))}</a>`);
   return links;
 }
 
@@ -72,7 +73,7 @@ export function spendHtml(s: Spend | null | undefined, short = false) {
   const v = spendVars(s);
   const text = short ? t('spend.cost', v) : `${t('spend.cost', v)} · ${t('spend.tokens', v)}`;
   const tip = short ? `${t('spend.tokens', v)}\n${t('spend.tip', v)}` : t('spend.tip', v);
-  return `<span class="spend" title="${esc(tip)}">${esc(text)}</span>`;
+  return `<span class="spend" data-tip="${esc(tip)}">${esc(text)}</span>`;
 }
 
 /** How a finished task went, beside its title: how long it took and how much of its plan it did. */
@@ -181,7 +182,7 @@ export function chatItemHtml(c: ChatItem) {
     case 'error': return failureHtml(c) ?? `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
     case 'auto': {
       const a = S!.autoAnswers.find((x) => x.id === c.ref);
-      return `<button class="event self" data-action="aa-select" data-id="${c.ref ?? ''}" title="${t('chat.showRight')}">${sym('s-check', 'c-green')}<span><b>${a?.corrected ? t('chat.autoCorrected') : t('chat.auto')}</b> ${esc(c.text)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
+      return `<button class="event self" data-action="aa-select" data-id="${c.ref ?? ''}" data-tip="${t('chat.showRight')}">${sym('s-check', 'c-green')}<span><b>${a?.corrected ? t('chat.autoCorrected') : t('chat.auto')}</b> ${esc(c.text)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
     }
     case 'shell': return shellBlockHtml(c);
     case 'result': {
@@ -209,7 +210,7 @@ function replyRow(c: ChatItem, html: string, first: string | null, quoteShown: b
 function reportRef(id: string) {
   const x = task(id);
   const what = [x?.title ?? id, x?.prUrl ? `PR #${prNum(x.prUrl)}` : ''].filter(Boolean).join(' · ');
-  return `<button type="button" class="rth-ref" data-action="goto-report" data-id="${esc(id)}" title="${esc(t('chat.toReport'))}">${sym('s-reply')}<b>${esc(x?.workerId ?? id)}</b><span>${esc(what)}</span></button>`;
+  return `<button type="button" class="rth-ref" data-action="goto-report" data-id="${esc(id)}" data-tip="${esc(t('chat.toReport'))}">${sym('s-reply')}<b>${esc(x?.workerId ?? id)}</b><span>${esc(what)}</span></button>`;
 }
 
 /** The chat items held: pages loaded with chat:page, then the state's snapshot. */
@@ -302,7 +303,9 @@ function renderCtxMeter() {
   const hot = ctx >= COMPACT_AT, quiet = ctx < CONTEXT_WINDOW / 2;
   btn.innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${quiet ? '' : `${k(ctx)} / ${k(CONTEXT_WINDOW)}`}${hot ? `<span class="pill orange">${t('chat.compactChip')}</span>` : ''}`;
   btn.classList.toggle('hot', hot);
-  btn.setAttribute('aria-label', t('chat.ctxLabel', { a: k(ctx), b: k(CONTEXT_WINDOW) }));
+  const label = t('chat.ctxLabel', { a: k(ctx), b: k(CONTEXT_WINDOW) });
+  btn.setAttribute('aria-label', label);
+  setTip(btn, label);
   btn.disabled = !!S!.dispatcher.busy;
 }
 
@@ -333,7 +336,7 @@ export function renderDispatcherStatus() {
   el.hidden = !busy;
   if (!busy) { el.innerHTML = ''; return; }
   const what = d.statusText ? oneLine(d.statusText, 120) : t('chat.working');
-  el.innerHTML = `<span class="pulse-dot" aria-hidden="true"></span><b>Dispatcher</b><span class="what" title="${esc(what)}">${esc(what)}</span><time></time><button type="button" class="linkbtn" data-action="chat-stop" aria-label="${esc(t('chat.stop'))}">${t('chat.stopShort')}</button>`;
+  el.innerHTML = `<span class="pulse-dot" aria-hidden="true"></span><b>Dispatcher</b><span class="what">${esc(what)}</span><time></time><button type="button" class="linkbtn" data-action="chat-stop" aria-label="${esc(t('chat.stop'))}">${t('chat.stopShort')}</button>`;
   tickDispatcher();
 }
 
@@ -388,13 +391,13 @@ export function updateSendButton() {
     btn.classList.toggle('stop', stop);
     btn.innerHTML = sym(stop ? 's-stop' : 's-up');
     btn.setAttribute('aria-label', stop ? label : t('send'));
-    btn.title = stop ? label : '';
+    setTip(btn, stop ? label : t('send'));
   };
   const empty = (box: Box) => !$<HTMLTextAreaElement>(box === 'chat' ? '#chat-input' : '#ws-input').value.trim() && !ui.attach[box].length;
   const send = $<HTMLButtonElement>('#chat-send');
   // Shell mode: the button runs the line.
   if (ui.shell) {
-    if (send.getAttribute('aria-label') !== t('shell.run')) { send.classList.remove('stop'); send.innerHTML = sym('s-play'); send.setAttribute('aria-label', t('shell.run')); send.title = ''; }
+    if (send.getAttribute('aria-label') !== t('shell.run')) { send.classList.remove('stop'); send.innerHTML = sym('s-play'); send.setAttribute('aria-label', t('shell.run')); setTip(send, t('shell.run')); }
   } else set(send, false, t('chat.stop'));
   const w = worker(ui.wSel);
   const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
@@ -513,9 +516,9 @@ export function decisionHtml(d: Decision, inWorker = false) {
   if (d.source === 'plan') {
     buttons = `<div class="btns"><button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}${kbd(ALLOW)}</button></div>`;
   } else if (d.source === 'permission') {
-    // "Allow for this task" is there when the action's kind can be named; its tooltip says what the yes covers.
+    // "Allow for this task" is there when the action's kind can be named; the line under the buttons says what that yes covers.
     const scope = d.options.find((o) => o.label === ALLOW_TASK);
-    buttons = `<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}" title="${esc(scope.description ?? '')}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>`;
+    buttons = `<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>${scope?.description ? `<div class="scope"><span>${t('allowTask')}</span><code>${esc(scope.description)}</code></div>` : ''}`;
   } else {
     const col = d.options.length > 2 || d.options.some((o) => o.description);
     buttons = `<div class="btns${col ? ' col' : ''}"${col ? '' : ' data-fit="stack"'}>${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
@@ -552,7 +555,7 @@ export function planSummaryHtml(d: Decision, sum: PlanSummary, inWorker = false)
     d.workerId && !inWorker ? `<button data-action="open-worker" data-id="${esc(d.workerId)}">${t('plan.open')}<span aria-hidden="true">→</span></button>` : '',
   ].join('');
   return `<dl class="plan-sum">${row('plan.what', sum.what)}${row('plan.how', sum.how)}${row('plan.output', sum.output)}</dl>
-    ${sum.auto ? `<div class="plan-auto" title="${esc(t('plan.autoHint'))}">${t('plan.auto')}</div>` : ''}
+    ${sum.auto ? `<div class="plan-auto" data-tip="${esc(t('plan.autoHint'))}">${t('plan.auto')}</div>` : ''}
     ${links ? `<div class="plan-links">${links}</div>` : ''}
     ${open && d.code ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : ''}`;
 }
@@ -576,7 +579,7 @@ export function aaHtml(a: AutoAnswer) {
     <div class="why">${esc(a.basis)}</div>
     ${a.corrected ? `<div class="fixed">${a.corrected.scope === 'preference' ? t('aa.fixedPref') : t('aa.fixedOnce')}</div>` : ''}
     ${fix}
-    <button class="hov" data-action="aa-edit" data-id="${a.id}" title="${t('aa.correct')}" aria-label="${t('aa.correct')}"><svg><use href="#s-pencil"/></svg></button>
+    <button class="hov" data-action="aa-edit" data-id="${a.id}" data-tip="${t('aa.correct')}" aria-label="${t('aa.correct')}"><svg><use href="#s-pencil"/></svg></button>
   </div>`;
 }
 
@@ -655,7 +658,7 @@ export function awayHtml() {
   const rows = awayRows(d);
   const total = new Set([...d.failed, ...d.merged, ...d.finished].map((x) => x.id)).size;
   const pill = { failed: ['red', taskStatus('failed')], merged: ['purple', t('pr.merged')], finished: ['green', taskStatus('done')] } as const;
-  return `<div class="sect${arrive}" id="sec-away"><div class="ins-h"><b>${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" title="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
+  return `<div class="sect${arrive}" id="sec-away"><div class="ins-h"><b>${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" data-tip="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
     <div class="group"><div class="mini away-counts">${counts}</div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" data-focus="away:${esc(x.id)}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill ${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
 }
 
@@ -668,7 +671,7 @@ export function renderChatInspector() {
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
     // Each tab has an icon for a narrow sidebar: when the labels do not fit, the tabs not chosen show only that (data-fit).
-    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, icon: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" title="${label}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, icon: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" data-tip="${label}" data-tip-clip aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
     const tabs = `<div class="segc ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}</div>`;
     // The selected card is placed inside the draw, so the typed text and the focus go back to where it ends up.
@@ -685,15 +688,15 @@ export function renderChatInspector() {
     html += awayHtml();
     html += comparisonsHtml();
     html += bundlesHtml();
-    if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" title="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
+    if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" data-tip="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.items.length) {
-      html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
+      html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
         const lk = resultLinks(x);
-        return `<div class="res" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" title="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span></div>`;
+        return `<div class="res" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span></div>`;
       }).join('')}${results.more}</div></div>`;
     }
-    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" title="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
+    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
     if (!html) {
       const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
       html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
@@ -723,13 +726,13 @@ export function memoHtml(m: Memo, sel = true) {
       <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn def" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
   }
   if (!sel) {
-    return `<div class="memo" data-memo="${m.id}" data-action="pick" data-tab="memo" data-id="${m.id}" data-focus="card-memo-${m.id}" tabindex="0"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time></span></div>`;
+    return `<div class="memo" data-memo="${m.id}" data-action="pick" data-tab="memo" data-id="${m.id}" data-focus="card-memo-${m.id}" tabindex="0"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" data-tip="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time></span></div>`;
   }
-  const act = (action: string, icon: string, label: string, cls = '') => `<button class="mact${cls}" data-action="${action}" data-id="${m.id}" title="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
+  const act = (action: string, icon: string, label: string, cls = '') => `<button class="mact${cls}" data-action="${action}" data-id="${m.id}" data-tip="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
   // One button for both steps, so asking is a change of its width and colour, not a new element.
   const sure = ui.memoDel === m.id;
-  const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="memo-remove" data-id="${m.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
-  return `<div class="memo" data-memo="${m.id}"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
+  const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="memo-remove" data-id="${m.id}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
+  return `<div class="memo" data-memo="${m.id}"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" data-tip="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
     <span class="acts">${act('memo-share', 's-pin', t(m.shared ? 'memo.unshare' : 'memo.share'), m.shared ? ' on' : '')}${act('memo-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
 }
 
@@ -806,7 +809,7 @@ function autoSlot(a: Automation) {
   const last = !a.lastRunAt ? esc(t('auto.never'))
     : a.lastRunChatId ? `<a tabindex="0" role="link" data-action="open-chat" data-id="${esc(a.lastRunChatId)}">${esc(runWords(a.lastRunAt))}</a>` : esc(runWords(a.lastRunAt));
   const facts = `<dl class="facts"><dt>${t('auto.when')}</dt><dd>${esc(triggerLabel(a))}</dd>${a.trigger.kind === 'daily' ? `<dt>${t('auto.nextRun')}</dt><dd>${esc(a.enabled && a.nextRunAt ? runWords(a.nextRunAt) : t('auto.off'))}</dd>` : ''}<dt>${t('auto.lastRun')}</dt><dd>${last}</dd></dl>`;
-  const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
+  const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
   const card = `<div class="memo auto open${off}"><p>${esc(a.prompt)}</p>${facts}<span class="meta"><span class="gap"></span><span class="acts">${sw}${del}</span></span></div>`;
   return slotHtml(a.id, true, row, card);
 }
@@ -846,7 +849,7 @@ export async function addAuto() {
 /** Why the last add failed, under its field, until it is added or dismissed. */
 export function formErrHtml(key: 'memo' | 'auto') {
   const msg = ui.formErr[key];
-  return msg ? `<div class="ferr" role="alert"><span>${esc(t('err.notSent', { msg }))}</span><button type="button" class="clear-x always" data-action="form-err-x" data-id="${key}" title="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg><use href="#s-x"/></svg></button></div>` : '';
+  return msg ? `<div class="ferr" role="alert"><span>${esc(t('err.notSent', { msg }))}</span><button type="button" class="clear-x always" data-action="form-err-x" data-id="${key}" data-tip="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg><use href="#s-x"/></svg></button></div>` : '';
 }
 
 /** The Memos tab: a field to add one, then the memos shared with agents and the user's own; one of them is selected. */
@@ -855,7 +858,7 @@ export function memosHtml() {
   const ids = [...shared, ...mine].map((m) => m.id);
   ui.memoSel = keepPick(ids, ui.memoSel, ui.memoEdit ?? ids[0] ?? null);
   const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b>${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoSlot).join('')}</div></div>` : '';
-  const add = `<div class="memo-add"><input class="inp" id="memo-new" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"><button class="btn" data-action="memo-add" title="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
+  const add = `<div class="memo-add"><input class="inp" id="memo-new" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"><button class="btn" data-action="memo-add" data-tip="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
   const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
   return add + formErrHtml('memo') + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
 }
@@ -904,7 +907,7 @@ export function renderChips(box: Box) {
   const el = $(box === 'chat' ? '#chat-files' : '#ws-files');
   const files = ui.attach[box];
   el.hidden = !files.length;
-  el.innerHTML = files.map((f, i) => `<span class="fchip" title="${esc(f)}">${sym('s-doc')}<span>${esc(base(f))}</span><button type="button" data-action="unattach" data-box="${box}" data-i="${i}" aria-label="${t('remove')}"><svg><use href="#s-x"/></svg></button></span>`).join('');
+  el.innerHTML = files.map((f, i) => `<span class="fchip" data-tip="${esc(f)}">${sym('s-doc')}<span>${esc(base(f))}</span><button type="button" data-action="unattach" data-box="${box}" data-i="${i}" aria-label="${t('remove')}"><svg><use href="#s-x"/></svg></button></span>`).join('');
   updateSendButton();
 }
 
