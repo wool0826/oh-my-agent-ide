@@ -681,6 +681,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .kv > span { padding: 7px var(--space-12); min-width: 0; overflow-wrap: anywhere; user-select: text; }
 .kv > span:nth-child(odd) { color: var(--text-secondary); padding-right: 0; user-select: none; }
 .kv > span:nth-child(n+3) { border-top: .5px solid var(--border-subtle); }
+.kv > span.err { color: var(--danger-text); }
 .mini { padding: var(--space-8) var(--space-12); display: flex; flex-direction: column; gap: 1px; }
 .mini + .mini { border-top: .5px solid var(--border-subtle); }
 .mini b { font-weight: 600; font-size: var(--fs-body); overflow-wrap: anywhere; }
@@ -1481,3 +1482,16 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .sqb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 @media (prefers-reduced-motion: reduce) { .sq { animation: none; } .sq-spin { animation: none; } }
 @media (forced-colors: active) { .sq { border: 1px solid CanvasText; } .sqb.on { outline: 2px solid Highlight; } }
+
+/* The app's one tooltip (ui/tip.ts), in place of the native title: the overlay surface, small, above every other
+   layer. Its place is set in code; it comes in from the control's side. */
+.tip { position: fixed; z-index: var(--z-tooltip); left: 0; top: 0; display: flex; align-items: baseline; gap: var(--space-8); box-sizing: border-box; max-width: min(280px, calc(100vw - 16px)); padding: var(--space-4) var(--space-8); border-radius: var(--radius-sm); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-4); font-size: var(--fs-caption); line-height: var(--lh-ui); color: var(--text-primary); user-select: none; -webkit-app-region: no-drag; opacity: 0; translate: 0 2px; transition: opacity var(--dur-fast) var(--ease-standard), translate var(--dur-fast) var(--ease-standard); }
+.tip[data-side="below"] { translate: 0 -2px; }
+.tip.on { opacity: 1; translate: 0 0; }
+.tip > span { min-width: 0; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 14; overflow: hidden; }
+.tip > kbd { flex: none; padding: 0; background: none; font-size: var(--fs-caption2); font-weight: var(--fw-medium); color: var(--text-secondary); white-space: nowrap; }
+@media (forced-colors: active) { .tip { border: 1px solid CanvasText; } }
+/* What "Allow for this task" would cover, readable before it is pressed. */
+.dec .scope { display: flex; align-items: baseline; gap: var(--space-6); min-width: 0; font-size: var(--fs-caption2); color: var(--text-secondary); }
+.dec .scope > span { flex: none; }
+.dec .scope > code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

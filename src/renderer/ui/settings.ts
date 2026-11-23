@@ -311,7 +311,7 @@ export function settingsHtml() {
       ${row(t('acc.token'), 'acc-token', `<input class="inp w" id="acc-token" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">`, 'acc-token-row')}
       <div class="srow end"><button class="btn def" data-action="acc-add" id="acc-add-btn">${t('acc.addToken')}</button><button class="btn def" data-action="acc-add-login" id="acc-login-btn">${t('acc.addLogin')}</button><button class="btn def" data-action="acc-add-chatgpt" id="acc-chatgpt-btn">${t('acc.addChatgpt')}</button></div>`, t('acc.add'))}`;
 
-  const general = `${grp(`<div id="pre-rows">${preflightRows()}</div>`, `${t('pre.title')}<button class="clear-x always" data-action="preflight-run" title="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`)}${grp(`
+  const general = `${grp(`<div id="pre-rows">${preflightRows()}</div>`, `${t('pre.title')}<button class="clear-x always" data-action="preflight-run" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`)}${grp(`
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
       ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
@@ -336,22 +336,22 @@ export function settingsHtml() {
       ${row(t('set.osNoti'), 'set-noti', `<input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}>`)}
       ${row(t('set.notiResults'), 'set-nres', `<input class="switch" id="set-nres" type="checkbox" ${st.notifyDone ? 'checked' : ''}>`)}
       ${row(t('set.quiet'), 'set-qfrom', `<input class="inp time" id="set-qfrom" value="${esc(st.quietFrom)}" placeholder="22:00" inputmode="numeric" aria-label="${t('set.quietFrom')}"><span class="dash" aria-hidden="true">–</span><input class="inp time" id="set-qto" value="${esc(st.quietTo)}" placeholder="07:00" inputmode="numeric" aria-label="${t('set.quietTo')}">`)}
-      ${row(t('set.sound'), 'set-sound', `<button class="segico" data-action="sound-test" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, DECISION_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
+      ${row(t('set.sound'), 'set-sound', `<button class="segico" data-action="sound-test" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, DECISION_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
       ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
-      ${row(t('set.doneSound'), 'set-dsound', `<button class="segico" data-action="sound-test" data-v="done" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-dsound', st.doneSound, DONE_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.doneSound'))}`, 'wrap')}
+      ${row(t('set.doneSound'), 'set-dsound', `<button class="segico" data-action="sound-test" data-v="done" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-dsound', st.doneSound, DONE_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.doneSound'))}`, 'wrap')}
       ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`);
 
   const ci = ui.claude;
   const rulesText = !ci ? '…' : ci.rules.length ? ci.rules.join(', ') : t('set.claudeNoRules');
   const memory = `${grp(`
-      ${row(t('set.memFolder'), 'set-memdir', `<span class="sval" id="set-memdir" title="${esc(st.home)}">${esc(shortPath(`${st.home}/memory`))}</span><button class="btn" data-action="reveal-memory">${t('set.open')}</button>`)}
+      ${row(t('set.memFolder'), 'set-memdir', `<span class="sval" id="set-memdir" data-tip="${esc(st.home)}">${esc(shortPath(`${st.home}/memory`))}</span><button class="btn" data-action="reveal-memory">${t('set.open')}</button>`)}
       ${row(t('set.memRemote'), 'set-mem', `<input class="inp w" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}
       <div id="set-msync" hidden></div>
       ${row(t('set.memSuggest'), 'set-msug', `<input class="switch" id="set-msug" type="checkbox" ${st.memorySuggest ? 'checked' : ''}>`)}`, t('set.ideMemory'))}
     ${grp(`
-      ${row(t('set.claudeRules'), 'set-crules', `<span class="sval${ci && !ci.rules.length ? ' muted' : ''}" title="${esc(ci ? ci.home : '')}">${esc(rulesText)}</span><input class="switch" id="set-crules" type="checkbox" ${st.claudeRules ? 'checked' : ''}>`)}
+      ${row(t('set.claudeRules'), 'set-crules', `<span class="sval${ci && !ci.rules.length ? ' muted' : ''}" data-tip="${esc(ci ? ci.home : '')}">${esc(rulesText)}</span><input class="switch" id="set-crules" type="checkbox" ${st.claudeRules ? 'checked' : ''}>`)}
       ${row(t('set.claudeMemory'), 'set-cmem', `<input class="switch" id="set-cmem" type="checkbox" ${st.claudeMemory ? 'checked' : ''}>`)}
-      ${row(t('set.claudeFolder'), 'set-cdir', `<span class="sval" id="set-cdir" title="${esc(ci ? ci.home : '')}">${esc(ci ? shortPath(ci.home, 2) : '…')}</span><button class="btn" data-action="reveal-claude">${t('set.open')}</button>`)}`, 'Claude Code')}`;
+      ${row(t('set.claudeFolder'), 'set-cdir', `<span class="sval" id="set-cdir" data-tip="${esc(ci ? ci.home : '')}">${esc(ci ? shortPath(ci.home, 2) : '…')}</span><button class="btn" data-action="reveal-claude">${t('set.open')}</button>`)}`, 'Claude Code')}`;
 
   const models = `${grp(`
       ${row(t('set.modelList'), 'set-mlist', `<span class="sval${ui.models.error ? ' bad' : ''}" id="set-mlist">${esc(modelsStatus())}</span><button class="btn" data-action="models-refresh">${t('diff.refresh')}</button>`)}`)}

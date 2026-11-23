@@ -342,7 +342,24 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - `.menu-item` 28, radius 8, padding 0/12/0/6, tick column 14 (radio items), optional mono hint on the right. Highlight `--accent-solid` + white (4.95:1). Danger items `--danger-text`, highlighted with `--danger-solid`. Disabled `--text-disabled`. Separator 0.5px; group header 11/600 tertiary.
 - `.dialog` 320 wide, radius 24, padding 24/20/20, title 15/600, body 12/1.5 secondary, two large buttons; scrim `--surface-scrim` + 3px blur.
 - `.toast` capsule, 12, overlay glass; `.is-error` in `--danger-text`.
-- z-index: composer 2, menu-catch 30, menu 31, settings 40, scrim 50, dialog 51, toast 60, popover 80, context menu 90 (resolves the 50/50 clash).
+- z-index: composer 2, menu-catch 30, menu 31, settings 40, scrim 50, dialog 51, toast 60, popover 80, context menu 90, tooltip 100 (resolves the 50/50 clash).
+
+### Tooltip — `.tip`
+One tooltip for the whole app, in place of the native `title` (which the OS draws in its own font, after its own delay, at the pointer, and never on keyboard focus). One element, `<div id="tip" class="tip" role="tooltip">`, and one delegated listener (`src/renderer/ui/tip.ts`).
+
+- **Anatomy:** text, then an optional shortcut as a `kbd`. Overlay glass (`--surface-overlay` + `--blur-overlay`), `--rim-strong` + `--shadow-4`, radius `--radius-sm`, padding `--space-4` / `--space-8`, text `--fs-caption` in `--text-primary`, the key `--fs-caption2` in `--text-secondary` with no fill. At most 280 wide; several lines allowed, 14 at most.
+- **Markup:** `data-tip="…"` on the control; `data-tip-key="Ctrl+B"` for its shortcut (never inside the sentence); `data-i18n-tip` for static markup (it sets the `aria-label` too); `data-tip-clip` when the hint should show only while the control or a part of it is cut (a tab folded to its icon).
+- **Timing:** 500 ms after the pointer rests on a control; at once when the pointer comes from another tooltip within 300 ms; at once on keyboard focus (`:focus-visible`). It goes when the pointer leaves, on blur, any key (Escape included), a press, a scroll of the control's container, window blur or resize, and when the control is redrawn with other text. The pointer can move onto it.
+- **Placement:** centred on the control, 6 away; below in the toolbar, above elsewhere; on the other side when there is no room; always 8 inside the window.
+- **Motion:** opacity and a 2 px shift over `--dur-fast`; none with reduced motion (the token is 0).
+- **Layer:** `--z-tooltip` (100), above the context menu.
+- **Content rules:**
+  - An icon-only control gets its name, and its shortcut as the key.
+  - Text the layout cuts (an ellipsis or a line clamp) shows in full when the pointer rests on it or its control has the focus. This needs no attribute: the tooltip finds cut text itself.
+  - No tooltip repeats text that is readable on the control.
+  - Nothing exists only in a tooltip unless its owner can take the focus; what a decision needs (the reach of "Allow for this task", an error) is on the card.
+- **Accessibility:** the owner gets `aria-describedby="tip"` while the tooltip is shown, except when the text is the control's accessible name or its own text.
+- The usage popover stays a popover (`.upop`): it holds controls. It uses the same surface.
 
 ## 2.10 Accessibility summary
 

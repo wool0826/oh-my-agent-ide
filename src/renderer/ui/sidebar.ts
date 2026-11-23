@@ -20,6 +20,7 @@ import { applyWidths } from './resize';
 import { ageHtml, away, tickDecisions } from './chat';
 import { pop } from './controls';
 import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, oneLine, pct, prNum, queuedLabel, ring, S, store, sym, t, task, ui, when, worker } from './core';
+import { setTip } from './tip';
 import { segc } from './settings';
 import { screen } from './history';
 import { cmdk } from './palette';
@@ -64,7 +65,7 @@ export function renderSidebar() {
     const kind = t(`dec.kind.${decisionKind(d)}` as Key);
     const small = [d.workerId ?? 'Dispatcher', kind, d.reason?.why ?? x?.title].filter(Boolean).join(' · ');
     const sel = ui.decSel === d.id;
-    return `<div tabindex="0" role="button" class="row drow${sel ? ' sel' : ''}"${sel ? ' aria-current="true"' : ''} data-action="goto-decision" data-id="${d.id}"${d.reason ? ` title="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(askLine(d), 160))}</b><small>${esc(small)}</small></span>${ageHtml(d)}</div>`;
+    return `<div tabindex="0" role="button" class="row drow${sel ? ' sel' : ''}"${sel ? ' aria-current="true"' : ''} data-action="goto-decision" data-id="${d.id}"${d.reason ? ` data-tip="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(askLine(d), 160))}</b><small>${esc(small)}</small></span>${ageHtml(d)}</div>`;
   }).join('');
   const workerRow = (w: Worker, grouped = false) => {
     const x = lastTask(w);
@@ -81,7 +82,7 @@ export function renderSidebar() {
       : `${where}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
     const tip = [failed ? plainStatus(w.status === 'error' ? w.statusText || x?.summary : x?.summary) : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
-    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` title="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepperHtml(x!, failed ? 'err' : waits ? 'wait' : v.allDone ? 'all' : 'run') : ''}</span></button>${workerActs(w)}</div>`;
+    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` data-tip="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepperHtml(x!, failed ? 'err' : waits ? 'wait' : v.allDone ? 'all' : 'run') : ''}</span></button>${workerActs(w)}</div>`;
   };
   // Running Workers get one area per repository; the heading carries the repository's name and how many run in it.
   const runRows = groupByRepo(running, (w) => w.repo).map((g) =>
@@ -97,7 +98,7 @@ export function renderSidebar() {
     const mark = line.pos === null ? ic('wait') : `<span class="q-pos" aria-hidden="true">${line.pos}</span>`;
     const cls = line.pos === null ? ' held' : line.pos === 1 ? ' next' : '';
     const tip = [x.workerId, why ? queueWhyText(why) : ''].filter(Boolean).join(' · ');
-    return { pos: line.pos, html: `<div class="row split q-row${cls}${selCls(x.workerId)}" title="${esc(tip)}"><button type="button" class="row-main" data-action="open-worker" data-id="${x.workerId ?? ''}">${mark}<span class="t"><b>${esc(x.title)}</b><small${line.cancelled ? ' class="warn"' : ''}>${esc(`${x.repo ?? t('general')} · ${line.text}`)}</small></span></button>${cancelX(x)}</div>` };
+    return { pos: line.pos, html: `<div class="row split q-row${cls}${selCls(x.workerId)}" data-tip="${esc(tip)}"><button type="button" class="row-main" data-action="open-worker" data-id="${x.workerId ?? ''}">${mark}<span class="t"><b>${esc(x.title)}</b><small${line.cancelled ? ' class="warn"' : ''}>${esc(`${x.repo ?? t('general')} · ${line.text}`)}</small></span></button>${cancelX(x)}</div>` };
   };
   const qAll = queued.map(qRow);
   const inLine = qAll.filter((r) => r.pos !== null).sort((a, b) => a.pos! - b.pos!).map((r) => r.html).join('');
@@ -113,19 +114,19 @@ export function renderSidebar() {
   // A dot per slot while they fit beside the heading; the words say the same, so the dots are decoration.
   const dots = s.settings.maxWorkers <= 6 ? `<span class="q-slots" aria-hidden="true">${'<i class="on"></i>'.repeat(used)}${'<i></i>'.repeat(s.settings.maxWorkers - used)}</span>` : '';
   const slots = `${dots}<span class="q-slots-t">${slotsText}</span>`;
-  const qTitle = `${t('side.queue')}${slots}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
+  const qTitle = `${t('side.queue')}${slots}${queued.length ? `<button class="h-act" data-action="queue-clear" data-tip="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
   const any = decRows || runRows || prRows || qRows || errRows;
   const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<span>${t('side.emptyTitle')}</span></div>`;
   // A filter's row is selected while the Worker list it filters is on screen.
   const filterCls = (f: WorkerFilter, n: number) => `${n ? '' : ' zero'}${ui.view === 'worker' && !ui.wOpen && ui.wFilter === f ? ' sel' : ''}`;
   const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
-    <div class="row split${filterCls('today', doneToday)}"><button type="button" class="row-main" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></button>${doneToday ? `<button class="disc" data-action="done-toggle" aria-expanded="${ui.doneOpen}" title="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}" aria-label="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>` : ''}</div>${doneToday && ui.doneOpen ? doneList(doneTasks) : ''}
+    <div class="row split${filterCls('today', doneToday)}"><button type="button" class="row-main" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></button>${doneToday ? `<button class="disc" data-action="done-toggle" aria-expanded="${ui.doneOpen}" data-tip="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}" aria-label="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>` : ''}</div>${doneToday && ui.doneOpen ? doneList(doneTasks) : ''}
     <div tabindex="0" role="button" class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;
   if (ui.sideMin) {
     // One glyph per section with its count; a section with nothing in it is left out, History always shows.
     const rail = (kind: string, label: string, n: number, extra = '', ask = false) =>
-      `<button class="rail-b${extra}" data-action="side-toggle" title="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}<span class="n${ask ? ' ask' : ''}">${n}</span></button>`;
+      `<button class="rail-b${extra}" data-action="side-toggle" data-tip="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}<span class="n${ask ? ' ask' : ''}">${n}</span></button>`;
     const live = [
       pending.length ? rail('ask', t('side.decisions'), pending.length, ' sec-dec', true) : '',
       running.length ? rail('run', t('side.running'), running.length) : '',
@@ -134,7 +135,7 @@ export function renderSidebar() {
       failed.length ? rail('err', t('side.errors'), failed.length) : '',
     ].join('');
     const hist = (f: WorkerFilter, kind: string, label: string, n: number) =>
-      `<button class="rail-b${filterCls(f, n)}" data-action="worker-filter" data-v="${f}" title="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}${n ? `<span class="n">${n}</span>` : ''}</button>`;
+      `<button class="rail-b${filterCls(f, n)}" data-action="worker-filter" data-v="${f}" data-tip="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}${n ? `<span class="n">${n}</span>` : ''}</button>`;
     $('#side').innerHTML = `${live}${live ? '<span class="rail-sep"></span>' : ''}${hist('today', 'done', t('side.doneToday'), doneToday)}${hist('archived', 'arch', t('side.archived'), archived)}`;
     return;
   }
@@ -155,7 +156,7 @@ export function doneList(done: Task[]) {
   const rows = recentlyFinished(done).map((x) => {
     const line = doneLine(x);
     const at = new Date(x.finishedAt!).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `<div tabindex="0" role="button" class="row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" title="${esc(`${x.title}\n${line}`)}"><span class="t"><b>${esc(x.title)}</b><small>${esc(line)}</small></span><time>${at}</time></div>`;
+    return `<div tabindex="0" role="button" class="row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}"><span class="t"><b>${esc(x.title)}</b><small>${esc(line)}</small></span><time>${at}</time></div>`;
   }).join('');
   const more = done.length > 5 ? `<button class="linkbtn" data-action="worker-filter" data-v="today">${t('side.doneAll', { n: done.length })}</button>` : '';
   return `<div class="sub">${rows}${more}</div>`;
@@ -205,7 +206,7 @@ function stepsTip(x: Task) {
 /** Stop and Open on a sidebar Worker row, shown on hover, focus and on the selected row (its context menu has them too). */
 export function workerActs(w: Worker) {
   const btn = (action: string, icon: string, label: string, cls: string, extra = '') =>
-    `<button type="button" class="row-act ${cls}" data-action="${action}" data-id="${esc(w.id)}" title="${esc(label)}" aria-label="${esc(label)}"${extra}><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
+    `<button type="button" class="row-act ${cls}" data-action="${action}" data-id="${esc(w.id)}" data-tip="${esc(label)}" aria-label="${esc(label)}"${extra}><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
   // While its Stop is on its way, the button waits instead of sending it twice.
   const busy = ui.stopping.has(w.id);
@@ -216,7 +217,7 @@ export function workerActs(w: Worker) {
 /** The × on a queued task's row: asks before cancelling it. */
 export function cancelX(x: Task) {
   const label = esc(`${t('cancel.task')}: ${x.title}`);
-  return `<button class="clear-x" data-action="task-cancel" data-id="${esc(x.id)}" title="${t('cancel.task')}" aria-label="${label}"><svg><use href="#s-x"/></svg></button>`;
+  return `<button class="clear-x" data-action="task-cancel" data-id="${esc(x.id)}" data-tip="${t('cancel.task')}" aria-label="${label}"><svg><use href="#s-x"/></svg></button>`;
 }
 
 /** "5h", "7d", "30d": how long a usage window is. */
@@ -333,7 +334,7 @@ function usageFootHtml() {
   const opts = USAGE_INTERVALS.map((n) => ({ value: String(n), label: n ? t('usage.mins', { n }) : t('usage.byHand') }));
   // Off while the server asked to wait, and while a round runs (its arrow turns).
   const off = f.kind === 'paused' || f.kind === 'running';
-  const btn = `<button type="button" class="ubtn${f.kind === 'running' ? ' spin' : ''}" data-action="usage-refresh" data-focus="usage-refresh" title="${esc(t('usage.refresh'))}" aria-label="${esc(t('usage.refresh'))}"${off ? ' disabled' : ''}><svg aria-hidden="true"><use href="#s-refresh"/></svg></button>`;
+  const btn = `<button type="button" class="ubtn${f.kind === 'running' ? ' spin' : ''}" data-action="usage-refresh" data-focus="usage-refresh" data-tip="${esc(t('usage.refresh'))}" aria-label="${esc(t('usage.refresh'))}"${off ? ' disabled' : ''}><svg aria-hidden="true"><use href="#s-refresh"/></svg></button>`;
   const line = `<span class="uft${f.kind === 'failed' || (f.kind === 'ok' && f.failed) ? ' bad' : ''}" role="status">${esc(footText(f))}</span>`;
   const chips = f.kind === 'sessions' ? '' : segc('usage-every', every, opts, t('usage.every'));
   return `<footer class="ufoot"><div class="ufl">${line}${f.kind === 'sessions' ? '' : btn}</div>${chips}</footer>`;
@@ -455,8 +456,8 @@ export function applyPanels() {
   win.classList.toggle('ins-min', ui.insMin);
   applyWidths();
   const left = $('#side-toggle');
-  const leftTip = t(ui.sideMin ? 'side.expand' : 'side.collapse', { key: isMac ? '⌘B' : 'Ctrl+B' });
-  left.title = leftTip;
+  const leftTip = t(ui.sideMin ? 'side.expand' : 'side.collapse');
+  setTip(left, leftTip, isMac ? '⌘B' : 'Ctrl+B');
   left.setAttribute('aria-label', leftTip);
   left.setAttribute('aria-expanded', String(!ui.sideMin));
   const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
@@ -466,12 +467,12 @@ export function applyPanels() {
   // The gear carries a dot while a newer release waits.
   document.querySelector('.foot-btn[data-action="open-settings"]')?.classList.toggle('has-update', !!S?.update);
   const find = $('#cmdk-btn');
-  find.title = t('cmdk.tip', { key: isMac ? '⌘K' : 'Ctrl+K' });
-  find.setAttribute('aria-label', find.title);
+  setTip(find, t('cmdk.tip'), isMac ? '⌘K' : 'Ctrl+K');
+  find.setAttribute('aria-label', t('cmdk.tip'));
   const right = $('#ins-toggle');
   const key = isMac ? '⌥⌘B' : 'Ctrl+Alt+B';
-  const rightTip = !ui.insMin ? t('ins.collapse', { key }) : n ? t('ins.expandDec', { key, n }) : t('ins.expand', { key });
-  right.title = rightTip;
+  const rightTip = !ui.insMin ? t('ins.collapse') : n ? t('ins.expandDec', { n }) : t('ins.expand');
+  setTip(right, rightTip, key);
   right.setAttribute('aria-label', rightTip);
   right.setAttribute('aria-expanded', String(!ui.insMin));
   const badge = $('#ins-count');

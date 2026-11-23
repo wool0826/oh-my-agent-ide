@@ -21,7 +21,7 @@ export function renderMemSync() {
   if (pill) {
     const tone = m.state === 'ok' ? ' green' : m.state === 'error' ? ' orange' : m.state === 'syncing' ? ' blue' : '';
     const label = !m.remote ? t('mem.sync.off') : m.state === 'off' ? '' : t(`mem.sync.${m.state}` as Key);
-    pill.innerHTML = label ? `<span class="pill${tone}"${m.error ? ` title="${esc(m.error)}"` : ''}>${esc(detail ? `${label} · ${detail}` : label)}</span>` : '';
+    pill.innerHTML = label ? `<span class="pill${tone}"${m.error ? ` data-tip="${esc(m.error)}"` : ''}>${esc(detail ? `${label} · ${detail}` : label)}</span>` : '';
   }
   const row = document.getElementById('set-msync');
   if (!row) return;
@@ -74,5 +74,5 @@ export function renderMemory() {
   }
   ins.innerHTML = `<div class="ins-h"><b>${esc(ui.memSel)}</b></div>
     <textarea class="inp memedit" id="mem-edit" spellcheck="false">${esc(ui.memText)}</textarea>
-    <div class="ins-act">${ui.memSel.startsWith('repos/') ? `<button class="btn" data-action="mem-promote" data-id="${esc(ui.memSel.slice(6, -3))}" title="${t('mem.promoteHint')}">${t('mem.promote')}</button>` : ''}<button class="btn def" data-action="mem-save">${t('save')}</button></div>`;
+    <div class="ins-act">${ui.memSel.startsWith('repos/') ? `<button class="btn" data-action="mem-promote" data-id="${esc(ui.memSel.slice(6, -3))}" data-tip="${t('mem.promoteHint')}">${t('mem.promote')}</button>` : ''}<button class="btn def" data-action="mem-save">${t('save')}</button></div>`;
 }

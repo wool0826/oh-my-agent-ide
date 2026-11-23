@@ -71,7 +71,7 @@
   <nav class="sidebar" aria-label="Status" data-i18n-aria="aria.status">
     <div class="lights drag"></div>
     <div class="side-scroll" id="side"></div>
-    <div class="side-foot"><button class="foot-btn" data-action="open-settings" data-i18n-title="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button><button class="foot-btn" id="side-toggle" data-action="side-toggle" aria-controls="side"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button></div>
+    <div class="side-foot"><button class="foot-btn" data-action="open-settings" data-i18n-tip="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button><button class="foot-btn" id="side-toggle" data-action="side-toggle" aria-controls="side"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button></div>
   </nav>
   <div class="rz nodrag" id="rz-side" role="separator" aria-label="Resize the sidebar" data-i18n-aria="aria.resize" aria-orientation="vertical" aria-controls="side" tabindex="0"></div>
 
@@ -79,7 +79,7 @@
     <span class="seg nodrag" role="group" aria-label="Views" data-i18n-aria="aria.views">
       <button data-v="chat" aria-pressed="true" data-i18n="nav.chat">Chat</button><button data-v="worker" aria-pressed="false">Worker</button><button data-v="repo" aria-pressed="false" data-i18n="nav.repo">Repositories</button><button data-v="memory" aria-pressed="false" data-i18n="nav.memory">Memory</button>
     </span>
-    <span class="pill orange" id="fake-badge" title="OMA_FAKE_AGENT=1" hidden>Fake agents</span>
+    <span class="pill orange" id="fake-badge" tabindex="0" data-tip="OMA_FAKE_AGENT=1" hidden>Fake agents</span>
     <button class="tbtn nodrag" id="cmdk-btn" data-action="cmdk-open" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#s-search"/></svg></button>
     <div class="usage nodrag" id="usage" tabindex="0" role="img" aria-label="Usage per account" aria-describedby="usage-pop"></div>
     <button class="tbtn nodrag" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
@@ -89,7 +89,7 @@
   <main class="content view" data-view="chat">
     <div class="thread" id="chat-thread"></div>
     <section class="sq" id="sq" role="dialog" aria-labelledby="sq-title" hidden>
-      <header><svg class="sym" aria-hidden="true"><use href="#s-side-q"/></svg><b id="sq-title" data-i18n="sq.title">Side question</b><span class="sq-wall"><svg class="sym" aria-hidden="true"><use href="#s-lock"/></svg><span data-i18n="sq.wall">Separate context</span></span><span class="gap"></span><button type="button" class="sq-ib" data-action="sq-min" data-i18n-title="sq.minimise"><svg aria-hidden="true"><use href="#s-minus"/></svg></button><button type="button" class="sq-ib" data-action="sq-close" data-i18n-title="sq.close"><svg aria-hidden="true"><use href="#s-x"/></svg></button></header>
+      <header><svg class="sym" aria-hidden="true"><use href="#s-side-q"/></svg><b id="sq-title" data-i18n="sq.title">Side question</b><span class="sq-wall"><svg class="sym" aria-hidden="true"><use href="#s-lock"/></svg><span data-i18n="sq.wall">Separate context</span></span><span class="gap"></span><button type="button" class="sq-ib" data-action="sq-min" data-i18n-tip="sq.minimise"><svg aria-hidden="true"><use href="#s-minus"/></svg></button><button type="button" class="sq-ib" data-action="sq-close" data-i18n-tip="sq.close"><svg aria-hidden="true"><use href="#s-x"/></svg></button></header>
       <div class="sq-t" id="sq-thread"></div>
       <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button></form>
     </section>
@@ -102,7 +102,7 @@
       <span class="sh-bang" id="chat-bang" aria-hidden="true" hidden>!</span>
       <textarea class="field input" id="chat-input" rows="1" aria-label="Message" data-i18n-aria="aria.message"></textarea>
       <button type="button" class="sqb" id="chat-sq" data-action="sq-toggle" aria-pressed="false" aria-label="Side question"></button>
-      <button type="button" class="ctx" id="chat-ctx" data-action="ctx-menu" aria-haspopup="menu" data-i18n-title="chat.ctxHint"></button>
+      <button type="button" class="ctx" id="chat-ctx" data-action="ctx-menu" aria-haspopup="menu"></button>
       <button class="send" type="submit" id="chat-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
     </form>
   </main>
@@ -113,7 +113,7 @@
     <div class="wk-list" id="wk-list"></div>
     <div class="wk-session" id="wk-session" hidden>
       <div class="shead">
-        <button class="back" data-action="close-session" data-i18n-title="ws.back"><svg aria-hidden="true"><use href="#s-back"/></svg></button>
+        <button class="back" data-action="close-session" data-i18n-tip="ws.back"><svg aria-hidden="true"><use href="#s-back"/></svg></button>
         <span class="st"><b id="ws-title"></b><small id="ws-sub"></small></span>
         <div class="segc ws-tabs" id="ws-tabs" role="tablist"></div>
       </div>
@@ -154,6 +154,7 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <!-- New agent messages are read out from here; the threads themselves are not live regions (L14). -->
 <div class="sr-only" id="live" aria-live="polite"></div>
+<div id="tip" class="tip" role="tooltip" hidden></div>
 
 <script src="app.js"></script>
 </body>

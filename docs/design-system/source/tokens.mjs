@@ -65,7 +65,7 @@ export const scale = {
     stretch: 'cubic-bezier(.3, .8, .4, 1)', // tab pill squash and stretch
   },
   blur: { panel: 'blur(28px) saturate(180%)', overlay: 'blur(32px) saturate(190%)', scrim: 'blur(3px)' },
-  z: { composer: '2', 'menu-catch': '30', menu: '31', settings: '40', scrim: '50', dialog: '51', toast: '60', popover: '80', ctxmenu: '90' },
+  z: { composer: '2', 'menu-catch': '30', menu: '31', settings: '40', scrim: '50', dialog: '51', toast: '60', popover: '80', ctxmenu: '90', tooltip: '100' },
 };
 
 // Semantic roles. Keys are the CSS variable names without "--".
