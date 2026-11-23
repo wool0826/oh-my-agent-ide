@@ -127,8 +127,9 @@ export const themes = {
     'danger-fill-top': '#dc3027', 'danger-fill-bottom': '#c0221a', 'danger-glow': 'rgba(229, 50, 42, .45)',
     review: '{ref.purple.400}', 'review-text': '{ref.purple.300}', 'review-soft': 'rgba(196, 99, 243, .14)',
     'neutral-soft': 'rgba(255, 255, 255, .08)',
-    // agent states and kinds (glyph colors; 3:1 against panels)
-    'state-ask': '{ref.red.400}', 'state-run': '{ref.blue.400}', 'state-review': '{ref.purple.400}', 'state-wait': '{ref.orange.400}',
+    // agent states and kinds (glyph colors; 3:1 against panels). state-ask is a fill with text-on-ask on it: "needs you" is a
+    // solid disc, pill or badge, told from running (a blue glyph) and from an error (red) by its shape.
+    'state-ask': '{ref.blue.400}', 'text-on-ask': '{ref.gray.950}', 'state-run': '{ref.blue.400}', 'state-review': '{ref.purple.400}', 'state-wait': '{ref.orange.400}',
     'state-done': '{ref.green.400}', 'state-idle': '{ref.gray.400}', 'state-error': '{ref.red.400}',
     'kind-repo': '{ref.indigo.300}', 'kind-pref': '{ref.pink.400}', 'kind-doc': '{ref.teal.400}',
     // usage meter
@@ -186,7 +187,7 @@ export const themes = {
     'danger-fill-top': '#dc3027', 'danger-fill-bottom': '#c0221a', 'danger-glow': 'rgba(212, 42, 32, .3)',
     review: '{ref.purple.500}', 'review-text': '{ref.purple.700}', 'review-soft': 'rgba(175, 82, 222, .12)',
     'neutral-soft': 'rgba(0, 0, 0, .06)',
-    'state-ask': '{ref.red.600}', 'state-run': '{ref.blue.600}', 'state-review': '{ref.purple.600}', 'state-wait': '{ref.orange.600}',
+    'state-ask': '{ref.blue.600}', 'text-on-ask': '{ref.gray.0}', 'state-run': '{ref.blue.600}', 'state-review': '{ref.purple.600}', 'state-wait': '{ref.orange.600}',
     'state-done': '{ref.green.600}', 'state-idle': '{ref.gray.500}', 'state-error': '{ref.red.600}',
     'kind-repo': '{ref.indigo.500}', 'kind-pref': '{ref.pink.700}', 'kind-doc': '{ref.teal.700}',
     'meter-track': 'rgba(0, 0, 0, .1)',
@@ -256,6 +257,7 @@ export const pairs = [
   ...text('text-tertiary', TERTIARY_OK, 'text-tertiary is for static meta text (section headers, timestamps, placeholders, version). It is never a button label; on a selected row it steps up to text-secondary.'),
   ...text('text-link', [...CARDS, ['menu', OVERLAY], ['button in panel', BTN_IN_PANEL]]),
   ...text('text-on-accent', [['accent fill (top)', ['accent-fill-top']], ['accent fill (bottom)', ['accent-fill-bottom']], ['accent solid (menu highlight)', ['accent-solid']]]),
+  ...text('text-on-ask', [['needs-you fill (pill, badge, glyph disc)', ['state-ask']]]),
   ...text('text-on-solid', [['danger solid (badge)', ['danger-solid']], ['danger fill (top)', ['danger-fill-top']], ['success solid', ['success-solid']]]),
   ...text('danger-text', [...CARDS, ['button in panel', BTN_IN_PANEL], ['menu', OVERLAY], ...softOn('danger-soft')]),
   ...text('warning-text', [...CARDS, ...softOn('warning-soft')]),

@@ -73,13 +73,41 @@ flow('a failed turn fails its task', {}, async (app) => {
   assert.equal(task(s, 'Break').status, 'failed');
 });
 
+flow('a Worker whose turn failed is listed as stopped with an error, says where it stopped, and Continue reopens its task', {}, async (app) => {
+  await app.say('@fake task - Break\n@@fake steps Read the code | Build it | Report\n@@fake step 1\n@@fake fail The build is broken');
+  const s = await app.until("return (await window.ide.call('state')).tasks.some((x) => x.status === 'failed') && (await window.ide.call('state'));", 'a failed task');
+  const t = task(s, 'Break');
+  // The failed turn left the Worker idle; the sidebar, the chat and the Worker list still say it failed.
+  assert.equal(s.workers.find((w) => w.id === t.workerId).status, 'idle');
+  await app.until("document.querySelector('#side').innerText.includes('Stopped with an error')", 'the Worker under "Stopped with an error"');
+  await app.until("!!document.querySelector('#chat-thread .attach.fail [data-action=\"worker-continue\"]')", 'the failure card with Continue');
+  assert.match(await app.evaluate("document.querySelector('#chat-thread .attach.fail').innerText"), /stopped at step 2 of 3 · The build is broken/);
+  await app.click('button[data-v="worker"]');
+  const row = await app.evaluate("document.querySelector('#wk-list .wrow').innerText");
+  assert.match(row, /Failed/);
+  assert.match(row, /stopped at step 2 of 3 · The build is broken/);
+  assert.doesNotMatch(row, /Idle|just now ago/);
+  assert.match(await app.evaluate("document.querySelector('#wk-list .vhead small').innerText"), /^1 failed$/);
+  // Continue is a button beside the row's own, and sends the Worker on: the task is reopened and finishes.
+  assert.equal(await app.evaluate("!!document.querySelector('#wk-list [data-action=\"select-worker\"] [data-action=\"worker-continue\"]')"), false);
+  await app.click('#wk-list [data-action="worker-continue"]');
+  const done = await app.until("return (await window.ide.call('state')).tasks.every((x) => x.status === 'done') && (await window.ide.call('state'));", 'the task done after Continue');
+  assert.equal(done.tasks.length, 1);
+  await app.until("!document.querySelector('#side').innerText.includes('Stopped with an error') && !document.querySelector('#wk-list [data-action=\"worker-continue\"]')", 'the failure mark gone');
+});
+
 flow('with one slot, the second task waits and starts when the first ends', { settings: { maxWorkers: 1 } }, async (app) => {
   await app.say('@fake task - First\n@@fake permission npm run one\n@@fake result One.\n@fake task - Second\n@@fake permission npm run two\n@@fake result Two.');
   await app.until(`!!document.querySelector('${DEC}')`, "the first task's permission card");
   let s = await app.state();
   assert.equal(task(s, 'Second').status, 'queued');
   assert.equal(task(s, 'Second').queueReason, 'slot');
-  assert.match(await app.evaluate("document.querySelector('#side').innerText"), /Waiting for a slot 1\/1/);
+  // The queue says how full the slots are, the task's place in line and what starts it.
+  const side = await app.evaluate("document.querySelector('#side').innerText");
+  assert.match(side, /1\/1 slots/);
+  assert.match(side, /next, when a slot frees/);
+  assert.equal(await app.evaluate("document.querySelector('#side .q-row.next .q-pos')?.textContent"), '1');
+  assert.equal(await app.evaluate("document.querySelectorAll('#side .q-slots i').length + ':' + document.querySelectorAll('#side .q-slots i.on').length"), '1:1');
   await app.click(answer('allow'));
   // The first finishes, the second takes the slot and asks in its turn.
   await app.until(`(document.querySelector('${DEC}')?.innerText ?? '').includes('npm run two')`, "the second task's permission card");

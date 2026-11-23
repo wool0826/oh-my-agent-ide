@@ -211,7 +211,8 @@
   --review-text: var(--ref-purple-300);
   --review-soft: rgba(196, 99, 243, .14);
   --neutral-soft: rgba(255, 255, 255, .08);
-  --state-ask: var(--ref-red-400);
+  --state-ask: var(--ref-blue-400);
+  --text-on-ask: var(--ref-gray-950);
   --state-run: var(--ref-blue-400);
   --state-review: var(--ref-purple-400);
   --state-wait: var(--ref-orange-400);
@@ -318,7 +319,8 @@
   --review-text: var(--ref-purple-700);
   --review-soft: rgba(175, 82, 222, .12);
   --neutral-soft: rgba(0, 0, 0, .06);
-  --state-ask: var(--ref-red-600);
+  --state-ask: var(--ref-blue-600);
+  --text-on-ask: var(--ref-gray-0);
   --state-run: var(--ref-blue-600);
   --state-review: var(--ref-purple-600);
   --state-wait: var(--ref-orange-600);
@@ -424,7 +426,8 @@
     --review-text: var(--ref-purple-700);
     --review-soft: rgba(175, 82, 222, .12);
     --neutral-soft: rgba(0, 0, 0, .06);
-    --state-ask: var(--ref-red-600);
+    --state-ask: var(--ref-blue-600);
+    --text-on-ask: var(--ref-gray-0);
     --state-run: var(--ref-blue-600);
     --state-review: var(--ref-purple-600);
     --state-wait: var(--ref-orange-600);

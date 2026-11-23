@@ -3,7 +3,9 @@ import type { Task, Worker, AccountView } from '../../shared/types';
 import { isQueued } from '../../shared/queue';
 import { canStop } from '../../shared/canStop';
 import { doneMask, stepper, stepView } from '../../shared/steps';
-import { queueWhy, queueWhyText } from '../../shared/queueWhy';
+import { queueLine, queueWhy, queueWhyText } from '../../shared/queueWhy';
+import { slotsUsed } from '../../shared/slots';
+import { lastFailed, plainStatus, workerState } from '../../shared/workerState';
 import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
 import { RING, ringArc, untilReset } from '../../shared/usageRing';
@@ -22,16 +24,10 @@ import { queueCtx } from './workers';
 import { shownStalled } from '../../shared/stall';
 
 export function workerIcon(w: Worker) {
-  if (w.status === 'running' || w.status === 'starting') return ic('run');
-  if (w.status === 'waiting') return ic('ask');
-  if (w.status === 'error') return ic('err');
-  if (w.status === 'archived') return ic('arch');
-  if (shownStalled(w)) return ic('ask');
   const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
-  if (x?.status === 'queued' || x?.status === 'blocked' || awaitsDispatcher(x)) return ic('wait');
-  if (x?.status === 'pr_open') return ic('pr');
-  if (x?.status === 'done') return ic('done');
-  return ic('idle');
+  // A Worker whose last task failed is drawn as failed, not idle (shared/workerState.ts).
+  const glyph = { run: 'run', ask: 'ask', stalled: 'ask', failed: 'err', archived: 'arch', asked: 'wait', queued: 'wait', pr: 'pr', done: 'done', stopped: 'idle', idle: 'idle' } as const;
+  return ic(glyph[workerState(w, x)]);
 }
 
 export function renderSidebar() {
@@ -40,8 +36,9 @@ export function renderSidebar() {
   const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
   // A Worker that waits for the Dispatcher's answer is listed too: its task is open and holds a slot.
   const running = s.workers.filter((w) => canStop(w, lastTask(w)));
-  // A Worker stopped by an error is not running; it waits for someone to tell it to continue.
-  const failed = s.workers.filter((w) => w.status === 'error');
+  // A Worker stopped by an error is not running; it waits for someone to tell it to continue. A failed turn leaves
+  // its Worker idle with a failed task, which counts the same.
+  const failed = s.workers.filter((w) => lastFailed(w, lastTask(w)));
   // One row per PR, even when a follow-up task recorded the same PR.
   const prs = prsInReview(s.tasks);
   const queued = s.tasks.filter(isQueued);
@@ -69,13 +66,13 @@ export function renderSidebar() {
     const waits = w.status === 'waiting' || awaitsDispatcher(x) || stalled;
     // The steps its Worker planned for the open task, when it gave some: how far it is, under the title. A Worker
     // stopped by an error keeps them, so the row says at which step.
-    const failed = w.status === 'error';
+    const failed = lastFailed(w, x);
     const v = x && (OPEN.has(x.status) || failed) ? stepView(x) : null;
     const where = `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}`;
     const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : stalled ? `${w.id}, ${t('st.stalled')}`
       : v ? `${where} · ${t(v.allDone ? 'side.stepsDone' : failed ? 'side.stoppedAt' : 'side.stepsCount', { done: v.done, total: v.total })}`
       : `${where}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
-    const tip = [failed ? w.statusText : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
+    const tip = [failed ? plainStatus(w.status === 'error' ? w.statusText || x?.summary : x?.summary) : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
     return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` title="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepperHtml(x!, failed ? 'err' : waits ? 'wait' : v.allDone ? 'all' : 'run') : ''}</span></button>${workerActs(w)}</div>`;
   };
@@ -84,16 +81,32 @@ export function renderSidebar() {
     `<div class="rg"><div class="rg-h">${ic('repo', 'box')}<b>${esc(g.repo ?? t('general'))}</b><span class="n">${g.items.length}</span></div>${g.items.map((w) => workerRow(w, true)).join('')}</div>`).join('');
   const errRows = failed.map((w) => workerRow(w)).join('');
   const prRows = prs.map((x) => `<div tabindex="0" role="button" class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
-  const qRows = queued.map((x) => {
-    const small = x.status === 'blocked' ? t('side.afterMerge', { id: x.afterTaskId ?? '' }) : `${x.repo ?? t('general')}, ${x.workerId ?? ''}, ${queuedLabel(x)}`;
-    const why = queueWhy(t, x, queueCtx());
-    return `<div class="row split${selCls(x.workerId)}"${why ? ` title="${esc(queueWhyText(why))}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('wait')}<span class="t"><b>${esc(x.title)}</b><small>${esc(small)}</small></span></button>${cancelX(x)}</div>`;
-  }).join('');
+  // The queue as a line: the tasks waiting for a slot in the order they start, each with its place; then the ones
+  // something else holds (a merge, a usage limit). The second line says what starts each (shared/queueWhy.ts).
+  const qctx = queueCtx();
+  const qRow = (x: Task) => {
+    const line = queueLine(t, x, qctx)!;
+    const why = queueWhy(t, x, qctx);
+    const mark = line.pos === null ? ic('wait') : `<span class="q-pos" aria-hidden="true">${line.pos}</span>`;
+    const cls = line.pos === null ? ' held' : line.pos === 1 ? ' next' : '';
+    const tip = [x.workerId, why ? queueWhyText(why) : ''].filter(Boolean).join(' · ');
+    return { pos: line.pos, html: `<div class="row split q-row${cls}${selCls(x.workerId)}" title="${esc(tip)}"><button type="button" class="row-main" data-action="open-worker" data-id="${x.workerId ?? ''}">${mark}<span class="t"><b>${esc(x.title)}</b><small${line.cancelled ? ' class="warn"' : ''}>${esc(`${x.repo ?? t('general')} · ${line.text}`)}</small></span></button>${cancelX(x)}</div>` };
+  };
+  const qAll = queued.map(qRow);
+  const inLine = qAll.filter((r) => r.pos !== null).sort((a, b) => a.pos! - b.pos!).map((r) => r.html).join('');
+  const held = qAll.filter((r) => r.pos === null).map((r) => r.html).join('');
+  const qRows = `${inLine ? `<div class="q-line">${inLine}</div>` : ''}${held && inLine ? `<div class="q-held">${t('side.queueHeld')}</div>` : ''}${held}`;
   // Two or more PRs ready at once: one button merges them in turn, asked once.
   const ready = readyToMerge(s.tasks);
   const allBusy = ui.merging.has('*'), allSure = ui.mergeAsk === '*';
   const prTitle = `${t('side.prs')}${ready.length > 1 || allBusy ? `<button class="h-act go${allSure ? ' sure' : ''}" data-action="pr-merge-all"${allBusy ? ' disabled' : ''}>${t(allBusy ? 'pr.merging' : allSure ? 'pr.mergeAllSure' : 'pr.mergeAll', { n: ready.length })}</button>` : ''}`;
-  const qTitle = `${t('side.queue')}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
+  // How many slots are taken, once in the heading: a dot per slot and the count.
+  const used = Math.min(slotsUsed(s.tasks), s.settings.maxWorkers);
+  const slotsText = esc(t('side.slots', { n: used, max: s.settings.maxWorkers }));
+  // A dot per slot while they fit beside the heading; the words say the same, so the dots are decoration.
+  const dots = s.settings.maxWorkers <= 6 ? `<span class="q-slots" aria-hidden="true">${'<i class="on"></i>'.repeat(used)}${'<i></i>'.repeat(s.settings.maxWorkers - used)}</span>` : '';
+  const slots = `${dots}<span class="q-slots-t">${slotsText}</span>`;
+  const qTitle = `${t('side.queue')}${slots}${queued.length ? `<button class="h-act" data-action="queue-clear" title="${t('side.clearQueueTip')}">${t('side.clearQueue')}</button>` : ''}`;
   const any = decRows || runRows || prRows || qRows || errRows;
   const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<span>${t('side.emptyTitle')}</span></div>`;
   // A filter's row is selected while the Worker list it filters is on screen.
@@ -104,8 +117,8 @@ export function renderSidebar() {
   </section>`;
   if (ui.sideMin) {
     // One glyph per section with its count; a section with nothing in it is left out, History always shows.
-    const rail = (kind: string, label: string, n: number, extra = '', red = false) =>
-      `<button class="rail-b${extra}" data-action="side-toggle" title="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}<span class="n${red ? ' red' : ''}">${n}</span></button>`;
+    const rail = (kind: string, label: string, n: number, extra = '', ask = false) =>
+      `<button class="rail-b${extra}" data-action="side-toggle" title="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}<span class="n${ask ? ' ask' : ''}">${n}</span></button>`;
     const live = [
       pending.length ? rail('ask', t('side.decisions'), pending.length, ' sec-dec', true) : '',
       running.length ? rail('run', t('side.running'), running.length) : '',

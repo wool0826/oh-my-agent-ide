@@ -3,7 +3,7 @@ import type { DiffView, LogPage, Task, Worker, WorkerLogItem } from '../../share
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars } from '../../shared/spend';
 import { cancelSet, followersOf, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
-import { queueWhy, type QueueCtx } from '../../shared/queueWhy';
+import { queueLine, queueWhy, type QueueCtx } from '../../shared/queueWhy';
 import { patchLines } from '../../shared/diffComment';
 import { lastLines } from '../../shared/runOutput';
 import type { Checkpoint } from '../../shared/checkpoints';
@@ -11,32 +11,50 @@ import { taskMinutes, workerTotals } from '../../shared/workerSummary';
 import { composerAnswers, workerDecisions } from '../../shared/inbox';
 import { canStop } from '../../shared/canStop';
 import { ALLOW, DENY } from '../../shared/types';
-import { CONTEXT_WINDOW } from '../../shared/context';
+import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
+import { stepView, type StepView } from '../../shared/steps';
+import { askLine, plainStatus, stateCounts, workerLine, workerState, type WorkerState } from '../../shared/workerState';
 import { PAGE, threadStart } from '../../shared/paging';
 import { type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
 import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml, updateSendButton } from './chat';
 import { openPop } from './controls';
-import { $, acctLabel, ago, awaitsDispatcher, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go, show } from './history';
 import { grantsHtml } from './repos';
 import { ms, workerIcon } from './sidebar';
-import { shownStalled } from '../../shared/stall';
 
+const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
+
+/**
+ * The pill of a Worker: its state in a word, then how long (shared/workerState.ts). The list and the inspector
+ * header share it, so a queued Worker reads "Queued" in both and a failed one is never "Idle".
+ */
 export function statusPill(w: Worker) {
-  const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
-  switch (w.status) {
-    case 'running': case 'starting': return `<span class="pill blue">${x ? ago(x.updatedAt) : t('st.running')}</span>`;
-    case 'waiting': return `<span class="pill red">${t('st.waitingMe')}</span>`;
-    case 'error': return `<span class="pill red">${t('st.error')}</span>`;
-    case 'archived': return `<span class="pill">${t('st.archived')}</span>`;
+  const x = lastTask(w);
+  const pill = (cls: string, label: string, age = '') => `<span class="pill${cls ? ` ${cls}` : ''}">${esc(age ? `${label} · ${age}` : label)}</span>`;
+  switch (workerState(w, x)) {
+    case 'run': return pill('blue', t(w.status === 'starting' ? 'st.starting' : 'st.running'), x ? ago(x.updatedAt) : '');
+    case 'ask': return pill('ask', t('st.waitingMe'), x ? ago(x.waitingSince ?? x.updatedAt) : '');
+    case 'stalled': return pill('orange', t('st.stalled'), ago(w.lastActiveAt));
+    case 'failed': return pill('red', t('st.failed'), agoText(x?.updatedAt ?? w.lastActiveAt));
+    case 'asked': return pill('orange', t('st.awaitDispatcher'), w.request ? ago(w.request.at) : '');
+    case 'queued': return pill('orange', t(x?.status === 'blocked' ? 'st.afterMerge' : 'st.queued'));
+    case 'pr': return pill('pr-open', t('st.prOpen'), x?.finishedAt ? agoText(x.finishedAt) : '');
+    case 'done': return pill('', t('task.done'), agoText(x?.finishedAt ?? w.lastActiveAt));
+    case 'stopped': return pill('', t('task.stopped'), agoText(x?.updatedAt ?? w.lastActiveAt));
+    case 'archived': return pill('', t('st.archived'));
+    default: return pill('', t('st.idle'), agoText(w.lastActiveAt));
   }
-  if (shownStalled(w)) return `<span class="pill orange">${t('st.stalled')}</span>`;
-  if (awaitsDispatcher(x)) return `<span class="pill orange">${t('st.awaitDispatcher')}</span>`;
-  if (x?.status === 'blocked') return `<span class="pill orange">${t('st.afterMerge')}</span>`;
-  if (x?.status === 'queued') return `<span class="pill orange">${queuedLabel(x)}</span>`;
-  if (x?.status === 'pr_open') return `<span class="pill pr-open">${t('st.prOpen')}</span>`;
-  return `<span class="pill">${t('time.ago', { d: ago(w.lastActiveAt) })}</span>`;
+}
+
+/**
+ * A plan as pips before a row's sentence: done, current, to do. The current one pulses only while the Worker runs, and
+ * is red where it stopped. The words beside it say the same, so it is hidden from screen readers.
+ */
+export function pipsHtml(v: StepView, look: '' | 'err' | 'still' = '') {
+  const pip = (i: number) => (i < v.at ? ' class="d"' : i === v.at ? ' class="c"' : '');
+  return `<span class="pips${look ? ` ${look}` : ''}" aria-hidden="true">${Array.from({ length: v.total }, (_, i) => `<i${pip(i)}></i>`).join('')}</span>`;
 }
 
 /** The Workers a list filter keeps: ones with a task finished today, or archived ones. */
@@ -56,14 +74,39 @@ export function renderWorkerList() {
   const shown = filterWorkers(s.workers, f);
   const active = shown.filter((w) => w.status !== 'archived');
   const arch = shown.filter((w) => w.status === 'archived');
-  const order = (w: Worker) => (w.status === 'waiting' ? 0 : w.status === 'running' || w.status === 'starting' ? 1 : w.status === 'error' ? 2 : 3);
-  active.sort((a, b) => order(a) - order(b) || b.lastActiveAt.localeCompare(a.lastActiveAt));
+  const stateOf = (w: Worker) => workerState(w, lastTask(w));
+  // Who needs the user comes first, then what stopped, then what runs.
+  const rank: Record<WorkerState, number> = { ask: 0, stalled: 1, failed: 1, run: 2, asked: 3, queued: 3, pr: 4, done: 4, stopped: 4, idle: 4, archived: 5 };
+  const order = (w: Worker) => rank[stateOf(w)];
+  const qctx = queueCtx();
+  // Queued Workers are in the order they will start; ones held by something else come after them.
+  const place = (w: Worker) => { const x = lastTask(w); return (stateOf(w) === 'queued' && x ? queueLine(t, x, qctx)?.pos : null) ?? Infinity; };
+  const byPlace = (a: Worker, b: Worker) => { const pa = place(a), pb = place(b); return pa === pb ? 0 : pa < pb ? -1 : 1; };
+  active.sort((a, b) => order(a) - order(b) || byPlace(a, b) || b.lastActiveAt.localeCompare(a.lastActiveAt));
   arch.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   const li = (w: Worker) => {
-    const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
-    return `<div tabindex="0" role="button" class="li${ui.wSel === w.id ? ' sel' : ''}${w.status === 'archived' ? ' dim' : ''}" data-action="select-worker" data-id="${w.id}">${workerIcon(w)}
-      <span class="m"><b>${esc(w.id)} ${esc(x?.title ?? w.title)}</b><span>${esc([w.repo ?? t('general'), modelLabel(w.model), w.accountId && S?.accounts.some((a) => a.id === w.accountId) ? acctLabel(w.accountId) : '', w.statusText && w.status === 'running' ? w.statusText : ''].filter(Boolean).join(', '))}</span></span>
-      <span class="r">${w.status !== 'archived' ? ring(w.contextTokens / CONTEXT_WINDOW) + k(w.contextTokens) : ''}${statusPill(w)}</span></div>`;
+    const x = lastTask(w);
+    const st = stateOf(w);
+    const dec = st === 'ask' ? workerDecisions(s.decisions, w.id)[0] : null;
+    const about = [w.repo ?? t('general'), modelLabel(w.model), w.accountId && s.accounts.some((a) => a.id === w.accountId) ? acctLabel(w.accountId) : ''].filter(Boolean).join(', ');
+    // The second line is the most useful sentence for the state: what it asks, the step it is on, why it stopped, what
+    // starts it, or what it reported. A state with no news shows the repository and model.
+    const line = workerLine(t, w, x, { ask: dec ? oneLine(askLine(dec), 140) : null, queue: st === 'queued' && x ? queueLine(t, x, qctx)?.text : null, about });
+    const text = line.text === about || !w.repo ? line.text : `${w.repo} · ${line.text}`;
+    // The context is shown once it matters: from half the window, and in orange from where it is compacted.
+    const ctx = st !== 'archived' && w.contextTokens >= CONTEXT_WINDOW / 2
+      ? `<span class="ctxm${w.contextTokens >= COMPACT_AT ? ' warn' : ''}" title="${esc(`${t('kv.context')} ${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}`)}">${ring(w.contextTokens / CONTEXT_WINDOW)}${k(w.contextTokens)}</span>` : '';
+    // The row's own button and Continue are side by side, not one inside the other (L14).
+    const more = st === 'failed' ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
+    return `<div class="li wrow${ui.wSel === w.id ? ' sel' : ''}${st === 'archived' ? ' dim' : ''}"><div tabindex="0" role="button" class="li-main" data-action="select-worker" data-id="${w.id}">${workerIcon(w)}
+      <span class="m"><b>${esc(w.id)} ${esc(x?.title ?? w.title)}</b><span class="l2${st === 'failed' ? ' err' : ''}">${line.steps ? pipsHtml(line.steps, st === 'failed' ? 'err' : st === 'run' ? '' : 'still') : ''}<span class="tx">${esc(oneLine(text, 200))}</span></span></span>
+      <span class="r">${ctx}${statusPill(w)}</span></div>${more}</div>`;
+  };
+  // The heading counts states, not Workers: how many need the user comes first.
+  const countsText = () => {
+    const c = stateCounts(active.map(stateOf));
+    const parts = [c.ask ? t('wk.nAsk', { n: c.ask }) : '', c.run ? t('wk.nRun', { n: c.run }) : '', c.failed ? t('wk.nFailed', { n: c.failed }) : '', c.stalled ? t('wk.nStalled', { n: c.stalled }) : '', c.queued ? t('wk.nQueued', { n: c.queued }) : '', c.done ? t('wk.nDone', { n: c.done }) : ''].filter(Boolean);
+    return parts.length ? parts.join(' · ') : t('wk.counts', { a: active.length, b: arch.length });
   };
   if (!s.workers.length) {
     root.innerHTML = `<div class="vhead"><b>Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b></div>`;
@@ -84,7 +127,7 @@ export function renderWorkerList() {
         : `${head}<div class="empty-view">${sym(f === 'today' ? 's-check' : 's-arch')}<b>${t(f === 'today' ? 'wk.noneToday' : 'wk.noneArchived')}</b></div>`;
       return;
     }
-    root.innerHTML = `<div class="vhead"><b>Worker</b><small>${t('wk.counts', { a: active.length, b: arch.length })}</small></div>
+    root.innerHTML = `<div class="vhead"><b>Worker</b><small>${esc(countsText())}</small></div>
     ${lst}${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${archLis}` : ''}</div>`;
   });
 }
@@ -209,7 +252,8 @@ export function renderSummary(w: Worker) {
   ].join('');
   const cards = tasks.slice().reverse().map((x) => {
     const mins = taskMinutes(x);
-    const meta = [x.finishedAt ? hhmm(x.finishedAt) : x.startedAt ? hhmm(x.startedAt) : '', mins !== null ? t('sum.took', { t: tookText(mins) }) : ''].filter(Boolean).join(' · ');
+    const sv = stepView(x);
+    const meta = [x.finishedAt ? hhmm(x.finishedAt) : x.startedAt ? hhmm(x.startedAt) : '', mins !== null ? t('sum.took', { t: tookText(mins) }) : '', sv ? t('sum.steps', { done: sv.done, total: sv.total }) : ''].filter(Boolean).join(' · ');
     const links = resultLinks(x);
     const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.status === 'pr_open' ? ' pr-open' : x.status === 'done' ? ' green' : '';
     return `<article class="sum-task">
@@ -418,6 +462,23 @@ export function renderComposerDecision() {
   updateSendButton();
 }
 
+/**
+ * The plan its Worker declared for the task, every step with its label: done ones ticked, the current one marked,
+ * and a cross on the step it stopped at. The sidebar shows a window on the same plan (sidebar.ts, stepperHtml).
+ */
+export function planCardHtml(x: Task | null | undefined, failed = false) {
+  const v = stepView(x);
+  if (!x || !v) return '';
+  const mark = { done: t('plan.stepDone'), cur: t('plan.stepNow'), err: t('plan.stepStopped'), todo: '' };
+  const glyph = { done: '<svg viewBox="0 0 10 10"><path d="M1.8 5.3l2.1 2.1 4.2-4.6"/></svg>', err: '<svg viewBox="0 0 10 10"><path d="M2.4 2.4l5.2 5.2M7.6 2.4l-5.2 5.2"/></svg>', cur: '', todo: '' };
+  const rows = (x.steps ?? []).map((s, i) => {
+    const st = s.doneAt ? 'done' : i !== v.at ? 'todo' : failed ? 'err' : 'cur';
+    return `<li class="${st}"><i aria-hidden="true">${glyph[st]}</i><span>${esc(s.title)}</span>${mark[st] ? `<span class="sr-only">${mark[st]}</span>` : ''}</li>`;
+  }).join('');
+  return `<div class="ins-h"><b>${t('plan.steps')}</b><small>${t('sum.steps', { done: v.done, total: v.total })}</small></div>
+    <ol class="group plan-steps">${rows}</ol>`;
+}
+
 export function renderWorkerInspector() {
   const root = $('#wk-ins');
   const w = worker(ui.wSel);
@@ -429,15 +490,12 @@ export function renderWorkerInspector() {
   const cur = tasks[0];
   const open = workerDecisions(S!.decisions, w.id);
   renderComposerDecision();
-  const asked = awaitsDispatcher(cur);
-  const stalled = shownStalled(w);
-  // The same colours as the list's pill (statusPill): starting is blue too.
-  const pillCls = w.status === 'running' || w.status === 'starting' ? 'blue' : w.status === 'waiting' || w.status === 'error' ? 'red' : asked || stalled ? 'orange' : '';
-  const stKey: Record<string, Key> = { running: 'st.running', starting: 'st.starting', waiting: 'st.waitingMe', idle: 'st.idle', error: 'st.error', archived: 'st.archived' };
+  const failed = workerState(w, cur) === 'failed';
   keepScroll(root, () => { root.innerHTML = `
     ${open.length ? `<div class="ins-h"><b>${t('ins.decisions')}</b><span class="count">${open.length}</span></div><div class="group">${open.map((d) => decisionHtml(d, true)).join('')}</div>` : ''}
-    <div class="ins-h"><b>${esc(w.id)}</b><span class="pill ${pillCls}">${t(asked ? 'st.awaitDispatcher' : stalled ? 'st.stalled' : stKey[w.status] ?? 'st.idle')}</span></div>
+    <div class="ins-h"><b>${esc(w.id)}</b>${statusPill(w)}</div>
     ${waitingCardsHtml(w)}
+    ${planCardHtml(cur, failed)}
     <div class="group kv">
       <span>${t('kv.task')}</span><span>${esc(cur?.title ?? w.title)}</span>
       <span>${t('kv.repo')}</span><span>${esc(w.repo ?? t('general'))}</span>
@@ -447,7 +505,7 @@ export function renderWorkerInspector() {
       <span>${t('kv.model')}</span><span>${modelLabel(w.model)} · ${t(`effort.${(S!.settings.effortPerTask && cur?.effort) || S!.settings.workerEffort}` as Key)}</span>
       <span>${t('kv.account')}</span><span>${esc(acctLabel(w.accountId))}</span>
       <span>${t('kv.context')}</span><span>${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}</span>
-      ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(w.statusText, 140))}</span>` : ''}
+      ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(plainStatus(w.statusText), 140))}</span>` : ''}
       ${w.request && w.status !== 'archived' ? `<span>${t('kv.request')}</span><span title="${esc(w.request.text)}">${esc(oneLine(w.request.text, 140))}</span>` : ''}
     </div>
     ${runHtml(w)}
@@ -455,6 +513,7 @@ export function renderWorkerInspector() {
     <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}${grantsHtml(x)}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${canStop(w, cur) ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
+      ${failed ? `<button class="btn" data-action="worker-continue" data-id="${w.id}">${t('wk.continue')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : workerBusy(w, tasks) ? '' : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
       <button class="btn def" data-action="worker-msg" data-id="${w.id}">${t('wk.message')}</button>
     </div>`; });

@@ -373,6 +373,14 @@ export async function act(el: HTMLElement, e: Event) {
       ui.stopping.add(id); renderSidebar();
       try { await call('worker:stop', id); } finally { ui.stopping.delete(id); renderSidebar(); }
       break;
+    case 'worker-continue': {
+      // A message to a Worker whose last task failed reopens that task (workers.ts, reopenLast). Once it is sent the
+      // Worker runs and the screen is drawn again without the button, so only a failed send gives it back.
+      (el as HTMLButtonElement).disabled = true;
+      const r = await tryCall('worker:send', id, t('wk.continueMsg'), []);
+      if (!r.ok) { (el as HTMLButtonElement).disabled = false; toast(r.error, true); }
+      break;
+    }
     case 'task-cancel': ui.cancelAsk = { ids: [id], all: false }; renderCancelDialog(); break;
     case 'queue-clear': ui.cancelAsk = { ids: [], all: true }; renderCancelDialog(); break;
     case 'cancel-dismiss': ui.cancelAsk = null; renderCancelDialog(); break;

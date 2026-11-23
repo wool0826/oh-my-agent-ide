@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { FAKE_DEFAULT_REPORT, fakeReport, parseFakeScript, type FakeStep } from '../../shared/fakeScript';
+import type { StepsFn } from './workerTools';
 import type { SessionEvents } from './session';
 import { run } from '../util';
 
@@ -20,6 +21,8 @@ export interface FakeSessionConfig {
   permissionMode?: string;
   /** Dispatcher only: creates a task the way its create_task tool does, and says what happened. */
   createTask?: (a: { title: string; prompt: string; kind: 'code' | 'other'; repo?: string; bundle?: string }) => Promise<string>;
+  /** Worker only: its set_steps and step_done tools. */
+  steps?: StepsFn;
 }
 
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
@@ -114,6 +117,8 @@ export class FakeSession {
       case 'tool': this.ev.onTool?.(s.name, s.summary); return null;
       case 'wait': await sleep(s.ms, signal); return null;
       case 'tokens': this.contextTokens = s.n; this.ev.onContext?.(s.n); return null;
+      case 'steps': this.cfg.steps?.({ kind: 'set', steps: s.steps }); return null;
+      case 'step': this.cfg.steps?.({ kind: 'done', step: s.n }); return null;
       case 'permission': {
         this.ev.onTool?.('Bash', `$ ${s.command}`);
         const r = ask ? await ask('Bash', { command: s.command }, opts) : null;
