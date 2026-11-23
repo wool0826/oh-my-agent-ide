@@ -20,7 +20,7 @@ import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory'
 import { closePalette, Cmd, cmdk, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
-import { applyPanels, hideUsagePop, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
+import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 import { canStop } from '../shared/canStop';
@@ -469,7 +469,8 @@ export async function act(el: HTMLElement, e: Event) {
       openSettings();
       break;
     }
-    case 'acc-refresh': ui.accMenu = null; openSettings(); await call('account:refresh'); break;
+    case 'acc-refresh': ui.accMenu = null; openSettings(); await call('usage:refresh'); break;
+    case 'usage-refresh': await call('usage:refresh'); break;
     case 'acc-plan': ui.accMenu = null; openSettings(); await call('account:plan', id, el.dataset.v); break;
     case 'acc-remove': ui.accMenu = null; ui.accRemove = id; openSettings(); break;
     case 'acc-remove-cancel': ui.accRemove = null; openSettings(); break;
@@ -663,6 +664,7 @@ export function init() {
     if (el.id === 'auto-wk') { ui.autoWk = (el as unknown as HTMLInputElement).checked; return; }
     if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoKind === 'merged'); return; }
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
+    if (el.id === 'usage-every') { void call('settings:save', { usageRefreshMins: Number(el.value) }); return; }
     if (el.id === 'set-gh') el.value = hostOnly(el.value);
     if (el.closest?.('#sheet')) void saveSettingsNow();
   });
@@ -702,10 +704,28 @@ export function init() {
     showUsagePop();
     hoverUsage((e.target as HTMLElement).closest<HTMLElement>('.uacct')?.dataset.id ?? null);
   });
-  usage.addEventListener('mouseleave', hideUsagePop);
-  usage.addEventListener('focus', () => { if (usage.matches(':focus-visible')) showUsagePop(); });
-  usage.addEventListener('blur', hideUsagePop);
-  window.addEventListener('resize', () => closePop());
+  // The popover holds a refresh button and the interval: the pointer may cross to it, and the keyboard goes in with ↓.
+  const upop = $('#usage-pop');
+  usage.addEventListener('mouseleave', hideUsageSoon);
+  upop.addEventListener('mouseenter', showUsagePop);
+  upop.addEventListener('mouseleave', hideUsageSoon);
+  usage.addEventListener('focus', () => { if (!usagePop.quiet && usage.matches(':focus-visible')) showUsagePop(); });
+  usage.addEventListener('blur', (e) => { if (!upop.contains(e.relatedTarget as Node | null)) hideUsagePop(); });
+  upop.addEventListener('focusout', (e) => {
+    const to = e.relatedTarget as Node | null;
+    if (to && (upop.contains(to) || to === usage)) return;
+    // The focus left with a redraw of the popover (refreshUsagePop puts it back), or went elsewhere.
+    if (!to) return;
+    hideUsagePop();
+  });
+  usage.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'Enter') return;
+    if (!usage.classList.contains('usage')) return;
+    e.preventDefault();
+    showUsagePop();
+    upop.querySelector<HTMLElement>('.ubtn:not(:disabled), [data-segc][aria-checked="true"]')?.focus();
+  });
+  window.addEventListener('resize', () => { closePop(); hideUsagePop(); });
   // Scroll events don't bubble; capturing on document sees every scrolling element.
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
 
@@ -765,7 +785,12 @@ export function init() {
       if (!$('#ctxmenu').hidden) { closeCtxMenu(true); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); return; }
-      if (usagePop.shown) { hideUsagePop(); return; }
+      if (usagePop.shown) {
+        // From inside the popover, the focus goes back to the rings without opening it again.
+        if ($('#usage-pop').contains(document.activeElement)) { usagePop.quiet = true; $('#usage').focus(); usagePop.quiet = false; }
+        hideUsagePop();
+        return;
+      }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
       if (ui.settingsShown) { closeSettings(); return; }
       if (ui.memoDel) { askMemoDel(null); return; }

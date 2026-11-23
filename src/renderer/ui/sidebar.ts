@@ -9,6 +9,7 @@ import { lastFailed, plainStatus, workerState } from '../../shared/workerState';
 import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
 import { RING, ringArc, untilReset } from '../../shared/usageRing';
+import { USAGE_INTERVALS, fullerWindow, limitWindow, usageFoot, type UsageFoot } from '../../shared/usage';
 import { readyToMerge } from '../../shared/prMerge';
 import { groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { History, type WorkerFilter } from '../../shared/history';
@@ -17,6 +18,7 @@ import { applyWidths } from './resize';
 import { away } from './chat';
 import { pop } from './controls';
 import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, oneLine, pct, prNum, queuedLabel, ring, S, store, sym, t, task, ui, when, worker } from './core';
+import { segc } from './settings';
 import { screen } from './history';
 import { cmdk } from './palette';
 import { glide } from './settings';
@@ -254,6 +256,26 @@ export function usageTip(a: AccountView) {
   return parts.join('. ');
 }
 
+/** "7d limit · until Tue 2:30 PM": which window holds a limited account and until when ("Limited until …" when unknown). */
+export function limitText(a: AccountView) {
+  const win = a.provider === 'chatgpt' ? null : limitWindow(a);
+  if (!a.limitedUntil) return t('usage.limited');
+  const until = untilText(a.limitedUntil);
+  return win ? t('usage.limitWinUntil', { w: win, t: until }) : t('usage.limitedShort', { t: until });
+}
+
+/** A time to come: "2:30 PM" today, "Tue 2:30 PM" within the week, a date after that. */
+function untilText(iso: string) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  if (d.getTime() - Date.now() < 6 * 86_400_000) return `${d.toLocaleDateString(locale(), { weekday: 'short' })} ${time}`;
+  return `${d.toLocaleDateString(locale(), { month: 'short', day: 'numeric' })} ${time}`;
+}
+
+/** A clock time, "2:14 PM". */
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+
 /** One account in the usage popover: its rings and name, a bar per window with the time to its reset, and how fresh the numbers are. */
 export function usageCard(a: AccountView) {
   const wins = [
@@ -262,24 +284,69 @@ export function usageCard(a: AccountView) {
   ];
   const rows = wins.map(({ label, w }) => {
     const left = untilReset(w.resetsAt)?.map((p) => t(p.unit === 'd' ? 'time.day' : p.unit === 'h' ? 'time.hour' : 'time.min', { n: p.n })).join(' ');
-    return `<div class="uw"><span class="wl">${label}</span><span class="cap"><i class="${lv(w.utilization)}" style="width:${Math.min(100, w.utilization ?? 0)}%"></i></span><b>${pct(w.utilization)}</b><small>${left ? esc(t('usage.resetsIn', { t: left })) : ''}</small></div>`;
+    // A window without a figure looks unknown (a hatched track), never like 0%.
+    const none = w.utilization === null;
+    const note = none ? (a.usageUpdatedAt ? t('usage.noFigure') : '') : left ? t('usage.resetsIn', { t: left }) : '';
+    return `<div class="uw"><span class="wl">${label}</span><span class="cap${none ? ' none' : ''}"><i class="${lv(w.utilization)}" style="width:${Math.min(100, w.utilization ?? 0)}%"></i></span><b>${pct(w.utilization)}</b><small>${esc(note)}</small></div>`;
   }).join('');
+  // A failed account keeps its last figures, dimmed, with the time they are from.
+  const old = !!a.lastError && !!a.usageUpdatedAt;
+  const fresh = a.usageUpdatedAt
+    ? a.kind === 'login' && a.provider === 'claude' ? t('usage.fromSessions', { t: when(a.usageUpdatedAt) }) : t('usage.asOf', { t: when(a.usageUpdatedAt) })
+    : '';
   const state = a.limited
-    ? `<span class="pill red">${esc(a.limitedUntil ? t('usage.limitedShort', { t: when(a.limitedUntil) }) : t('usage.limited'))}</span>`
-    : `<time>${a.usageUpdatedAt ? esc(t('usage.asOf', { t: when(a.usageUpdatedAt) })) : ''}</time>`;
+    ? `<span class="pill red">${esc(limitText(a))}</span>`
+    : old ? `<time class="old">${esc(t('usage.figuresAt', { t: clock(a.usageUpdatedAt!) }))}</time>`
+    : `<time>${esc(fresh)}</time>`;
   const note = a.lastError ? `<p class="err">${esc(a.lastError)}</p>` : !a.usageUpdatedAt ? `<p>${t('usage.unknown')}</p>` : '';
-  return `<section class="ua${a.id === usagePop.hover ? ' on' : ''}" data-id="${esc(a.id)}"><header>${ringsSvg(a)}<span class="who"><b>${esc(a.label)}</b><small>${esc(planName(a))}</small></span>${state}</header>${rows}${note}</section>`;
+  const how = a.provider === 'claude' ? ` · ${t(a.kind === 'token' ? 'usage.token' : 'usage.login')}` : '';
+  const cls = `ua${a.id === usagePop.hover ? ' on' : ''}${a.limited ? ' limited' : ''}${old ? ' old' : ''}`;
+  return `<section class="${cls}" data-id="${esc(a.id)}"><header>${ringsSvg(a)}<span class="who"><b>${esc(a.label)}</b><small>${esc(planName(a) + how)}</small></span>${state}</header>${rows}${note}</section>`;
 }
 
-/** The usage popover: every account's numbers while the pointer or the focus is on the rings. */
-export const usagePop = { shown: false, hover: null as string | null, timer: 0, html: '' };
+/** The foot's line: when the figures were read and when they are read next, or why not. */
+export function footText(f: UsageFoot) {
+  switch (f.kind) {
+    case 'sessions': return t('usage.foot.sessions');
+    case 'running': return f.was ? t('usage.foot.running', { t: clock(f.was) }) : t('usage.foot.runningFirst');
+    case 'paused': return t('usage.foot.paused', { t: clock(f.until) });
+    case 'failed': return f.last ? t('usage.foot.failed', { t: clock(f.last) }) : t('usage.foot.failedNever');
+    case 'ok': {
+      const parts = [f.at ? t('usage.foot.at', { t: clock(f.at) }) : t('usage.foot.never')];
+      if (f.failed) parts.push(t('usage.foot.someFailed', { n: f.failed, total: f.total }));
+      else if (f.next) parts.push(t('usage.foot.next', { t: clock(f.next) }));
+      return parts.join(' · ');
+    }
+  }
+}
+
+/** The popover's foot: the state of the rounds, a refresh button, and how often they run. */
+function usageFootHtml() {
+  const f = usageFoot(S!.usageClock, S!.accounts);
+  const every = String(S!.settings.usageRefreshMins);
+  const opts = USAGE_INTERVALS.map((n) => ({ value: String(n), label: n ? t('usage.mins', { n }) : t('usage.byHand') }));
+  // Off while the server asked to wait, and while a round runs (its arrow turns).
+  const off = f.kind === 'paused' || f.kind === 'running';
+  const btn = `<button type="button" class="ubtn${f.kind === 'running' ? ' spin' : ''}" data-action="usage-refresh" data-focus="usage-refresh" title="${esc(t('usage.refresh'))}" aria-label="${esc(t('usage.refresh'))}"${off ? ' disabled' : ''}><svg aria-hidden="true"><use href="#s-refresh"/></svg></button>`;
+  const line = `<span class="uft${f.kind === 'failed' || (f.kind === 'ok' && f.failed) ? ' bad' : ''}" role="status">${esc(footText(f))}</span>`;
+  const chips = f.kind === 'sessions' ? '' : segc('usage-every', every, opts, t('usage.every'));
+  return `<footer class="ufoot"><div class="ufl">${line}${f.kind === 'sessions' ? '' : btn}</div>${chips}</footer>`;
+}
+
+function usagePopHtml() {
+  return S!.accounts.map(usageCard).join('') + usageFootHtml();
+}
+
+/** The usage popover: every account's numbers while the pointer or the focus is on the rings or on the popover. */
+export const usagePop = { shown: false, hover: null as string | null, timer: 0, hideTimer: 0, html: '', quiet: false };
 
 /** Opens the popover. Once it is open, moving between the rings only moves the mark (hoverUsage): nothing is drawn again. */
 export function showUsagePop() {
+  clearTimeout(usagePop.hideTimer);
   if (usagePop.shown || !S?.accounts.length) return;
   const el = $('#usage-pop');
   clearTimeout(usagePop.timer);
-  usagePop.html = S.accounts.map(usageCard).join('');
+  usagePop.html = usagePopHtml();
   el.innerHTML = usagePop.html;
   usagePop.shown = true;
   el.classList.remove('out');
@@ -293,6 +360,7 @@ export function showUsagePop() {
 }
 
 export function hideUsagePop() {
+  clearTimeout(usagePop.hideTimer);
   if (!usagePop.shown) return;
   usagePop.shown = false;
   usagePop.hover = null;
@@ -303,15 +371,32 @@ export function hideUsagePop() {
   usagePop.timer = window.setTimeout(() => { el.hidden = true; el.classList.remove('out'); }, ms('--dur-fast'));
 }
 
+/** The pointer left the rings: close unless it reaches the popover in a moment (its buttons are in there). */
+export function hideUsageSoon() {
+  clearTimeout(usagePop.hideTimer);
+  usagePop.hideTimer = window.setTimeout(() => {
+    if ($('#usage-pop').matches(':hover') || $('#usage-pop').contains(document.activeElement)) return;
+    hideUsagePop();
+  }, 200);
+}
+
 /** New numbers while the popover is open: written in place, with no opening motion, and only if something changed. */
 function refreshUsagePop() {
   if (!usagePop.shown || !S?.accounts.length) return;
-  const html = S.accounts.map(usageCard).join('');
+  const html = usagePopHtml();
   if (html === usagePop.html) return;
   usagePop.html = html;
   const el = $('#usage-pop');
   el.classList.remove('opening');
+  // A button that had the focus keeps it.
+  const active = document.activeElement as HTMLElement | null;
+  const key = active && el.contains(active) ? (active.dataset.focus ?? (active.dataset.segc ? `seg:${active.dataset.v}` : null)) : null;
   el.innerHTML = html;
+  if (key) {
+    const next = key.startsWith('seg:') ? el.querySelector<HTMLElement>(`[data-segc][data-v="${CSS.escape(key.slice(4))}"]`) : el.querySelector<HTMLElement>(`[data-focus="${CSS.escape(key)}"]`);
+    // A disabled refresh button can't hold the focus: the chips take it.
+    (next && !(next as HTMLButtonElement).disabled ? next : el.querySelector<HTMLElement>('[data-segc][aria-checked="true"]'))?.focus({ preventScroll: true });
+  }
 }
 
 /** Marks the account whose ring the pointer is on. */
@@ -319,7 +404,7 @@ export function hoverUsage(id: string | null) {
   if (usagePop.hover === id) return;
   usagePop.hover = id;
   // The mark is part of what was drawn; keep the record of it in step, so a refresh compares like with like.
-  if (usagePop.shown && S?.accounts.length) usagePop.html = S.accounts.map(usageCard).join('');
+  if (usagePop.shown && S?.accounts.length) usagePop.html = usagePopHtml();
   document.querySelectorAll<HTMLElement>('#usage-pop .ua').forEach((s) => s.classList.toggle('on', s.dataset.id === id));
 }
 
@@ -340,8 +425,21 @@ export function renderUsage() {
   // A picture of the numbers; the popover it describes has them as text (L14).
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', accs.map(usageTip).join('\n'));
-  el.innerHTML = accs.map((a: AccountView) => `<span class="uacct${a.limited ? ' limited' : ''}" data-id="${esc(a.id)}">${ringsSvg(a)}</span>`).join('');
+  el.innerHTML = accs.map(toolbarAccount).join('');
   refreshUsagePop();
+}
+
+/**
+ * One account in the toolbar: its rings, then the fuller window in words ("86% 5h", orange from 80%), or the limit
+ * that holds it ("7d limit · until Tue 2:30 PM"); a narrow window keeps the rings alone. A failed read fades the rings and adds a dot.
+ */
+function toolbarAccount(a: AccountView) {
+  const failed = !!a.lastError;
+  const full = fullerWindow(usageWindows(a));
+  const side = a.limited
+    ? `<span class="pill red ulim">${esc(limitText(a))}</span>`
+    : full ? `<span class="upct${full.v >= 80 ? ' hi' : ''}">${full.v}% <small>${esc(full.label)}</small></span>` : '';
+  return `<span class="uacct${a.limited ? ' limited' : ''}${failed ? ' failed' : ''}" data-id="${esc(a.id)}"><span class="ur">${ringsSvg(a)}</span>${side}</span>`;
 }
 
 /** Put the sidebars away or back, and say so on their buttons. The right one's button counts open decisions while it is hidden. */

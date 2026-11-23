@@ -414,6 +414,42 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
   assert.equal(await app.evaluate("document.activeElement?.dataset?.action + ':' + document.activeElement?.dataset?.id?.length"), 'answer:' + (await app.evaluate("document.querySelector('#chat-ins [data-action=\"answer\"]').dataset.id.length")));
 });
 
+{
+  const at = (mins) => new Date(Date.now() + mins * 60_000).toISOString();
+  const win = (utilization, resetsAt) => ({ utilization, resetsAt });
+  const acc = (id, label, x) => ({ id, label, kind: 'token', plan: 'team', provider: 'claude', tokenEnc: '', planLabel: null, windowMins: null, usageSource: 'probe', limitedUntil: null, lastAssignedAt: null, lastError: null, usageBackoffUntil: null, usageUpdatedAt: at(-2), ...x });
+  const accounts = [
+    acc('a', 'Team A', { fiveHour: win(86, at(70)), sevenDay: win(41, at(4500)) }),
+    acc('b', 'Team B', { fiveHour: win(42, at(125)), sevenDay: win(100, at(1800)), limitedUntil: at(1800) }),
+    acc('c', 'Team C', { fiveHour: win(20, at(200)), sevenDay: win(null, null), lastError: 'Usage lookup failed (500)', usageUpdatedAt: at(-26) }),
+  ];
+  flow('the usage widget names the fuller window, and its popover says when it refreshes and refreshes by hand', { settings: { accounts, usageRefreshMins: 15 } }, async (app) => {
+    await app.until("document.querySelectorAll('#usage .uacct').length === 3", 'the rings');
+    // The toolbar: the fuller window in words (orange from 80%), the limit that holds an account, a failed read marked.
+    assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#usage .uacct')].map((u) => [u.querySelector('.upct')?.textContent ?? u.querySelector('.ulim')?.textContent, !!u.querySelector('.upct.hi'), u.classList.contains('failed')])"),
+      [['86% 5h', true, false], [(await app.evaluate("document.querySelector('#usage .ulim').textContent")), false, false], ['20% 5h', false, true]]);
+    assert.match(await app.evaluate("document.querySelector('#usage .ulim').textContent"), /^7d limit · until /);
+    // The popover, with the foot: the last round, one of three failed, the interval chosen.
+    await app.evaluate("document.querySelector('#usage .uacct').dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return 1;");
+    await app.until("!document.querySelector('#usage-pop').hidden && !!document.querySelector('#usage-pop .ufoot')", 'the popover foot');
+    assert.match(await app.evaluate("document.querySelector('#usage-pop .uft').textContent"), /^Updated .* · 1 of 3 failed$/);
+    assert.equal(await app.evaluate("document.querySelector('#usage-pop [data-segc=\"usage-every\"][aria-checked=\"true\"]').dataset.v"), '15');
+    // The failed account keeps its figures, dimmed, and the week it has no figure for says so.
+    assert.deepEqual(await app.evaluate("const c = document.querySelector('#usage-pop .ua[data-id=\"c\"]'); return [c.classList.contains('old'), !!c.querySelector('time.old'), !!c.querySelector('.cap.none'), c.querySelector('.uw:last-of-type small').textContent];"),
+      [true, true, true, 'no figure yet']);
+    // Only by hand: saved, and no next round.
+    await app.click('#usage-pop [data-segc="usage-every"][data-v="0"]');
+    await app.until("const s = await window.ide.call('state'); return s.settings.usageRefreshMins === 0 && s.usageClock.nextAt === null;", 'only by hand');
+    // A refresh by hand runs a round.
+    const before = await app.evaluate("return (await window.ide.call('state')).usageClock.checkedAt;");
+    await app.evaluate("await new Promise((r) => setTimeout(r, 20)); document.querySelector('#usage-pop .ubtn').click(); return 1;");
+    await app.until(`return (await window.ide.call('state')).usageClock.checkedAt !== ${JSON.stringify(before)};`, 'a new round');
+    // The popover's buttons are reached with the keyboard from the rings, and Escape brings the focus back.
+    await app.evaluate("document.querySelector('#usage').focus(); document.querySelector('#usage').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); return 1;");
+    assert.equal(await app.evaluate("document.activeElement?.closest('#usage-pop') ? 'in' : 'out'"), 'in');
+  });
+}
+
 flow('a state update that changes nothing in a panel leaves the panel as it is', {}, async (app) => {
   await app.say('@fake task - Something to list\n@@fake result Done.');
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');

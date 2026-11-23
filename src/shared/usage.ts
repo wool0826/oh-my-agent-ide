@@ -78,3 +78,80 @@ export function limitEnd(a: RoutableAccount, now = Date.now(), resetsAtMs?: numb
     .filter((ms) => ms > now);
   return full.length ? Math.max(...full) : now + 30 * 60_000;
 }
+
+/** How often usage is read, in minutes; 0 = only by hand. Each round costs a request per token account. */
+export const USAGE_INTERVALS = [5, 15, 30, 0] as const;
+export const USAGE_INTERVAL_DEFAULT = 5;
+
+export function clampUsageMins(v: unknown): number {
+  const n = Number(v);
+  return (USAGE_INTERVALS as readonly number[]).includes(n) ? n : USAGE_INTERVAL_DEFAULT;
+}
+
+/**
+ * Which window holds a limited account: the one whose reset is the limit's end (within a minute), else a full one
+ * (the week first, as it lasts longer). Null when neither says.
+ */
+export function limitWindow(a: { fiveHour: UsageWindow; sevenDay: UsageWindow; limitedUntil: string | null }): '5h' | '7d' | null {
+  if (!a.limitedUntil) return null;
+  const end = Date.parse(a.limitedUntil);
+  const near = (w: UsageWindow) => !!w.resetsAt && Math.abs(Date.parse(w.resetsAt) - end) < 60_000;
+  if (near(a.sevenDay)) return '7d';
+  if (near(a.fiveHour)) return '5h';
+  if ((a.sevenDay.utilization ?? 0) >= 100) return '7d';
+  if ((a.fiveHour.utilization ?? 0) >= 100) return '5h';
+  return null;
+}
+
+/** The fuller of an account's windows, as the toolbar names it ("86% 5h"). Null when no window has a figure. */
+export function fullerWindow(wins: readonly { label: string; v: number | null }[]): { label: string; v: number } | null {
+  let best: { label: string; v: number } | null = null;
+  for (const w of wins) if (w.v !== null && (!best || w.v > best.v)) best = { label: w.label, v: w.v };
+  return best;
+}
+
+/** The app's rounds of reading usage. */
+export interface UsageClock {
+  /** When the last round ended. */
+  checkedAt: string | null;
+  /** When the next one starts; null when only by hand. */
+  nextAt: string | null;
+  running: boolean;
+}
+
+/** What an account needs for the popover's foot. */
+export interface FootAccount {
+  kind: 'token' | 'login';
+  provider: Provider;
+  lastError: string | null;
+  usageUpdatedAt: string | null;
+  usageBackoffUntil?: string | null;
+}
+
+export type UsageFoot =
+  | { kind: 'running'; was: string | null }
+  | { kind: 'paused'; until: string }
+  | { kind: 'failed'; last: string | null }
+  | { kind: 'ok'; at: string | null; next: string | null; failed: number; total: number }
+  | { kind: 'sessions' };
+
+/**
+ * The popover's foot line: a round running; every account the rounds read paused by the server (429) or failed;
+ * otherwise when it last ran, when it runs next and how many failed. Accounts that only their sessions report
+ * (this PC's Claude login) are not read by a round.
+ */
+export function usageFoot(clock: UsageClock, list: readonly FootAccount[], now = Date.now()): UsageFoot {
+  const read = list.filter((a) => a.kind === 'token' || a.provider === 'chatgpt');
+  if (!read.length) return { kind: 'sessions' };
+  if (clock.running) return { kind: 'running', was: clock.checkedAt };
+  const pausedUntil = (a: FootAccount) => (a.usageBackoffUntil && Date.parse(a.usageBackoffUntil) > now ? a.usageBackoffUntil : null);
+  if (read.every((a) => pausedUntil(a))) {
+    return { kind: 'paused', until: new Date(Math.min(...read.map((a) => Date.parse(pausedUntil(a)!)))).toISOString() };
+  }
+  const failed = read.filter((a) => a.lastError).length;
+  if (failed === read.length) {
+    const times = read.map((a) => a.usageUpdatedAt).filter((x): x is string => !!x).sort();
+    return { kind: 'failed', last: times.length ? times[times.length - 1] : null };
+  }
+  return { kind: 'ok', at: clock.checkedAt, next: clock.nextAt, failed, total: read.length };
+}

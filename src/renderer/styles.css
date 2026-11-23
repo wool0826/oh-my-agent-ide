@@ -170,8 +170,19 @@ body { --lights-end: 0px; }
 .toolbar > .usage { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 /* One ring per account: the 5-hour window outside, the 7-day window inside. Its name and numbers are in the popover (.upop). */
 .usage:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
-.uacct { flex: none; display: grid; place-items: center; border-radius: 50%; transition: scale var(--dur-fast) var(--ease-out); }
-.uacct:hover { scale: 1.14; }
+.uacct { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); }
+.uacct .ur { position: relative; display: grid; place-items: center; border-radius: 50%; transition: scale var(--dur-fast) var(--ease-out); }
+.uacct:hover .ur { scale: 1.14; }
+/* The fuller window in words beside the rings; orange from 80%. */
+.upct { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.upct small { font-size: inherit; font-weight: 500; color: var(--text-tertiary); }
+.upct.hi, .upct.hi small { color: var(--warning-text); }
+.ulim { white-space: nowrap; }
+/* A narrow window keeps the rings alone (a limited one has its red track): with four accounts the words would push rings out of sight. */
+@media (max-width: 1100px) { .ulim, .upct { display: none; } }
+/* A read that failed: the rings fade and carry an orange dot. */
+.uacct.failed .ur svg { opacity: .45; }
+.uacct.failed .ur::after { content: ''; position: absolute; top: -1px; right: -1px; width: 7px; height: 7px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 1.5px var(--surface-panel); }
 .uacct svg { width: 22px; height: 22px; }
 .uacct svg, .ua header svg { transform: rotate(-90deg); }
 .uacct circle, .ua header circle { fill: none; stroke-width: 3; stroke-linecap: round; background: none; }
@@ -179,8 +190,8 @@ body { --lights-end: 0px; }
 .uacct.limited .trk, .ua.limited header .trk { stroke: var(--danger-soft); }
 circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-caution); } circle.lv-o { stroke: var(--meter-warn); } circle.lv-r { stroke: var(--meter-critical); }
 /* The usage popover: one block per account, in the rings' order. It only shows, so the pointer passes through it. */
-.upop { position: fixed; z-index: var(--z-popover); width: 356px; max-width: calc(100vw - 16px); padding: var(--space-6); border-radius: var(--radius-xl); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-4); display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none; transform-origin: 100% 0; animation: upop-in var(--dur-base) var(--ease-out); transition: opacity var(--dur-fast) var(--ease-standard), translate var(--dur-fast) var(--ease-standard); }
-.upop.out { opacity: 0; translate: 0 -3px; }
+.upop { position: fixed; z-index: var(--z-popover); width: 356px; max-width: calc(100vw - 16px); padding: var(--space-6); border-radius: var(--radius-xl); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-4); display: flex; flex-direction: column; gap: var(--space-2); transform-origin: 100% 0; animation: upop-in var(--dur-base) var(--ease-out); transition: opacity var(--dur-fast) var(--ease-standard), translate var(--dur-fast) var(--ease-standard); }
+.upop.out { opacity: 0; translate: 0 -3px; pointer-events: none; }
 @keyframes upop-in { from { opacity: 0; scale: .97; translate: 0 -4px; } }
 .ua { padding: var(--space-8) var(--space-10) var(--space-10); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: var(--space-6); transition: background var(--dur-fast) var(--ease-standard); }
 .ua.on { background: var(--surface-hover); }
@@ -198,6 +209,23 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .uw small { font-size: var(--fs-caption2); color: var(--text-tertiary); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ua p { font-size: var(--fs-caption2); color: var(--text-tertiary); line-height: var(--lh-ui); overflow-wrap: anywhere; }
 .ua p.err { color: var(--danger-text); }
+/* Old figures look old, never like zero: dimmed, with the time they are from. */
+.ua.old .uw { opacity: .5; }
+.ua header time.old { color: var(--warning-text); }
+/* A window without a figure: a hatched track, not an empty bar that reads as 0%. */
+.cap.none { background: repeating-linear-gradient(135deg, var(--meter-track) 0 3px, transparent 3px 6px); }
+.ufoot { margin-top: var(--space-2); padding: var(--space-8) var(--space-10) var(--space-6); border-top: 1px solid var(--sep); display: flex; flex-direction: column; gap: var(--space-8); }
+.ufl { display: flex; align-items: center; gap: var(--space-8); }
+.uft { flex: 1; min-width: 0; font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.uft.bad { color: var(--danger-text); }
+.ubtn { flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-full); background: var(--surface-track); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+.ubtn:hover:not(:disabled) { color: var(--text-primary); }
+.ubtn:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.ubtn:disabled { cursor: default; opacity: .5; }
+.ubtn.spin { opacity: 1; }
+.ubtn svg { width: 14px; height: 14px; }
+.ubtn.spin svg { animation: spin 1s linear infinite; }
+.ufoot .segc { align-self: flex-start; max-width: 100%; }
 .upop.opening .cap i { transform-origin: 0 50%; animation: bar-in var(--dur-glide) var(--ease-standard) backwards; }
 @keyframes bar-in { from { scale: 0 1; } }
 .tbtn { position: relative; flex: none; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 0; border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
