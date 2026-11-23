@@ -12,12 +12,12 @@ import { focusSelector } from '../shared/focusKey';
 import { PAGE, pagesFor, slideOlder } from '../shared/paging';
 import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
-import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, moveDecision, tickDecisions } from './ui/chat';
+import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, moveDecision, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
-import { closePop, markFont, openFontPicker, pop, popKeys, stepValue } from './ui/controls';
+import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo } from './ui/shell';
-import { $, announce, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
+import { $, announce, applyStaticText, call, esc, hhmm, ide, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closePalette, Cmd, cmdk, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
@@ -54,6 +54,7 @@ export function renderAll(force = false) {
   applyPanels();
   renderSidebar();
   renderUsage();
+  renderDispatcherStatus();
   renderMemSync();
   if (ui.cancelAsk) renderCancelDialog();
   if (ui.view === 'chat') { renderChat(force); renderChatInspector(); renderSide(); }
@@ -61,6 +62,16 @@ export function renderAll(force = false) {
   if (ui.view === 'repo') renderRepos();
   if (ui.view === 'memory' && force) renderMemory();
   if (focused && focusKey && !focused.isConnected && document.activeElement === document.body) focusRoot?.querySelector<HTMLElement>(focusKey)?.focus({ preventScroll: true });
+}
+
+/** Puts back a cleared list: the one given (its toast's Undo), else the last one cleared (Ctrl/Cmd+Z). */
+function undoClear(u?: (typeof ui.undo)[number]) {
+  const i = u ? ui.undo.indexOf(u) : ui.undo.length - 1;
+  if (i < 0) return false;
+  const [x] = ui.undo.splice(i, 1);
+  void call('chat:unclear', x.kind, x.ids);
+  toast(t('toast.undone'));
+  return true;
 }
 
 export function openWorker(id: string) {
@@ -229,6 +240,28 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'open-worker': openWorker(id); break;
+    case 'chat-stop': (el as HTMLButtonElement).disabled = true; void call('chat:stop'); break;
+    case 'chat-start': {
+      // A start fills the composer for the user to finish; it is not sent.
+      const input = $<HTMLTextAreaElement>('#chat-input');
+      input.value = `${el.dataset.text ?? ''}: `;
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      break;
+    }
+    case 'hand-fold': {
+      if (!ui.handToggled.delete(id)) ui.handToggled.add(id);
+      renderChat();
+      document.querySelector<HTMLElement>(`.hand-h[data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+      break;
+    }
+    case 'res-more': {
+      if (!ui.resOpen.delete(id)) ui.resOpen.add(id);
+      renderChatInspector();
+      document.querySelector<HTMLElement>(`[data-action="res-more"][data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+      break;
+    }
     case 'select-worker': openWorker(id); break;
     case 'close-session': go({ wOpen: false }); break;
     case 'ws-tab': go({ wTab: el.dataset.v as Screen['wTab'] }); break;
@@ -416,9 +449,10 @@ export async function act(el: HTMLElement, e: Event) {
     case 'clear': {
       const kind = el.dataset.kind as 'result' | 'auto';
       const ids = kind === 'auto' ? S!.autoAnswers.filter((x) => !x.cleared).map((x) => x.id) : S!.results.map((c) => c.id);
-      ui.undo.push({ kind, ids });
+      const u = { kind, ids };
+      ui.undo.push(u);
       await call('chat:clear', kind);
-      toast(t(kind === 'auto' ? 'toast.clearedAuto' : 'toast.clearedResults', { key: isMac ? '⌘Z' : 'Ctrl+Z' }));
+      toast(t(kind === 'auto' ? 'toast.clearedAuto' : 'toast.clearedResults'), false, { label: t('toast.undo'), run: () => undoClear(u) });
       break;
     }
     case 'aa-select': {
@@ -709,6 +743,7 @@ export function init() {
   document.addEventListener('change', async (e) => {
     const el = e.target as HTMLSelectElement;
     if (el.dataset.change === 'sound-kind') syncSoundRows();
+    if (el.classList?.contains('step-v')) syncStep(el as unknown as HTMLInputElement, true);
     // The Jira token goes to the main process by itself and is cleared from the field: it is never part of the page's state.
     if (el.id === 'set-jtok') {
       const tok = (el as unknown as HTMLInputElement).value.trim();
@@ -735,6 +770,7 @@ export function init() {
     if (el.id === 'set-qkey') el.classList.toggle('bad', normalizeQuickKey(el.value) === null);
     if (el.id === 'set-qfrom' || el.id === 'set-qto') el.classList.toggle('bad', !!el.value.trim() && !cleanTime(el.value));
     if (el.id === 'set-vol') syncSlider(el);
+    if (el.classList.contains('step-v')) syncStep(el, false);
     if (el.id === 'set-fsize') previewFont();
     if (el.id === 'set-font') { markFont(el); previewFont(); void openFontPicker(el, false); }
     if (el.id === 'set-q') { ui.setQ = el.value; filterPanes(); return; }
@@ -900,8 +936,7 @@ export function init() {
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
       if (el.matches('input, textarea')) return;
-      const u = ui.undo.pop();
-      if (u) { e.preventDefault(); void call('chat:unclear', u.kind, u.ids); toast(t('toast.undone')); }
+      if (undoClear()) e.preventDefault();
     }
     // Under an open dialog or the Settings sheet, the view does not change behind it (L14).
     const covered = ui.settingsShown || !$('#dlg').hidden;
@@ -965,9 +1000,6 @@ export function init() {
       });
     });
   }
-  $('#chat-send').addEventListener('click', (e) => {
-    if ($('#chat-send').classList.contains('stop')) { e.preventDefault(); void call('chat:stop'); }
-  });
   bindComposer('ws', '#ws-form', '#ws-input', async (text, files) => {
     if (!ui.wSel) return null;
     // The decision the strip above the text names, if any; otherwise a normal message (M7). Main answers it only
@@ -1034,6 +1066,7 @@ export function init() {
   // Looking away starts the clock; while the window has the focus it is kept current.
   window.addEventListener('blur', markSeen);
   setInterval(() => { if (document.hasFocus()) markSeen(); }, 60_000);
+  setInterval(() => { if (S?.dispatcher.busy) tickDispatcher(); }, 1000);
   setInterval(() => { if (S) { renderSidebar(); if (ui.view === 'worker') renderWorkerList(); } }, 60_000);
   // The age and slot clock of decisions: their text only, so nothing is drawn again.
   setInterval(() => tickDecisions(), 15_000);

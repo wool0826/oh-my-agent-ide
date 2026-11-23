@@ -154,7 +154,7 @@ class WorkerManager {
     };
     store.data.workers.push(w);
     store.changed();
-    store.chat('event', t('ev.workerCreated', { id: w.id, repo: repo ? repo.name : t('general'), model: modelLabel(w.model) }));
+    store.handout(t('ev.workerCreated', { id: w.id, repo: repo ? repo.name : t('general'), model: modelLabel(w.model) }));
     return w;
   }
 

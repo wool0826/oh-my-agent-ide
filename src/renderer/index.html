@@ -94,6 +94,7 @@
       <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button></form>
     </section>
     <form class="composer" id="chat-form" autocomplete="off">
+      <div class="dstat" id="chat-dstat" hidden></div>
       <div class="cerr" id="chat-err" role="alert" hidden></div>
       <div class="rchip" id="chat-reply" hidden></div>
       <div class="fchips" id="chat-files" hidden></div>
@@ -150,7 +151,7 @@
 <div class="upop" id="usage-pop" role="dialog" aria-label="Usage per account" data-i18n-aria="usage.dialog" hidden></div>
 <div id="dlg" hidden></div>
 <div id="cmdk" hidden></div>
-<div class="toast" id="toast" role="status" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 <!-- New agent messages are read out from here; the threads themselves are not live regions (L14). -->
 <div class="sr-only" id="live" aria-live="polite"></div>
 

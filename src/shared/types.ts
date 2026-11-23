@@ -282,6 +282,8 @@ export interface ChatItem {
   replyTo?: string;
   /** kind 'shell': the run. */
   shell?: ShellRun;
+  /** 'handout': a Worker made or a task handed out (ref: the task), folded with its neighbours (shared/handouts.ts). */
+  sub?: 'handout';
   cleared?: boolean;
 }
 
@@ -433,7 +435,7 @@ export interface AppState {
   runs: RunView[];
   /** The IDE memory's sync with its remote repository. */
   memorySync: MemorySync;
-  dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null };
+  dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null; busySince?: string | null };
 }
 
 export interface DiffFile { path: string; added: number; removed: number; status: 'A' | 'M' | 'D' | 'R' | '?'; patch: string }

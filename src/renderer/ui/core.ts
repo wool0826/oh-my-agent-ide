@@ -107,7 +107,12 @@ export const ui = {
   /** How many items each "Show more" list shows, by list key (moreBtn). */
   pages: new Map<string, number>(),
   undo: [] as { kind: 'result' | 'auto'; ids: string[] }[],
+  /** Hand-out blocks the user opened or folded against their default (by their first line). */
+  handToggled: new Set<string>(),
+  /** Inbox results whose summary is shown in full. */
+  resOpen: new Set<string>(),
   lastChatKey: '',
+  lastHandKey: '',
   lastLogKey: '',
   settingsShown: false,
   pane: 'accounts' as Pane,
@@ -355,21 +360,52 @@ export const stoppedTask = (x: Task | null | undefined) => x?.status === 'failed
 
 export const taskLabel = (x: Task) => (x.status === 'queued' ? queuedLabel(x) : awaitsDispatcher(x) ? t('st.awaitDispatcher') : stoppedTask(x) ? t('task.stopped') : taskStatus(x.status));
 
-export let toastTimer: number | undefined;
+export interface ToastAction { label: string; run: () => void }
 
-export function toast(text: string, err = false) {
-  const el = $('#toast');
-  el.textContent = text;
-  el.classList.toggle('err', err);
-  // An error is announced at once; other news waits for the reader.
-  el.setAttribute('role', err ? 'alert' : 'status');
-  el.classList.remove('out');
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => {
-    el.classList.add('out');
-    toastTimer = window.setTimeout(() => { el.hidden = true; el.classList.remove('out'); }, ms('--dur-base'));
-  }, err ? 6000 : 3000);
+/** At most this many toasts at once; a newer one pushes the oldest out. */
+const TOAST_MAX = 3;
+
+function dropToast(el: Element) {
+  if (!el.isConnected || el.classList.contains('out')) return;
+  el.classList.add('out');
+  window.setTimeout(() => el.remove(), ms('--dur-base'));
+}
+
+/**
+ * A short message over the composer. They stack, newest at the bottom, each on its own timer; `action` adds a button
+ * (Undo). An error is announced at once and stays until it is dismissed.
+ */
+export function toast(text: string, err = false, action?: ToastAction) {
+  const box = $('#toasts');
+  // The same message again moves to the bottom instead of showing twice.
+  for (const old of box.children) if (old.querySelector(':scope > span')?.textContent === text) old.remove();
+  const el = document.createElement('div');
+  el.className = `toast${err ? ' err' : ''}`;
+  if (err) el.setAttribute('role', 'alert');
+  const msg = document.createElement('span');
+  msg.textContent = text;
+  el.append(msg);
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'linkbtn';
+    b.textContent = action.label;
+    b.addEventListener('click', () => { dropToast(el); action.run(); });
+    el.append(b);
+  }
+  if (err) {
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'toast-x';
+    x.setAttribute('aria-label', t('toast.dismiss'));
+    x.innerHTML = '<svg aria-hidden="true"><use href="#s-x"/></svg>';
+    x.addEventListener('click', () => dropToast(el));
+    el.append(x);
+  }
+  box.append(el);
+  const live = [...box.children].filter((c) => !c.classList.contains('out'));
+  for (const old of live.slice(0, Math.max(0, live.length - TOAST_MAX))) dropToast(old);
+  if (!err) window.setTimeout(() => dropToast(el), action ? 6000 : 3000);
 }
 
 /** Reads a new agent message out to screen readers (#live), instead of making a whole thread a live region. */

@@ -112,6 +112,22 @@ export function stepValue(id: string, delta: number) {
   const el = document.getElementById(id) as HTMLInputElement | null;
   if (!el) return;
   const min = Number(el.dataset.min), max = Number(el.dataset.max);
-  el.value = String(Math.max(min, Math.min(max, (Number(el.value) || min) + delta)));
+  el.value = String(Math.max(min, Math.min(max, (stepNum(el) || min) + delta)));
+  syncStep(el, true);
   el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** A stepper's number; one that can be off reads "Never" at 0 (settings.ts stepper). */
+export function stepNum(el: HTMLInputElement) {
+  return el.dataset.never && el.value.trim() === el.dataset.never ? 0 : Number(el.value);
+}
+
+/** Shows "Never" for 0 and the unit for any other number. `word`: put the word in the field too (not while typing). */
+export function syncStep(el: HTMLInputElement, word: boolean) {
+  if (!el.dataset.never) return;
+  const never = stepNum(el) === 0;
+  if (never && word) el.value = el.dataset.never;
+  el.classList.toggle('never', never && el.value === el.dataset.never);
+  const u = document.getElementById(`${el.id}-u`);
+  if (u) u.hidden = never;
 }

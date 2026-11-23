@@ -227,6 +227,31 @@ flow('a side question is asked and answered in its own panel, and reaches the Di
   await app.until("document.querySelector('#sq').hidden && !document.querySelector('#chat-sq i')", 'the thread forgotten');
 });
 
+flow('the hand-outs of one turn fold into one block with a row per task', {}, async (app) => {
+  await app.say('@fake task - One\n@@fake result One.\n@fake task - Two\n@@fake permission npm run two\n@@fake result Two.');
+  await app.until("document.querySelectorAll('#chat-thread .hand .hrow').length === 2", 'one block with two rows');
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-thread .hand').length"), 1);
+  const rows = await app.evaluate("[...document.querySelectorAll('#chat-thread .hand .hrow b')].map((b) => b.textContent).join('|')");
+  assert.equal(rows, 'One|Two');
+  // While a task still asks, the block stays open; the header folds it by hand.
+  await app.until(`!!document.querySelector('${DEC}')`, 'the permission card');
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread .hand-h').getAttribute('aria-expanded')"), 'true');
+  await app.click('#chat-thread .hand-h');
+  await app.until("document.querySelector('#chat-thread .hand-h').getAttribute('aria-expanded') === 'false'", 'the block folded');
+  await app.click(answer('allow'));
+  await app.until("return (await window.ide.call('state')).tasks.every((x) => x.status === 'done');", 'both tasks done');
+});
+
+flow('while the Dispatcher works, the composer has a status line with Stop and the Chat tab a dot', {}, async (app) => {
+  await app.say('@fake wait 4000\n@fake say Done waiting.');
+  await app.until("!document.querySelector('#chat-dstat').hidden", 'the status line');
+  assert.match(await app.evaluate("document.querySelector('#chat-dstat').innerText"), /Dispatcher/);
+  assert.equal(await app.evaluate("!!document.querySelector('#chat-dstat [data-action=\"chat-stop\"]')"), true);
+  assert.equal(await app.evaluate("!!document.querySelector('.seg button[data-v=\"chat\"].busy')"), true);
+  await app.click('#chat-dstat [data-action="chat-stop"]');
+  await app.until("document.querySelector('#chat-dstat').hidden && !document.querySelector('.seg button[data-v=\"chat\"].busy')", 'the status line gone after Stop');
+});
+
 flow('a code task opens a PR, which is merged from the app', { repos: ['demo'] }, async (app) => {
   const url = 'https://github.com/o/demo/pull/1';
   await app.say(`@fake task demo Add a line\n@@fake write README.md # Demo\\nA line.\n@@fake commit Add a line\n@@fake pr ${url}\n@@fake result Added the line.`);
