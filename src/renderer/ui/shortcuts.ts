@@ -19,6 +19,7 @@ export function shortcutsHtml() {
   ].join('')) + group('keys.any', [
     row(t('keys.find'), [mod, 'K']),
     row(t('keys.view'), [mod, '1–4']),
+    row(t('sq.title'), [mod, 'J']),
     row(t('cmdk.side'), [mod, 'B']),
     row(t('cmdk.ins'), isMac ? ['⌥', '⌘', 'B'] : ['Ctrl', 'Alt', 'B']),
     row(t('set.title'), [mod, ',']),

@@ -1,8 +1,11 @@
 // A reply to one message: the quoted message travels at the top of the reply's own text, so the agent reads
 // what is being answered and the UI can show it as a quote, with nothing new in the stored shapes.
 
-/** `task`: the reply answers that task's report card, so it is filed under the card (shared/thread.ts). */
-export interface Reply { who: string; quote: string; task?: string }
+/**
+ * `task`: the reply answers that task's report card, so it is filed under the card (shared/thread.ts).
+ * `max`: how much of the quote is sent (default QUOTE_MAX). `icon`: the chip's symbol (default the reply arrow).
+ */
+export interface Reply { who: string; quote: string; task?: string; max?: number; icon?: string }
 
 /** A quote is a reminder of the message, not a copy of it. */
 export const QUOTE_MAX = 280;
@@ -18,7 +21,7 @@ export function replyExcerpt(text: string, max = QUOTE_MAX): string {
 export function withReply(reply: Reply | null | undefined, text: string): string {
   if (!reply || !reply.quote.trim()) return text;
   const who = reply.who.replace(/[\]\n]/g, ' ').trim() || 'message';
-  return `[Reply to ${who}]\n> ${replyExcerpt(reply.quote)}\n\n${text}`;
+  return `[Reply to ${who}]\n> ${replyExcerpt(reply.quote, reply.max)}\n\n${text}`;
 }
 
 /** The quote at the top of a message written with withReply, and the message under it. Null for any other text. */

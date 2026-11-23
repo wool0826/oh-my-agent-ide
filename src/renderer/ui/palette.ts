@@ -13,6 +13,7 @@ import { go, nav } from './history';
 import { closeSettings, openSettings } from './settings';
 import { openShortcuts } from './shortcuts';
 import { hideUsagePop, ms, togglePanel, workerIcon } from './sidebar';
+import { openSide } from './side';
 
 export interface Cmd extends PaletteItem { icon: string; run: () => void; /** Listed only for a search: past tasks would bury the places to go. */ searchOnly?: boolean }
 
@@ -57,6 +58,7 @@ export function paletteItems(): Cmd[] {
   // A merge on GitHub shows within seconds anyway; this is for when it should show now.
   if (s.tasks.some((x) => x.prUrl && x.prState !== 'MERGED' && x.prState !== 'CLOSED'))
     out.push({ id: 'pr-refresh', group: t('side.prs'), title: t('pr.refresh'), icon: sym('s-pr'), run: () => void call('pr:refresh').then((ok) => { if (ok) toast(t('pr.refreshed')); }) });
+  out.push({ id: 'sq', group: t('cmdk.window'), title: t('sq.title'), keys: `${mod}J`, icon: sym('s-side-q'), run: () => { go({ view: 'chat' }); openSide(); } });
   out.push({ id: 'side', group: t('cmdk.window'), title: t('cmdk.side'), keys: `${mod}B`, icon: sym('s-side-l'), run: () => togglePanel('side') });
   out.push({ id: 'ins', group: t('cmdk.window'), title: t('cmdk.ins'), keys: isMac ? '⌥⌘B' : 'Ctrl+Alt+B', icon: sym('s-side-r'), run: () => togglePanel('ins') });
   out.push({ id: 'keys', group: t('cmdk.window'), title: t('keys.title'), keys: `${mod}/`, icon: sym('s-key'), run: () => openShortcuts() });
