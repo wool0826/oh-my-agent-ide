@@ -47,8 +47,9 @@ store.on('wake', () => dispatcher.wake());
 beforeEach(() => {
   dispatcher.close();
   dispatcher.wakeDelay = WAIT_MS;
-  const d = dispatcher as unknown as { held: string[]; cutOff: boolean; wakeDue: boolean; userSpoke(): void };
+  const d = dispatcher as unknown as { held: string[]; heldReply: unknown; cutOff: boolean; wakeDue: boolean; userSpoke(): void };
   d.held = [];
+  d.heldReply = undefined;
   d.cutOff = false;
   d.wakeDue = false;
   d.userSpoke();
@@ -322,5 +323,19 @@ test("the user's message to the Dispatcher's turn in progress: its answer goes w
   s.handle({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Hi.' }] } });
   s.ev.onTurnEnd({ queued: true });
   s.handle({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'T-1 is fine.' }] } });
+  assert.deepEqual(replies(), [['Hi.', null], ['T-1 is fine.', 'T-1']]);
+});
+
+test('a reply held by a usage limit: the answer, when it goes, is filed under the same card', async () => {
+  card('T-1');
+  dispatcher.send('Hello');
+  turn('Hi.');
+  limit(true);
+  dispatcher.close();
+  dispatcher.send('About T-1?', [], 'T-1');
+  assert.equal(sent.length, 1, 'held');
+  limit(false);
+  dispatcher.retryHeld();
+  turn('T-1 is fine.');
   assert.deepEqual(replies(), [['Hi.', null], ['T-1 is fine.', 'T-1']]);
 });

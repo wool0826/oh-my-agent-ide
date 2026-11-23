@@ -423,6 +423,8 @@ class Dispatcher {
   statusText = '';
   /** Messages that came while every account was held by a usage limit; sent when the first one resets. */
   private held: string[] = [];
+  /** The report the held messages answer (see replyTo); undefined while nothing is held. */
+  private heldReply: string | null | undefined = undefined;
   /** The system prompt changed during a turn: the next message starts a fresh session. */
   private stale = false;
   /** The end of the earlier conversation, sent with the first message of a session that replaced it (open()). */
@@ -464,6 +466,7 @@ class Dispatcher {
           if (this.queuedReply !== undefined) { this.replyTo = this.queuedReply; this.queuedReply = undefined; }
           return;
         }
+        this.replyTo = null;
         this.queuedReply = undefined;
         if (!r.internal) {
           if (this.auto && this.autoActed) this.autoTurns += 1;
@@ -495,10 +498,12 @@ class Dispatcher {
         if (stopped) {
           this.stopping = false;
           store.chat('event', t('ev.dispatcherStopped'));
+          this.queuedReply = undefined;
           this.auto = false;
           this.autoActed = false;
         } else if (st === 'error') {
           store.chat('error', t('err.dispatcher', { msg: text }));
+          this.queuedReply = undefined;
           // A session that died mid-turn ends no turn, so an automatic one is over here.
           this.auto = false;
           this.autoActed = false;
@@ -672,7 +677,7 @@ class Dispatcher {
     const s = this.open();
     if (!s) {
       if (!accounts.list().length) { store.chat('error', t('err.noAccount')); return; }
-      this.held.push(full);
+      this.hold(full, to);
       store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
       store.changed();
       return;
@@ -685,7 +690,7 @@ class Dispatcher {
     const msg = `[Decision answer] Question: ${question}\nAnswer: ${answer}`;
     this.userSpoke();
     const s = this.open();
-    if (!s) { this.held.push(msg); return; }
+    if (!s) { this.hold(msg, null); return; }
     this.deliver(s, [msg]);
   }
 
@@ -697,6 +702,12 @@ class Dispatcher {
     if (!s) return;
     store.chat('event', t('log.limitCleared'));
     this.deliver(s, []);
+  }
+
+  /** A message waits for a usage limit to reset; the turn that sends it answers the report it was filed under. */
+  private hold(msg: string, to: string | null) {
+    this.held.push(msg);
+    this.heldReply = this.heldReply === undefined || this.heldReply === to ? to : null;
   }
 
   /** Send messages in one turn, after Worker updates and anything a usage limit held back. */
@@ -714,7 +725,12 @@ class Dispatcher {
     const updates = store.takeUpdates();
     // A turn the user started answers what they replied to; one Worker news started answers the report that woke it.
     const reports = store.takeReports();
-    const to = replyTo !== undefined ? replyTo : this.auto ? turnReplyTo(reports) : null;
+    const heldTo = this.heldReply;
+    this.heldReply = undefined;
+    let to: string | null;
+    if (heldTo !== undefined) to = replyTo === undefined || replyTo === heldTo ? heldTo : null;
+    else if (replyTo !== undefined) to = replyTo;
+    else to = this.auto ? turnReplyTo(reports) : null;
     if (!s.busy) this.replyTo = to;
     else this.queuedReply = this.queuedReply === undefined || this.queuedReply === to ? to : null;
     const prefix = updates.length ? `[Worker updates]\n${updates.map((u) => `- ${u}`).join('\n')}\n\n` : '';

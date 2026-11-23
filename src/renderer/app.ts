@@ -103,7 +103,8 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     // The chip over a late reply: back to the report it answers.
-    case 'goto-report': flashCard(document.querySelector<HTMLElement>(`#chat-thread .attach[data-task="${CSS.escape(id)}"]`)); break;
+    // A task can have several cards (a result, then a follow-up): the one the group answers is the last one above it.
+    case 'goto-report': flashCard([...document.querySelectorAll<HTMLElement>(`#chat-thread .attach[data-task="${CSS.escape(id)}"]`)].filter((c) => c.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop() ?? null); break;
     case 'reply-cancel': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
       ui.reply[box] = null;

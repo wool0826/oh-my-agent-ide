@@ -41,3 +41,7 @@ test('a turn answers a report only when exactly one report started it', () => {
   assert.equal(turnReplyTo(['T-1', 'T-2']), null);
   assert.equal(turnReplyTo([]), null);
 });
+
+test('a reply to the earlier of two reports back to back is late, under its own chip', () => {
+  assert.deepEqual(shape([card('T-1'), card('T-2'), me('T-1'), ai('T-1'), ai('T-2')]), ['-', '-', 'late:T-1', 'in:T-1', 'late:T-2']);
+});
