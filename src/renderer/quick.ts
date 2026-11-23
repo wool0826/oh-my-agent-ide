@@ -15,6 +15,8 @@ const chip = document.getElementById('files') as HTMLButtonElement;
 
 let text: QuickText = { ph: '', sent: '', lang: 'en', theme: 'dark', repos: [], files: '{n}' };
 let busy = false;
+/** Puts the typed text back after a failed send has been shown. */
+let failTimer = 0;
 let files: string[] = [];
 /** Lines sent from this box, newest first, kept by the page; `at` is the place in them while going back (-1: typing). */
 const RECENT_KEY = 'oma.quick.recent';
@@ -52,6 +54,7 @@ function reset() {
   files = [];
   at = -1;
   draft = '';
+  clearTimeout(failTimer);
   form.classList.remove('sent', 'drop', 'failed');
   input.readOnly = false;
   input.value = '';
@@ -133,9 +136,11 @@ form.addEventListener('submit', async (e) => {
     // Nothing else in this window can say it: the field shows what went wrong, then gives the text back.
     form.classList.add('failed');
     input.readOnly = true;
-    input.value = err instanceof Error ? err.message : String(err);
-    setTimeout(() => {
-      if (!form.classList.contains('failed')) return;
+    input.value = (err instanceof Error ? err.message : String(err)).trim() || '!';
+    hint.hidden = true;
+    chip.hidden = true;
+    clearTimeout(failTimer);
+    failTimer = window.setTimeout(() => {
       form.classList.remove('failed');
       input.readOnly = false;
       input.value = v;

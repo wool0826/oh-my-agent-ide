@@ -44,6 +44,11 @@ export function tipJoin(cut: string[], own: string): string {
   return out.join('\n');
 }
 
+/** "Ctrl+Alt+B" or "⌥⌘B" as aria-keyshortcuts writes it: "Control+Alt+B", "Alt+Meta+B". */
+export function tipAriaKey(key: string): string {
+  return key.replace(/⌘/g, 'Meta+').replace(/⌥/g, 'Alt+').replace(/⇧/g, 'Shift+').replace(/⌃/g, 'Control+').replace(/\bCtrl\b/g, 'Control');
+}
+
 /** The tip describes the control for a screen reader unless it is the control's name or its own text. */
 export function tipDescribes(tip: string, name: string | null, text: string): boolean {
   const s = flat(tip);

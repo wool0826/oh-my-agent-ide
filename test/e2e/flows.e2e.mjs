@@ -638,8 +638,9 @@ flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard 
   assert.ok(shown.bottom < (await box('#side-toggle')).top, 'above the control');
   // The name is already the button's label: the tooltip does not describe it again.
   assert.equal(await app.evaluate("return document.querySelector('#side-toggle').getAttribute('aria-describedby') ?? '';"), '');
+  assert.equal(await app.evaluate("return document.querySelector('#side-toggle').getAttribute('aria-keyshortcuts');"), process.platform === 'darwin' ? 'Meta+B' : 'Control+B');
   // A key takes it away.
-  await app.key('ShiftLeft', 'Shift', 16);
+  await app.key('Escape', 'Escape', 27);
   await app.until('!window.__tip()', 'the tooltip gone after a key');
   // Keyboard focus shows it at once; in the toolbar it sits below.
   await app.hover('#chat-thread');

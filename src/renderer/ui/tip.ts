@@ -5,7 +5,7 @@
  *   data-tip-clip         show the hint only while the control, or a part of it, is cut.
  * Text the layout cuts with an ellipsis needs no attribute: resting on it shows it in full.
  */
-import { TIP_EDGE, TIP_GAP, tipDescribes, tipJoin, tipPlace, tipRepeats, tipWait } from '../../shared/tip';
+import { TIP_EDGE, TIP_GAP, tipAriaKey, tipDescribes, tipJoin, tipPlace, tipRepeats, tipWait } from '../../shared/tip';
 
 const OWNER = '[data-tip]';
 /** A press is followed by a redraw that puts a new element under the pointer; that is not a new hover. */
@@ -154,8 +154,8 @@ function hover(from: EventTarget | null) {
   const hit = read(target, false);
   if (!hit) { leave(); return; }
   clearTimeout(hideTimer);
-  if (hit.at === owner && hit.text === said) return;
   clearTimeout(showTimer);
+  if (hit.at === owner && hit.text === said) return;
   const now = performance.now();
   const wait = tipWait(false, now, owner ? now : hiddenAt);
   if (!wait) { show(hit); return; }
@@ -178,6 +178,8 @@ function leave() {
 export function setTip(x: HTMLElement, text: string, key = '') {
   if (text) x.dataset.tip = text; else delete x.dataset.tip;
   if (key) x.dataset.tipKey = key; else delete x.dataset.tipKey;
+  // The key is drawn, not written in the name: a screen reader gets it here.
+  if (key) x.setAttribute('aria-keyshortcuts', tipAriaKey(key)); else x.removeAttribute('aria-keyshortcuts');
 }
 
 export function initTip() {
@@ -194,7 +196,8 @@ export function initTip() {
   });
   document.addEventListener('focusout', (e) => { if (owner && e.target instanceof Node && (owner.contains(e.target) || e.target.contains(owner))) hideTip(); });
   document.addEventListener('pointerdown', (e) => { if (el?.contains(e.target as Node)) return; pressedAt = performance.now(); hideTip(); }, true);
-  document.addEventListener('keydown', hideTip, true);
+  // A key means the user has moved on; a modifier alone is only the start of one.
+  document.addEventListener('keydown', (e) => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) hideTip(); }, true);
   document.addEventListener('scroll', (e) => { if (owner && e.target instanceof Node && e.target.contains(owner)) hideTip(); }, true);
   window.addEventListener('blur', hideTip);
   window.addEventListener('resize', hideTip);

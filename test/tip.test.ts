@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { TIP_DELAY, tipDescribes, tipJoin, tipPlace, tipRepeats, tipWait } from '../src/shared/tip';
+import { TIP_DELAY, tipAriaKey, tipDescribes, tipJoin, tipPlace, tipRepeats, tipWait } from '../src/shared/tip';
 
 const box = (left: number, top: number, width = 24, height = 24) => ({ left, top, width, height });
 
@@ -55,6 +55,13 @@ test('a tip describes its control unless it is the name or the text', () => {
   assert.equal(tipDescribes('Collapse the sidebar', 'Collapse the sidebar', ''), false);
   assert.equal(tipDescribes('npm 10.2', null, 'OK'), true);
   assert.equal(tipDescribes('Hello', null, ' Hello '), false);
+});
+
+test('a shortcut is written for a screen reader as aria-keyshortcuts wants it', () => {
+  assert.equal(tipAriaKey('Ctrl+B'), 'Control+B');
+  assert.equal(tipAriaKey('Ctrl+Alt+B'), 'Control+Alt+B');
+  assert.equal(tipAriaKey('⌘K'), 'Meta+K');
+  assert.equal(tipAriaKey('⌥⌘B'), 'Alt+Meta+B');
 });
 
 test('the renderer has no native title tooltip left', () => {
