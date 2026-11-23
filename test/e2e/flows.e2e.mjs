@@ -488,8 +488,9 @@ flow('the palette finds something said and shows the chat from that message', {}
   await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'pineapple fridays'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
   const row = await app.until("[...document.querySelectorAll('.cmdk-it')].findIndex((el) => el.innerText.includes('no pineapple on Fridays')) + 1", 'the message among the results');
   await app.click(`#cmdk-${row - 1}`);
-  await app.until("!!document.querySelector('#chat-thread .found')", 'the message marked in the chat');
-  assert.match(await app.evaluate("document.querySelector('#chat-thread .found').innerText"), /no pineapple on Fridays/);
+  // Read in the same look that finds it: the mark is taken off again a moment later.
+  const found = await app.until("document.querySelector('#chat-thread .found')?.innerText ?? ''", 'the message marked in the chat');
+  assert.match(found, /no pineapple on Fridays/);
   // The thread now starts at that message: what was said before it is above, not shown.
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Please remember the pineapple rule')"), false);
 });
@@ -628,6 +629,8 @@ flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard 
   const tip = () => app.evaluate('return window.__tip();');
   const box = (sel) => app.evaluate(`const r = document.querySelector('${sel}').getBoundingClientRect(); return { top: r.top, bottom: r.bottom };`);
   const mod = process.platform === 'darwin' ? '⌘' : 'Ctrl+';
+  // A corner of the window with no control and no text under it: the middle of the thread can hold a cut title.
+  const AWAY = { x: 3, y: 3 };
   assert.ok(!(await tip()));
   // Hover: after the delay, above the control, with the shortcut as a key and not in the sentence.
   await app.hover('#side-toggle');
@@ -643,7 +646,7 @@ flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard 
   await app.key('Escape', 'Escape', 27);
   await app.until('!window.__tip()', 'the tooltip gone after a key');
   // Keyboard focus shows it at once; in the toolbar it sits below.
-  await app.hover('#chat-thread');
+  await app.hover(AWAY);
   await app.evaluate("document.querySelector('#cmdk-btn').focus({ focusVisible: true }); return 1;");
   await app.until("window.__tip()?.text === 'Search and go'", 'the tooltip on focus');
   const below = await tip();
@@ -663,7 +666,7 @@ flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard 
   const cut = await tip();
   assert.match(cut.text, /far too long to fit in one line of the sidebar row/);
   assert.ok(cut.left >= 8 && cut.right <= (await app.evaluate('window.innerWidth')) - 8, 'inside the window');
-  await app.hover('#chat-thread');
+  await app.hover(AWAY);
   await app.until('!window.__tip()', 'the tooltip gone when the pointer leaves');
   await app.hover('#e2e-short');
   await new Promise((r) => setTimeout(r, 900));

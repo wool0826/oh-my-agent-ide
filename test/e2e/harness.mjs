@@ -167,10 +167,23 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
       await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', code, key, windowsVirtualKeyCode: vk, modifiers });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', code, key, windowsVirtualKeyCode: vk, modifiers });
     },
-    /** Rests the pointer on an element, as the mouse does (trusted events, :hover included). */
+    /** Rests the pointer on an element, or on a point of the window, as the mouse does (trusted events, :hover included). */
     async hover(selector) {
-      const p = await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
-      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(p.x), y: Math.round(p.y) });
+      const p = typeof selector !== 'string' ? selector : await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+      const x = Math.round(p.x), y = Math.round(p.y);
+      // A window that has just opened takes a move late or not at all: send it until the page has the pointer there.
+      for (let i = 0; ; i++) {
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        const end = Date.now() + 1500;
+        while (Date.now() < end) {
+          // The innermost hovered element is the one at the point: an ancestor of where the pointer was is hovered too.
+          if (await evaluate(`const el = document.elementFromPoint(${x}, ${y}); return !!el && el.matches(':hover') && !el.querySelector(':hover');`)) return;
+          await sleep(50);
+        }
+        if (i === 5) throw new Error(`The pointer did not reach ${JSON.stringify(selector)}`);
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x > 1 ? x - 1 : x + 1, y });
+        await sleep(100);
+      }
     },
     /** Sets the page's size, as resizing the window does. */
     async size(width, height = 900) {
