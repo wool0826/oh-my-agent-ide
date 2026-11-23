@@ -666,23 +666,24 @@ class Dispatcher {
     this.autoPaused = false;
   }
 
-  /** A message the user typed in the chat, with optional attached file paths. */
-  send(text: string, files: string[] = [], replyTo: string | null = null) {
+  /** A message the user typed in the chat, with optional attached file paths. Gives back its chat message's id. */
+  send(text: string, files: string[] = [], replyTo: string | null = null): string {
     const attached = registerAttachments(files);
     const full = text + attachmentBlock(attached);
     // Only a report still in the chat can be answered; anything else is a plain message.
     const to = replyTo && store.data.chat.some((c) => c.ref === replyTo && (c.kind === 'result' || c.kind === 'error')) ? replyTo : null;
-    store.chat('user', full, undefined, to);
+    const { id } = store.chat('user', full, undefined, to);
     this.userSpoke();
     const s = this.open();
     if (!s) {
-      if (!accounts.list().length) { store.chat('error', t('err.noAccount')); return; }
+      if (!accounts.list().length) { store.chat('error', t('err.noAccount')); return id; }
       this.hold(full, to);
       store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
       store.changed();
-      return;
+      return id;
     }
     this.deliver(s, [full], to);
+    return id;
   }
 
   /** The user answered a question the Dispatcher posted. */

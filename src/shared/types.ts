@@ -355,6 +355,8 @@ export interface Automation {
   trigger: AutoTrigger;
   enabled: boolean;
   lastRunAt: string | null;
+  /** The chat message the last run handed the Dispatcher, so "Last run" can show it. */
+  lastRunChatId?: string;
   /** When a daily one runs next; null for an event trigger. */
   nextRunAt: string | null;
   createdAt: string;

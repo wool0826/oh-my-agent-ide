@@ -167,6 +167,11 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
       await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', code, key, windowsVirtualKeyCode: vk, modifiers });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', code, key, windowsVirtualKeyCode: vk, modifiers });
     },
+    /** Sets the page's size, as resizing the window does. */
+    async size(width, height = 900) {
+      await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+      await sleep(100);
+    },
     workerLog: (wid) => evaluate(`return (await window.ide.call('worker:log', ${JSON.stringify(wid)})).items.map((x) => x.text).join('\\n');`),
     gh: () => JSON.parse(fs.readFileSync(ghFile, 'utf8')),
     /** Saves a picture of the window, for looking at a screen while writing a test. */

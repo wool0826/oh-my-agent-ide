@@ -3,7 +3,8 @@ import type { Automation, Memo } from '../../shared/types';
 import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, Task, Worker } from '../../shared/types';
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
 import { stepView } from '../../shared/steps';
-import { lastFailed, plainStatus } from '../../shared/workerState';
+import { askLine, lastFailed, plainStatus } from '../../shared/workerState';
+import { dayWord, keepPick } from '../../shared/insPanes';
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars, type Spend } from '../../shared/spend';
 import { linkify } from '../../shared/linkify';
@@ -21,11 +22,12 @@ import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, nextCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
-import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go } from './history';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
 import { tookText } from './workers';
+import { colsHtml, markPick, placeDetail, rowHtml, rowText, slotHtml } from './panes';
 
 export const CI_BADGE: Record<string, [string, Key]> = { passing: ['ok', 'pr.ciPassing'], failing: ['bad', 'pr.ciFailing'], pending: ['run', 'pr.ciPending'] };
 
@@ -301,6 +303,7 @@ export function markDecision(id: string | null) {
     el.classList.toggle('sel', on);
     if (on) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
   });
+  if (ui.insTab === 'inbox') markPick(id);
 }
 
 /** The inbox card of a decision, if it is drawn. */
@@ -391,6 +394,14 @@ export function decisionHtml(d: Decision, inWorker = false) {
     ${d.taskId ? `<div class="dhold" data-task="${esc(d.taskId)}" hidden><i><b></b></i><span></span></div>` : ''}
     ${buttons}${custom}
   </div>`;
+}
+
+/** A pending decision in the inbox: its list row (what is asked, who, the kind, the age) and its card. */
+function decisionSlot(d: Decision) {
+  const kind = decisionKind(d);
+  const sel = ui.decSel === d.id;
+  const row = `${sym(KIND_ICON[kind])}${rowText(oneLine(askLine(d), 160), `${d.workerId ?? 'Dispatcher'} · ${t(`dec.kind.${kind}` as Key)}`)}${ageHtml(d)}`;
+  return slotHtml(d.id, sel, rowHtml('inbox', d.id, sel, row), decisionHtml(d));
 }
 
 /** A plan card's WHAT / HOW / OUTPUT lines, with the full plan folded below them and a way to the Worker's conversation. */
@@ -521,14 +532,16 @@ export function renderChatInspector() {
     const tab = (v: 'inbox' | 'memo' | 'auto', label: string, icon: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" title="${label}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
     const tabs = `<div class="segc ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}</div>`;
-    if (ui.insTab === 'memo') { root.innerHTML = tabs + memosHtml(); return; }
-    if (ui.insTab === 'auto') { root.innerHTML = tabs + autosHtml(); return; }
+    // The selected card is placed inside the draw, so the typed text and the focus go back to where it ends up.
+    const draw = (list: string) => { root.innerHTML = tabs + colsHtml(list); placeDetail(root); };
+    if (ui.insTab === 'memo') return draw(memosHtml());
+    if (ui.insTab === 'auto') return draw(autosHtml());
     // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
     const results = paged('results', s.results.slice().reverse(), PAGE.results);
     const autos = paged('autos', visibleAutos(), PAGE.autos);
     let html = '';
     selectedDecision();
-    if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map((d) => decisionHtml(d)).join('')}</div></div>`;
+    if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map(decisionSlot).join('')}</div></div>`;
     // Decisions stay on top; what happened meanwhile comes right under them.
     html += awayHtml();
     html += comparisonsHtml();
@@ -546,18 +559,32 @@ export function renderChatInspector() {
       const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
       html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
     }
-    root.innerHTML = tabs + html;
+    draw(html);
   });
   tickDecisions(root);
   restoreCardFocus(root, back);
   syncSegs(root);
 }
 
-/** One memo: its text, when it changed, and Share / Edit / Delete, shown while it is hovered or focused. */
-export function memoHtml(m: Memo) {
+/**
+ * One memo as a slot: its list row, and its card. The selected card shows all of the text and Share / Edit / Delete;
+ * the others show two lines and are selected by a click.
+ */
+function memoSlot(m: Memo) {
+  const sel = ui.memoSel === m.id;
+  const edit = ui.memoEdit === m.id;
+  const small = edit ? `${when(m.updatedAt)} · ${t('memo.editing')}` : when(m.updatedAt);
+  const row = rowHtml('memo', m.id, sel, `${m.shared ? sym('s-pin') : ''}${rowText(oneLine(m.text, 160), small)}`);
+  return slotHtml(m.id, sel, row, memoHtml(m, sel));
+}
+
+export function memoHtml(m: Memo, sel = true) {
   if (ui.memoEdit === m.id) {
-    return `<div class="memo"><textarea class="inp" data-keep="memo-${m.id}" aria-label="${t('memo.edit')}">${esc(m.text)}</textarea>
+    return `<div class="memo${sel ? ' sel' : ''}"><textarea class="inp" data-keep="memo-${m.id}" aria-label="${t('memo.edit')}">${esc(m.text)}</textarea>
       <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn def" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
+  }
+  if (!sel) {
+    return `<div class="memo" data-memo="${m.id}" data-action="pick" data-tab="memo" data-id="${m.id}" data-focus="card-memo-${m.id}" tabindex="0"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" title="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time></span></div>`;
   }
   const act = (action: string, icon: string, label: string, cls = '') => `<button class="mact${cls}" data-action="${action}" data-id="${m.id}" title="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
   // One button for both steps, so asking is a change of its width and colour, not a new element.
@@ -614,7 +641,38 @@ export function triggerLabel(a: Automation) {
   return a.trigger.kind === 'merged' ? t('auto.merged') : t(a.trigger.weekdays ? 'auto.weekdaysAt' : 'auto.dailyAt', { t: a.trigger.time });
 }
 
-/** The Automations tab: what to hand the Dispatcher and when, then the ones set up, each with its switch. */
+/** When a run happens, in words: "Today 9:00 AM", "Tomorrow 9:00 AM", "Mon 9:00 AM", "Nov 30 9:00 AM"; short, no time after today. */
+export function runWords(iso: string, short = false) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+  const w = dayWord(d, new Date());
+  if (w === 'today') return short ? time : t('time.today', { t: time });
+  if (w === 'tomorrow' || w === 'yesterday') return t(`day.${w}${short ? 'Short' : ''}` as Key, { t: time });
+  const day = d.toLocaleDateString(locale(), w === 'week' ? { weekday: 'short' } : { month: 'short', day: 'numeric' });
+  return short ? day : `${day} ${time}`;
+}
+
+/** One automation as a slot. Selected, its card shows the whole prompt, when it runs, when it ran (a way to that message in the chat) and Delete. */
+function autoSlot(a: Automation) {
+  const sel = ui.autoSel === a.id;
+  const off = a.enabled ? '' : ' off';
+  const next = a.enabled && a.nextRunAt ? runWords(a.nextRunAt, true) : '';
+  const sw = `<input class="switch" type="checkbox" data-change="auto-toggle" data-id="${a.id}"${a.enabled ? ' checked' : ''} aria-label="${esc(`${t('auto.on')}: ${a.title}`)}">`;
+  const row = rowHtml('auto', a.id, sel, rowText(a.title, a.enabled ? triggerLabel(a) : `${triggerLabel(a)} · ${t('auto.off')}`));
+  if (!sel) {
+    const card = `<div class="memo auto${off}" data-action="pick" data-tab="auto" data-id="${a.id}" data-focus="card-auto-${a.id}" tabindex="0"><p>${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${next ? esc(` · ${t('auto.next', { t: next })}`) : ''}</span><span class="acts">${sw}</span></span></div>`;
+    return slotHtml(a.id, false, row, card);
+  }
+  const sure = ui.memoDel === a.id;
+  const last = !a.lastRunAt ? esc(t('auto.never'))
+    : a.lastRunChatId ? `<a tabindex="0" role="link" data-action="open-chat" data-id="${esc(a.lastRunChatId)}">${esc(runWords(a.lastRunAt))}</a>` : esc(runWords(a.lastRunAt));
+  const facts = `<dl class="facts"><dt>${t('auto.when')}</dt><dd>${esc(triggerLabel(a))}</dd>${a.trigger.kind === 'daily' ? `<dt>${t('auto.nextRun')}</dt><dd>${esc(a.enabled && a.nextRunAt ? runWords(a.nextRunAt) : t('auto.off'))}</dd>` : ''}<dt>${t('auto.lastRun')}</dt><dd>${last}</dd></dl>`;
+  const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
+  const card = `<div class="memo auto open${off}"><p>${esc(a.prompt)}</p>${facts}<span class="meta"><span class="gap"></span><span class="acts">${sw}${del}</span></span></div>`;
+  return slotHtml(a.id, true, row, card);
+}
+
+/** The Automations tab: "New automation" (the form, selected at first), then the ones set up. */
 export function autosHtml() {
   // The daily fields are always there and only fade out for "When a PR merges" (.merged), so switching
   // moves nothing and is done in place, without drawing the tab again (app.ts, "auto-kind").
@@ -623,13 +681,10 @@ export function autosHtml() {
     <div class="auto-when"><label class="auto-wk auto-daily">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label><span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>${formErrHtml('auto')}`;
   const list = S!.automations;
   if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
-  const rows = list.map((a) => {
-    const sure = ui.memoDel === a.id;
-    const next = a.enabled && a.nextRunAt ? ` · ${t('auto.next', { t: when(a.nextRunAt) })}` : '';
-    return `<div class="memo auto${a.enabled ? '' : ' off'}"><p title="${esc(a.prompt)}">${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${esc(next)}</span>
-      <span class="acts"><input class="switch" type="checkbox" data-change="auto-toggle" data-id="${a.id}"${a.enabled ? ' checked' : ''} aria-label="${esc(`${t('auto.on')}: ${a.title}`)}"><button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" title="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button></span></span></div>`;
-  }).join('');
-  return `${add}<div class="sect"><div class="ins-h"><b>${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${rows}</div></div>`;
+  ui.autoSel = keepPick(list.map((a) => a.id), ui.autoSel, 'new');
+  const isNew = ui.autoSel === 'new';
+  const head = slotHtml('new', isNew, rowHtml('auto', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('auto.new')}</b></span>`), add, ' new');
+  return `${head}<div class="sect"><div class="ins-h"><b>${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${list.map(autoSlot).join('')}</div></div>`;
 }
 
 export async function addAuto() {
@@ -655,10 +710,12 @@ export function formErrHtml(key: 'memo' | 'auto') {
   return msg ? `<div class="ferr" role="alert"><span>${esc(t('err.notSent', { msg }))}</span><button type="button" class="clear-x always" data-action="form-err-x" data-id="${key}" title="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg><use href="#s-x"/></svg></button></div>` : '';
 }
 
-/** The Memos tab: a field to add one, then the memos shared with agents and the user's own. */
+/** The Memos tab: a field to add one, then the memos shared with agents and the user's own; one of them is selected. */
 export function memosHtml() {
   const { shared, mine } = memoSections(S!.memos);
-  const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b>${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoHtml).join('')}</div></div>` : '';
+  const ids = [...shared, ...mine].map((m) => m.id);
+  ui.memoSel = keepPick(ids, ui.memoSel, ui.memoEdit ?? ids[0] ?? null);
+  const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b>${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoSlot).join('')}</div></div>` : '';
   const add = `<div class="memo-add"><input class="inp" id="memo-new" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"><button class="btn" data-action="memo-add" title="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
   const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
   return add + formErrHtml('memo') + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
