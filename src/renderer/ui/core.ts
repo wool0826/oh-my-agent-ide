@@ -403,8 +403,10 @@ export function toast(text: string, err = false, action?: ToastAction) {
     el.append(x);
   }
   box.append(el);
+  // Past the limit the oldest go first, errors last: an error stays until it is dismissed.
   const live = [...box.children].filter((c) => !c.classList.contains('out'));
-  for (const old of live.slice(0, Math.max(0, live.length - TOAST_MAX))) dropToast(old);
+  const byAge = [...live.filter((c) => c.getAttribute('role') !== 'alert'), ...live.filter((c) => c.getAttribute('role') === 'alert')];
+  for (const old of byAge.slice(0, Math.max(0, live.length - TOAST_MAX))) dropToast(old);
   if (!err) window.setTimeout(() => dropToast(el), action ? 6000 : 3000);
 }
 

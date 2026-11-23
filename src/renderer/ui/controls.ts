@@ -119,12 +119,16 @@ export function stepValue(id: string, delta: number) {
 
 /** A stepper's number; one that can be off reads "Never" at 0 (settings.ts stepper). */
 export function stepNum(el: HTMLInputElement) {
-  return el.dataset.never && el.value.trim() === el.dataset.never ? 0 : Number(el.value);
+  const v = el.dataset.never ? el.value.replace(el.dataset.never, '').trim() : el.value;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
 /** Shows "Never" for 0 and the unit for any other number. `word`: put the word in the field too (not while typing). */
 export function syncStep(el: HTMLInputElement, word: boolean) {
   if (!el.dataset.never) return;
+  // A digit typed into "Never" replaces the word.
+  if (el.value !== el.dataset.never && el.value.includes(el.dataset.never)) el.value = el.value.replace(el.dataset.never, '');
   const never = stepNum(el) === 0;
   if (never && word) el.value = el.dataset.never;
   el.classList.toggle('never', never && el.value === el.dataset.never);

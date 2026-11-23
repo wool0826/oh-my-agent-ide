@@ -151,7 +151,9 @@ function handoutHtml(c: ChatItem) {
   const rows = handoutRows(run);
   if (!rows.length) return run.map((e) => `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(e.text))}</span></span>`).join('');
   const states = rows.map((r) => r.st);
-  const open = handoutSettled(states) === ui.handToggled.has(c.id);
+  // Folding is kept by the run's first task, which stays the same when older pages load and the run starts earlier.
+  const key = runTasks(run)[0] ?? c.id;
+  const open = handoutSettled(states) === ui.handToggled.has(key);
   const sum = handoutCounts(states).map(([s, n]) => t(`ho.${s}` as Key, { n })).join(' · ');
   const row = ({ x, d, st }: (typeof rows)[number]) => {
     const w = worker(x.workerId);
@@ -166,7 +168,7 @@ function handoutHtml(c: ChatItem) {
     const body = `${ic(...HAND_ICON[st])}<span class="t"><b>${esc(x.title)}</b><small>${esc(sub)}</small></span><span class="pill${cls ? ` ${cls}` : ''}">${t(label)}</span>`;
     return w ? `<button type="button" class="hrow" data-action="open-worker" data-id="${esc(w.id)}">${body}</button>` : `<div class="hrow">${body}</div>`;
   };
-  const head = `<button type="button" class="hand-h" data-action="hand-fold" data-id="${esc(c.id)}" aria-expanded="${open}">${sym('s-cpu', 'c-blue')}<b>${t(rows.length === 1 ? 'ho.titleOne' : 'ho.title', { n: rows.length })}</b><span>${esc(sum)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
+  const head = `<button type="button" class="hand-h" data-action="hand-fold" data-id="${esc(key)}" aria-expanded="${open}">${sym('s-cpu', 'c-blue')}<b>${t(rows.length === 1 ? 'ho.titleOne' : 'ho.title', { n: rows.length })}</b><span>${esc(sum)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
   return `<div class="hand${open ? ' open' : ''}" role="group" aria-label="${esc(t(rows.length === 1 ? 'ho.titleOne' : 'ho.title', { n: rows.length }))}">${head}${open ? `<div class="hand-rows">${rows.map(row).join('')}</div>` : ''}</div>`;
 }
 

@@ -240,7 +240,12 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'open-worker': openWorker(id); break;
-    case 'chat-stop': (el as HTMLButtonElement).disabled = true; void call('chat:stop'); break;
+    case 'chat-stop': {
+      const b = el as HTMLButtonElement;
+      b.disabled = true;
+      void Promise.resolve(call('chat:stop')).finally(() => { b.disabled = false; });
+      break;
+    }
     case 'chat-start': {
       // A start fills the composer for the user to finish; it is not sent.
       const input = $<HTMLTextAreaElement>('#chat-input');
