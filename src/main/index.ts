@@ -15,6 +15,7 @@ import { dispatcher, createTask, assignedEvent } from './agents/dispatcher';
 import { workers } from './agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
 import { runs } from './runs';
+import { shell as shellRuns } from './shell';
 import { automations } from './automations';
 import { PICK_MESSAGE, canPick } from '../shared/compare';
 import type { AutoTrigger } from '../shared/types';
@@ -327,6 +328,8 @@ function registerIpc() {
   handle('run:start', (id: string) => runs.start(id));
   handle('run:stop', (id: string) => runs.stop(id));
   handle('run:clear', (id: string) => runs.clear(id));
+  handle('shell:run', (cmd: string, repo?: string | null) => shellRuns.run(String(cmd ?? ''), typeof repo === 'string' && repo ? repo : null));
+  handle('shell:stop', (id: string) => shellRuns.stop(id));
   handle('worker:unarchive', async (id: string) => { const w = store.worker(id); if (w) await workers.unarchive(w); });
   handle('repo:add', (url: string, name?: string, description?: string) => registerRepo({ url, name, description }).then((r) => { dispatcher.refreshContext(); return r; }));
   handle('repo:addCancel', () => cancelAddRepo());
@@ -470,6 +473,7 @@ async function boot() {
   // Before anything runs gh, git, codex or claude: an app opened from the macOS Dock lacks the shell's PATH.
   await fixToolPath();
   store.load();
+  shellRuns.settle();
   // The state file was unreadable: say what was done about it, once, where the user will see it.
   if (store.restoredFrom) {
     log.error('state file unreadable; restored from', store.restoredFrom);
@@ -552,6 +556,7 @@ else {
     releaseQuickKey();
     destroyQuick();
     runs.stopAll();
+    shellRuns.stopAll();
     automations.stop();
     workers.closeAll();
     dispatcher.close();

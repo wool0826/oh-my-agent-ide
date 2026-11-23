@@ -3,6 +3,8 @@
 
 export type FakeStep =
   | { do: 'say'; text: string }
+  /** Says the lines of the message it received that contain `match` (what an agent was told, for a test to read). */
+  | { do: 'echo'; match: string }
   | { do: 'tool'; name: string; summary: string }
   /** Asks for a shell command through the real permission path. */
   | { do: 'permission'; command: string }
@@ -51,6 +53,7 @@ export function parseFakeScript(text: string): FakeStep[] {
     const tail = rest.join(' ');
     switch (m[1].toLowerCase()) {
       case 'say': if (arg) out.push({ do: 'say', text: arg }); break;
+      case 'echo': if (arg) out.push({ do: 'echo', match: arg }); break;
       case 'tool': if (head) out.push({ do: 'tool', name: head, summary: tail || head }); break;
       case 'permission': if (arg) out.push({ do: 'permission', command: arg }); break;
       case 'ask': {

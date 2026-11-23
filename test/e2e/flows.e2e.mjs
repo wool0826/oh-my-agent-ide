@@ -215,6 +215,35 @@ flow("a reply to a Worker's report goes under its card, and so does the Dispatch
   assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001']]);
 });
 
+flow('a line run with ! shows its output in the chat, and the Dispatcher gets it with its next turn', {}, async (app) => {
+  const typeIn = (value) => app.evaluate(`const i = document.querySelector('#chat-input'); i.focus(); i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  const shellMode = () => app.evaluate("document.querySelector('#chat-form').classList.contains('shell')");
+  // "!" first: shell mode, and the "!" leaves the text. Esc goes back to a message.
+  await typeIn('!');
+  assert.equal(await shellMode(), true);
+  assert.equal(await app.evaluate("document.querySelector('#chat-input').value"), '');
+  await app.evaluate("document.querySelector('#chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 1;");
+  assert.equal(await shellMode(), false);
+
+  await typeIn('!node -e "console.log(41 + 1)"');
+  assert.equal(await shellMode(), true);
+  await app.evaluate("document.querySelector('#chat-form').requestSubmit(); return 1;");
+  await app.until("document.querySelector('#chat-thread .sh-run')?.innerText.includes('Exit 0')", 'the run block with Exit 0');
+  const block = await app.evaluate("const b = document.querySelector('#chat-thread .sh-run'); return { cmd: b.querySelector('code').textContent, out: b.querySelector('.sh-out')?.textContent ?? '', dlv: b.querySelector('.sh-dlv').className };");
+  assert.equal(block.cmd, 'node -e "console.log(41 + 1)"');
+  assert.match(block.out, /42/);
+  assert.match(block.dlv, /wait/, 'waits for the Dispatcher');
+  assert.equal(await shellMode(), false, 'a run leaves shell mode');
+
+  // No turn of its own: it goes with the next message.
+  await app.say('What did it print?\n@fake echo [Shell run]');
+  await app.until("[...document.querySelectorAll('#chat-thread .bub.ai')].some((b) => b.innerText.includes('[Shell run] The user ran'))", 'the run in what the Dispatcher received');
+  await app.until("!!document.querySelector('#chat-thread .sh-run .sh-dlv.ok')", '"The Dispatcher has it"');
+  const said = await app.evaluate("[...document.querySelectorAll('#chat-thread .bub.ai')].map((b) => b.innerText).join('\\n')");
+  // The bubble draws the command's backticks as code.
+  assert.match(said, /\[Shell run\] The user ran node -e "console\.log\(41 \+ 1\)" in the IDE home: exit 0/);
+});
+
 flow('the palette finds a finished task, and coming back shows what happened', {}, async (app) => {
   await app.say('@fake task - Tidy the changelog\n@@fake result Tidied the changelog.');
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');

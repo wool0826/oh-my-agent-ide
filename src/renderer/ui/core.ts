@@ -109,6 +109,12 @@ export const ui = {
   settingsShown: false,
   pane: 'accounts' as Pane,
   attach: { chat: [] as string[], ws: [] as string[] },
+  /** The chat composer is in shell mode ("!" typed first): Enter runs the line (ui/shell.ts). */
+  shell: false,
+  /** Where "!" lines run: a repository's name, or '' for the IDE home. */
+  shellRepo: localStorage.getItem('oma.shellRepo') ?? '',
+  /** Shell run blocks shown with all their kept lines. */
+  shellOpen: new Set<string>(),
   langApplied: '' as string,
   fontApplied: '' as string,
   accKey: '' as string,

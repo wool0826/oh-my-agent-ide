@@ -83,7 +83,7 @@ class Runs {
 }
 
 /** Stop the process and everything it started. */
-function kill(proc: ChildProcess) {
+export function kill(proc: ChildProcess) {
   if (!proc.pid) return;
   try {
     if (process.platform === 'win32') spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true });

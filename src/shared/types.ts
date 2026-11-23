@@ -248,7 +248,28 @@ export interface MemorySuggestion {
   createdAt: string;
 }
 
-export type ChatKind ='user' | 'dispatcher' | 'event' | 'result' | 'auto' | 'decision' | 'error';
+export type ChatKind ='user' | 'dispatcher' | 'event' | 'result' | 'auto' | 'decision' | 'error' | 'shell';
+
+/**
+ * A line the user ran from the chat with "!" (main/shell.ts): where, how it ended, and the end of its output.
+ * `sent`: the hand-over to the Dispatcher. 'wait' while it runs, 'queued' once it ended and waits for the
+ * Dispatcher's next turn, 'sent' when a turn took it, 'off' when it was stopped (a stopped run is not sent).
+ */
+export interface ShellRun {
+  cmd: string;
+  /** Where it ran: a repository's name, or '' for the IDE home. */
+  repo: string;
+  running: boolean;
+  stopped: boolean;
+  code: number | null;
+  startedAt: string;
+  ms: number;
+  /** The last SHELL_KEEP lines of the output. */
+  out: string;
+  /** Lines of output in all. */
+  lines: number;
+  sent: 'wait' | 'queued' | 'sent' | 'off';
+}
 
 export interface ChatItem {
   id: string;
@@ -259,6 +280,8 @@ export interface ChatItem {
   ref?: string;
   /** The task whose report this message answers: drawn one step in under that report's card (shared/thread.ts). */
   replyTo?: string;
+  /** kind 'shell': the run. */
+  shell?: ShellRun;
   cleared?: boolean;
 }
 
