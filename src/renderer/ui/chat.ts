@@ -229,7 +229,7 @@ export function decisionHint(d: Decision) {
   return t(d.source === 'permission' ? 'dec.denyWhy' : d.source === 'plan' ? 'plan.revise' : 'dec.other');
 }
 
-const KIND_ICON: Record<DecisionKind, string> = { command: 's-term', permission: 's-pencil', question: 's-chat', plan: 's-doc' };
+const KIND_ICON: Record<DecisionKind, string> = { command: 's-term', permission: 's-edit', question: 's-chat', plan: 's-doc' };
 
 /** The kind of a decision as a grey chip with its icon; colour is left to the age and the slot clock. */
 export function kindChip(d: Decision) {
@@ -282,7 +282,9 @@ export function moveDecision(step: number) {
  * user answered is gone, to the card selected after it, so the keyboard can go on with the next decision.
  */
 function restoreCardFocus(root: HTMLElement, back: { id: string; val: string | null } | null) {
-  const answered = ui.decAnswered;
+  // An answer that failed leaves its card; after a while it no longer moves the focus anywhere.
+  if (ui.decAnswered && Date.now() - ui.decAnswered.at > 10_000) ui.decAnswered = null;
+  const answered = ui.decAnswered?.id;
   const gone = !!answered && !root.querySelector(`[data-dec="${CSS.escape(answered)}"]`);
   if (gone) ui.decAnswered = null;
   const lost = !document.activeElement || document.activeElement === document.body;

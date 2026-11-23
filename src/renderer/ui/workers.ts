@@ -451,7 +451,7 @@ export function renderComposerDecision() {
   } else if (skipped) {
     html = `${sym('s-chat', 'c-gray')}<span>${t('dec.openNote', { q: q(skipped) })}</span><button type="button" class="linkbtn" data-action="dec-answer-it" data-id="${esc(skipped.id)}">${t('dec.answerIt')}</button>`;
   } else if (perm) {
-    html = `${sym(perm.code?.startsWith('$ ') ? 's-term' : 's-pencil', 'c-gray')}<span>${t('dec.permWaits', { q: q(perm) })}</span><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${DENY}">${t('deny')}</button><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${ALLOW}">${t('allow')}</button>`;
+    html = `${sym(perm.code?.startsWith('$ ') ? 's-term' : 's-edit', 'c-gray')}<span>${t('dec.permWaits', { q: q(perm) })}</span><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${DENY}">${t('deny')}</button><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${ALLOW}">${t('allow')}</button>`;
   }
   if (el.innerHTML !== html) el.innerHTML = html;
   if (el.className !== cls) el.className = cls;

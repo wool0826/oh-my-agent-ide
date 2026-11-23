@@ -28,9 +28,15 @@ export function shortcutsHtml() {
 }
 
 /** Draws the sheet in the shared dialog layer (#dlg); its Tab stays inside, as for every modal dialog. */
+/** Read from the layer itself: the other dialogs redraw #dlg without telling this module. */
+export function shortcutsOpen() {
+  const root = $('#dlg');
+  return !root.hidden && root.dataset.key === 'keys';
+}
+
 export function openShortcuts() {
   const root = $('#dlg');
-  ui.keysShown = true;
+  if (ui.confirmAsk || ui.cancelAsk || !root.hidden) return;
   root.dataset.key = 'keys';
   root.innerHTML = `<div class="dlg-back" data-action="keys-close"></div>
   <div class="dlg keys" role="dialog" aria-modal="true" aria-labelledby="keys-t">
@@ -43,8 +49,7 @@ export function openShortcuts() {
 }
 
 export function closeShortcuts() {
-  if (!ui.keysShown) return;
-  ui.keysShown = false;
+  if (!shortcutsOpen()) return;
   const root = $('#dlg');
   root.hidden = true;
   root.innerHTML = '';

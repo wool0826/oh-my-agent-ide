@@ -13,7 +13,7 @@ import { PAGE, pagesFor, slideOlder } from '../shared/paging';
 import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, moveDecision, tickDecisions } from './ui/chat';
-import { closeShortcuts, openShortcuts } from './ui/shortcuts';
+import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue } from './ui/controls';
 import { $, announce, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
@@ -317,7 +317,7 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'answer': {
-      if (el.closest('[data-dec]')) ui.decAnswered = id;
+      if (el.closest('[data-dec]')) ui.decAnswered = { id, at: Date.now() };
       el.closest('.dec')?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
       await call('decision:answer', id, el.dataset.val);
       break;
@@ -413,7 +413,6 @@ export async function act(el: HTMLElement, e: Event) {
     case 'worker-archive': await archiveWorker(id); break;
     case 'confirm-dismiss': ui.confirmAsk = null; renderConfirmDialog(); break;
     case 'keys-close': closeShortcuts(); break;
-    case 'keys-open': openShortcuts(); break;
     case 'confirm-ok': await confirmOk(); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
@@ -724,7 +723,7 @@ export function init() {
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyK') { e.preventDefault(); if (cmdk.open) closePalette(); else openPalette(); return; }
     if (cmdk.open) { paletteKeys(e); return; }
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'Slash') { e.preventDefault(); if (ui.keysShown) closeShortcuts(); else if (!ui.settingsShown && $('#dlg').hidden) openShortcuts(); return; }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'Slash') { e.preventDefault(); if (shortcutsOpen()) closeShortcuts(); else if (!ui.settingsShown) openShortcuts(); return; }
     // A dialog that asks keeps the keyboard inside it: Tab goes round its own controls.
     if (e.key === 'Tab') {
       // A dialog over the Settings sheet first, then the sheet itself (L14).
@@ -745,6 +744,8 @@ export function init() {
     if (card && !el.matches('input, textarea, [contenteditable="true"]')) {
       const k = cardKey(e);
       if (k && (k.act === 'next' || k.act === 'prev')) { e.preventDefault(); moveDecision(k.act === 'next' ? 1 : -1); return; }
+      // A held key repeats: it must not go on to answer the card that takes the focus next.
+      if (k && e.repeat) { e.preventDefault(); return; }
       const d = k && !(k.act === 'enter' && el !== card) ? S?.decisions.find((x) => x.id === card.dataset.dec) : null;
       const val = d && k ? keyAnswer(d, k) : null;
       const btn = val ? card.querySelector<HTMLButtonElement>(`button[data-action="answer"][data-val="${CSS.escape(val)}"]`) : null;
@@ -761,6 +762,7 @@ export function init() {
       e.preventDefault();
       if (el.dataset.enter === 'answer-custom') {
         const v = (el as HTMLInputElement).value.trim();
+        if (v && el.closest('[data-dec]')) ui.decAnswered = { id: el.dataset.id!, at: Date.now() };
         if (v) void call('decision:answer', el.dataset.id, v);
       } else if (el.dataset.enter === 'repo-add') {
         void addRepo();
@@ -783,7 +785,7 @@ export function init() {
     // Escape closes one layer at a time, the top one first (L14).
     if (e.key === 'Escape') {
       if (pop.el) { closePop(true); return; }
-      if (ui.keysShown) { closeShortcuts(); return; }
+      if (shortcutsOpen()) { closeShortcuts(); return; }
       if (!$('#ctxmenu').hidden) { closeCtxMenu(true); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); return; }

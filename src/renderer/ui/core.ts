@@ -88,9 +88,7 @@ export const ui = {
   decSel: null as string | null,
   decIds: [] as string[],
   /** The decision just answered from its card: once it is gone, the focus goes to the next card. */
-  decAnswered: null as string | null,
-  /** The keyboard shortcut list is open (ui/shortcuts.ts). */
-  keysShown: false,
+  decAnswered: null as { id: string; at: number } | null,
   aaEdit: null as string | null,
   sugEdit: null as string | null,
   /** Each Worker's loaded conversation: lines logFrom to the end of its log (decision 85). */
