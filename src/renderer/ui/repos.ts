@@ -32,7 +32,7 @@ export async function loadJira() {
 export function jiraHtml() {
   if (!jiraOn()) return '';
   if (jira === undefined) void loadJira();
-  const refresh = `<button class="clear-x always" data-action="jira-refresh" title="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
+  const refresh = `<button class="clear-x always" data-action="jira-refresh" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
   const head = (n: string) => `<div class="jira-h"><b>Jira</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
   if (jira === undefined || jira === 'loading') return `${head('')}<div class="jira-list" role="status" aria-label="${t('issue.loading')}">${skel(3, 'file')}</div>`;
   if (!Array.isArray(jira)) return `${head('')}<div class="jira-list"><div class="jira-msg err">${esc(jira.error)}</div></div>`;
@@ -45,7 +45,7 @@ export function jiraHtml() {
 /** What the user allowed for the length of a task still in progress, each with a button that takes it back. */
 export function grantsHtml(x: Task) {
   if (!x.grants?.length || !(x.status === 'running' || x.status === 'waiting' || x.status === 'queued' || x.status === 'blocked')) return '';
-  return `<span class="grants"><em>${t('grant.title')}</em>${x.grants.map((g) => `<i class="pill">${esc(g.label)}<button type="button" class="grant-x" data-action="grant-revoke" data-id="${esc(x.id)}" data-key="${esc(g.key)}" title="${t('grant.revoke')}" aria-label="${esc(`${t('grant.revoke')}: ${g.label}`)}"><svg aria-hidden="true"><use href="#s-x"/></svg></button></i>`).join('')}</span>`;
+  return `<span class="grants"><em>${t('grant.title')}</em>${x.grants.map((g) => `<i class="pill">${esc(g.label)}<button type="button" class="grant-x" data-action="grant-revoke" data-id="${esc(x.id)}" data-key="${esc(g.key)}" data-tip="${t('grant.revoke')}" aria-label="${esc(`${t('grant.revoke')}: ${g.label}`)}"><svg aria-hidden="true"><use href="#s-x"/></svg></button></i>`).join('')}</span>`;
 }
 
 /* ---------- what the app needs on this computer (decision 131) ---------- */
@@ -69,7 +69,7 @@ export function preflightRows() {
     // A missing tool and a tool that is there but not signed in read differently (gh: not installed vs `gh auth login`).
     const why = c.ok ? '' : c.missing ? t('pre.missing') : c.id === 'ghAuth' ? t('pre.fix.ghAuth') : cmd ? '' : t(`pre.fix.${c.id}` as Key);
     const fix = (why ? `<span class="pre-fix">${esc(why)}</span>` : '') + (cmd ? `<code class="pre-cmd">${esc(cmd)}</code>` : c.missing ? `<span class="pre-fix">${t(`pre.fix.${c.id}` as Key)}</span>` : '');
-    return `<div class="srow"><span class="lbl">${esc(name)}</span><span class="pre-r"${c.detail ? ` title="${esc(c.detail)}"` : ''}>${fix}<i class="pill ${c.ok ? 'green' : 'red'}">${t(c.ok ? 'pre.ok' : 'pre.fail')}</i></span></div>`;
+    return `<div class="srow"><span class="lbl">${esc(name)}</span><span class="pre-r"${c.detail ? ` tabindex="0" data-tip="${esc(c.detail)}"` : ''}>${fix}<i class="pill ${c.ok ? 'green' : 'red'}">${t(c.ok ? 'pre.ok' : 'pre.fail')}</i></span></div>`;
   }).join('');
 }
 
@@ -89,7 +89,7 @@ export function renderRepos() {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
-      const local = r.local ? `<span class="pill" title="${esc(t('repo.localNote'))}">${t('repo.local')}</span>` : '';
+      const local = r.local ? `<span class="pill" data-tip="${esc(t('repo.localNote'))}">${t('repo.local')}</span>` : '';
       return `<div tabindex="0" role="button" class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${local}${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}${jiraHtml()}</div>`;
   });
@@ -105,7 +105,7 @@ export function renderRepos() {
     const ts = paged(`repo-tasks:${r.name}`, all, PAGE.repoTasks);
     ins.innerHTML = `<div class="ins-h"><b>${esc(r.name)}</b>${r.local ? `<span class="pill">${t('repo.local')}</span>` : ''}</div>
       ${r.local ? `<div class="repo-local-note">${t('repo.localNote')}</div>` : ''}
-      <div class="group kv"><span>${t('kv.path')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(r.path)}" title="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span title="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
+      <div class="group kv"><span>${t('kv.path')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(r.path)}" data-tip="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span data-tip="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
       <div class="ins-h"><b>${t('repo.desc')}</b></div>
       <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" data-scroll="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
       <div class="ins-h"><b>${t('repo.setup')}</b></div>
@@ -125,7 +125,7 @@ export function issuesHtml(r: Repo) {
   if (!ghRepoRef(r.url)) return '';
   const v = ui.issues.get(r.name);
   if (v === undefined) { void loadIssues(r.name); }
-  const refresh = `<button class="clear-x always" data-action="issues-refresh" data-id="${esc(r.name)}" title="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
+  const refresh = `<button class="clear-x always" data-action="issues-refresh" data-id="${esc(r.name)}" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
   const head = (n: string) => `<div class="ins-h"><b>${t('issue.title')}</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
   if (v === undefined || v === 'loading') return `${head('')}<div class="group" role="status" aria-label="${t('issue.loading')}">${skel(3, 'mini')}</div>`;
   // The error itself, not only in a tooltip, with a way to ask again (L17).

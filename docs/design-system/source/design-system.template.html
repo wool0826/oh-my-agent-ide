@@ -330,6 +330,12 @@ textarea.field { height: auto; min-height: 60px; padding: var(--space-6) var(--s
 .scrim { background: var(--surface-scrim); -webkit-backdrop-filter: var(--blur-scrim); backdrop-filter: var(--blur-scrim); }
 .toast { display: inline-flex; align-items: center; gap: var(--space-8); max-width: 70vw; padding: var(--space-8) var(--space-16); border-radius: var(--radius-full); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-3); font-size: var(--fs-caption); }
 .toast.is-error { color: var(--danger-text); }
+/* One tooltip for the whole app; its place is set in code (ui/tip.ts). `.on` shows it. */
+.tip { position: fixed; z-index: var(--z-tooltip); display: flex; align-items: baseline; gap: var(--space-8); box-sizing: border-box; max-width: 280px; padding: var(--space-4) var(--space-8); border-radius: var(--radius-sm); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-4); font-size: var(--fs-caption); line-height: var(--lh-ui); color: var(--text-primary); opacity: 0; translate: 0 2px; transition: opacity var(--dur-fast) var(--ease-standard), translate var(--dur-fast) var(--ease-standard); }
+.tip[data-side="below"] { translate: 0 -2px; }
+.tip.on { opacity: 1; translate: 0 0; }
+.tip > span { min-width: 0; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 14; overflow: hidden; }
+.tip > kbd { flex: none; padding: 0; background: none; font-size: var(--fs-caption2); font-weight: var(--fw-medium); color: var(--text-secondary); white-space: nowrap; }
 
 /* Lists in views */
 .vhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-12); padding: var(--space-16) var(--space-20) var(--space-10); }
@@ -777,6 +783,15 @@ table.t td code { white-space: nowrap; }
           <div class="scrim" style="padding:28px;border-radius:var(--radius-xl)"><div class="dialog" role="alertdialog"><span class="avatar" data-c="2" style="width:44px;height:44px;font-size:15px;margin-bottom:6px">개</span><h4 data-i18n="dlg.t">Remove “개인”?</h4><p data-i18n="dlg.p">The token is deleted from this computer. Workers using it move to another account.</p><div class="dlg-btns"><button class="btn btn-lg" type="button" data-i18n="cancel">Cancel</button><button class="btn btn-lg btn-danger-fill" type="button" data-i18n="remove">Remove</button></div></div></div>
           <div class="flexcol"><span class="toast" data-i18n="toast.ok">Account added</span><span class="toast is-error" data-i18n="toast.err">Couldn't read the model list</span></div>
         </div></div></div>
+      <div class="comp"><div class="comp-h"><h4>Tooltip</h4><span>one element for the whole app · 500 ms on hover, at once on focus · centred on the control, 6 away · <code>--z-tooltip</code></span></div>
+        <div class="stage" style="background:var(--bg-backdrop)"><div class="flexrow" style="align-items:flex-start;gap:24px">
+          <span class="tip on" role="tooltip" style="position:static"><span data-i18n="tip.name">Collapse the sidebar</span><kbd>Ctrl+B</kbd></span>
+          <span class="tip on" role="tooltip" style="position:static"><span>src/renderer/ui/workers.ts</span></span>
+          <span class="tip on" role="tooltip" style="position:static"><span data-i18n="tip.steps">Step 2 of 3: Write the tests
+✓ 1. Read the review
+▸ 2. Write the tests
+· 3. Open the PR</span></span>
+        </div></div></div>
     </section>
 
     <!-- ================= MOCKUP ================= -->
@@ -968,6 +983,7 @@ table.t td code { white-space: nowrap; }
     'set.osNoti': ['OS notifications', 'OS 알림'], 'set.volume': ['Volume', '음량'], 'acc.registered': ['Registered accounts', '등록된 계정'], 'set.modelsCount': ['12 models · updated 1:20 PM', '모델 12개 · 오후 1:20 기준'], 'diff.refresh': ['Refresh', '새로고침'],
     'acc.kindToken': ['Token', '토큰'], 'acc.rename': ['Rename', '이름 바꾸기'], 'acc.refresh': ['Refresh usage', '사용량 새로고침'], 'acc.plan': ['Plan', '요금제'], 'acc.removeMenu': ['Remove account…', '계정 삭제…'], 'menu.disabled': ['Compact (busy)', '압축 (작업 중)'],
     'dlg.t': ['Remove “개인”?', '“개인” 계정을 삭제할까요?'], 'dlg.p': ['The token is deleted from this computer. Workers using it move to another account.', '이 컴퓨터에서 토큰을 지워요. 이 계정을 쓰던 Worker는 다른 계정으로 옮겨요.'],
+    'tip.name': ['Collapse the sidebar', '사이드바 접기'], 'tip.steps': ['Step 2 of 3: Write the tests\n✓ 1. Read the review\n▸ 2. Write the tests\n· 3. Open the PR', '3단계 중 2단계: 테스트 작성\n✓ 1. 검수 읽기\n▸ 2. 테스트 작성\n· 3. PR 열기'],
     'toast.ok': ['Account added', '계정을 등록했어요'], 'toast.err': ['Couldn\'t read the model list', '모델 목록을 읽지 못했어요'],
     'type.sample': ['Dispatcher splits work across Workers — 결정할 것만 모아 둬요', 'Dispatcher가 Worker에게 일을 나눠 맡겨요 — decisions only']
   };

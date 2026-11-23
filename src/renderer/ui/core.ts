@@ -204,7 +204,7 @@ export function inline(s: unknown) {
 export function replyable(bubble: string, box: 'chat' | 'ws', who: string, text: string, task?: string) {
   const quote = replyExcerpt(text);
   if (!quote) return bubble;
-  return `<div class="bline">${bubble}<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}"${task ? ` data-task="${esc(task)}"` : ''} title="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button></div>`;
+  return `<div class="bline">${bubble}<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}"${task ? ` data-task="${esc(task)}"` : ''} data-tip="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button></div>`;
 }
 
 /** Whose message a quote is from, as shown: a side question's answer reads as one. */
@@ -216,7 +216,7 @@ export function renderReply(box: 'chat' | 'ws') {
   const r = ui.reply[box];
   const el = $(box === 'chat' ? '#chat-reply' : '#ws-reply');
   el.hidden = !r;
-  el.innerHTML = r ? `${sym(r.icon ?? 's-reply')}<b>${esc(whoLabel(r.who))}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" title="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
+  el.innerHTML = r ? `${sym(r.icon ?? 's-reply')}<b>${esc(whoLabel(r.who))}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" data-tip="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
 }
 
 /** The text to send from a composer, with the quote on top while a reply is open. The reply stays until the send succeeds. */
@@ -231,7 +231,7 @@ export function setSendErr(box: 'chat' | 'ws', msg: string) {
   const el = document.getElementById(box === 'chat' ? 'chat-err' : 'ws-err');
   if (!el) return;
   el.hidden = !msg;
-  el.innerHTML = msg ? `${sym('s-alert', 'c-red')}<span>${esc(t('err.notSent', { msg }))}</span><button type="button" data-action="send-err-x" data-box="${box}" title="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
+  el.innerHTML = msg ? `${sym('s-alert', 'c-red')}<span>${esc(t('err.notSent', { msg }))}</span><button type="button" data-action="send-err-x" data-box="${box}" data-tip="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
 }
 
 /** Agent markdown: code blocks, headings, lists, tables, bold, italics, links, line breaks (shared/markdown.ts). */
@@ -246,7 +246,7 @@ export function userText(text: string): string {
   const i = text.indexOf('\n\n[Attached files]\n');
   if (i < 0) return linkify(esc(text));
   const files = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
-  return `${linkify(esc(text.slice(0, i)))}<span class="sent-files">${files.map((f) => `<a class="fchip" data-action="reveal" data-path="${esc(f)}" title="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>`;
+  return `${linkify(esc(text.slice(0, i)))}<span class="sent-files">${files.map((f) => `<a class="fchip" data-action="reveal" data-path="${esc(f)}" data-tip="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>`;
 }
 
 export function oneLine(s: string, n = 120) {
@@ -637,14 +637,14 @@ export function unmarkLoading(th: HTMLElement) {
   if (top) top.textContent = t('page.older');
 }
 
-/** Static text in index.html carries data-i18n / data-i18n-ph / data-i18n-title keys. */
+/** Static text in index.html carries data-i18n / data-i18n-ph / data-i18n-tip keys. A tip is the control's name too. */
 export function applyStaticText() {
   if (ui.langApplied === lang()) return;
   ui.langApplied = lang();
   document.documentElement.lang = lang();
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n as Key); });
   document.querySelectorAll<HTMLElement>('[data-i18n-ph]').forEach((el) => { (el as HTMLInputElement).placeholder = t(el.dataset.i18nPh as Key); });
-  document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((el) => { el.title = t(el.dataset.i18nTitle as Key); el.setAttribute('aria-label', el.title); });
+  document.querySelectorAll<HTMLElement>('[data-i18n-tip]').forEach((el) => { const s = t(el.dataset.i18nTip as Key); el.dataset.tip = s; el.setAttribute('aria-label', s); });
   document.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria as Key)); });
 }
 

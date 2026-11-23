@@ -535,7 +535,7 @@ const NAMELESS = `return (() => {
   const named = (el) => {
     const id = el.id;
     const labelled = !!el.closest('label') || (!!id && !!document.querySelector('label[for="' + id + '"]')) || !!el.getAttribute('aria-labelledby');
-    return !!((el.getAttribute('aria-label') || '').trim() || (el.title || '').trim() || (el.textContent || '').trim() || labelled || (el.placeholder || '').trim());
+    return !!((el.getAttribute('aria-label') || '').trim() || (el.textContent || '').trim() || labelled || (el.placeholder || '').trim());
   };
   return [...document.querySelectorAll('button, a[data-action], [role="button"], [role="link"], [role="tab"], input:not([type="hidden"]), textarea, select')]
     .filter((el) => shown(el) && !named(el)).map((el) => el.outerHTML.slice(0, 160));
@@ -547,7 +547,14 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
   await app.evaluate("await window.ide.call('pr:check'); return 1;");
   await app.until("!!document.querySelector('#chat-ins .prmerge')", 'the Merge button');
   const nameless = {};
-  const look = async (screen) => { const list = await app.evaluate(NAMELESS); if (list.length) nameless[screen] = list; };
+  // No hint is left to the OS: every one is the app's own tooltip (data-tip).
+  const titled = {};
+  const look = async (screen) => {
+    const list = await app.evaluate(NAMELESS);
+    if (list.length) nameless[screen] = list;
+    const native = await app.evaluate("[...document.querySelectorAll('[title]')].map((el) => el.outerHTML.slice(0, 120))");
+    if (native.length) titled[screen] = native;
+  };
   await look('chat');
   for (const tab of ['memo', 'auto']) { await app.click(`[data-action="ins-tab"][data-v="${tab}"]`); await look(`chat inspector: ${tab}`); }
   await app.click('[data-action="ins-tab"][data-v="inbox"]');
@@ -569,6 +576,7 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
   await look('palette');
   await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return 1;");
   assert.deepEqual(nameless, {});
+  assert.deepEqual(titled, {});
 
   // Focus on a button in the inbox, then the whole window is drawn again: the focus is on the same button.
   await app.click('button[data-v="chat"]');
@@ -614,6 +622,52 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
     assert.equal(await app.evaluate("document.activeElement?.closest('#usage-pop') ? 'in' : 'out'"), 'in');
   });
 }
+
+flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard focus, and cut text in full', {}, async (app) => {
+  await app.evaluate("window.__tip = () => { const el = document.querySelector('#tip'); if (el.hidden || !el.classList.contains('on')) return null; const r = el.getBoundingClientRect(); return { text: el.querySelector('span').textContent, key: el.querySelector('kbd')?.textContent ?? '', top: r.top, bottom: r.bottom, left: r.left, right: r.right }; }; return 1;");
+  const tip = () => app.evaluate('return window.__tip();');
+  const box = (sel) => app.evaluate(`const r = document.querySelector('${sel}').getBoundingClientRect(); return { top: r.top, bottom: r.bottom };`);
+  const mod = process.platform === 'darwin' ? '⌘' : 'Ctrl+';
+  assert.ok(!(await tip()));
+  // Hover: after the delay, above the control, with the shortcut as a key and not in the sentence.
+  await app.hover('#side-toggle');
+  await app.until('!!window.__tip()', 'the tooltip on hover');
+  const shown = await tip();
+  assert.equal(shown.text, 'Collapse the sidebar');
+  assert.equal(shown.key, `${mod}B`);
+  assert.ok(shown.bottom < (await box('#side-toggle')).top, 'above the control');
+  // The name is already the button's label: the tooltip does not describe it again.
+  assert.equal(await app.evaluate("return document.querySelector('#side-toggle').getAttribute('aria-describedby') ?? '';"), '');
+  // A key takes it away.
+  await app.key('ShiftLeft', 'Shift', 16);
+  await app.until('!window.__tip()', 'the tooltip gone after a key');
+  // Keyboard focus shows it at once; in the toolbar it sits below.
+  await app.hover('#chat-thread');
+  await app.evaluate("document.querySelector('#cmdk-btn').focus({ focusVisible: true }); return 1;");
+  await app.until("window.__tip()?.text === 'Search and go'", 'the tooltip on focus');
+  const below = await tip();
+  assert.equal(below.key, `${mod}K`);
+  assert.ok(below.top > (await box('#cmdk-btn')).bottom, 'below a toolbar control');
+  await app.evaluate("document.querySelector('#chat-input').focus(); return 1;");
+  await app.until('!window.__tip()', 'the tooltip gone on blur');
+  // Cut text: a long title in the sidebar shows in full; a short one has nothing to add.
+  const long = 'A task with a title that is far too long to fit in one line of the sidebar row';
+  await app.say(`@fake task - ${long}\n@@fake result Done.\n@fake task - Short\n@@fake result Done.`);
+  await app.until("!!document.querySelector('#side [data-action=\"done-toggle\"]') && document.querySelectorAll('#chat-ins .res').length >= 2", 'both tasks done');
+  await app.click('#side [data-action="done-toggle"]');
+  await app.until("[...document.querySelectorAll('#side .row .t b')].filter((x) => x.textContent.includes('far too long') || x.textContent.trim() === 'Short').length >= 2", 'two rows in the sidebar');
+  await app.evaluate("const all = [...document.querySelectorAll('#side .row .t b')]; all.find((x) => x.textContent.includes('far too long')).id = 'e2e-long'; all.find((x) => x.textContent.trim() === 'Short').id = 'e2e-short'; return 1;");
+  await app.hover('#e2e-long');
+  await app.until('!!window.__tip()', 'the tooltip on cut text');
+  const cut = await tip();
+  assert.match(cut.text, /far too long to fit in one line of the sidebar row/);
+  assert.ok(cut.left >= 8 && cut.right <= (await app.evaluate('window.innerWidth')) - 8, 'inside the window');
+  await app.hover('#chat-thread');
+  await app.until('!window.__tip()', 'the tooltip gone when the pointer leaves');
+  await app.hover('#e2e-short');
+  await new Promise((r) => setTimeout(r, 900));
+  assert.ok(!(await tip()), 'no tooltip for text that fits');
+});
 
 flow('a state update that changes nothing in a panel leaves the panel as it is', {}, async (app) => {
   await app.say('@fake task - Something to list\n@@fake result Done.');

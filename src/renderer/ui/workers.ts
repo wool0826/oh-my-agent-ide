@@ -95,7 +95,7 @@ export function renderWorkerList() {
     const text = line.text === about || !w.repo ? line.text : `${w.repo} · ${line.text}`;
     // The context is shown once it matters: from half the window, and in orange from where it is compacted.
     const ctx = st !== 'archived' && w.contextTokens >= CONTEXT_WINDOW / 2
-      ? `<span class="ctxm${w.contextTokens >= COMPACT_AT ? ' warn' : ''}" title="${esc(`${t('kv.context')} ${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}`)}">${ring(w.contextTokens / CONTEXT_WINDOW)}${k(w.contextTokens)}</span>` : '';
+      ? `<span class="ctxm${w.contextTokens >= COMPACT_AT ? ' warn' : ''}" data-tip="${esc(`${t('kv.context')} ${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}`)}">${ring(w.contextTokens / CONTEXT_WINDOW)}${k(w.contextTokens)}</span>` : '';
     // The row's own button and Continue are side by side, not one inside the other (L14).
     const more = st === 'failed' ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
     return `<div class="li wrow${ui.wSel === w.id ? ' sel' : ''}${st === 'archived' ? ' dim' : ''}"><div tabindex="0" role="button" class="li-main" data-action="select-worker" data-id="${w.id}">${workerIcon(w)}
@@ -145,7 +145,7 @@ export function workerReport(text: string) {
   const files = head.filter((l) => /^FILE:/i.test(l)).map(val).filter(Boolean);
   const links = [
     pr ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(pr)}">${sym('s-pr')}PR #${prNum(pr)}</a>` : '',
-    ...files.map((f) => `<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" title="${esc(f)}">${sym('s-doc')}${esc(base(f))}</a>`),
+    ...files.map((f) => `<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" data-tip="${esc(f)}">${sym('s-doc')}${esc(base(f))}</a>`),
   ].filter(Boolean).join('');
   const rest = lines.slice(i).join('\n').trim();
   const title = inline(summary);
@@ -219,8 +219,8 @@ export function diffLines(wid: string, path: string, patch: string) {
     const c = l.kind === 'ctx' ? '' : l.kind;
     const line = l.kind === 'h'
       ? `<span class="dl h">${esc(l.text) || ' '}</span>`
-      : `<span class="dl ${c} can" role="button" tabindex="0" data-action="diff-note" data-id="${key}" data-i="${i}" title="${t('diff.note')}">${esc(l.text) || ' '}</span>`;
-    const said = notes.filter((n) => n.at === i).map((n) => `<div class="dnote"><p>${esc(n.text)}</p><button class="clear-x" data-action="diff-note-del" data-id="${key}" data-i="${i}" title="${t('diff.noteDel')}" aria-label="${t('diff.noteDel')}"><svg><use href="#s-x"/></svg></button></div>`).join('');
+      : `<span class="dl ${c} can" role="button" tabindex="0" data-action="diff-note" data-id="${key}" data-i="${i}" data-tip="${t('diff.note')}">${esc(l.text) || ' '}</span>`;
+    const said = notes.filter((n) => n.at === i).map((n) => `<div class="dnote"><p>${esc(n.text)}</p><button class="clear-x" data-action="diff-note-del" data-id="${key}" data-i="${i}" data-tip="${t('diff.noteDel')}" aria-label="${t('diff.noteDel')}"><svg><use href="#s-x"/></svg></button></div>`).join('');
     const box = draft === i ? `<div class="dnote edit"><textarea class="inp" id="dnote-in" data-keep="dnote-${key}-${i}" data-enter="diff-note-add" placeholder="${t('diff.note')}" aria-label="${t('diff.note')}"></textarea><div class="btns"><button class="btn" data-action="diff-note-cancel">${t('cancel')}</button><button class="btn def" data-action="diff-note-add">${t('diff.noteAdd')}</button></div></div>` : '';
     return line + said + box;
   }).join('');
@@ -323,7 +323,7 @@ export function renderDiff(w: Worker) {
     const open = ui.diffOpen.has(key);
     const st = f.status === '?' ? 'A' : f.status;
     return `<div class="df${open ? ' open' : ''}">
-      <button class="df-h" data-action="diff-file" data-id="${esc(key)}" aria-expanded="${open}"><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg><span class="st st-${st}">${st}</span><span class="p" title="${esc(f.path)}">${esc(f.path)}</span>${f.status === '?' ? `<small>${t('diff.untracked')}</small>` : ''}<span class="n"><b class="plus">+${f.added}</b> <b class="minus">−${f.removed}</b></span></button>
+      <button class="df-h" data-action="diff-file" data-id="${esc(key)}" aria-expanded="${open}"><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg><span class="st st-${st}">${st}</span><span class="p">${esc(f.path)}</span>${f.status === '?' ? `<small>${t('diff.untracked')}</small>` : ''}<span class="n"><b class="plus">+${f.added}</b> <b class="minus">−${f.removed}</b></span></button>
       ${open ? `<pre class="df-b" data-scroll="diff-${esc(key)}">${f.patch ? diffLines(w.id, f.path, f.patch) : `<span class="dl h">${t('diff.binary')}</span>`}</pre>` : ''}
     </div>`;
   }).join('');
@@ -396,7 +396,7 @@ export function waitingCardsHtml(w: Worker) {
     const follow = followers.map((f) => `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(f.workerId ?? '')}"${f.workerId ? '' : ' disabled'}>${esc(f.id)} ${esc(oneLine(f.title, 60))}</button>`).join('<br>');
     return `<div class="ins-h"><b>${t('q.title')}</b><span class="pill orange">${x.status === 'blocked' ? t('st.afterMerge') : queuedLabel(x)}</span></div>
     <div class="group qcard">
-      <div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${esc([x.repo ?? t('general'), x.planFirst && !x.planApproved ? t('plan.badge') : ''].filter(Boolean).join(' · '))} · <time datetime="${esc(since)}" title="${esc(hhmm(since))}">${t('q.since', { t: Date.now() - Date.parse(since) < 60_000 ? t('time.now') : t('time.ago', { d: ago(since) }) })}</time></span></div>
+      <div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${esc([x.repo ?? t('general'), x.planFirst && !x.planApproved ? t('plan.badge') : ''].filter(Boolean).join(' · '))} · <time datetime="${esc(since)}" data-tip="${esc(hhmm(since))}">${t('q.since', { t: Date.now() - Date.parse(since) < 60_000 ? t('time.now') : t('time.ago', { d: ago(since) }) })}</time></span></div>
       <dl class="plan-sum q-sum"><dt>${t('q.why')}</dt><dd>${esc(q.why)}</dd><dt>${t('q.starts')}</dt><dd${q.cancelled ? ' class="warn"' : ''}>${esc(q.starts)}</dd>${q.again ? `<dt></dt><dd>${esc(q.again)}</dd>` : ''}</dl>
       ${prompt ? `<div class="q-prompt${long && !open ? ' clip' : ''}" data-scroll="qp-${esc(x.id)}"><small>${t('q.prompt')}</small>${esc(prompt)}</div>` : ''}
       ${follow ? `<div class="q-follow"><small>${t('q.followers')}</small>${follow}</div>` : ''}
@@ -417,7 +417,7 @@ export function runHtml(w: Worker) {
   const url = r?.url && r.running ? `<a class="run-url" tabindex="0" role="link" data-action="open-url" data-href="${esc(r.url)}">${esc(r.url)}</a>` : '';
   const out = r?.tail.trim() ? `<pre class="run-out" data-scroll="run-${w.id}">${esc(lastLines(r.tail, 14))}</pre>` : '';
   return `<div class="ins-h"><b>${t('run.title')}</b>${state}</div>
-    <div class="group run"><code class="run-cmd" title="${esc(repo.run)}">${esc(oneLine(repo.run, 80))}</code>${url}${out}<div class="ins-act">${btns}</div></div>`;
+    <div class="group run"><code class="run-cmd" data-tip="${esc(repo.run)}">${esc(oneLine(repo.run, 80))}</code>${url}${out}<div class="ins-act">${btns}</div></div>`;
 }
 
 /**
@@ -491,6 +491,8 @@ export function renderWorkerInspector() {
   const open = workerDecisions(S!.decisions, w.id);
   renderComposerDecision();
   const failed = workerState(w, cur) === 'failed';
+  // What stopped it, in words: the sidebar row has it only as a tooltip.
+  const failText = failed ? plainStatus(w.status === 'error' ? w.statusText || cur?.summary : cur?.summary).split('\n')[0].trim() : '';
   keepScroll(root, () => { root.innerHTML = `
     ${open.length ? `<div class="ins-h"><b>${t('ins.decisions')}</b><span class="count">${open.length}</span></div><div class="group">${open.map((d) => decisionHtml(d, true)).join('')}</div>` : ''}
     <div class="ins-h"><b>${esc(w.id)}</b>${statusPill(w)}</div>
@@ -501,12 +503,13 @@ export function renderWorkerInspector() {
       <span>${t('kv.repo')}</span><span>${esc(w.repo ?? t('general'))}</span>
       ${cur?.branch ? `<span>${t('kv.branch')}</span><span>${esc(cur.branch)}</span>` : ''}
       ${cur?.status === 'blocked' ? `<span>${t('kv.startsAfter')}</span><span>${esc(cur.afterTaskId ?? '')} ${t('pr.merged')}</span>` : ''}
-      <span>${t('kv.folder')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(w.cwd)}" title="${esc(w.cwd)}">${esc(base(w.cwd))}</a></span>
+      <span>${t('kv.folder')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(w.cwd)}" data-tip="${esc(w.cwd)}">${esc(base(w.cwd))}</a></span>
       <span>${t('kv.model')}</span><span>${modelLabel(w.model)} · ${t(`effort.${(S!.settings.effortPerTask && cur?.effort) || S!.settings.workerEffort}` as Key)}</span>
       <span>${t('kv.account')}</span><span>${esc(acctLabel(w.accountId))}</span>
       <span>${t('kv.context')}</span><span>${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}</span>
-      ${w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(plainStatus(w.statusText), 140))}</span>` : ''}
-      ${w.request && w.status !== 'archived' ? `<span>${t('kv.request')}</span><span title="${esc(w.request.text)}">${esc(oneLine(w.request.text, 140))}</span>` : ''}
+      ${failText ? `<span>${t('kv.error')}</span><span class="err">${esc(oneLine(failText, 200))}</span>` : ''}
+      ${!failText && w.statusText && (w.status === 'running' || w.status === 'waiting' || w.status === 'error') ? `<span>${t('kv.now')}</span><span>${esc(oneLine(plainStatus(w.statusText), 140))}</span>` : ''}
+      ${w.request && w.status !== 'archived' ? `<span>${t('kv.request')}</span><span data-tip="${esc(w.request.text)}">${esc(oneLine(w.request.text, 140))}</span>` : ''}
     </div>
     ${runHtml(w)}
     <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>

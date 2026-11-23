@@ -52,7 +52,7 @@ function reset() {
   files = [];
   at = -1;
   draft = '';
-  form.classList.remove('sent', 'drop');
+  form.classList.remove('sent', 'drop', 'failed');
   input.readOnly = false;
   input.value = '';
   draw();
@@ -130,10 +130,18 @@ form.addEventListener('submit', async (e) => {
     chip.hidden = true;
     setTimeout(() => void ide.call('quick:close'), 700);
   } catch (err) {
-    busy = false;
-    input.value = v;
-    input.title = err instanceof Error ? err.message : String(err);
-    draw();
+    // Nothing else in this window can say it: the field shows what went wrong, then gives the text back.
+    form.classList.add('failed');
+    input.readOnly = true;
+    input.value = err instanceof Error ? err.message : String(err);
+    setTimeout(() => {
+      if (!form.classList.contains('failed')) return;
+      form.classList.remove('failed');
+      input.readOnly = false;
+      input.value = v;
+      busy = false;
+      draw();
+    }, 2400);
   }
 });
 

@@ -5,6 +5,7 @@ import { lastAnswer, sideModel, sideReply, SIDE_EMPTY, type SideView } from '../
 import { openPop, pop } from './controls';
 import type { ModelList } from '../../shared/types';
 import { $, call, esc, isMac, k, lang, md, modelLabel, renderReply, ring, S, sym, t, toast, tryCall, ui } from './core';
+import { setTip } from './tip';
 
 export const sq = {
   /** The panel is showing; when not, the thread stays behind the composer button until Close. */
@@ -128,7 +129,7 @@ function sendButton() {
   btn.classList.toggle('stop', stop);
   btn.innerHTML = sym(stop ? 's-stop' : 's-up');
   btn.setAttribute('aria-label', label);
-  btn.title = stop ? label : '';
+  setTip(btn, label);
 }
 
 /** The composer button that opens the panel: pressed while it shows, with the thread's count while minimised. */
@@ -139,7 +140,7 @@ function renderButton() {
   btn.setAttribute('aria-pressed', String(sq.open));
   const label = n && !sq.open ? t('sq.buttonCount', { n }) : t('sq.title');
   btn.setAttribute('aria-label', label);
-  btn.title = `${t('sq.title')} (${isMac ? '⌘' : 'Ctrl+'}J)`;
+  setTip(btn, label, isMac ? '⌘J' : 'Ctrl+J');
   btn.innerHTML = `${sym('s-side-q')}${n && !sq.open ? `<i>${n}</i>` : ''}`;
 }
 
