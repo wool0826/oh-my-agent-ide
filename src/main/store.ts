@@ -129,8 +129,9 @@ class Store extends EventEmitter {
   task(id: string) { return this.data.tasks.find((t) => t.id === id) ?? null; }
   repo(name: string) { return this.data.repos.find((r) => r.name.toLowerCase() === name.toLowerCase()) ?? null; }
 
-  chat(kind: ChatKind, text: string, ref?: string) {
+  chat(kind: ChatKind, text: string, ref?: string, replyTo?: string | null) {
     const item: ChatItem = { id: uid(), ts: nowIso(), kind, text, ref };
+    if (replyTo) item.replyTo = replyTo;
     this.data.chat.push(item);
     if (this.data.chat.length > 2000) this.data.chat.splice(0, this.data.chat.length - 2000);
     this.changed();
@@ -199,11 +200,22 @@ class Store extends EventEmitter {
    * Worker news for the Dispatcher. It goes with the Dispatcher's next message; with `wake` it is worth a turn
    * of its own, so the Dispatcher starts one by itself (see Dispatcher.wake).
    */
-  pushUpdate(text: string, wake = false) {
+  pushUpdate(text: string, wake = false, report?: string) {
     this.data.pendingUpdates.push(text);
+    if (wake && report) this.reports.push(report);
     if (this.data.pendingUpdates.length > 50) this.data.pendingUpdates.splice(0, this.data.pendingUpdates.length - 50);
     this.changed();
     if (wake) this.emit('wake');
+  }
+
+  /**
+   * Tasks whose report (result or failure) is among the pending updates, so the turn they start answers it
+   * (shared/thread.ts). Kept in memory only: after a restart the turn's messages are simply top level.
+   */
+  private reports: string[] = [];
+
+  takeReports(): string[] {
+    return this.reports.splice(0);
   }
 
   takeUpdates(): string[] {

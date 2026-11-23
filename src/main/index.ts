@@ -239,7 +239,7 @@ function handle(channel: string, fn: (...args: any[]) => any) {
 
 function registerIpc() {
   handle('state', () => snapshot());
-  handle('chat:send', (text: string, files?: string[]) => dispatcher.send(text, files ?? []));
+  handle('chat:send', (text: string, files?: string[], replyTo?: string | null) => dispatcher.send(text, files ?? [], typeof replyTo === 'string' ? replyTo : null));
   handle('chat:stop', () => dispatcher.stop());
   // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
   handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), files: t('quick.files'), lang: loadSettings().language, theme: loadSettings().theme, fontFamily: loadSettings().fontFamily, fontSize: loadSettings().fontSize, repos: store.data.repos.map((r) => r.name) }));

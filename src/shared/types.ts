@@ -253,6 +253,8 @@ export interface ChatItem {
   text: string;
   /** result card: task id, auto: auto-answer id */
   ref?: string;
+  /** The task whose report this message answers: drawn one step in under that report's card (shared/thread.ts). */
+  replyTo?: string;
   cleared?: boolean;
 }
 

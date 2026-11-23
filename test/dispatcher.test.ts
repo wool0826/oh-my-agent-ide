@@ -54,6 +54,7 @@ beforeEach(() => {
   d.userSpoke();
   Object.assign(store.data, { workers: [], tasks: [], chat: [], pendingUpdates: [], dispatcher: { sessionId: null, date: null, contextTokens: 0, accountId: null } });
   sent = [];
+  store.takeReports();
   limit(false);
 });
 
@@ -276,4 +277,50 @@ test('a Stop whose turn ended without a status does not mark the next turn as st
   dispatcher.send('Again');
   s().handle({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Boom.' });
   assert.equal(errors(), before + 1);
+});
+
+/** The chat's messages from the Dispatcher with the report each answers. */
+const replies = () => store.data.chat.filter((c) => c.kind === 'dispatcher').map((c) => [c.text, c.replyTo ?? null]);
+const card = (id: string) => store.chat('result', 'Done', id);
+
+test("an automatic turn started by one Worker's report answers that report; several reports leave it top level", async () => {
+  card('T-1');
+  store.pushUpdate('W-1 T-1 "Task" done: Done', true, 'T-1');
+  // A note with no report does not change which report the turn answers.
+  store.pushUpdate('W-2 (T-2) notes: half way.');
+  await settled();
+  turn('T-1 is done; PR #7 is ready.');
+  assert.deepEqual(replies(), [['T-1 is done; PR #7 is ready.', 'T-1']]);
+
+  card('T-2');
+  card('T-3');
+  store.pushUpdate('W-2 T-2 "Task" done: Done', true, 'T-2');
+  store.pushUpdate('W-3 T-3 "Task" failed: It broke.', true, 'T-3');
+  await settled();
+  turn('Two reports.');
+  assert.deepEqual(replies()[1], ['Two reports.', null]);
+});
+
+test('a message the user files under a report, and the answer to it, go under that card; a plain message does not', async () => {
+  card('T-1');
+  dispatcher.send('[Reply to W-1]' + String.fromCharCode(10) + '> Task: Done' + String.fromCharCode(10, 10) + 'Why?', [], 'T-1');
+  assert.equal(store.data.chat.find((c) => c.kind === 'user')?.replyTo, 'T-1');
+  turn('Because.');
+  dispatcher.send('Something else.');
+  turn('Sure.');
+  assert.deepEqual(replies(), [['Because.', 'T-1'], ['Sure.', null]]);
+  // No such card in the chat: a plain message.
+  dispatcher.send('About T-9?', [], 'T-9');
+  assert.equal(store.data.chat.filter((c) => c.kind === 'user').pop()?.replyTo, undefined);
+});
+
+test("the user's message to the Dispatcher's turn in progress: its answer goes where the message was filed", async () => {
+  card('T-1');
+  dispatcher.send('Hello');
+  dispatcher.send('And T-1?', [], 'T-1');
+  const s = dispatcher.session as unknown as { handle(m: unknown): void; ev: { onTurnEnd(r: { queued: boolean }): void } };
+  s.handle({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Hi.' }] } });
+  s.ev.onTurnEnd({ queued: true });
+  s.handle({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'T-1 is fine.' }] } });
+  assert.deepEqual(replies(), [['Hi.', null], ['T-1 is fine.', 'T-1']]);
 });
