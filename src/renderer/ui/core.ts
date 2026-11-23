@@ -1,6 +1,7 @@
 // What every screen shares: the state the window holds, the bridge to the main process, text, small HTML helpers, scrolling, paging and sound.
 import { NOTES } from '../../shared/sounds';
 import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
+import type { SideView } from '../../shared/side';
 import { tr, type Key } from '../../shared/i18n';
 import { modelLabel as labelFor } from '../../shared/models';
 import { linkify } from '../../shared/linkify';
@@ -8,6 +9,7 @@ import { mdHtml } from '../../shared/markdown';
 import { type DiffNote } from '../../shared/diffComment';
 import { type Issue } from '../../shared/issues';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../../shared/reply';
+import { SIDE_WHO } from '../../shared/side';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { restoreScroll, saveScroll } from '../../shared/scroll';
 import { firstPage } from '../../shared/paging';
@@ -23,6 +25,7 @@ declare global {
       call<T = any>(channel: string, ...args: unknown[]): Promise<T>;
       onState(fn: (s: AppState) => void): void;
       onWorkerLog(fn: (id: string, item: WorkerLogItem) => void): void;
+      onSideState(fn: (v: SideView) => void): void;
       onDecisionAlert(fn: (loud: boolean) => void): void;
       /** A task-end notification was clicked: show that task's result card. */
       onOpenResult(fn: (taskId: string) => void): void;
@@ -196,13 +199,16 @@ export function replyable(bubble: string, box: 'chat' | 'ws', who: string, text:
   return `<div class="bline">${bubble}<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}"${task ? ` data-task="${esc(task)}"` : ''} title="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button></div>`;
 }
 
+/** Whose message a quote is from, as shown: a side question's answer reads as one. */
+const whoLabel = (who: string) => (who === SIDE_WHO ? t('sq.from') : who);
+
 /** The chip above a composer's text: whose message is being answered, its first words, and a way out. */
 export function renderReply(box: 'chat' | 'ws') {
   if (box === 'ws' && ui.reply.ws && ui.reply.ws.wid !== ui.wSel) ui.reply.ws = null;
   const r = ui.reply[box];
   const el = $(box === 'chat' ? '#chat-reply' : '#ws-reply');
   el.hidden = !r;
-  el.innerHTML = r ? `${sym('s-reply')}<b>${esc(r.who)}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" title="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
+  el.innerHTML = r ? `${sym(r.icon ?? 's-reply')}<b>${esc(whoLabel(r.who))}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" title="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
 }
 
 /** The text to send from a composer, with the quote on top while a reply is open. The reply stays until the send succeeds. */
@@ -228,7 +234,7 @@ export function md(src: string) {
 /** A user message: plain text, with the "[Attached files]" block shown as file chips. */
 export function userText(text: string): string {
   const reply = parseReply(text);
-  if (reply) return `<span class="quote"><b>${esc(reply.who)}</b><span>${esc(reply.quote)}</span></span>${userText(reply.body)}`;
+  if (reply) return `<span class="quote"><b>${esc(whoLabel(reply.who))}</b><span>${esc(reply.quote)}</span></span>${userText(reply.body)}`;
   const i = text.indexOf('\n\n[Attached files]\n');
   if (i < 0) return linkify(esc(text));
   const files = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));

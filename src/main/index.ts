@@ -16,6 +16,7 @@ import { workers } from './agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
 import { runs } from './runs';
 import { shell as shellRuns } from './shell';
+import { side } from './side';
 import { automations } from './automations';
 import { PICK_MESSAGE, canPick } from '../shared/compare';
 import type { AutoTrigger } from '../shared/types';
@@ -241,6 +242,11 @@ function handle(channel: string, fn: (...args: any[]) => any) {
 
 function registerIpc() {
   handle('state', () => snapshot());
+  // A side question: its own session and thread, never the Dispatcher's (main/side.ts).
+  handle('side:send', (text: string, model?: string | null, repo?: string | null) => side.send(text, model, repo));
+  handle('side:stop', () => side.stop());
+  handle('side:reset', () => side.reset());
+  handle('side:state', () => side.state());
   handle('chat:send', (text: string, files?: string[], replyTo?: string | null) => dispatcher.send(text, files ?? [], typeof replyTo === 'string' ? replyTo : null));
   handle('chat:stop', () => dispatcher.stop());
   // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
@@ -500,6 +506,7 @@ async function boot() {
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
+  side.onChange((v) => win?.webContents.send('side-state', v));
   // Worker news worth a turn of its own: the Dispatcher starts one by itself.
   store.on('wake', () => dispatcher.wake());
   onDecisionCreated((d) => {
@@ -557,6 +564,7 @@ else {
     destroyQuick();
     runs.stopAll();
     shellRuns.stopAll();
+    side.reset();
     automations.stop();
     workers.closeAll();
     dispatcher.close();

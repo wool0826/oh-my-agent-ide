@@ -1346,3 +1346,42 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 /* Read by screen readers only. */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .mini .err { color: var(--danger-text); overflow-wrap: anywhere; white-space: normal; }
+
+/* Side question (ui/side.ts): its own floating surface over the chat, with its own thread and meter. */
+.sq { position: absolute; right: var(--space-16); bottom: 88px; z-index: calc(var(--z-composer) + 1); width: min(420px, calc(100% - 2 * var(--space-16))); max-height: calc(100% - 120px); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-overlay-solid, var(--surface-overlay)); box-shadow: var(--rim-strong), var(--shadow-4); overflow: hidden; animation: upop-in var(--dur-base) var(--ease-standard); }
+.sq[hidden] { display: none; }
+.win.ins-min .sq { right: calc(var(--panel-inset) + var(--space-10) + var(--control-lg) + var(--space-8)); }
+.sq > header { flex: none; display: flex; align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
+.sq > header > .sym { font-size: var(--icon-md); color: var(--text-secondary); }
+.sq > header b { font-size: var(--fs-caption); font-weight: 600; }
+.sq > header .gap { flex: 1; }
+.sq-wall { display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px var(--space-8) 1px var(--space-6); border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); font-size: var(--fs-caption2); font-weight: 600; white-space: nowrap; }
+.sq-wall .sym { font-size: var(--icon-sm); }
+.sq-ib { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+.sq-ib svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.sq-ib:hover { background: var(--text-secondary); color: var(--bg-canvas); }
+.sq-ib:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.sq-t { flex: 1 1 auto; min-height: 72px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-10) var(--space-12) var(--space-6); }
+.sq-t .bub { max-width: 92%; font-size: var(--fs-caption); }
+.sq-m { align-self: center; display: flex; align-items: center; gap: var(--space-4); font-size: var(--fs-caption2); color: var(--text-tertiary); white-space: nowrap; }
+.sq-pick { display: inline-flex; align-items: center; gap: 2px; padding: 1px var(--space-6); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.sq-pick:hover, .sq-pick[aria-expanded="true"] { background: var(--surface-hover); color: var(--text-primary); }
+.sq-pick:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.sq-pick .chev { width: 10px; height: 10px; }
+.sq-busy { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-caption2); color: var(--text-secondary); }
+.sq-spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+.sq-err { display: flex; gap: var(--space-6); align-items: flex-start; font-size: var(--fs-caption); color: var(--danger-text); }
+.sq-err .sym { flex: none; margin-top: 2px; }
+.sq-a { display: flex; flex-wrap: wrap; gap: var(--space-6); }
+.sq-a .btn { padding: 2px var(--space-10); font-size: var(--fs-caption2); }
+.sq .composer.sq-c { position: static; left: auto; right: auto; bottom: auto; flex: none; margin: var(--space-4) var(--space-8) var(--space-8); box-shadow: var(--rim); background: var(--surface-sunken); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.sq .composer.sq-c .send { width: var(--control-md); height: var(--control-md); }
+.sq .composer.sq-c .ctx { align-self: center; }
+.sqb { position: relative; flex: none; align-self: flex-end; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+.sqb .sym { font-size: var(--icon-md); }
+.sqb:hover { color: var(--text-primary); background: var(--surface-hover); }
+.sqb.on { background: var(--surface-selected); color: var(--text-primary); box-shadow: var(--rim); }
+.sqb i { position: absolute; right: 0; top: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: var(--radius-full); background: var(--neutral-soft); box-shadow: var(--rim); color: var(--text-primary); font-style: normal; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; }
+.sqb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+@media (prefers-reduced-motion: reduce) { .sq { animation: none; } .sq-spin { animation: none; } }
+@media (forced-colors: active) { .sq { border: 1px solid CanvasText; } .sqb.on { outline: 2px solid Highlight; } }

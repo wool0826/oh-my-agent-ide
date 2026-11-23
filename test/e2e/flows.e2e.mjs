@@ -147,6 +147,30 @@ flow('with one slot, the second task waits and starts when the first ends', { se
   assert.equal(s.tasks.length, 2);
 });
 
+flow('a side question is asked and answered in its own panel, and reaches the Dispatcher only when sent over', {}, async (app) => {
+  const before = await app.state();
+  // Ctrl+J from the chat opens the panel with its input focused.
+  await app.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ', key: 'j', ctrlKey: true, bubbles: true, cancelable: true })); return 1;");
+  await app.until("!document.querySelector('#sq').hidden && document.activeElement?.id === 'sq-input'", 'the side question panel, focused');
+  await app.evaluate("const i = document.querySelector('#sq-input'); i.value = 'What is 2 + 2?\\n@fake tokens 2000\\n@fake say It is 4.'; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#sq-form').requestSubmit(); return 1;");
+  await app.until("document.querySelector('#sq-thread .bub.wk')?.innerText.includes('It is 4.')", 'the answer in the panel');
+  await app.until("document.querySelector('#sq-ctx').innerText.includes('2K')", 'its own context meter');
+  // The Dispatcher heard nothing: its chat and its context are as they were.
+  const after = await app.state();
+  assert.equal(after.chat.length, before.chat.length);
+  assert.equal(after.dispatcher.contextTokens, before.dispatcher.contextTokens);
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('It is 4.')"), false);
+  // "Send to the Dispatcher": the answer as a quote chip on the main composer; the panel goes behind its button.
+  await app.click('#sq [data-action="sq-to-dispatcher"]');
+  await app.until("!document.querySelector('#chat-reply').hidden && document.querySelector('#sq').hidden", 'the chip, and the panel minimised');
+  const chip = await app.evaluate("const c = document.querySelector('#chat-reply'); return { who: c.querySelector('b').textContent, quote: c.querySelector('span').textContent, count: document.querySelector('#chat-sq i')?.textContent ?? '' };");
+  assert.deepEqual(chip, { who: 'From a side question', quote: 'It is 4.', count: '2' });
+  // Close forgets the thread.
+  await app.click('#chat-sq');
+  await app.click('#sq [data-action="sq-close"]');
+  await app.until("document.querySelector('#sq').hidden && !document.querySelector('#chat-sq i')", 'the thread forgotten');
+});
+
 flow('a code task opens a PR, which is merged from the app', { repos: ['demo'] }, async (app) => {
   const url = 'https://github.com/o/demo/pull/1';
   await app.say(`@fake task demo Add a line\n@@fake write README.md # Demo\\nA line.\n@@fake commit Add a line\n@@fake pr ${url}\n@@fake result Added the line.`);

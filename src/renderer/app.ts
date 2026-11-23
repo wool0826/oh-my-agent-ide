@@ -25,6 +25,7 @@ import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
+import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 import { canStop } from '../shared/canStop';
 
@@ -54,7 +55,7 @@ export function renderAll(force = false) {
   renderUsage();
   renderMemSync();
   if (ui.cancelAsk) renderCancelDialog();
-  if (ui.view === 'chat') { renderChat(force); renderChatInspector(); }
+  if (ui.view === 'chat') { renderChat(force); renderChatInspector(); renderSide(); }
   if (ui.view === 'worker') { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
   if (ui.view === 'repo') renderRepos();
   if (ui.view === 'memory' && force) renderMemory();
@@ -121,6 +122,13 @@ export async function act(el: HTMLElement, e: Event) {
       if (r) void tryCall('shell:run', r.cmd, r.repo || null).then((x) => { if (!x.ok) toast(x.error, true); });
       break;
     }
+    case 'sq-toggle': toggleSide(); break;
+    case 'sq-min': minimiseSide(); break;
+    case 'sq-close': void closeSide(); break;
+    case 'sq-model': pickSideModel(el); break;
+    case 'sq-folder': pickSideFolder(el); break;
+    case 'sq-to-dispatcher': sideToDispatcher(); break;
+    case 'sq-memo': void sideToMemo(); break;
     case 'reply-cancel': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
       ui.reply[box] = null;
@@ -766,6 +774,13 @@ export function init() {
     if (cmdk.open) { paletteKeys(e); return; }
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'Slash') { e.preventDefault(); if (shortcutsOpen()) closeShortcuts(); else if (!ui.settingsShown) openShortcuts(); return; }
+    // Ctrl/Cmd+J: the side question, over the chat. Again from inside it, it goes back behind its button.
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !ui.settingsShown) {
+      e.preventDefault();
+      if (sq.open && $('#sq').contains(document.activeElement)) minimiseSide();
+      else { if (ui.view !== 'chat') go({ view: 'chat' }); openSide(); }
+      return;
+    }
     // A dialog that asks keeps the keyboard inside it: Tab goes round its own controls.
     if (e.key === 'Tab') {
       // A dialog over the Settings sheet first, then the sheet itself (L14).
@@ -953,6 +968,9 @@ export function init() {
     if (firstSetup && !ui.settingsShown) openSettings('accounts');
     else if (ui.settingsShown && accChanged && !langChanged) openSettings();
   });
+  bindSide();
+  ide.onSideState(setSideView);
+  void call('side:state').then((v) => { if (v) setSideView(v); });
   ide.onWorkerLog((id, item) => {
     const l = ui.logs.get(id);
     if (l) l.push(item);
