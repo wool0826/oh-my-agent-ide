@@ -19,7 +19,6 @@ import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closePalette, Cmd, cmdk, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
-import { watchSizes } from './ui/fit';
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, hideUsagePop, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
@@ -688,10 +687,10 @@ export function init() {
   ide.onNav((dir) => navStep(dir, 'os'));
   // Liquid Glass pills follow every change of selection, however the control was updated.
   // Controls that follow their width (pills, compact tabs and button rows) are picked up as they appear.
-  new MutationObserver(() => { glideSoon(true); watchSizes(); }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-checked', 'aria-selected', 'hidden'] });
+  new MutationObserver(() => glideSoon(true)).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-checked', 'aria-selected', 'hidden'] });
   window.addEventListener('resize', () => glideAll(false));
   void document.fonts.ready.then(() => glideAll(false));
-  watchSizes();
+  glideAll(false);
   void loadModels('cached');
   $('#sheet').addEventListener('scroll', () => closePop(), true);
   const usage = $('#usage');

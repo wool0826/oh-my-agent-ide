@@ -8,6 +8,7 @@ import { THEMES, cleanTheme } from '../../shared/theme';
 import { cleanTime } from '../../shared/notifyRules';
 import { DECISION_SOUNDS, DONE_SOUNDS } from '../../shared/sounds';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clampWaitSlot } from '../../shared/slots';
+import { fitAll } from './fit';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, clampFontSize, fontStack, normalizeFontFamily } from '../../shared/font';
 import { away } from './chat';
 import { closePop, installedFonts, markFont, openPop, Opt, pop } from './controls';
@@ -145,6 +146,7 @@ export function syncSegs(root: ParentNode = document) {
  */
 
 export function glideAll(animate: boolean) {
+  fitAll();
   document.querySelectorAll<HTMLElement>('.seg, .segc').forEach((c) => glide(c, animate));
 }
 

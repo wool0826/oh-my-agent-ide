@@ -34,9 +34,14 @@ const sizes = new ResizeObserver((entries) => {
   }
 });
 
-/** Start following every control on the page that is not followed yet; a new one is measured at once. */
-export function watchSizes() {
+/**
+ * Follow every control on the page that is not followed yet (a new one is measured at once), and measure the rows
+ * again: a new text size or font changes what fits without changing the row's own width. Called once a frame at most,
+ * from glideAll.
+ */
+export function fitAll() {
   document.querySelectorAll<HTMLElement>('.seg, .segc, [data-fit]').forEach((el) => {
+    if (el.dataset.fit) fit(el);
     if (watched.has(el)) return;
     watched.add(el);
     sizes.observe(el);

@@ -363,7 +363,7 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 
 /* The chat view's right sidebar has two tabs: the inbox, and the user's memos. */
 .ins-tabs { display: flex; flex: none; flex-wrap: nowrap; width: 100%; max-width: 360px; margin-inline: auto; }
-.ins-tabs button { flex: 1; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); }
+.ins-tabs button { position: relative; flex: 1; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); }
 /* The labels do not fit (data-fitted, set by ui/fit.ts): the tabs not chosen show their icon; the label stays for screen readers. */
 .ins-tabs .ti { display: none; flex: none; font-size: var(--fs-body); }
 .ins-tabs[data-fitted] button:not(.on) { flex: none; padding: 0 var(--space-10); }
