@@ -442,4 +442,3 @@ flow('a state update that changes nothing in a panel leaves the panel as it is',
   await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })); await window.ide.call('preflight:run'); await new Promise((r) => setTimeout(r, 500)); return 1;");
   assert.deepEqual(await app.evaluate(kept), [false, false]);
 });
-
