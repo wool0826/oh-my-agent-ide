@@ -497,7 +497,7 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .linkbtn:focus-visible { outline: var(--focus-outline); outline-offset: 1px; border-radius: var(--radius-xs); }
 
 /* The chat view's right sidebar has two tabs: the inbox, and the user's memos. */
-.ins-tabs { display: flex; flex: none; flex-wrap: nowrap; width: 100%; max-width: 360px; margin-inline: auto; }
+.segc.ins-tabs { display: flex; flex: none; flex-wrap: nowrap; width: 100%; max-width: 360px; margin-inline: auto; }
 /* Each tab is as wide as its label plus an equal share of the rest, so the icons come only when the labels together do not fit. */
 .ins-tabs button { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); }
 /* The labels do not fit (data-fitted, set by ui/fit.ts): the tabs not chosen show their icon; the label stays for screen readers. */
