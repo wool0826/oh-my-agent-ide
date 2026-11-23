@@ -61,7 +61,8 @@ export function shellRepo() {
  */
 export function shellKeys(e: KeyboardEvent, input: HTMLTextAreaElement): boolean {
   if (!ui.shell) return false;
-  if (pop.el) return false;
+  // A key that ends or edits an IME composition (Korean, Japanese) is the composition's, not the mode's.
+  if (pop.el || e.isComposing || e.keyCode === 229) return false;
   if (e.key === 'Escape' || (e.key === 'Backspace' && !input.value && input.selectionStart === 0)) {
     e.preventDefault();
     e.stopPropagation();

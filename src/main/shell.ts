@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import { store } from './store';
 import { ghEnv } from './repos';
 import { paths } from './paths';
@@ -15,8 +16,11 @@ import type { ChatItem, ShellRun } from '../shared/types';
  * home or a registered repository's checkout, with no Worker, slot or permission card. Each run is a chat item that
  * keeps the end of its output; when it ends, that end goes to the Dispatcher with its next turn (no turn of its own).
  */
-/** PowerShell ends with 1 for any failed line; this hands back a native command's own exit code instead. */
-export const psLine = (line: string) => `${line}\n$ok = $?; if ($ok) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }`;
+/**
+ * The line as PowerShell runs it: output in UTF-8 rather than the console's code page, and a native command's own
+ * exit code rather than the 1 PowerShell ends with for any failed line.
+ */
+export const psLine = (line: string) => `[Console]::OutputEncoding = [Text.Encoding]::UTF8\n${line}\n$ok = $?; if ($ok) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }`;
 
 class Shell {
   private procs = new Map<string, { proc: ChildProcess; out: string }>();
@@ -45,15 +49,21 @@ class Shell {
     let breaks = 0;
     const count = () => breaks + (entry.out && !entry.out.endsWith('\n') ? 1 : 0);
     this.procs.set(item.id, entry);
-    const keep = (d: Buffer) => {
-      entry.out = addOutput(entry.out, d.toString());
+    const keep = (text: string) => {
+      if (!text) return;
+      entry.out = addOutput(entry.out, text);
       run.out = tailLines(entry.out);
-      breaks += (d.toString().match(/\n/g) ?? []).length;
+      // Counted as kept: without terminal codes, with "\r\n" and "\r" as one break.
+      breaks += (addOutput('', text, Infinity).match(/\n/g) ?? []).length;
       run.lines = count();
       this.pushSoon();
     };
-    proc.stdout?.on('data', keep);
-    proc.stderr?.on('data', keep);
+    // One decoder for each stream, so a character split between chunks stays whole.
+    for (const stream of [proc.stdout, proc.stderr]) {
+      const dec = new StringDecoder('utf8');
+      stream?.on('data', (d: Buffer) => keep(dec.write(d)));
+      stream?.on('end', () => keep(dec.end()));
+    }
     const started = Date.now();
     let ended = false;
     const end = (code: number | null, note = '') => {
@@ -86,6 +96,12 @@ class Shell {
     if (!e || !item?.shell?.running) return;
     item.shell.stopped = true;
     kill(e.proc);
+    // A command that ignores the stop signal is ended for good a little later.
+    if (process.platform !== 'win32') {
+      setTimeout(() => {
+        if (this.procs.get(id) === e && e.proc.pid) try { process.kill(-e.proc.pid, 'SIGKILL'); } catch { /* gone */ }
+      }, 3000).unref();
+    }
     store.changed();
   }
 
