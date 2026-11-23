@@ -699,6 +699,8 @@ const en = {
   'acc.err.token': 'Paste the token starting with sk-ant- that claude setup-token printed.',
   'acc.err.usageScope': 'This token cannot read usage. Limit events during work fill it in instead.',
   'acc.err.usage': 'Usage lookup failed ({msg})',
+  'acc.err.usageProbe': 'Usage could not be read from a model request ({msg})',
+  'acc.err.noHeaders': 'no usage in the answer',
 
   // permissions
   'perm.bash': 'Run this command?',
@@ -1556,6 +1558,8 @@ const ko: Record<Key, string> = {
   'acc.err.token': 'claude setup-token으로 받은 sk-ant-로 시작하는 토큰을 붙여 넣어 주세요.',
   'acc.err.usageScope': '사용량 조회 권한이 없는 토큰이에요. 작업 중 들어오는 한도 정보로 대신 표시합니다.',
   'acc.err.usage': '사용량 조회 실패 ({msg})',
+  'acc.err.usageProbe': '모델 요청으로 사용량을 읽지 못했어요 ({msg})',
+  'acc.err.noHeaders': '응답에 사용량 없음',
 
   'perm.bash': '이 명령을 실행해도 될까요?',
   'perm.tool': '{tool} 실행을 허용할까요?',

@@ -16,7 +16,7 @@ const MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
 const PROBE_MODEL = 'claude-haiku-5-5';
 
 /** What one read of a token account came to. */
-type Read = { ok: true } | { ok: false; status: number; retryAfter?: string | null };
+type Read = { ok: true } | { ok: false; status: number; retryAfter?: string | null; probe?: boolean };
 
 class Accounts extends EventEmitter {
   /** The rounds of reading usage, for the popover's foot. */
@@ -56,7 +56,8 @@ class Accounts extends EventEmitter {
     s.accounts.push(acc);
     saveSettings();
     this.emit('changed');
-    void this.refresh(acc.id);
+    // As a round, so an account added while one runs is not read twice.
+    void this.refreshAll();
     return acc.id;
   }
 
@@ -274,6 +275,8 @@ class Accounts extends EventEmitter {
           if (r.ok) a.usageProbe = true;
         }
         if (r.ok) { a.lastError = null; continue; }
+        // A probe that failed sends the next round to the endpoint again: the token may have been given its scope.
+        if (r.probe && r.status !== 429) a.usageProbe = false;
         if (r.status === 429) {
           // The server's own request limit, not the account's usage limit.
           // Keep the last values and back off (Retry-After, else 15 minutes).
@@ -286,7 +289,10 @@ class Accounts extends EventEmitter {
         }
         a.lastError = r.status === 401 || r.status === 403
           ? t('acc.err.usageScope')
-          : t('acc.err.usage', { msg: String(r.status) });
+          : r.probe
+            // The model request itself failed (an unknown model, or an answer without the usage headers).
+            ? t('acc.err.usageProbe', { msg: r.status ? String(r.status) : t('acc.err.noHeaders') })
+            : t('acc.err.usage', { msg: String(r.status) });
       } catch (e) {
         a.lastError = t('acc.err.usage', { msg: (e as Error).message });
         log.warn('usage refresh', a.label, (e as Error).message);
@@ -337,7 +343,7 @@ class Accounts extends EventEmitter {
     // The answer itself is not needed.
     void res.body?.cancel().catch(() => {});
     const u = readUnifiedHeaders((n) => res.headers.get(n));
-    if (!u || (!u.fiveHour && !u.sevenDay && !u.rejected)) return { ok: false, status: res.ok ? 502 : res.status, retryAfter: res.headers.get('retry-after') };
+    if (!u || (!u.fiveHour && !u.sevenDay && !u.rejected)) return { ok: false, status: res.ok ? 0 : res.status, retryAfter: res.headers.get('retry-after'), probe: true };
     if (u.fiveHour) a.fiveHour = u.fiveHour;
     if (u.sevenDay) a.sevenDay = u.sevenDay;
     a.usageUpdatedAt = nowIso();
