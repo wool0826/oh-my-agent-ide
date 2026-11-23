@@ -686,9 +686,11 @@ export function init() {
   });
   ide.onNav((dir) => navStep(dir, 'os'));
   // Liquid Glass pills follow every change of selection, however the control was updated.
+  // Controls that follow their width (pills, compact tabs and button rows) are picked up as they appear.
   new MutationObserver(() => glideSoon(true)).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-checked', 'aria-selected', 'hidden'] });
   window.addEventListener('resize', () => glideAll(false));
   void document.fonts.ready.then(() => glideAll(false));
+  glideAll(false);
   void loadModels('cached');
   $('#sheet').addEventListener('scroll', () => closePop(), true);
   const usage = $('#usage');
