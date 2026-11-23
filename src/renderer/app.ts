@@ -96,12 +96,15 @@ export async function act(el: HTMLElement, e: Event) {
     case 'side-toggle': togglePanel('side'); break;
     case 'reply': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
-      const r = { who: el.dataset.who ?? '', quote: el.dataset.quote ?? '' };
+      const r = { who: el.dataset.who ?? '', quote: el.dataset.quote ?? '', ...(box === 'chat' && el.dataset.task ? { task: el.dataset.task } : {}) };
       if (box === 'ws') ui.reply.ws = { ...r, wid: ui.wSel ?? '' }; else ui.reply.chat = r;
       renderReply(box);
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
       break;
     }
+    // The chip over a late reply: back to the report it answers.
+    // A task can have several cards (a result, then a follow-up): the one the group answers is the last one above it.
+    case 'goto-report': flashCard([...document.querySelectorAll<HTMLElement>(`#chat-thread .attach[data-task="${CSS.escape(id)}"]`)].filter((c) => c.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop() ?? null); break;
     case 'reply-cancel': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
       ui.reply[box] = null;
@@ -817,7 +820,7 @@ export function init() {
   });
 
   bindComposer('chat', '#chat-form', '#chat-input', async (text, files) => {
-    const r = await tryCall('chat:send', replyText('chat', text), files);
+    const r = await tryCall('chat:send', replyText('chat', text), files, ui.reply.chat?.task ?? null);
     return r.ok ? null : r.error;
   });
   // Text selected in a conversation is copied when the mouse is let go, as in a terminal; Ctrl/Cmd+C still works.

@@ -168,6 +168,22 @@ flow('a merged PR fires the automation set for merges', { repos: ['demo'] }, asy
   await app.until("document.querySelector('#chat-thread').innerText.includes('The automation ran.')", "the automation's turn in the chat");
 });
 
+flow("a reply to a Worker's report goes under its card, and so does the Dispatcher's answer", {}, async (app) => {
+  // The Worker reports after the Dispatcher's turn has ended, so nothing comes between the card and the reply.
+  await app.say('@fake task - Write the notes\n@@fake wait 800\n@@fake result Wrote the notes.');
+  const link = '#chat-thread .attach[data-task] [data-action="reply"]';
+  await app.until(`!!document.querySelector(${JSON.stringify(link)})`, 'Reply on the result card');
+  await app.click(link);
+  await app.until("!document.querySelector('#chat-reply').hidden", 'the reply chip on the composer');
+  await app.evaluate("const i = document.querySelector('#chat-input'); i.value = 'Why so short?\\n@fake say The notes cover one change.'; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#chat-form').requestSubmit(); return 1;");
+  await app.until("document.querySelector('#chat-thread .rth')?.innerText.includes('The notes cover one change.')", "the Dispatcher's answer under the card");
+  // One step in, right after the card: the user's question with its branch across, then the answer.
+  const shape = await app.evaluate("const g = document.querySelector('#chat-thread .rth'); let p = g.previousElementSibling; while (p && !p.matches('.attach, .bline, .bub, .event')) p = p.previousElementSibling; return { late: g.classList.contains('late'), after: p?.dataset.task ?? null, rows: [...g.querySelectorAll(':scope > .rth-r')].map((r) => r.classList.contains('me') ? 'me' : 'ai'), nested: !!g.querySelector('.rth .rth') };");
+  assert.deepEqual(shape, { late: false, after: 'T-0001', rows: ['me', 'ai'], nested: false });
+  const chat = (await app.state()).chat;
+  assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001']]);
+});
+
 flow('the palette finds a finished task, and coming back shows what happened', {}, async (app) => {
   await app.say('@fake task - Tidy the changelog\n@@fake result Tidied the changelog.');
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');

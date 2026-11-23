@@ -179,10 +179,10 @@ export function inline(s: unknown) {
 }
 
 /** An agent's bubble with the Reply button beside it. `box` is the composer the reply is written in. */
-export function replyable(bubble: string, box: 'chat' | 'ws', who: string, text: string) {
+export function replyable(bubble: string, box: 'chat' | 'ws', who: string, text: string, task?: string) {
   const quote = replyExcerpt(text);
   if (!quote) return bubble;
-  return `<div class="bline">${bubble}<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}" title="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button></div>`;
+  return `<div class="bline">${bubble}<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}"${task ? ` data-task="${esc(task)}"` : ''} title="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button></div>`;
 }
 
 /** The chip above a composer's text: whose message is being answered, its first words, and a way out. */

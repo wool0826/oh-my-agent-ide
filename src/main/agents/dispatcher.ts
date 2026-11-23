@@ -22,6 +22,7 @@ import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today, uid } from '../util';
 import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
 import { hasSpend } from '../../shared/spend';
+import { turnReplyTo } from '../../shared/thread';
 import { sharedMemoDigest } from '../../shared/memos';
 import { describeCancel, isQueued } from '../../shared/queue';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
@@ -422,6 +423,8 @@ class Dispatcher {
   statusText = '';
   /** Messages that came while every account was held by a usage limit; sent when the first one resets. */
   private held: string[] = [];
+  /** The report the held messages answer (see replyTo); undefined while nothing is held. */
+  private heldReply: string | null | undefined = undefined;
   /** The system prompt changed during a turn: the next message starts a fresh session. */
   private stale = false;
   /** The end of the earlier conversation, sent with the first message of a session that replaced it (open()). */
@@ -444,6 +447,11 @@ class Dispatcher {
 
   get busy() { return !!this.session?.busy; }
 
+  /** The report the turn in progress answers: its messages go under that card in the chat (shared/thread.ts). */
+  private replyTo: string | null = null;
+  /** The same for input queued behind the turn in progress; undefined while nothing is queued. */
+  private queuedReply: string | null | undefined = undefined;
+
   /** What the Dispatcher's session reports, whichever agent runs it. */
   private sessionEvents(): SessionEvents {
     const d = store.data.dispatcher;
@@ -451,10 +459,15 @@ class Dispatcher {
       onInit: (sid) => { d.sessionId = sid; store.changed(); },
       onAccount: (id) => { d.accountId = id; store.changed(); },
       // An automatic turn with nothing to say answers NOOP, which is not shown.
-      onText: (text) => { if (!(this.auto && NOOP_RE.test(text))) store.chat('dispatcher', text); },
+      onText: (text) => { if (!(this.auto && NOOP_RE.test(text))) store.chat('dispatcher', text, undefined, this.replyTo); },
       onTurnEnd: (r) => {
-        // With more input queued, another turn follows.
-        if (r.queued) return;
+        // With more input queued, another turn follows: it answers what was queued.
+        if (r.queued) {
+          if (this.queuedReply !== undefined) { this.replyTo = this.queuedReply; this.queuedReply = undefined; }
+          return;
+        }
+        this.replyTo = null;
+        this.queuedReply = undefined;
         if (!r.internal) {
           if (this.auto && this.autoActed) this.autoTurns += 1;
           this.auto = false;
@@ -485,10 +498,12 @@ class Dispatcher {
         if (stopped) {
           this.stopping = false;
           store.chat('event', t('ev.dispatcherStopped'));
+          this.queuedReply = undefined;
           this.auto = false;
           this.autoActed = false;
         } else if (st === 'error') {
           store.chat('error', t('err.dispatcher', { msg: text }));
+          this.queuedReply = undefined;
           // A session that died mid-turn ends no turn, so an automatic one is over here.
           this.auto = false;
           this.autoActed = false;
@@ -652,20 +667,22 @@ class Dispatcher {
   }
 
   /** A message the user typed in the chat, with optional attached file paths. */
-  send(text: string, files: string[] = []) {
+  send(text: string, files: string[] = [], replyTo: string | null = null) {
     const attached = registerAttachments(files);
     const full = text + attachmentBlock(attached);
-    store.chat('user', full);
+    // Only a report still in the chat can be answered; anything else is a plain message.
+    const to = replyTo && store.data.chat.some((c) => c.ref === replyTo && (c.kind === 'result' || c.kind === 'error')) ? replyTo : null;
+    store.chat('user', full, undefined, to);
     this.userSpoke();
     const s = this.open();
     if (!s) {
       if (!accounts.list().length) { store.chat('error', t('err.noAccount')); return; }
-      this.held.push(full);
+      this.hold(full, to);
       store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
       store.changed();
       return;
     }
-    this.deliver(s, [full]);
+    this.deliver(s, [full], to);
   }
 
   /** The user answered a question the Dispatcher posted. */
@@ -673,7 +690,7 @@ class Dispatcher {
     const msg = `[Decision answer] Question: ${question}\nAnswer: ${answer}`;
     this.userSpoke();
     const s = this.open();
-    if (!s) { this.held.push(msg); return; }
+    if (!s) { this.hold(msg, null); return; }
     this.deliver(s, [msg]);
   }
 
@@ -687,8 +704,14 @@ class Dispatcher {
     this.deliver(s, []);
   }
 
+  /** A message waits for a usage limit to reset; the turn that sends it answers the report it was filed under. */
+  private hold(msg: string, to: string | null) {
+    this.held.push(msg);
+    this.heldReply = this.heldReply === undefined || this.heldReply === to ? to : null;
+  }
+
   /** Send messages in one turn, after Worker updates and anything a usage limit held back. */
-  private deliver(s: AgentSession | CodexSession | FakeSession, msgs: string[]) {
+  private deliver(s: AgentSession | CodexSession | FakeSession, msgs: string[], replyTo?: string | null) {
     // A new turn starts: a Stop whose turn ended without a status is not this one's (L4).
     if (!s.busy) this.stopping = false;
     const parts = this.carry ? [this.carry] : [];
@@ -700,6 +723,16 @@ class Dispatcher {
     // Every update goes with this message, so none is left to start a turn for.
     this.wakeDue = false;
     const updates = store.takeUpdates();
+    // A turn the user started answers what they replied to; one Worker news started answers the report that woke it.
+    const reports = store.takeReports();
+    const heldTo = this.heldReply;
+    this.heldReply = undefined;
+    let to: string | null;
+    if (heldTo !== undefined) to = replyTo === undefined || replyTo === heldTo ? heldTo : null;
+    else if (replyTo !== undefined) to = replyTo;
+    else to = this.auto ? turnReplyTo(reports) : null;
+    if (!s.busy) this.replyTo = to;
+    else this.queuedReply = this.queuedReply === undefined || this.queuedReply === to ? to : null;
     const prefix = updates.length ? `[Worker updates]\n${updates.map((u) => `- ${u}`).join('\n')}\n\n` : '';
     s.send(prefix + parts.join('\n\n'));
     store.changed();
@@ -745,6 +778,8 @@ class Dispatcher {
     this.session?.close();
     this.session = null;
     this.stopping = false;
+    this.replyTo = null;
+    this.queuedReply = undefined;
   }
 
   /** After repos, memory or language change, use a fresh system prompt from the next message. */

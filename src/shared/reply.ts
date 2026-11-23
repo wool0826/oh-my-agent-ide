@@ -1,7 +1,8 @@
 // A reply to one message: the quoted message travels at the top of the reply's own text, so the agent reads
 // what is being answered and the UI can show it as a quote, with nothing new in the stored shapes.
 
-export interface Reply { who: string; quote: string }
+/** `task`: the reply answers that task's report card, so it is filed under the card (shared/thread.ts). */
+export interface Reply { who: string; quote: string; task?: string }
 
 /** A quote is a reminder of the message, not a copy of it. */
 export const QUOTE_MAX = 280;
