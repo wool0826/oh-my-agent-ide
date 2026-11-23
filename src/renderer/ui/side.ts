@@ -103,7 +103,8 @@ export async function sideToMemo() {
 function keys(e: KeyboardEvent) {
   if (e.isComposing || e.keyCode === 229) return;
   if (e.key === 'Escape' && !pop.el) { e.preventDefault(); e.stopPropagation(); minimiseSide(); return; }
-  if (e.key === 'Enter' && !e.shiftKey && (e.target as HTMLElement).id === 'sq-input') { e.preventDefault(); void sendSide(); }
+  // Enter only asks: with nothing typed it does nothing, so a stray one never stops an answer (the button does).
+  if (e.key === 'Enter' && !e.shiftKey && (e.target as HTMLElement).id === 'sq-input') { e.preventDefault(); if ((e.target as HTMLTextAreaElement).value.trim()) void sendSide(); }
 }
 
 function fitInput(input: HTMLTextAreaElement) {

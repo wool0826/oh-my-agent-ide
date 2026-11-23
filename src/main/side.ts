@@ -20,6 +20,14 @@ import { addSideItem, SIDE_EMPTY, sideModel, type SideView } from '../shared/sid
 const PROMPT = 'You answer a side question the user asks in Oh My Agent IDE, apart from its Dispatcher and Workers. '
   + 'You can read files and the web; you change nothing and cannot hand out work. Answer directly and briefly, in the language the user writes in.';
 
+/** Read, Glob and Grep stay under `cwd`; the web tools have no path. */
+export function inFolder(cwd: string, tool: string, input: Record<string, unknown>): boolean {
+  const p = tool === 'Read' ? input.file_path : tool === 'Glob' || tool === 'Grep' ? input.path : undefined;
+  if (typeof p !== 'string' || !p) return true;
+  const rel = path.relative(path.resolve(cwd), path.resolve(cwd, p));
+  return !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
 class Side {
   private session: AgentSession | FakeSession | null = null;
   private view: SideView = { ...SIDE_EMPTY };
@@ -71,10 +79,12 @@ class Side {
         accountId: acc.id,
         resume: null,
         tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
-        canUseTool: async (_name, input) => ({ behavior: 'allow', updatedInput: input }),
+        // Files only in its own folder: what it reads cannot be another project's, nor go out through a fetch.
+        canUseTool: async (name, input) => (inFolder(cwd, name, input) ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: `Only files under ${cwd} can be read here.` }),
       }, this.events());
     }
-    this.view = { ...SIDE_EMPTY, model: m, repo: r?.name ?? null };
+    // A session that ended by itself starts again with the thread as it was.
+    this.view = { ...SIDE_EMPTY, items: this.view.items, model: m, repo: r?.name ?? null };
     log.info('side question opened', m, cwd);
   }
 
@@ -86,13 +96,13 @@ class Side {
       onContext: (n) => this.set({ contextTokens: n }),
       onStatus: (st, text) => {
         this.set({ busy: st === 'busy', status: st === 'busy' ? this.view.status : '' });
-        if (st === 'error' && text) this.set({ items: addSideItem(this.view.items, { role: 'error', text }) });
+        if (st === 'error' && text) this.error(text);
       },
       onTurnEnd: (r) => {
-        if (r.isError && r.text && r.text !== 'Interrupted.') this.set({ items: addSideItem(this.view.items, { role: 'error', text: r.text }) });
+        if (r.isError && r.text && r.text !== 'Interrupted.') this.error(r.text);
         if (!r.queued) this.set({ busy: false, status: '' });
       },
-      onLimited: () => this.set({ items: addSideItem(this.view.items, { role: 'error', text: t('sq.err.limited') }) }),
+      onLimited: () => this.error(t('sq.err.limited')),
     };
     // Every handler is dropped once this session is not the side question's any more.
     for (const k of Object.keys(ev) as (keyof SessionEvents)[]) {
@@ -100,6 +110,13 @@ class Side {
       (ev as Record<string, unknown>)[k] = (...a: unknown[]) => { if (gen === this.gen) fn(...a); };
     }
     return ev;
+  }
+
+  /** A failure, said once: a session can report the same one as its status and as its turn's end. */
+  private error(text: string) {
+    const last = this.view.items[this.view.items.length - 1];
+    if (last?.role === 'error' && last.text === text) return;
+    this.set({ items: addSideItem(this.view.items, { role: 'error', text }) });
   }
 
   private set(p: Partial<SideView>) {

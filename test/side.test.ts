@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addSideItem, lastAnswer, sideModel, sideReply, SIDE_QUOTE_MAX, SIDE_WHO, type SideItem } from '../src/shared/side';
 import { parseReply, QUOTE_MAX, withReply } from '../src/shared/reply';
+import { inFolder } from '../src/main/side';
+import path from 'node:path';
 
 test('an answer sent to the Dispatcher goes as a quote from the side question, above what the user writes', () => {
   const text = withReply(sideReply('rebase --onto moves a range of commits.\n\nCherry-pick copies them.'), 'Use this for W-03.');
@@ -44,4 +46,14 @@ test('it starts on the newest Sonnet the accounts have, else the newest Claude m
   assert.equal(sideModel([m('claude-opus-5-5', '2026-09'), m('claude-sonnet-5-0', '2026-03'), m('claude-sonnet-5-5', '2026-08')]), 'claude-sonnet-5-5');
   assert.equal(sideModel([m('claude-opus-5-5', '2026-09'), m('gpt-6', '2026-10', 'chatgpt')]), 'claude-opus-5-5');
   assert.equal(sideModel([]), 'claude-sonnet-5-5');
+});
+
+test('its file tools read only under its own folder; the web tools are not about files', () => {
+  const cwd = path.resolve('/work/shop');
+  assert.equal(inFolder(cwd, 'Read', { file_path: path.join(cwd, 'src', 'a.ts') }), true);
+  assert.equal(inFolder(cwd, 'Read', { file_path: 'src/a.ts' }), true);
+  assert.equal(inFolder(cwd, 'Read', { file_path: path.resolve('/home/me/.ssh/id_rsa') }), false);
+  assert.equal(inFolder(cwd, 'Grep', { pattern: 'x', path: '../other' }), false);
+  assert.equal(inFolder(cwd, 'Glob', { pattern: '**/*.ts' }), true);
+  assert.equal(inFolder(cwd, 'WebFetch', { url: 'https://example.com' }), true);
 });
