@@ -199,7 +199,6 @@ flow('a merged PR fires the automation set for merges', { repos: ['demo'] }, asy
   await app.until("document.querySelector('#chat-thread').innerText.includes('The automation ran.')", "the automation's turn in the chat");
 });
 
-<<<<<<< HEAD
 flow("a reply to a Worker's report goes under its card, and so does the Dispatcher's answer", {}, async (app) => {
   // The Worker reports after the Dispatcher's turn has ended, so nothing comes between the card and the reply.
   await app.say('@fake task - Write the notes\n@@fake wait 800\n@@fake result Wrote the notes.');
@@ -214,7 +213,8 @@ flow("a reply to a Worker's report goes under its card, and so does the Dispatch
   assert.deepEqual(shape, { late: false, after: 'T-0001', rows: ['me', 'ai'], nested: false });
   const chat = (await app.state()).chat;
   assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001']]);
-=======
+});
+
 flow('a line run with ! shows its output in the chat, and the Dispatcher gets it with its next turn', {}, async (app) => {
   const typeIn = (value) => app.evaluate(`const i = document.querySelector('#chat-input'); i.focus(); i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
   const shellMode = () => app.evaluate("document.querySelector('#chat-form').classList.contains('shell')");
@@ -242,7 +242,6 @@ flow('a line run with ! shows its output in the chat, and the Dispatcher gets it
   const said = await app.evaluate("[...document.querySelectorAll('#chat-thread .bub.ai')].map((b) => b.innerText).join('\\n')");
   // The bubble draws the command's backticks as code.
   assert.match(said, /\[Shell run\] The user ran node -e "console\.log\(41 \+ 1\)" in the IDE home: exit 0/);
->>>>>>> 867e53b (Run a line from the chat with ! and hand its output to the Dispatcher)
 });
 
 flow('the palette finds a finished task, and coming back shows what happened', {}, async (app) => {

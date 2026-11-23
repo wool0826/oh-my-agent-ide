@@ -278,13 +278,10 @@ export interface ChatItem {
   text: string;
   /** result card: task id, auto: auto-answer id */
   ref?: string;
-<<<<<<< HEAD
   /** The task whose report this message answers: drawn one step in under that report's card (shared/thread.ts). */
   replyTo?: string;
-=======
   /** kind 'shell': the run. */
   shell?: ShellRun;
->>>>>>> 867e53b (Run a line from the chat with ! and hand its output to the Dispatcher)
   cleared?: boolean;
 }
 
