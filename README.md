@@ -33,6 +33,9 @@ Settings opens. Sections are on the left. The Status group at the top of General
 ## Using it
 
 - Say what needs doing in the chat. Use `@repo` to pick a repository.
+- Start a line with `!` to run it in a shell instead (PowerShell on Windows, your login shell elsewhere), in the IDE home or a registered repository picked beside the line. The output shows in the chat as it comes, and goes to the Dispatcher with your next message; it does not start a turn by itself. Esc, or Backspace on an empty line, goes back to a message.
+- Press Ctrl+J (⌘J on macOS) for a side question: a separate Claude Code session with read-only tools, in its own panel, so the Dispatcher's context stays as it is. "Send to the Dispatcher" puts the answer on the composer as a quote for you to send; "Save as memo" keeps it. Closing the panel forgets the thread.
+- Usage in the toolbar is read again every 5 minutes; pick 15 or 30 minutes, or only by hand, in its popover (there is no 1-minute option, since each read of a token account costs a small request). For a token account the usage endpoint refuses, both windows are read from the limits a one-token request reports.
 - Press Ctrl+Shift+Space (⌘⇧Space on macOS) anywhere to open a small box, type one line and press Enter: it goes to the Dispatcher like a chat message, without bringing the window up. Type `@` and the start of a repository's name and press Tab to finish it, drop files on the box to send their paths along, and use Up and Down for lines sent before. Change the shortcut, or clear it to turn this off, in Settings → General. Starting the app again with `--quick` opens the same box.
 - Register repositories by asking, for example: "Clone github.company.com/payments/billing and register it. It runs the settlement batch."
 - Drag files or folders onto the chat (or onto an open Worker conversation) to attach their paths. Agents read them from where they are; nothing is copied.
@@ -86,6 +89,10 @@ Settings opens. Sections are on the left. The Status group at the top of General
 | Mouse forward button, Alt+→ (⌘] on macOS) | Forward again |
 | ⌘/Ctrl+, | Settings |
 | ⌘/Ctrl+Z | Undo clearing a list |
+| ⌘/Ctrl+J | Side question, apart from the Dispatcher's context |
+| ⌘/Ctrl+/ | List of shortcuts |
+| `!` at the start of the chat composer | Run the line in a shell |
+| ↑/↓, Enter, D, T, 1–9 on a decision card | Move between cards, allow, deny, allow for the task, pick an answer |
 | Tab, in the quick message box | Finish an `@repository` name |
 | ↑ / ↓, in the quick message box | Lines sent before |
 | Enter | Send |
