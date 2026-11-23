@@ -1,6 +1,7 @@
 // Data shapes shared by the main process and the renderer.
 
 import type { SessionSpend, Spend } from './spend';
+import type { UsageClock } from './usage';
 
 export type Lang = 'en' | 'ko';
 
@@ -34,7 +35,10 @@ export interface AccountView {
   fiveHour: UsageWindow;
   sevenDay: UsageWindow;
   usageUpdatedAt: string | null;
-  usageSource: 'endpoint' | 'events' | null;
+  /** endpoint: the usage endpoint; probe: the headers of a one-token request (a token the endpoint refuses); events: its sessions. */
+  usageSource: 'endpoint' | 'probe' | 'events' | null;
+  /** The server asked the app to wait before reading usage again (429), until then. */
+  usageBackoffUntil: string | null;
   /** A usage limit rejected the account. */
   limited: boolean;
   /** When that limit resets, while it holds. */
@@ -253,6 +257,8 @@ export interface ChatItem {
   text: string;
   /** result card: task id, auto: auto-answer id */
   ref?: string;
+  /** The task whose report this message answers: drawn one step in under that report's card (shared/thread.ts). */
+  replyTo?: string;
   cleared?: boolean;
 }
 
@@ -298,6 +304,8 @@ export interface SettingsView {
   maxWorkers: number;
   /** Minutes a Worker waiting for an answer keeps its slot; 0 = for as long as it waits. */
   waitSlotMinutes: number;
+  /** Minutes between rounds of reading usage (shared/usage USAGE_INTERVALS); 0 = only by hand. */
+  usageRefreshMins: number;
   /** Always-ask rules the user switched off (keys of shared/grants.ts ASK_RULES). */
   askOff: string[];
   /** Look for a newer release on GitHub. */
@@ -380,6 +388,8 @@ export interface AppState {
   setupNeeded: boolean;
   settings: SettingsView;
   accounts: AccountView[];
+  /** The rounds of reading usage: the last, the next, and whether one runs now. */
+  usageClock: UsageClock;
   repos: Repo[];
   workers: Worker[];
   tasks: Task[];

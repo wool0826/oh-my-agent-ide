@@ -199,6 +199,22 @@ flow('a merged PR fires the automation set for merges', { repos: ['demo'] }, asy
   await app.until("document.querySelector('#chat-thread').innerText.includes('The automation ran.')", "the automation's turn in the chat");
 });
 
+flow("a reply to a Worker's report goes under its card, and so does the Dispatcher's answer", {}, async (app) => {
+  // The Worker reports after the Dispatcher's turn has ended, so nothing comes between the card and the reply.
+  await app.say('@fake task - Write the notes\n@@fake wait 800\n@@fake result Wrote the notes.');
+  const link = '#chat-thread .attach[data-task] [data-action="reply"]';
+  await app.until(`!!document.querySelector(${JSON.stringify(link)})`, 'Reply on the result card');
+  await app.click(link);
+  await app.until("!document.querySelector('#chat-reply').hidden", 'the reply chip on the composer');
+  await app.evaluate("const i = document.querySelector('#chat-input'); i.value = 'Why so short?\\n@fake say The notes cover one change.'; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#chat-form').requestSubmit(); return 1;");
+  await app.until("document.querySelector('#chat-thread .rth')?.innerText.includes('The notes cover one change.')", "the Dispatcher's answer under the card");
+  // One step in, right after the card: the user's question with its branch across, then the answer.
+  const shape = await app.evaluate("const g = document.querySelector('#chat-thread .rth'); let p = g.previousElementSibling; while (p && !p.matches('.attach, .bline, .bub, .event')) p = p.previousElementSibling; return { late: g.classList.contains('late'), after: p?.dataset.task ?? null, rows: [...g.querySelectorAll(':scope > .rth-r')].map((r) => r.classList.contains('me') ? 'me' : 'ai'), nested: !!g.querySelector('.rth .rth') };");
+  assert.deepEqual(shape, { late: false, after: 'T-0001', rows: ['me', 'ai'], nested: false });
+  const chat = (await app.state()).chat;
+  assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001']]);
+});
+
 flow('the palette finds a finished task, and coming back shows what happened', {}, async (app) => {
   await app.say('@fake task - Tidy the changelog\n@@fake result Tidied the changelog.');
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
@@ -429,6 +445,42 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
   assert.equal(await app.evaluate("document.activeElement?.dataset?.action + ':' + document.activeElement?.dataset?.id?.length"), 'answer:' + (await app.evaluate("document.querySelector('#chat-ins [data-action=\"answer\"]').dataset.id.length")));
 });
 
+{
+  const at = (mins) => new Date(Date.now() + mins * 60_000).toISOString();
+  const win = (utilization, resetsAt) => ({ utilization, resetsAt });
+  const acc = (id, label, x) => ({ id, label, kind: 'token', plan: 'team', provider: 'claude', tokenEnc: '', planLabel: null, windowMins: null, usageSource: 'probe', limitedUntil: null, lastAssignedAt: null, lastError: null, usageBackoffUntil: null, usageUpdatedAt: at(-2), ...x });
+  const accounts = [
+    acc('a', 'Team A', { fiveHour: win(86, at(70)), sevenDay: win(41, at(4500)) }),
+    acc('b', 'Team B', { fiveHour: win(42, at(125)), sevenDay: win(100, at(1800)), limitedUntil: at(1800) }),
+    acc('c', 'Team C', { fiveHour: win(20, at(200)), sevenDay: win(null, null), lastError: 'Usage lookup failed (500)', usageUpdatedAt: at(-26) }),
+  ];
+  flow('the usage widget names the fuller window, and its popover says when it refreshes and refreshes by hand', { settings: { accounts, usageRefreshMins: 15 } }, async (app) => {
+    await app.until("document.querySelectorAll('#usage .uacct').length === 3", 'the rings');
+    // The toolbar: the fuller window in words (orange from 80%), the limit that holds an account, a failed read marked.
+    assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#usage .uacct')].map((u) => [u.querySelector('.upct')?.textContent ?? u.querySelector('.ulim')?.textContent, !!u.querySelector('.upct.hi'), u.classList.contains('failed')])"),
+      [['86% 5h', true, false], [(await app.evaluate("document.querySelector('#usage .ulim').textContent")), false, false], ['20% 5h', false, true]]);
+    assert.match(await app.evaluate("document.querySelector('#usage .ulim').textContent"), /^7d limit · until /);
+    // The popover, with the foot: the last round, one of three failed, the interval chosen.
+    await app.evaluate("document.querySelector('#usage .uacct').dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return 1;");
+    await app.until("!document.querySelector('#usage-pop').hidden && !!document.querySelector('#usage-pop .ufoot')", 'the popover foot');
+    assert.match(await app.evaluate("document.querySelector('#usage-pop .uft').textContent"), /^Updated .* · 1 of 3 failed$/);
+    assert.equal(await app.evaluate("document.querySelector('#usage-pop [data-segc=\"usage-every\"][aria-checked=\"true\"]').dataset.v"), '15');
+    // The failed account keeps its figures, dimmed, and the week it has no figure for says so.
+    assert.deepEqual(await app.evaluate("const c = document.querySelector('#usage-pop .ua[data-id=\"c\"]'); return [c.classList.contains('old'), !!c.querySelector('time.old'), !!c.querySelector('.cap.none'), c.querySelector('.uw:last-of-type small').textContent];"),
+      [true, true, true, 'no figure yet']);
+    // Only by hand: saved, and no next round.
+    await app.click('#usage-pop [data-segc="usage-every"][data-v="0"]');
+    await app.until("const s = await window.ide.call('state'); return s.settings.usageRefreshMins === 0 && s.usageClock.nextAt === null;", 'only by hand');
+    // A refresh by hand runs a round.
+    const before = await app.evaluate("return (await window.ide.call('state')).usageClock.checkedAt;");
+    await app.evaluate("await new Promise((r) => setTimeout(r, 20)); document.querySelector('#usage-pop .ubtn').click(); return 1;");
+    await app.until(`return (await window.ide.call('state')).usageClock.checkedAt !== ${JSON.stringify(before)};`, 'a new round');
+    // The popover's buttons are reached with the keyboard from the rings, and Escape brings the focus back.
+    await app.evaluate("document.querySelector('#usage').focus(); document.querySelector('#usage').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); return 1;");
+    assert.equal(await app.evaluate("document.activeElement?.closest('#usage-pop') ? 'in' : 'out'"), 'in');
+  });
+}
+
 flow('a state update that changes nothing in a panel leaves the panel as it is', {}, async (app) => {
   await app.say('@fake task - Something to list\n@@fake result Done.');
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
@@ -447,4 +499,21 @@ flow('a state update that changes nothing in a panel leaves the panel as it is',
   await app.evaluate(mark);
   await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })); await window.ide.call('preflight:run'); await new Promise((r) => setTimeout(r, 500)); return 1;");
   assert.deepEqual(await app.evaluate(kept), [false, false]);
+});
+
+flow('the sidebar tab pill follows the sidebar width while it changes', {}, async (app) => {
+  await app.click('#chat-ins [data-action="ins-tab"][data-v="auto"]');
+  await app.until("document.querySelector('#chat-ins .ins-tabs button.on')?.dataset.v === 'auto'", 'the Automations tab');
+  // The pill (the control's ::before, placed by --gx/--gw) against the chosen tab, and how many rows the tabs take.
+  const where = `const c = document.querySelector('#chat-ins .ins-tabs'); const on = c.querySelector('button.on');
+    return [parseFloat(c.style.getPropertyValue('--gx')) - on.offsetLeft, parseFloat(c.style.getPropertyValue('--gw')) - on.offsetWidth, new Set([...c.children].map((b) => b.offsetTop)).size];`;
+  const frames = 'for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r)); return 1;';
+  // A drag marks the window once as it starts...
+  await app.evaluate(`document.getElementById('win').classList.add('rz-still'); ${frames}`);
+  assert.deepEqual(await app.evaluate(where), [0, 0, 1]);
+  // ...then only the width changes: no class, no new element, no window resize.
+  for (const w of [640, 320]) {
+    await app.evaluate(`document.getElementById('win').style.setProperty('--inspector-w', '${w}px'); ${frames}`);
+    assert.deepEqual(await app.evaluate(where), [0, 0, 1], `at ${w}px`);
+  }
 });

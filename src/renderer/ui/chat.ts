@@ -16,6 +16,8 @@ import { memoSections } from '../../shared/memos';
 import { CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
 import { canStop } from '../../shared/canStop';
+import { threadLayout } from '../../shared/thread';
+import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, nextCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
@@ -90,13 +92,18 @@ function failureHtml(c: ChatItem) {
   const why = still ? plainStatus(x.summary) : c.text;
   const last = w.taskIds[w.taskIds.length - 1] === x.id;
   const go = still && last && lastFailed(w, x) ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
-  return `<div class="attach fail"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill red">${t('st.failed')}</span></b><span class="sm">${esc([at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a></span></span></div>`;
+  return `<div class="attach fail" data-task="${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill red">${t('st.failed')}</span></b><span class="sm">${esc([at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why)}</span></span></div>`;
+}
+
+/** "Reply" on a report card: the composer's reply chip quotes the report, and the message is filed under the card. */
+function replyLink(x: Task, text: string) {
+  return `<a tabindex="0" role="link" data-action="reply" data-box="chat" data-who="${esc(x.workerId ?? x.id)}" data-quote="${esc(replyExcerpt(`${x.title}: ${text}`))}" data-task="${esc(x.id)}">${t('chat.reply')}</a>`;
 }
 
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
     case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
-    case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text);
+    case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.replyTo);
     case 'event': return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
     case 'error': return failureHtml(c) ?? `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
@@ -108,9 +115,28 @@ export function chatItemHtml(c: ChatItem) {
       const x = task(c.ref);
       const links = resultLinks(x);
       if (x?.workerId) links.push(`<a tabindex="0" role="link" data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
-      return `<div class="attach"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${inline(c.text)}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
+      if (x) links.push(replyLink(x, c.text));
+      return `<div class="attach" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}</b><span class="sm">${inline(c.text)}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
     }
   }
+}
+
+/** One reply under a report. The first Dispatcher message under a card says whose report it is about. */
+function replyRow(c: ChatItem, html: string, first: string | null, quoteShown: boolean) {
+  const me = c.kind === 'user';
+  // Right under the card, a quote of the card itself says nothing the branch does not.
+  const r = me && !quoteShown ? parseReply(c.text) : null;
+  if (r && r.who === (task(c.replyTo)?.workerId ?? c.replyTo)) html = `<div class="bub me">${userText(r.body)}</div>`;
+  const wid = first ? task(first)?.workerId : null;
+  const who = wid && c.kind === 'dispatcher' ? `<span class="rth-who">${t('chat.onReport', { id: esc(wid) })}</span>` : '';
+  return `<div class="rth-r${me ? ' me' : ''}">${who}${me ? '<i class="rth-ld" aria-hidden="true"></i>' : ''}${html}</div>`;
+}
+
+/** Over a reply that came later: the report it answers, which the chip goes back to. */
+function reportRef(id: string) {
+  const x = task(id);
+  const what = [x?.title ?? id, x?.prUrl ? `PR #${prNum(x.prUrl)}` : ''].filter(Boolean).join(' · ');
+  return `<button type="button" class="rth-ref" data-action="goto-report" data-id="${esc(id)}" title="${esc(t('chat.toReport'))}">${sym('s-reply')}<b>${esc(x?.workerId ?? id)}</b><span>${esc(what)}</span></button>`;
 }
 
 /** The chat items held: pages loaded with chat:page, then the state's snapshot. */
@@ -158,12 +184,22 @@ export function renderChat(force = false, older = false) {
     const fresh = items.slice(seenAt + 1).map(({ c }) => c).filter((c) => c.kind !== 'user');
     if (fresh.length) announce(fresh[fresh.length - 1].text);
   }
+  const slots = threadLayout(items.map(({ c }) => c));
+  let lateGroup = false;
   for (const [i, { c, n }] of items.entries()) {
+    const slot = slots[i];
+    const inGroup = slot.depth === 1 && !slot.start;
     if (seenAt >= 0 && i === seenAt + 1) html += NEW_FROM;
     const ts = Date.parse(c.ts);
-    if (ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
+    // A group of replies is not cut by a time stamp; the next one at the top level gets it.
+    if (ts - last > 30 * 60_000 && !inGroup) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
     last = ts;
-    html += n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
+    const one = n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
+    if (slot.depth === 0) { html += one; continue; }
+    if (slot.start) html += `${slot.late ? reportRef(slot.root!) : ''}<div class="rth${slot.late ? ' late' : ''}" role="group" aria-label="${esc(t('chat.repliesTo', { title: task(slot.root)?.title ?? slot.root! }))}">`;
+    if (slot.start) lateGroup = slot.late;
+    html += replyRow(c, one, slot.start && !slot.late ? slot.root! : null, lateGroup);
+    if (slots[i + 1]?.depth !== 1 || slots[i + 1].start) html += '</div>';
   }
   if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b></div>`;
   if (s.dispatcher.busy) html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(s.dispatcher.statusText ? oneLine(s.dispatcher.statusText, 80) : '')}</div>`;
@@ -337,10 +373,10 @@ export function decisionHtml(d: Decision, inWorker = false) {
   } else if (d.source === 'permission') {
     // "Allow for this task" is there when the action's kind can be named; its tooltip says what the yes covers.
     const scope = d.options.find((o) => o.label === ALLOW_TASK);
-    buttons = `<div class="btns"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}" title="${esc(scope.description ?? '')}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>`;
+    buttons = `<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}" title="${esc(scope.description ?? '')}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>`;
   } else {
     const col = d.options.length > 2 || d.options.some((o) => o.description);
-    buttons = `<div class="btns${col ? ' col' : ''}">${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
+    buttons = `<div class="btns${col ? ' col' : ''}"${col ? '' : ' data-fit="stack"'}>${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
   }
   const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${decisionHint(d)}" aria-label="${decisionHint(d)}">`;
   const sum = d.source === 'plan' ? d.summary : null;
@@ -481,9 +517,10 @@ export function renderChatInspector() {
   const back = card ? { id: card.dataset.dec ?? '', val: was === card ? null : was?.dataset.val ?? null } : null;
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
-    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${label}${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    // Each tab has an icon for a narrow sidebar: when the labels do not fit, the tabs not chosen show only that (data-fit).
+    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, icon: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" title="${label}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
-    const tabs = `<div class="segc ins-tabs" role="tablist" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), pending.length)}${tab('memo', t('ins.tabMemo'))}${tab('auto', t('ins.tabAuto'))}</div>`;
+    const tabs = `<div class="segc ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}</div>`;
     if (ui.insTab === 'memo') { root.innerHTML = tabs + memosHtml(); return; }
     if (ui.insTab === 'auto') { root.innerHTML = tabs + autosHtml(); return; }
     // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.

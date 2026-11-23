@@ -109,6 +109,7 @@ function snapshot(): AppState {
     setupNeeded: !fakeMode() && accounts.list().length === 0,
     settings: settingsView(),
     accounts: accounts.views(),
+    usageClock: accounts.clock,
     repos: d.repos,
     workers: d.workers,
     tasks: d.tasks,
@@ -239,7 +240,7 @@ function handle(channel: string, fn: (...args: any[]) => any) {
 
 function registerIpc() {
   handle('state', () => snapshot());
-  handle('chat:send', (text: string, files?: string[]) => dispatcher.send(text, files ?? []));
+  handle('chat:send', (text: string, files?: string[], replyTo?: string | null) => dispatcher.send(text, files ?? [], typeof replyTo === 'string' ? replyTo : null));
   handle('chat:stop', () => dispatcher.stop());
   // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
   handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), files: t('quick.files'), lang: loadSettings().language, theme: loadSettings().theme, fontFamily: loadSettings().fontFamily, fontSize: loadSettings().fontSize, repos: store.data.repos.map((r) => r.name) }));
@@ -405,8 +406,11 @@ function registerIpc() {
     const moreWorkers = patch.maxWorkers !== undefined && patch.maxWorkers > before.maxWorkers;
     const remoteChanged = patch.memoryRemote !== undefined && patch.memoryRemote.trim() !== before.memoryRemote.trim();
     const checkOn = patch.updateCheck === true && !before.updateCheck;
+    const usageEvery = patch.usageRefreshMins !== undefined && patch.usageRefreshMins !== before.usageRefreshMins;
     updateSettings(patch);
     if (checkOn) void checkUpdate(onUpdate);
+    // The next round counts from now at the new interval (or there is none when it is only by hand).
+    if (usageEvery) accounts.arm();
     const quickKeyOk = syncQuickKey(here);
     if (patch.theme !== undefined) applyTheme();
     syncTray();
@@ -437,7 +441,8 @@ function registerIpc() {
   handle('account:remove', (id: string) => accounts.remove(id));
   handle('account:rename', (id: string, label: string) => accounts.rename(id, label));
   handle('account:plan', (id: string, plan: AccountPlan) => accounts.setPlan(id, plan));
-  handle('account:refresh', () => accounts.refresh());
+  // A round of reading usage now (Settings' account menu, the popover's button). Accounts the server asked to wait are skipped.
+  handle('usage:refresh', () => accounts.refreshAll());
   handle('open:external', (url: string) => { if (/^https?:\/\//.test(url)) return shell.openExternal(url); });
   handle('open:path', async (p: string) => {
     // A path an agent reported may be a program or a script: those are shown in their folder, not run.

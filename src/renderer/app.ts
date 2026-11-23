@@ -22,7 +22,7 @@ import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory'
 import { closePalette, Cmd, cmdk, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
-import { applyPanels, hideUsagePop, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
+import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 import { canStop } from '../shared/canStop';
@@ -98,12 +98,15 @@ export async function act(el: HTMLElement, e: Event) {
     case 'side-toggle': togglePanel('side'); break;
     case 'reply': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
-      const r = { who: el.dataset.who ?? '', quote: el.dataset.quote ?? '' };
+      const r = { who: el.dataset.who ?? '', quote: el.dataset.quote ?? '', ...(box === 'chat' && el.dataset.task ? { task: el.dataset.task } : {}) };
       if (box === 'ws') ui.reply.ws = { ...r, wid: ui.wSel ?? '' }; else ui.reply.chat = r;
       renderReply(box);
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
       break;
     }
+    // The chip over a late reply: back to the report it answers.
+    // A task can have several cards (a result, then a follow-up): the one the group answers is the last one above it.
+    case 'goto-report': flashCard([...document.querySelectorAll<HTMLElement>(`#chat-thread .attach[data-task="${CSS.escape(id)}"]`)].filter((c) => c.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop() ?? null); break;
     case 'reply-cancel': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
       ui.reply[box] = null;
@@ -473,7 +476,8 @@ export async function act(el: HTMLElement, e: Event) {
       openSettings();
       break;
     }
-    case 'acc-refresh': ui.accMenu = null; openSettings(); await call('account:refresh'); break;
+    case 'acc-refresh': ui.accMenu = null; openSettings(); await call('usage:refresh'); break;
+    case 'usage-refresh': await call('usage:refresh'); break;
     case 'acc-plan': ui.accMenu = null; openSettings(); await call('account:plan', id, el.dataset.v); break;
     case 'acc-remove': ui.accMenu = null; ui.accRemove = id; openSettings(); break;
     case 'acc-remove-cancel': ui.accRemove = null; openSettings(); break;
@@ -667,6 +671,7 @@ export function init() {
     if (el.id === 'auto-wk') { ui.autoWk = (el as unknown as HTMLInputElement).checked; return; }
     if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoKind === 'merged'); return; }
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
+    if (el.id === 'usage-every') { void call('settings:save', { usageRefreshMins: Number(el.value) }); return; }
     if (el.id === 'set-gh') el.value = hostOnly(el.value);
     if (el.closest?.('#sheet')) void saveSettingsNow();
   });
@@ -693,9 +698,11 @@ export function init() {
   });
   ide.onNav((dir) => navStep(dir, 'os'));
   // Liquid Glass pills follow every change of selection, however the control was updated.
+  // Controls that follow their width (pills, compact tabs and button rows) are picked up as they appear.
   new MutationObserver(() => glideSoon(true)).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-checked', 'aria-selected', 'hidden'] });
   window.addEventListener('resize', () => glideAll(false));
   void document.fonts.ready.then(() => glideAll(false));
+  glideAll(false);
   void loadModels('cached');
   $('#sheet').addEventListener('scroll', () => closePop(), true);
   const usage = $('#usage');
@@ -704,10 +711,28 @@ export function init() {
     showUsagePop();
     hoverUsage((e.target as HTMLElement).closest<HTMLElement>('.uacct')?.dataset.id ?? null);
   });
-  usage.addEventListener('mouseleave', hideUsagePop);
-  usage.addEventListener('focus', () => { if (usage.matches(':focus-visible')) showUsagePop(); });
-  usage.addEventListener('blur', hideUsagePop);
-  window.addEventListener('resize', () => closePop());
+  // The popover holds a refresh button and the interval: the pointer may cross to it, and the keyboard goes in with ↓.
+  const upop = $('#usage-pop');
+  usage.addEventListener('mouseleave', hideUsageSoon);
+  upop.addEventListener('mouseenter', showUsagePop);
+  upop.addEventListener('mouseleave', hideUsageSoon);
+  usage.addEventListener('focus', () => { if (!usagePop.quiet && usage.matches(':focus-visible')) showUsagePop(); });
+  usage.addEventListener('blur', (e) => { if (!upop.contains(e.relatedTarget as Node | null)) hideUsagePop(); });
+  upop.addEventListener('focusout', (e) => {
+    const to = e.relatedTarget as Node | null;
+    if (to && (upop.contains(to) || to === usage)) return;
+    // The focus left with a redraw of the popover (refreshUsagePop puts it back), or went elsewhere.
+    if (!to) return;
+    hideUsagePop();
+  });
+  usage.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'Enter') return;
+    if (!usage.classList.contains('usage')) return;
+    e.preventDefault();
+    showUsagePop();
+    upop.querySelector<HTMLElement>('.ubtn:not(:disabled), [data-segc][aria-checked="true"]')?.focus();
+  });
+  window.addEventListener('resize', () => { closePop(); hideUsagePop(); });
   // Scroll events don't bubble; capturing on document sees every scrolling element.
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
   // A card that gets the focus (a click, Tab, a button in it) becomes the selected one.
@@ -789,7 +814,12 @@ export function init() {
       if (!$('#ctxmenu').hidden) { closeCtxMenu(true); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); return; }
-      if (usagePop.shown) { hideUsagePop(); return; }
+      if (usagePop.shown) {
+        // From inside the popover, the focus goes back to the rings without opening it again.
+        if ($('#usage-pop').contains(document.activeElement)) { usagePop.quiet = true; $('#usage').focus(); usagePop.quiet = false; }
+        hideUsagePop();
+        return;
+      }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
       if (ui.settingsShown) { closeSettings(); return; }
       if (ui.memoDel) { askMemoDel(null); return; }
@@ -844,7 +874,7 @@ export function init() {
   });
 
   bindComposer('chat', '#chat-form', '#chat-input', async (text, files) => {
-    const r = await tryCall('chat:send', replyText('chat', text), files);
+    const r = await tryCall('chat:send', replyText('chat', text), files, ui.reply.chat?.task ?? null);
     return r.ok ? null : r.error;
   });
   // Text selected in a conversation is copied when the mouse is let go, as in a terminal; Ctrl/Cmd+C still works.

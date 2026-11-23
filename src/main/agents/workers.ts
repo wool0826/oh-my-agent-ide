@@ -688,7 +688,7 @@ class WorkerManager {
       if (by === 'user') store.pushUpdate(`The user stopped ${w.id} on ${task.id} "${task.title}". The task is left unfinished; a message to ${w.id} continues it.`);
     } else {
       store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
-      store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true);
+      store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true, task.id);
       const n = doneNotice(t, { who: w.id, title: task.title, summary: task.summary, ok: false, prUrl: task.prUrl });
       // Its own burst: a failure right after another end of this Worker is not swallowed.
       notifyTaskEnd(n.title, n.body, `${w.id}:failed`, task.id);
@@ -744,7 +744,7 @@ class WorkerManager {
     if (task.prUrl && !task.reviewSyncedAt) task.reviewSyncedAt = nowIso();
     const label = wasReview ? t('res.reviewLabel') : wasCi ? t('res.ciFixLabel') : wasFollowup ? t('res.followupLabel') : t('res.doneLabel');
     store.chat('result', wasReview ? t('res.review', { s: summary }) : wasCi ? t('res.ciFix', { s: summary }) : wasFollowup ? t('res.followup', { s: summary }) : summary, task.id);
-    store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`, true);
+    store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`, true, task.id);
     if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
     const n = doneNotice(t, { who: w.id, title: task.title, summary, ok: true, label, code: task.kind === 'code', prUrl: task.prUrl });
     notifyTaskEnd(n.title, n.body, w.id, task.id);
