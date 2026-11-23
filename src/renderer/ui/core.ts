@@ -157,6 +157,9 @@ export const ui = {
   /** The Automations tab's add form: which trigger is picked, and weekdays only. */
   autoKind: 'daily' as 'daily' | 'merged',
   autoWk: false,
+  /** The selected memo, and automation ('new': the add form), in the right sidebar (ui/panes.ts). */
+  memoSel: null as string | null,
+  autoSel: 'new' as string | null,
   memoEdit: null as string | null,
   memoDel: null as string | null,
   /** The last chat item and Worker log length already drawn; what comes after them is new. */

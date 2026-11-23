@@ -11,14 +11,14 @@ import type { Automation, AutoTrigger, Task } from '../shared/types';
  */
 class Automations {
   private timer: NodeJS.Timeout | null = null;
-  private send: (text: string) => void = () => undefined;
+  private send: (text: string) => string | void = () => undefined;
 
   list(): Automation[] {
     return (store.data.automations ??= []);
   }
 
-  /** `send` hands a message to the Dispatcher. */
-  start(send: (text: string) => void) {
+  /** `send` hands a message to the Dispatcher and gives back its chat message's id. */
+  start(send: (text: string) => string | void) {
     this.send = send;
     this.timer ??= setInterval(() => this.tick(), 30_000);
     setTimeout(() => this.tick(), 5_000);
@@ -78,7 +78,10 @@ class Automations {
     a.nextRunAt = nextRun(a.trigger, new Date())?.toISOString() ?? null;
     log.info('automation fired', a.title);
     store.changed();
-    try { this.send(automationMessage(a, context)); } catch (e) { log.warn('automation failed to send', (e as Error).message); }
+    try {
+      const id = this.send(automationMessage(a, context));
+      if (id) { a.lastRunChatId = id; store.changed(); }
+    } catch (e) { log.warn('automation failed to send', (e as Error).message); }
   }
 }
 
