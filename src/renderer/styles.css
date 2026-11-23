@@ -173,13 +173,10 @@ body { --lights-end: 0px; }
 .uacct { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); }
 .uacct .ur { position: relative; display: grid; place-items: center; border-radius: 50%; transition: scale var(--dur-fast) var(--ease-out); }
 .uacct:hover .ur { scale: 1.14; }
-/* The fuller window in words beside the rings; orange from 80%. */
-.upct { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.upct small { font-size: inherit; font-weight: 500; color: var(--text-tertiary); }
-.upct.hi, .upct.hi small { color: var(--warning-text); }
+/* Only a used-up account says something beside its rings: when it resets. */
 .ulim { white-space: nowrap; }
 /* A narrow window keeps the rings alone (a limited one has its red track): with four accounts the words would push rings out of sight. */
-@media (max-width: 1100px) { .ulim, .upct { display: none; } }
+@media (max-width: 1100px) { .ulim { display: none; } }
 /* A read that failed: the rings fade and carry an orange dot. */
 .uacct.failed .ur svg { opacity: .45; }
 .uacct.failed .ur::after { content: ''; position: absolute; top: -1px; right: -1px; width: 7px; height: 7px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 1.5px var(--surface-panel); }
@@ -501,7 +498,8 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 
 /* The chat view's right sidebar has two tabs: the inbox, and the user's memos. */
 .ins-tabs { display: flex; flex: none; flex-wrap: nowrap; width: 100%; max-width: 360px; margin-inline: auto; }
-.ins-tabs button { position: relative; flex: 1; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); }
+/* Each tab is as wide as its label plus an equal share of the rest, so the icons come only when the labels together do not fit. */
+.ins-tabs button { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); }
 /* The labels do not fit (data-fitted, set by ui/fit.ts): the tabs not chosen show their icon; the label stays for screen readers. */
 .ins-tabs .ti { display: none; flex: none; font-size: var(--fs-body); }
 .ins-tabs[data-fitted] button:not(.on) { flex: none; padding: 0 var(--space-10); }

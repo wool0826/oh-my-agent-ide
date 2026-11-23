@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clampUsageMins, fullerWindow, limitWindow, usageFoot, type FootAccount, type UsageClock } from '../src/shared/usage';
+import { clampUsageMins, limitWindow, usageFoot, usedUp, type FootAccount, type UsageClock } from '../src/shared/usage';
 import { readUnifiedHeaders } from '../src/shared/usageHeaders';
 
 const now = Date.parse('2026-11-23T14:00:00Z');
@@ -62,10 +62,17 @@ test('usage limit: the window whose reset is the end of the limit', () => {
   assert.equal(limitWindow({ fiveHour: { utilization: 100, resetsAt: end }, sevenDay: { utilization: 10, resetsAt: null }, limitedUntil: null }), null);
 });
 
-test('usage toolbar: the fuller window with its label, none without figures', () => {
-  assert.deepEqual(fullerWindow([{ label: '5h', v: 86 }, { label: '7d', v: 41 }]), { label: '5h', v: 86 });
-  assert.deepEqual(fullerWindow([{ label: '5h', v: null }, { label: '7d', v: 12 }]), { label: '7d', v: 12 });
-  assert.equal(fullerWindow([{ label: '5h', v: null }, { label: '7d', v: null }]), null);
+test('usage toolbar: a used-up account comes back when its limit ends, else at the latest full window reset', () => {
+  const w = (utilization: number | null, resetsAt: string | null = null) => ({ utilization, resetsAt });
+  // Not used up: nothing beside the rings, however high.
+  assert.equal(usedUp({ limited: false, limitedUntil: null, fiveHour: w(99, '2026-11-23T16:00:00Z'), sevenDay: w(21) }), null);
+  // A limit with its end.
+  assert.deepEqual(usedUp({ limited: true, limitedUntil: '2026-11-25T14:30:00Z', fiveHour: w(42), sevenDay: w(100, '2026-11-25T14:30:00Z') }), { at: '2026-11-25T14:30:00Z' });
+  // A full window without a limit seen yet, or both full: the later reset.
+  assert.deepEqual(usedUp({ limited: false, limitedUntil: null, fiveHour: w(100, '2026-11-23T16:00:00Z'), sevenDay: w(60) }), { at: '2026-11-23T16:00:00Z' });
+  assert.deepEqual(usedUp({ limited: false, limitedUntil: null, fiveHour: w(100, '2026-11-23T16:00:00Z'), sevenDay: w(100, '2026-11-25T14:30:00Z') }), { at: '2026-11-25T14:30:00Z' });
+  // Limited with no time known.
+  assert.deepEqual(usedUp({ limited: true, limitedUntil: null, fiveHour: w(null), sevenDay: w(null) }), { at: null });
 });
 
 const acc = (x: Partial<FootAccount> = {}): FootAccount => ({ kind: 'token', provider: 'claude', lastError: null, usageUpdatedAt: '2026-11-23T13:58:00Z', usageBackoffUntil: null, ...x });
