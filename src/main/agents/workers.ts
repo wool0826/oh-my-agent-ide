@@ -690,7 +690,8 @@ class WorkerManager {
       store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
       store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true);
       const n = doneNotice(t, { who: w.id, title: task.title, summary: task.summary, ok: false, prUrl: task.prUrl });
-      notifyTaskEnd(n.title, n.body, w.id, task.id);
+      // Its own burst: a failure right after another end of this Worker is not swallowed.
+      notifyTaskEnd(n.title, n.body, `${w.id}:failed`, task.id);
     }
     this.followUp(task);
     this.fillSlots();

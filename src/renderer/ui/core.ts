@@ -625,5 +625,6 @@ export async function playSound(name: SoundName, volume: number, file = '') {
   if (actx.state === 'suspended') await actx.resume().catch(() => {});
   const now = actx.currentTime + 0.02;
   const v = 0.35 * vol;
-  for (const n of NOTES[name]) tone(actx, n.freq, now + n.at, n.dur, v * n.gain, n.wave);
+  // An unknown stored name (hand-edited, or from a later version) plays nothing.
+  for (const n of NOTES[name as keyof typeof NOTES] ?? []) tone(actx, n.freq, now + n.at, n.dur, v * n.gain, n.wave);
 }
