@@ -597,12 +597,13 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
     acc('b', 'Team B', { fiveHour: win(42, at(125)), sevenDay: win(100, at(1800)), limitedUntil: at(1800) }),
     acc('c', 'Team C', { fiveHour: win(20, at(200)), sevenDay: win(null, null), lastError: 'Usage lookup failed (500)', usageUpdatedAt: at(-26) }),
   ];
-  flow('the usage widget names the fuller window, and its popover says when it refreshes and refreshes by hand', { settings: { accounts, usageRefreshMins: 15 } }, async (app) => {
+  flow('the usage widget shows rings alone, says when a used-up account resets, and its popover says when it refreshes and refreshes by hand', { settings: { accounts, usageRefreshMins: 15 } }, async (app) => {
     await app.until("document.querySelectorAll('#usage .uacct').length === 3", 'the rings');
-    // The toolbar: the fuller window in words (orange from 80%), the limit that holds an account, a failed read marked.
-    assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#usage .uacct')].map((u) => [u.querySelector('.upct')?.textContent ?? u.querySelector('.ulim')?.textContent, !!u.querySelector('.upct.hi'), u.classList.contains('failed')])"),
-      [['86% 5h', true, false], [(await app.evaluate("document.querySelector('#usage .ulim').textContent")), false, false], ['20% 5h', false, true]]);
-    assert.match(await app.evaluate("document.querySelector('#usage .ulim').textContent"), /^7d limit · until /);
+    // The toolbar: no figures in words; only the used-up account says when it resets; a failed read marked.
+    assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#usage .uacct')].map((u) => [!!u.querySelector('.ulim'), u.classList.contains('limited'), u.classList.contains('failed')])"),
+      [[false, false, false], [true, true, false], [false, false, true]]);
+    assert.match(await app.evaluate("document.querySelector('#usage .ulim').textContent"), /^Resets in 1d [56]h$/);
+    assert.doesNotMatch(await app.evaluate("document.querySelector('#usage').textContent"), /%/);
     // The popover, with the foot: the last round, one of three failed, the interval chosen.
     await app.evaluate("document.querySelector('#usage .uacct').dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return 1;");
     await app.until("!document.querySelector('#usage-pop').hidden && !!document.querySelector('#usage-pop .ufoot')", 'the popover foot');

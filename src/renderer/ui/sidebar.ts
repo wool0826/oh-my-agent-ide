@@ -11,7 +11,7 @@ import { type Key } from '../../shared/i18n';
 import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
 import { RING, ringArc, untilReset } from '../../shared/usageRing';
-import { USAGE_INTERVALS, fullerWindow, limitWindow, usageFoot, type UsageFoot } from '../../shared/usage';
+import { USAGE_INTERVALS, limitWindow, usageFoot, usedUp, type UsageFoot } from '../../shared/usage';
 import { readyToMerge } from '../../shared/prMerge';
 import { groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { History, type WorkerFilter } from '../../shared/history';
@@ -280,6 +280,9 @@ function untilText(iso: string) {
   return `${d.toLocaleDateString(locale(), { month: 'short', day: 'numeric' })} ${time}`;
 }
 
+/** The time left until `iso`, "2h 10m"; undefined when unknown or past. */
+const leftText = (iso: string | null) => untilReset(iso)?.map((p) => t(p.unit === 'd' ? 'time.day' : p.unit === 'h' ? 'time.hour' : 'time.min', { n: p.n })).join(' ');
+
 /** A clock time, "2:14 PM". */
 const clock = (iso: string) => new Date(iso).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
 
@@ -290,7 +293,7 @@ export function usageCard(a: AccountView) {
     { label: a.provider === 'chatgpt' ? winLabel(a.windowMins?.[1], '7d') : '7d', w: a.sevenDay },
   ];
   const rows = wins.map(({ label, w }) => {
-    const left = untilReset(w.resetsAt)?.map((p) => t(p.unit === 'd' ? 'time.day' : p.unit === 'h' ? 'time.hour' : 'time.min', { n: p.n })).join(' ');
+    const left = leftText(w.resetsAt);
     // A window without a figure looks unknown (a hatched track), never like 0%.
     const none = w.utilization === null;
     const note = none ? (a.usageUpdatedAt ? t('usage.noFigure') : '') : left ? t('usage.resetsIn', { t: left }) : '';
@@ -437,16 +440,15 @@ export function renderUsage() {
 }
 
 /**
- * One account in the toolbar: its rings, then the fuller window in words ("86% 5h", orange from 80%), or the limit
- * that holds it ("7d limit · until Tue 2:30 PM"); a narrow window keeps the rings alone. A failed read fades the rings and adds a dot.
+ * One account in the toolbar: its rings, and only for an account whose usage is used up, when it comes back
+ * ("Resets in 2h 10m"); a narrow window keeps the rings alone. A failed read fades the rings and adds a dot.
  */
 function toolbarAccount(a: AccountView) {
   const failed = !!a.lastError;
-  const full = fullerWindow(usageWindows(a));
-  const side = a.limited
-    ? `<span class="pill red ulim">${esc(limitText(a))}</span>`
-    : full ? `<span class="upct${full.v >= 80 ? ' hi' : ''}">${full.v}% <small>${esc(full.label)}</small></span>` : '';
-  return `<span class="uacct${a.limited ? ' limited' : ''}${failed ? ' failed' : ''}" data-id="${esc(a.id)}"><span class="ur">${ringsSvg(a)}</span>${side}</span>`;
+  const out = usedUp(a);
+  const left = out && leftText(out.at);
+  const side = out ? `<span class="pill red ulim">${esc(left ? t('usage.resetsIn', { t: left }) : t('usage.limited'))}</span>` : '';
+  return `<span class="uacct${out ? ' limited' : ''}${failed ? ' failed' : ''}" data-id="${esc(a.id)}"><span class="ur">${ringsSvg(a)}</span>${side}</span>`;
 }
 
 /** Put the sidebars away or back, and say so on their buttons. The right one's button counts open decisions while it is hidden. */

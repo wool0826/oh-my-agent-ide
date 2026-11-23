@@ -103,11 +103,19 @@ export function limitWindow(a: { fiveHour: UsageWindow; sevenDay: UsageWindow; l
   return null;
 }
 
-/** The fuller of an account's windows, as the toolbar names it ("86% 5h"). Null when no window has a figure. */
-export function fullerWindow(wins: readonly { label: string; v: number | null }[]): { label: string; v: number } | null {
-  let best: { label: string; v: number } | null = null;
-  for (const w of wins) if (w.v !== null && (!best || w.v > best.v)) best = { label: w.label, v: w.v };
-  return best;
+/**
+ * An account whose usage is used up (a limit holds it, or a window is at 100%) and when it comes back: the limit's
+ * end, else the latest reset among the full windows. Null when nothing is used up; `at` is null when no time is known.
+ * A reset that has passed since the figures were read gives the usage back.
+ */
+export function usedUp(a: { limited: boolean; limitedUntil: string | null; fiveHour: UsageWindow; sevenDay: UsageWindow }, now = Date.now()): { at: string | null } | null {
+  const past = (iso: string | null) => !!iso && Date.parse(iso) <= now;
+  const full = [a.fiveHour, a.sevenDay].filter((w) => (w.utilization ?? 0) >= 100 && !past(w.resetsAt));
+  const limited = a.limited && !past(a.limitedUntil);
+  if (!limited && !full.length) return null;
+  if (limited && a.limitedUntil) return { at: a.limitedUntil };
+  const ends = full.map((w) => w.resetsAt).filter((r): r is string => !!r).sort((x, y) => Date.parse(x) - Date.parse(y));
+  return { at: ends.at(-1) ?? null };
 }
 
 /** The app's rounds of reading usage. */
