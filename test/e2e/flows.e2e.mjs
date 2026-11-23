@@ -406,3 +406,20 @@ flow('a state update that changes nothing in a panel leaves the panel as it is',
   await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })); await window.ide.call('preflight:run'); await new Promise((r) => setTimeout(r, 500)); return 1;");
   assert.deepEqual(await app.evaluate(kept), [false, false]);
 });
+
+flow('the sidebar tab pill follows the sidebar width while it changes', {}, async (app) => {
+  await app.click('#chat-ins [data-action="ins-tab"][data-v="auto"]');
+  await app.until("document.querySelector('#chat-ins .ins-tabs button.on')?.dataset.v === 'auto'", 'the Automations tab');
+  // The pill (the control's ::before, placed by --gx/--gw) against the chosen tab, and how many rows the tabs take.
+  const where = `const c = document.querySelector('#chat-ins .ins-tabs'); const on = c.querySelector('button.on');
+    return [parseFloat(c.style.getPropertyValue('--gx')) - on.offsetLeft, parseFloat(c.style.getPropertyValue('--gw')) - on.offsetWidth, new Set([...c.children].map((b) => b.offsetTop)).size];`;
+  const frames = 'for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r)); return 1;';
+  // A drag marks the window once as it starts...
+  await app.evaluate(`document.getElementById('win').classList.add('rz-still'); ${frames}`);
+  assert.deepEqual(await app.evaluate(where), [0, 0, 1]);
+  // ...then only the width changes: no class, no new element, no window resize.
+  for (const w of [640, 320]) {
+    await app.evaluate(`document.getElementById('win').style.setProperty('--inspector-w', '${w}px'); ${frames}`);
+    assert.deepEqual(await app.evaluate(where), [0, 0, 1], `at ${w}px`);
+  }
+});

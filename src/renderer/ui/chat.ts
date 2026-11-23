@@ -239,10 +239,10 @@ export function decisionHtml(d: Decision, inWorker = false) {
   } else if (d.source === 'permission') {
     // "Allow for this task" is there when the action's kind can be named; its tooltip says what the yes covers.
     const scope = d.options.find((o) => o.label === ALLOW_TASK);
-    buttons = `<div class="btns"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}" title="${esc(scope.description ?? '')}">${t('allowTask')}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}</button></div>`;
+    buttons = `<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}" title="${esc(scope.description ?? '')}">${t('allowTask')}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}</button></div>`;
   } else {
     const col = d.options.length > 2 || d.options.some((o) => o.description);
-    buttons = `<div class="btns${col ? ' col' : ''}">${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${esc(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
+    buttons = `<div class="btns${col ? ' col' : ''}"${col ? '' : ' data-fit="stack"'}>${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${esc(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
   }
   const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${decisionHint(d)}">`;
   const sum = d.source === 'plan' ? d.summary : null;
@@ -371,9 +371,10 @@ export function renderChatInspector() {
   const root = $('#chat-ins');
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
-    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${label}${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    // Each tab has an icon for a narrow sidebar: when the labels do not fit, the tabs not chosen show only that (data-fit).
+    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, icon: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" title="${label}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
-    const tabs = `<div class="segc ins-tabs" role="tablist" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), pending.length)}${tab('memo', t('ins.tabMemo'))}${tab('auto', t('ins.tabAuto'))}</div>`;
+    const tabs = `<div class="segc ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}</div>`;
     if (ui.insTab === 'memo') { root.innerHTML = tabs + memosHtml(); return; }
     if (ui.insTab === 'auto') { root.innerHTML = tabs + autosHtml(); return; }
     // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.

@@ -362,8 +362,13 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .linkbtn:focus-visible { outline: var(--focus-outline); outline-offset: 1px; border-radius: var(--radius-xs); }
 
 /* The chat view's right sidebar has two tabs: the inbox, and the user's memos. */
-.ins-tabs { display: flex; flex: none; }
-.ins-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); }
+.ins-tabs { display: flex; flex: none; flex-wrap: nowrap; width: 100%; max-width: 360px; margin-inline: auto; }
+.ins-tabs button { flex: 1; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); }
+/* The labels do not fit (data-fitted, set by ui/fit.ts): the tabs not chosen show their icon; the label stays for screen readers. */
+.ins-tabs .ti { display: none; flex: none; font-size: var(--fs-body); }
+.ins-tabs[data-fitted] button:not(.on) { flex: none; padding: 0 var(--space-10); }
+.ins-tabs[data-fitted] button:not(.on) .ti { display: inline-block; }
+.ins-tabs[data-fitted] button:not(.on) .tl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ins-tabs .count { line-height: 16px; }
 .memo-add { display: flex; gap: var(--space-6); align-items: center; }
 .memo-add .inp { height: var(--control-md); }
@@ -403,6 +408,9 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .dec .opt-d { font-size: var(--fs-caption2); color: var(--text-secondary); }
 .btns { display: flex; gap: var(--space-6); justify-content: flex-end; flex-wrap: wrap; }
 .btns.col { flex-direction: column; align-items: stretch; }
+/* Answer buttons are one row or a stack, never a broken row: stacked at full width, the default (last in the row) first. */
+.btns[data-fitted] { flex-direction: column; align-items: stretch; }
+.btns.perm[data-fitted] { flex-direction: column-reverse; }
 .btns.col .btn { text-align: left; padding: 5px var(--space-10); }
 .btn { font-size: var(--fs-caption); font-weight: 500; padding: var(--space-4) 13px; border-radius: var(--radius-full); border: 0; background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-primary); cursor: pointer; white-space: nowrap; transition: background var(--dur-fast), filter var(--dur-fast), scale var(--dur-instant) var(--ease-out); }
 .btn:hover { background: linear-gradient(var(--surface-hover), var(--surface-hover)), var(--surface-raised); }
@@ -485,7 +493,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .li .m span { font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .li .r { display: flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lst-h { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); padding: var(--space-12) var(--space-10) var(--space-4); }
-.pill { font-size: var(--fs-caption2); font-weight: 600; padding: 1px 7px; border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); white-space: nowrap; }
+.pill { font-size: var(--fs-caption2); font-weight: 600; padding: 1px 7px; border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); white-space: nowrap; flex-shrink: 0; }
 .pill.blue { background: var(--accent-soft); color: var(--accent-text); }
 .pill.red { background: var(--danger-soft); color: var(--danger-text); }
 .pill.purple { background: var(--review-soft); color: var(--review-text); }
