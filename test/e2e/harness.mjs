@@ -176,11 +176,13 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
         await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
         const end = Date.now() + 1500;
         while (Date.now() < end) {
-          if (await evaluate(`!!document.elementFromPoint(${x}, ${y})?.matches(':hover')`)) return;
+          // The innermost hovered element is the one at the point: an ancestor of where the pointer was is hovered too.
+          if (await evaluate(`const el = document.elementFromPoint(${x}, ${y}); return !!el && el.matches(':hover') && !el.querySelector(':hover');`)) return;
           await sleep(50);
         }
         if (i === 5) throw new Error(`The pointer did not reach ${JSON.stringify(selector)}`);
         await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x > 1 ? x - 1 : x + 1, y });
+        await sleep(100);
       }
     },
     /** Sets the page's size, as resizing the window does. */
