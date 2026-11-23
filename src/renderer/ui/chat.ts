@@ -16,9 +16,10 @@ import { memoSections } from '../../shared/memos';
 import { CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
 import { canStop } from '../../shared/canStop';
+import { decisionKeys, decisionKind, decisionLate, keepCard, nextCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
-import { $, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go } from './history';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
@@ -228,30 +229,128 @@ export function decisionHint(d: Decision) {
   return t(d.source === 'permission' ? 'dec.denyWhy' : d.source === 'plan' ? 'plan.revise' : 'dec.other');
 }
 
+const KIND_ICON: Record<DecisionKind, string> = { command: 's-term', permission: 's-pencil', question: 's-chat', plan: 's-doc' };
+
+/** The kind of a decision as a grey chip with its icon; colour is left to the age and the slot clock. */
+export function kindChip(d: Decision) {
+  const kind = decisionKind(d);
+  return `<span class="dkind">${sym(KIND_ICON[kind])}${t(`dec.kind.${kind}` as Key)}</span>`;
+}
+
+/** The age of a decision; its text and its lateness are written by tickDecisions, so a redraw stays the same HTML. */
+export const ageHtml = (d: Decision) => `<span class="dage" data-at="${esc(d.createdAt)}" data-task="${esc(d.taskId ?? '')}"></span>`;
+
+/**
+ * The selected inbox card (ui.decSel), kept on a pending one: the same one while it waits, else the one after the
+ * card just answered, else the first.
+ */
+export function selectedDecision(): string | null {
+  const ids = S!.decisions.filter((d) => d.status === 'pending').map((d) => d.id);
+  ui.decSel = keepCard(ids, ui.decSel, ui.decIds);
+  ui.decIds = ids;
+  return ui.decSel;
+}
+
+/** Moves the selection to card `id` in place, without drawing the inbox again; the sidebar row of it is marked too. */
+export function markDecision(id: string | null) {
+  ui.decSel = id;
+  document.querySelectorAll<HTMLElement>('#chat-ins [data-dec]').forEach((el) => {
+    const on = el.dataset.dec === id;
+    el.classList.toggle('sel', on);
+    el.tabIndex = on ? 0 : -1;
+    if (on) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
+  });
+  document.querySelectorAll<HTMLElement>('#side [data-action="goto-decision"]').forEach((el) => {
+    const on = el.dataset.id === id;
+    el.classList.toggle('sel', on);
+    if (on) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
+  });
+}
+
+/** The inbox card of a decision, if it is drawn. */
+export const decisionCard = (id: string | null) => id ? document.querySelector<HTMLElement>(`#chat-ins [data-dec="${CSS.escape(id)}"]`) : null;
+
+/** ↑/↓ on a card: select the one `step` away and give it the focus. */
+export function moveDecision(step: number) {
+  const ids = S!.decisions.filter((d) => d.status === 'pending').map((d) => d.id);
+  markDecision(nextCard(ids, ui.decSel, step));
+  decisionCard(ui.decSel)?.focus();
+}
+
+/**
+ * Drawing the inbox again drops a focus inside a card. It goes back to the same card (and button); once the card the
+ * user answered is gone, to the card selected after it, so the keyboard can go on with the next decision.
+ */
+function restoreCardFocus(root: HTMLElement, back: { id: string; val: string | null } | null) {
+  const answered = ui.decAnswered;
+  const gone = !!answered && !root.querySelector(`[data-dec="${CSS.escape(answered)}"]`);
+  if (gone) ui.decAnswered = null;
+  const lost = !document.activeElement || document.activeElement === document.body;
+  if (!lost) return;
+  let id: string | null = null;
+  let val: string | null = null;
+  if (back && decisionCard(back.id)) ({ id, val } = back);
+  else if (back || gone) id = ui.decSel;
+  const card = decisionCard(id);
+  const btn = val ? card?.querySelector<HTMLElement>(`[data-val="${CSS.escape(val)}"]:not(:disabled)`) : null;
+  (btn ?? card)?.focus();
+}
+
+/** Writes the age and the slot clock of the decision cards and rows under root: their text only, never a redraw. */
+export function tickDecisions(root: ParentNode = document) {
+  if (!S) return;
+  const now = Date.now();
+  const minutes = S.settings.waitSlotMinutes;
+  root.querySelectorAll<HTMLElement>('.dage').forEach((el) => {
+    const at = el.dataset.at ?? '';
+    const text = ago(at);
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.toggle('late', decisionLate(at, slotClock(task(el.dataset.task || null), now, minutes), now));
+  });
+  root.querySelectorAll<HTMLElement>('.dhold').forEach((el) => {
+    const clock = slotClock(task(el.dataset.task || null), now, minutes);
+    if (el.hidden !== !clock) el.hidden = !clock;
+    if (!clock) return;
+    el.classList.toggle('gone', clock.state === 'released');
+    const text = clock.state === 'released' ? t('dec.slotGone') : t('dec.slotHold', { n: Math.max(1, Math.ceil(clock.left / 60_000)) });
+    const span = el.querySelector('span');
+    if (span && span.textContent !== text) span.textContent = text;
+    const bar = el.querySelector<HTMLElement>('b');
+    if (bar) bar.style.transform = `scaleX(${clock.state === 'released' ? 0 : clock.frac.toFixed(3)})`;
+  });
+}
+
 /** inWorker: in its Worker's panel, where the Worker's composer is the text field (decision 93). */
 export function decisionHtml(d: Decision, inWorker = false) {
   const x = task(d.taskId);
-  const src = [d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', ');
-  const icon = d.source === 'permission' ? sym('s-alert', 'c-red') : d.source === 'plan' ? sym('s-doc', 'c-blue') : sym('s-chat', 'c-orange');
+  const who = d.workerId ?? 'Dispatcher';
+  const src = [who, x?.title].filter(Boolean).join(' · ');
+  // The inbox has one selected card: it shows its key hints and is the one stop for Tab (roving tabindex).
+  const sel = !inWorker && ui.decSel === d.id;
+  const keys = decisionKeys(d);
+  const kbd = (val: string) => !inWorker && keys.has(val) ? `<kbd aria-hidden="true">${esc(keys.get(val)!)}</kbd>` : '';
   let buttons: string;
   if (d.source === 'plan') {
-    buttons = `<div class="btns"><button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}</button></div>`;
+    buttons = `<div class="btns"><button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}${kbd(ALLOW)}</button></div>`;
   } else if (d.source === 'permission') {
     // "Allow for this task" is there when the action's kind can be named; its tooltip says what the yes covers.
     const scope = d.options.find((o) => o.label === ALLOW_TASK);
-    buttons = `<div class="btns"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}" title="${esc(scope.description ?? '')}">${t('allowTask')}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}</button></div>`;
+    buttons = `<div class="btns"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}" title="${esc(scope.description ?? '')}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>`;
   } else {
     const col = d.options.length > 2 || d.options.some((o) => o.description);
-    buttons = `<div class="btns${col ? ' col' : ''}">${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${esc(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
+    buttons = `<div class="btns${col ? ' col' : ''}">${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
   }
-  const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${decisionHint(d)}">`;
+  const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${decisionHint(d)}" aria-label="${decisionHint(d)}">`;
   const sum = d.source === 'plan' ? d.summary : null;
-  return `<div class="dec" id="${inWorker ? 'wdec' : 'dec'}-${d.id}">
-    <div class="src">${icon}<span>${esc(src)}</span></div>
+  const label = t('dec.card', { kind: t(`dec.kind.${decisionKind(d)}` as Key), who });
+  const card = inWorker ? '' : ` data-dec="${d.id}" role="group" aria-label="${esc(label)}" tabindex="${sel ? 0 : -1}"${sel ? ' aria-current="true"' : ''}`;
+  return `<div class="dec${sel ? ' sel' : ''}" id="${inWorker ? 'wdec' : 'dec'}-${d.id}"${card}>
+    <div class="src">${kindChip(d)}<span class="who">${esc(src)}</span>${ageHtml(d)}</div>
     <div class="q">${esc(d.title)}</div>
     ${d.reason ? `<div class="reason"><span>${esc(d.reason.what)}</span> ${esc(d.reason.why)}</div>` : ''}
     ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
     ${sum ? planSummaryHtml(d, sum, inWorker) : d.code ? (d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
+    ${d.taskId ? `<div class="dhold" data-task="${esc(d.taskId)}" hidden><i><b></b></i><span></span></div>` : ''}
     ${buttons}${custom}
   </div>`;
 }
@@ -369,6 +468,9 @@ export function awayHtml() {
 export function renderChatInspector() {
   const s = S!;
   const root = $('#chat-ins');
+  const was = document.activeElement as HTMLElement | null;
+  const card = was && root.contains(was) ? was.closest<HTMLElement>('[data-dec]') : null;
+  const back = card ? { id: card.dataset.dec ?? '', val: was === card ? null : was?.dataset.val ?? null } : null;
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
     const tab = (v: 'inbox' | 'memo' | 'auto', label: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${label}${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
@@ -380,6 +482,7 @@ export function renderChatInspector() {
     const results = paged('results', s.results.slice().reverse(), PAGE.results);
     const autos = paged('autos', visibleAutos(), PAGE.autos);
     let html = '';
+    selectedDecision();
     if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map((d) => decisionHtml(d)).join('')}</div></div>`;
     // Decisions stay on top; what happened meanwhile comes right under them.
     html += awayHtml();
@@ -400,6 +503,8 @@ export function renderChatInspector() {
     }
     root.innerHTML = tabs + html;
   });
+  tickDecisions(root);
+  restoreCardFocus(root, back);
   syncSegs(root);
 }
 

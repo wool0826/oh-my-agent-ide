@@ -5,7 +5,9 @@ import { canStop } from '../../shared/canStop';
 import { doneMask, stepper, stepView } from '../../shared/steps';
 import { queueLine, queueWhy, queueWhyText } from '../../shared/queueWhy';
 import { slotsUsed } from '../../shared/slots';
-import { lastFailed, plainStatus, workerState } from '../../shared/workerState';
+import { askLine, lastFailed, plainStatus, workerState } from '../../shared/workerState';
+import { decisionKind } from '../../shared/decisionView';
+import { type Key } from '../../shared/i18n';
 import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
 import { RING, ringArc, untilReset } from '../../shared/usageRing';
@@ -14,7 +16,7 @@ import { groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { History, type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
 import { applyWidths } from './resize';
-import { away } from './chat';
+import { ageHtml, away, tickDecisions } from './chat';
 import { pop } from './controls';
 import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, oneLine, pct, prNum, queuedLabel, ring, S, store, sym, t, task, ui, when, worker } from './core';
 import { screen } from './history';
@@ -55,9 +57,12 @@ export function renderSidebar() {
   const sec = (title: string, rows: string, cls = '') => rows ? `<section class="side-sec ${cls}"><h4>${title}</h4>${rows}</section>` : '';
   const decRows = pending.map((d) => {
     const x = task(d.taskId);
-    // Why it is asked, the same text as on the card and in the notification; the whole of it in the tooltip.
-    const small = d.reason ? `${d.workerId ?? 'Dispatcher'} · ${d.reason.why}` : [d.workerId ?? 'Dispatcher', x?.title].filter(Boolean).join(', ');
-    return `<div tabindex="0" role="button" class="row" data-action="goto-decision" data-id="${d.id}"${d.reason ? ` title="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(d.summary?.what || d.title, 60))}</b><small>${esc(small)}</small></span></div>`;
+    // The title names the command or the question itself (two lines at most); the second line says who, what kind,
+    // and why it is asked, the same text as on the card and in the notification; the whole of it in the tooltip.
+    const kind = t(`dec.kind.${decisionKind(d)}` as Key);
+    const small = [d.workerId ?? 'Dispatcher', kind, d.reason?.why ?? x?.title].filter(Boolean).join(' · ');
+    const sel = ui.decSel === d.id;
+    return `<div tabindex="0" role="button" class="row drow${sel ? ' sel' : ''}"${sel ? ' aria-current="true"' : ''} data-action="goto-decision" data-id="${d.id}"${d.reason ? ` title="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(askLine(d), 160))}</b><small>${esc(small)}</small></span>${ageHtml(d)}</div>`;
   }).join('');
   const workerRow = (w: Worker, grouped = false) => {
     const x = lastTask(w);
@@ -134,6 +139,7 @@ export function renderSidebar() {
   // Forget the plans of tasks that are gone.
   for (const id of seen.keys()) if (!s.tasks.some((x) => x.id === id)) seen.delete(id);
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(prTitle, prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
+  tickDecisions($('#side'));
 }
 
 /** What a finished task did, in one line: its PR and state, then the summary its Worker reported. */

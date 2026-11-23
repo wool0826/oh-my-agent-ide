@@ -12,7 +12,9 @@ import { focusSelector } from '../shared/focusKey';
 import { PAGE, pagesFor, slideOlder } from '../shared/paging';
 import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
-import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, saveSug, setAway, spendHtml, updateSendButton, visibleAutos } from './ui/chat';
+import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, moveDecision, tickDecisions } from './ui/chat';
+import { closeShortcuts, openShortcuts } from './ui/shortcuts';
+import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue } from './ui/controls';
 import { $, announce, applyStaticText, call, esc, hhmm, ide, isMac, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
@@ -166,6 +168,9 @@ export async function act(el: HTMLElement, e: Event) {
         if (ui.insMin) togglePanel('ins');
         go({ view: 'chat' });
         renderChatInspector();
+        // The card becomes the selected one and takes the focus, so its keys work at once.
+        markDecision(id);
+        decisionCard(id)?.focus({ preventScroll: true });
       }
       flashCard(document.getElementById(`${here ? 'wdec' : 'dec'}-${id}`));
       break;
@@ -312,6 +317,7 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'answer': {
+      if (el.closest('[data-dec]')) ui.decAnswered = id;
       el.closest('.dec')?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
       await call('decision:answer', id, el.dataset.val);
       break;
@@ -406,6 +412,8 @@ export async function act(el: HTMLElement, e: Event) {
     case 'cancel-ok': await confirmCancel(); break;
     case 'worker-archive': await archiveWorker(id); break;
     case 'confirm-dismiss': ui.confirmAsk = null; renderConfirmDialog(); break;
+    case 'keys-close': closeShortcuts(); break;
+    case 'keys-open': openShortcuts(); break;
     case 'confirm-ok': await confirmOk(); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
@@ -703,6 +711,11 @@ export function init() {
   window.addEventListener('resize', () => closePop());
   // Scroll events don't bubble; capturing on document sees every scrolling element.
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  // A card that gets the focus (a click, Tab, a button in it) becomes the selected one.
+  document.addEventListener('focusin', (e) => {
+    const card = (e.target as HTMLElement).closest?.<HTMLElement>('#chat-ins [data-dec]');
+    if (card && card.dataset.dec !== ui.decSel) markDecision(card.dataset.dec ?? null);
+  });
 
   // Enter in an input runs the action named in data-enter.
   document.addEventListener('keydown', (e) => {
@@ -710,6 +723,8 @@ export function init() {
     // Ctrl/Cmd+K opens the palette from anywhere, and closes it.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyK') { e.preventDefault(); if (cmdk.open) closePalette(); else openPalette(); return; }
     if (cmdk.open) { paletteKeys(e); return; }
+    // Ctrl/Cmd+/ opens the list of keys, and closes it.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'Slash') { e.preventDefault(); if (ui.keysShown) closeShortcuts(); else if (!ui.settingsShown && $('#dlg').hidden) openShortcuts(); return; }
     // A dialog that asks keeps the keyboard inside it: Tab goes round its own controls.
     if (e.key === 'Tab') {
       // A dialog over the Settings sheet first, then the sheet itself (L14).
@@ -724,6 +739,17 @@ export function init() {
       }
     }
     if (popKeys(e)) return;
+    // K1: the focused inbox card answers to keys while no text field has the focus. Enter on one of its buttons is
+    // left to that button.
+    const card = el.closest?.<HTMLElement>('#chat-ins [data-dec]');
+    if (card && !el.matches('input, textarea, [contenteditable="true"]')) {
+      const k = cardKey(e);
+      if (k && (k.act === 'next' || k.act === 'prev')) { e.preventDefault(); moveDecision(k.act === 'next' ? 1 : -1); return; }
+      const d = k && !(k.act === 'enter' && el !== card) ? S?.decisions.find((x) => x.id === card.dataset.dec) : null;
+      const val = d && k ? keyAnswer(d, k) : null;
+      const btn = val ? card.querySelector<HTMLButtonElement>(`button[data-action="answer"][data-val="${CSS.escape(val)}"]`) : null;
+      if (btn) { e.preventDefault(); if (!btn.disabled) void act(btn, e); return; }
+    }
     // A row that acts on a click does the same on Enter or Space; a link does on Enter.
     if ((e.key === 'Enter' || e.key === ' ') && !e.isComposing && el.matches?.('div[data-action][tabindex], span[role="button"][data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
     if (e.key === 'Enter' && !e.isComposing && el.matches?.('a[data-action][tabindex]')) { e.preventDefault(); void act(el, e); return; }
@@ -757,6 +783,7 @@ export function init() {
     // Escape closes one layer at a time, the top one first (L14).
     if (e.key === 'Escape') {
       if (pop.el) { closePop(true); return; }
+      if (ui.keysShown) { closeShortcuts(); return; }
       if (!$('#ctxmenu').hidden) { closeCtxMenu(true); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); return; }
@@ -899,6 +926,8 @@ export function init() {
   window.addEventListener('blur', markSeen);
   setInterval(() => { if (document.hasFocus()) markSeen(); }, 60_000);
   setInterval(() => { if (S) { renderSidebar(); if (ui.view === 'worker') renderWorkerList(); } }, 60_000);
+  // The age and slot clock of decisions: their text only, so nothing is drawn again.
+  setInterval(() => tickDecisions(), 15_000);
 
   void ide.call<AppState>('state').then((s) => {
     setS(s);

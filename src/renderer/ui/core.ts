@@ -84,6 +84,13 @@ export const ui = {
   memTotal: 0,
   memText: '' as string,
   aaSel: null as string | null,
+  /** The selected decision card in the inbox (it takes the keys), and the pending ids it was chosen among. */
+  decSel: null as string | null,
+  decIds: [] as string[],
+  /** The decision just answered from its card: once it is gone, the focus goes to the next card. */
+  decAnswered: null as string | null,
+  /** The keyboard shortcut list is open (ui/shortcuts.ts). */
+  keysShown: false,
   aaEdit: null as string | null,
   sugEdit: null as string | null,
   /** Each Worker's loaded conversation: lines logFrom to the end of its log (decision 85). */

@@ -17,7 +17,7 @@ import { askLine, plainStatus, stateCounts, workerLine, workerState, type Worker
 import { PAGE, threadStart } from '../../shared/paging';
 import { type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
-import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml, updateSendButton } from './chat';
+import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
 import { openPop } from './controls';
 import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go, show } from './history';
@@ -451,7 +451,7 @@ export function renderComposerDecision() {
   } else if (skipped) {
     html = `${sym('s-chat', 'c-gray')}<span>${t('dec.openNote', { q: q(skipped) })}</span><button type="button" class="linkbtn" data-action="dec-answer-it" data-id="${esc(skipped.id)}">${t('dec.answerIt')}</button>`;
   } else if (perm) {
-    html = `${sym('s-alert', 'c-red')}<span>${t('dec.permWaits', { q: q(perm) })}</span><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${DENY}">${t('deny')}</button><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${ALLOW}">${t('allow')}</button>`;
+    html = `${sym(perm.code?.startsWith('$ ') ? 's-term' : 's-pencil', 'c-gray')}<span>${t('dec.permWaits', { q: q(perm) })}</span><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${DENY}">${t('deny')}</button><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${ALLOW}">${t('allow')}</button>`;
   }
   if (el.innerHTML !== html) el.innerHTML = html;
   if (el.className !== cls) el.className = cls;
@@ -517,6 +517,7 @@ export function renderWorkerInspector() {
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : workerBusy(w, tasks) ? '' : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
       <button class="btn def" data-action="worker-msg" data-id="${w.id}">${t('wk.message')}</button>
     </div>`; });
+  tickDecisions(root);
 }
 
 /** The Worker is at work (a turn, or a task running or waiting): it cannot be archived until it stops. */

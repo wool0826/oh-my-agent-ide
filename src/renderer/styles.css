@@ -434,7 +434,6 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 
 .aa { position: relative; padding: var(--space-10) var(--space-12); display: flex; flex-direction: column; gap: var(--space-6); }
 .aa + .aa { border-top: .5px solid var(--border-subtle); }
-.aa.sel { background: var(--accent-soft); }
 .aa .src { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-caption2); color: var(--text-secondary); }
 .aa .q { font-size: var(--fs-caption); font-weight: 600; line-height: var(--lh-ui); padding-right: 26px; overflow-wrap: anywhere; }
 .aa .q em { font-style: normal; color: var(--success-text); }
@@ -914,8 +913,8 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 /* ---------- review comments on a diff ---------- */
 /* A line takes a click to comment on it. Comments sit under their line, in the UI font, and are sent together. */
 .dl.can { cursor: pointer; }
-.dl.can:hover { box-shadow: inset 2px 0 0 var(--accent); background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }
-.dnote { position: sticky; left: 0; width: min(100%, 640px); margin: var(--space-4) var(--space-12); padding: var(--space-6) var(--space-8) var(--space-6) var(--space-10); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--rim), inset 2px 0 0 var(--accent); display: flex; align-items: flex-start; gap: var(--space-8); font-family: var(--font); font-size: var(--fs-caption); line-height: var(--lh-body); white-space: normal; animation: rise-in var(--dur-base) var(--ease-out); }
+.dl.can:hover { background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }
+.dnote { position: sticky; left: 0; width: min(100%, 640px); margin: var(--space-4) var(--space-12); padding: var(--space-6) var(--space-8) var(--space-6) var(--space-10); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--rim); display: flex; align-items: flex-start; gap: var(--space-8); font-family: var(--font); font-size: var(--fs-caption); line-height: var(--lh-body); white-space: normal; animation: rise-in var(--dur-base) var(--ease-out); }
 .dnote p { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dnote .clear-x { opacity: 1; margin-top: var(--space-2); }
 .dnote.edit { flex-direction: column; align-items: stretch; box-shadow: var(--rim); }
@@ -1135,14 +1134,46 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .srow .dash { color: var(--text-tertiary); }
 
 /* ---------- the right sidebar's toggle ---------- */
-/* In the sidebar's bottom right corner, where the left sidebar has its own. It floats over what scrolls there, so the
-   sidebar ends with room for it. With the sidebar put away it stays in the window's corner, beside the composer,
-   which makes room. */
-#ins-toggle { position: fixed; z-index: var(--z-composer); right: calc(var(--panel-inset) + var(--space-10)); bottom: calc(var(--panel-inset) + var(--space-10)); transition: scale var(--dur-instant) var(--ease-out), color var(--dur-fast) var(--ease-standard), bottom var(--dur-slow) var(--ease-standard); }
-.inspector { padding-bottom: calc(var(--control-lg) + 2 * var(--space-10)); }
-.win.ins-min #ins-toggle { bottom: calc(var(--space-16) + var(--space-6)); }
-.composer { transition: box-shadow var(--dur-base) var(--ease-standard), background var(--dur-base) var(--ease-standard), right var(--dur-slow) var(--ease-standard); }
-.win.ins-min .composer { right: calc(var(--panel-inset) + var(--space-10) + var(--control-lg) + var(--space-8)); }
+/* The right sidebar's button sits in the toolbar after the usage rings (N1), in the same place whether the sidebar is
+   open or put away, so it never covers a card or the composer. */
+.composer { transition: box-shadow var(--dur-base) var(--ease-standard), background var(--dur-base) var(--ease-standard); }
+
+/* ---------- decision cards (D1, K1) ---------- */
+/* The kind is a grey chip with an icon; colour is left to the age (orange when late) and the slot clock. */
+.dec .src .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkind { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px 7px; border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-primary); font-size: var(--fs-caption2); font-weight: 600; }
+.dec .src .dkind .sym { font-size: var(--icon-sm); color: var(--text-secondary); }
+.dage { flex: none; margin-left: auto; font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dage.late { color: var(--warning-text); }
+.dhold { display: flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption2); line-height: var(--lh-ui); color: var(--text-secondary); }
+.dhold[hidden] { display: none; }
+.dhold i { flex: none; width: 48px; height: 3px; border-radius: 2px; background: var(--neutral-soft); overflow: hidden; }
+.dhold b { display: block; height: 100%; border-radius: 2px; background: var(--state-wait); transform-origin: 0 50%; transition: transform var(--dur-slow) linear; }
+.dhold.gone { color: var(--warning-text); }
+/* Selection is a ring and a tint on all four sides, never a coloured edge: one rule for decisions, auto-answers and
+   results. The transparent outline draws the ring in forced-colours mode. The keyboard focus ring stays its own. */
+:is(.dec, .aa, .res).sel { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; background: var(--accent-soft); border-radius: var(--radius-lg); }
+:is(.dec, .aa, .res).sel, :is(.dec, .aa, .res).sel + :is(.dec, .aa, .res) { border-top-color: transparent; }
+.dec[data-dec]:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+/* Key hints only on the selected card, so colour is not the only sign of which card the keys answer. */
+.dec .btn kbd { margin-left: 5px; background: color-mix(in srgb, currentColor 16%, transparent); }
+.dec .btns.col .btn kbd { margin: 0 var(--space-8) 0 0; }
+.dec:not(.sel) .btn kbd { display: none; }
+/* Sidebar decision rows name the command or question, on up to two lines, with their age. */
+.row.drow { align-items: flex-start; }
+.row.drow .t b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.row.drow > .ic { margin-top: 1px; }
+.row.drow .dage { margin-top: 2px; }
+
+/* The keyboard shortcut list (Ctrl/Cmd+/). */
+#dlg .dlg.keys { width: 380px; align-items: stretch; text-align: left; gap: var(--space-12); }
+.dlg.keys h2 { text-align: center; }
+.keys-g { display: flex; flex-direction: column; gap: var(--space-4); }
+.keys-g h3 { margin: 0 0 var(--space-2); font-size: var(--fs-caption); font-weight: 600; color: var(--text-secondary); }
+.keys-r { display: flex; align-items: center; justify-content: space-between; gap: var(--space-12); font-size: var(--fs-body); }
+.keys-k { flex: none; display: flex; gap: 3px; }
+.keys-k kbd { min-width: 20px; text-align: center; color: var(--text-secondary); }
+.dlg.keys .dlg-btns { grid-template-columns: 1fr; }
 
 /* ---------- design-system audit, 0.6 ---------- */
 /* Hangul words are not split; long paths and URLs still break where overflow-wrap says. */
