@@ -7,7 +7,7 @@ import { Burst, inQuietHours } from '../shared/notifyRules';
 let win: BrowserWindow | null = null;
 export function setWindow(w: BrowserWindow) { win = w; }
 
-/** Notifications with buttons are kept from garbage collection until they close, or their buttons do nothing. */
+/** Notifications with buttons or a click are kept from garbage collection until they close, or those do nothing. */
 const live = new Set<Notification>();
 
 /**
@@ -41,11 +41,34 @@ export function notifyDecision(title: string, body: string, actions: { text: str
   n.show();
 }
 
-/** A result or other news that needs no answer. `source` groups a burst, as for decisions. */
-export function notifyInfo(title: string, body: string, source = title) {
+/**
+ * A result or other news that needs no answer, under its own switch ("Notify when a task ends"). `source` groups a
+ * burst, as for decisions. With `taskId`, a click opens the window on that task's result card.
+ */
+export function notifyInfo(title: string, body: string, source = title, taskId?: string) {
   const s = loadSettings();
-  if (!s.notifications || !s.notifyResults || win?.isFocused() || quiet() || !bursts.allow(`info:${source}`, Date.now())) return;
-  if (Notification.isSupported()) new Notification({ title, body, silent: true }).show();
+  if (!s.notifyDone || win?.isFocused() || quiet() || !bursts.allow(`info:${source}`, Date.now())) return;
+  showInfo(title, body, taskId);
+}
+
+/**
+ * A task ended (done or failed): the task-end sound plays, focused window or not, as a decision's does; the OS
+ * notification only while the window is not in front. Off with "Notify when a task ends", quiet in do-not-disturb
+ * hours, and once per burst of one Worker.
+ */
+export function notifyTaskEnd(title: string, body: string, source: string, taskId: string) {
+  if (!loadSettings().notifyDone || quiet() || !bursts.allow(`info:${source}`, Date.now())) return;
+  win?.webContents.send('done-alert');
+  if (!win?.isFocused()) showInfo(title, body, taskId);
+}
+
+function showInfo(title: string, body: string, taskId?: string) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, silent: true });
+  n.on('click', () => { win?.show(); win?.focus(); if (taskId) win?.webContents.send('open-result', taskId); });
+  live.add(n);
+  n.on('close', () => live.delete(n));
+  n.show();
 }
 
 const MIME: Record<string, string> = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac' };

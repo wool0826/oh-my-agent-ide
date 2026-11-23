@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('ide', {
   onState: (fn: (s: unknown) => void) => ipcRenderer.on('state', (_e, s) => fn(s)),
   onWorkerLog: (fn: (id: string, item: unknown) => void) => ipcRenderer.on('workerLog', (_e, id, item) => fn(id, item)),
   onDecisionAlert: (fn: (loud: boolean) => void) => ipcRenderer.on('decision-alert', (_e, loud) => fn(loud !== false)),
+  onDoneAlert: (fn: () => void) => ipcRenderer.on('done-alert', () => fn()),
+  onOpenResult: (fn: (taskId: string) => void) => ipcRenderer.on('open-result', (_e, id) => fn(String(id))),
   /** Back or Forward from an app command (mouse side buttons, Back keys). */
   onNav: (fn: (dir: 'back' | 'forward') => void) => ipcRenderer.on('nav', (_e, dir) => fn(dir)),
   /** The window entered or left full screen. */

@@ -63,6 +63,27 @@ export function openWorker(id: string) {
   go({ view: 'worker', wSel: id, wOpen: true });
 }
 
+/** Bring a card into view and flash it once. */
+function flashCard(card: HTMLElement | null) {
+  card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  card?.classList.remove('flash'); void card?.offsetWidth; card?.classList.add('flash');
+}
+
+/**
+ * A task-end notification was clicked: its result card in the inbox, newest first. When the card is gone (cleared,
+ * or on a later page), the task's Worker instead.
+ */
+export function gotoResult(taskId: string) {
+  ui.insTab = 'inbox';
+  if (ui.insMin) togglePanel('ins');
+  go({ view: 'chat' });
+  renderChatInspector();
+  const card = document.querySelector<HTMLElement>(`#chat-ins .res[data-task="${CSS.escape(taskId)}"]`);
+  if (card) return flashCard(card);
+  const w = S?.tasks.find((x) => x.id === taskId)?.workerId;
+  if (w) openWorker(w);
+}
+
 /* ---------- actions ---------- */
 
 export async function act(el: HTMLElement, e: Event) {
@@ -146,9 +167,7 @@ export async function act(el: HTMLElement, e: Event) {
         go({ view: 'chat' });
         renderChatInspector();
       }
-      const card = document.getElementById(`${here ? 'wdec' : 'dec'}-${id}`);
-      card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      card?.classList.remove('flash'); void card?.offsetWidth; card?.classList.add('flash');
+      flashCard(document.getElementById(`${here ? 'wdec' : 'dec'}-${id}`));
       break;
     }
     case 'open-worker': openWorker(id); break;
@@ -474,7 +493,7 @@ export async function act(el: HTMLElement, e: Event) {
     }
     case 'sound-test': {
       const f = readSettingsForm();
-      await playSound(f.sound, f.soundVolume, f.customSound);
+      await playSound(el.dataset.v === 'done' ? f.doneSound : f.sound, f.soundVolume, f.customSound);
       break;
     }
   }
@@ -860,6 +879,9 @@ export function init() {
     if (ui.view === 'worker' && ui.wOpen && ui.wSel === id && item.from !== 'user') announce(item.text);
     if (ui.view === 'worker' && ui.wSel === id) renderSession();
   });
+  ide.onOpenResult(gotoResult);
+  // A task ended: its own sound, not the decision's, so the two are told apart by ear.
+  ide.onDoneAlert(() => { if (S) void playSound(S.settings.doneSound, S.settings.soundVolume); });
   ide.onDecisionAlert((loud) => {
     // Quiet hours, or one more of a burst from the same Worker: it shows without the sound.
     if (S && loud) void playSound(S.settings.sound, S.settings.soundVolume, S.settings.customSound);

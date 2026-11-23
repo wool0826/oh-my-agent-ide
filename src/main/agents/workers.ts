@@ -23,7 +23,7 @@ import { dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork'
 import { worktreeDiff } from '../gitdiff';
 import { listCheckpoints, restoreCheckpoint, saveCheckpoint } from '../checkpoints';
 import { checkpointLabel } from '../../shared/checkpoints';
-import { notifyInfo } from '../notify';
+import { notifyTaskEnd } from '../notify';
 import { isAttached, readPath } from '../attachments';
 import { t, limitResetText } from '../i18n';
 import { log } from '../log';
@@ -33,6 +33,7 @@ import { workerDecisions } from '../../shared/inbox';
 import { afterDependency, cancelSet, describeCancel, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
 import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
+import { doneNotice } from '../../shared/notifyRules';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
 import { isStalled } from '../../shared/stall';
 import { grantScope, hasGrant, withGrant, withoutGrant, type GrantScope } from '../../shared/grants';
@@ -688,6 +689,9 @@ class WorkerManager {
     } else {
       store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
       store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true);
+      const n = doneNotice(t, { who: w.id, title: task.title, summary: task.summary, ok: false, prUrl: task.prUrl });
+      // Its own burst: a failure right after another end of this Worker is not swallowed.
+      notifyTaskEnd(n.title, n.body, `${w.id}:failed`, task.id);
     }
     this.followUp(task);
     this.fillSlots();
@@ -742,7 +746,8 @@ class WorkerManager {
     store.chat('result', wasReview ? t('res.review', { s: summary }) : wasCi ? t('res.ciFix', { s: summary }) : wasFollowup ? t('res.followup', { s: summary }) : summary, task.id);
     store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`, true);
     if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
-    notifyInfo(`${w.id} ${label}`, `${task.title}: ${summary}`, w.id);
+    const n = doneNotice(t, { who: w.id, title: task.title, summary, ok: true, label, code: task.kind === 'code', prUrl: task.prUrl });
+    notifyTaskEnd(n.title, n.body, w.id, task.id);
     this.followUp(task);
     store.changed();
     this.fillSlots();

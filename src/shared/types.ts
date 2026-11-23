@@ -265,7 +265,7 @@ export interface WorkerLogItem {
 /** A page of a Worker's log: `items` are lines `start` to `start + items.length` of its `total` (decision 85). */
 export interface LogPage { items: WorkerLogItem[]; start: number; total: number }
 
-export type SoundName = 'chime' | 'bell' | 'ping' | 'none' | 'custom';
+export type SoundName = 'chime' | 'bell' | 'ping' | 'soft' | 'none' | 'custom';
 
 export interface SettingsView {
   language: Lang;
@@ -273,12 +273,14 @@ export interface SettingsView {
   githubHost: string;
   /** OS notification when a decision is needed */
   notifications: boolean;
-  /** Notify when a task ends or a PR is merged or closed, not only when a decision is needed. */
-  notifyResults: boolean;
+  /** OS notification when a task ends, a PR is merged or closed, or a release is out; separate from `notifications`. */
+  notifyDone: boolean;
   /** Do-not-disturb hours as "HH:MM"; both empty = off. No sound and no OS notification inside them. */
   quietFrom: string;
   quietTo: string;
   sound: SoundName;
+  /** The sound when a task ends (shared/sounds.ts, DONE_SOUNDS); 'none' is silent. Same volume as `sound`. */
+  doneSound: SoundName;
   soundVolume: number;
   customSound: string;
   archiveDays: number;

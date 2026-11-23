@@ -1,4 +1,5 @@
 // What every screen shares: the state the window holds, the bridge to the main process, text, small HTML helpers, scrolling, paging and sound.
+import { NOTES } from '../../shared/sounds';
 import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
 import { tr, type Key } from '../../shared/i18n';
 import { modelLabel as labelFor } from '../../shared/models';
@@ -23,6 +24,10 @@ declare global {
       onState(fn: (s: AppState) => void): void;
       onWorkerLog(fn: (id: string, item: WorkerLogItem) => void): void;
       onDecisionAlert(fn: (loud: boolean) => void): void;
+      /** A task-end notification was clicked: show that task's result card. */
+      onOpenResult(fn: (taskId: string) => void): void;
+      /** A task ended and may sound: play the task-end sound. */
+      onDoneAlert(fn: () => void): void;
       /** Back or Forward from the OS (mouse side buttons and Back keys arrive as app commands on Windows and Linux). */
       onNav(fn: (dir: NavDir) => void): void;
       /** The window entered or left full screen (macOS hides the traffic lights then). */
@@ -620,7 +625,6 @@ export async function playSound(name: SoundName, volume: number, file = '') {
   if (actx.state === 'suspended') await actx.resume().catch(() => {});
   const now = actx.currentTime + 0.02;
   const v = 0.35 * vol;
-  if (name === 'chime') { tone(actx, 880, now, 0.5, v); tone(actx, 1318.5, now + 0.16, 0.7, v); }
-  else if (name === 'bell') { tone(actx, 660, now, 1.4, v, 'triangle'); tone(actx, 1320, now, 0.9, v * 0.35); tone(actx, 1980, now, 0.5, v * 0.15); }
-  else if (name === 'ping') { tone(actx, 1568, now, 0.35, v); }
+  // An unknown stored name (hand-edited, or from a later version) plays nothing.
+  for (const n of NOTES[name as keyof typeof NOTES] ?? []) tone(actx, n.freq, now + n.at, n.dur, v * n.gain, n.wave);
 }

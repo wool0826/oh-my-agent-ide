@@ -6,6 +6,7 @@ import { type Key } from '../../shared/i18n';
 import { normalizeQuickKey, quickKeyLabel } from '../../shared/quickKey';
 import { THEMES, cleanTheme } from '../../shared/theme';
 import { cleanTime } from '../../shared/notifyRules';
+import { DECISION_SOUNDS, DONE_SOUNDS } from '../../shared/sounds';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clampWaitSlot } from '../../shared/slots';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, clampFontSize, fontStack, normalizeFontFamily } from '../../shared/font';
 import { away } from './chat';
@@ -292,7 +293,6 @@ export function settingsHtml() {
   const pane = (id: Pane, body: string) => `<section class="pane" data-pane="${id}"${ui.pane === id ? '' : ' hidden'}><h2>${t(PANES.find((p) => p.id === id)!.key)}</h2>${body}</section>`;
   const row = (label: string, forId: string, control: string, cls = '') => `<div class="srow${cls ? ` ${cls}` : ''}"><label class="lbl" for="${forId}">${label}</label>${control}</div>`;
   const grp = (rows: string, cap = '') => `<div class="sgrp-wrap">${cap ? `<h3 class="scap">${cap}</h3>` : ''}<div class="sgrp">${rows}</div></div>`;
-  const sounds: SoundName[] = ['chime', 'bell', 'ping', 'custom', 'none'];
 
   const accounts = `${grp(s.accounts.map(accountCard).join('') || `<div class="srow"><span class="lbl muted">${t('acc.none')}</span></div>`, `${t('acc.registered')} <small>${s.accounts.length} / ${MAX_ACCOUNTS}</small>`)}
     ${full ? '' : grp(`
@@ -325,10 +325,11 @@ export function settingsHtml() {
 
   const alerts = grp(`
       ${row(t('set.osNoti'), 'set-noti', `<input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}>`)}
-      ${row(t('set.notiResults'), 'set-nres', `<input class="switch" id="set-nres" type="checkbox" ${st.notifyResults ? 'checked' : ''}>`)}
+      ${row(t('set.notiResults'), 'set-nres', `<input class="switch" id="set-nres" type="checkbox" ${st.notifyDone ? 'checked' : ''}>`)}
       ${row(t('set.quiet'), 'set-qfrom', `<input class="inp time" id="set-qfrom" value="${esc(st.quietFrom)}" placeholder="22:00" inputmode="numeric" aria-label="${t('set.quietFrom')}"><span class="dash" aria-hidden="true">–</span><input class="inp time" id="set-qto" value="${esc(st.quietTo)}" placeholder="07:00" inputmode="numeric" aria-label="${t('set.quietTo')}">`)}
-      ${row(t('set.sound'), 'set-sound', `<button class="segico" data-action="sound-test" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, sounds.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
+      ${row(t('set.sound'), 'set-sound', `<button class="segico" data-action="sound-test" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, DECISION_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
       ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
+      ${row(t('set.doneSound'), 'set-dsound', `<button class="segico" data-action="sound-test" data-v="done" title="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-dsound', st.doneSound, DONE_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.doneSound'))}`, 'wrap')}
       ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`);
 
   const ci = ui.claude;
@@ -543,7 +544,7 @@ export function readSettingsForm() {
     // 0 = never.
     archiveDays: Math.min(90, Math.max(0, Math.round(Number(v('set-arch'))))) || 0,
     notifications: ($('#set-noti') as HTMLInputElement).checked,
-    notifyResults: ($('#set-nres') as HTMLInputElement).checked,
+    notifyDone: ($('#set-nres') as HTMLInputElement).checked,
     quietFrom: cleanTime(v('set-qfrom')),
     quietTo: cleanTime(v('set-qto')),
     background: ($('#set-bg') as HTMLInputElement).checked,
@@ -555,6 +556,7 @@ export function readSettingsForm() {
     jiraEmail: v('set-jmail'),
     askOff: [...document.querySelectorAll<HTMLInputElement>('.ask-rule')].filter((x) => !x.checked).map((x) => x.dataset.rule ?? ''),
     sound: v('set-sound') as SoundName,
+    doneSound: v('set-dsound') as SoundName,
     customSound: v('set-sfile'),
     soundVolume: Number(v('set-vol')),
     memoryRemote: v('set-mem'),
