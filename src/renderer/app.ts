@@ -615,6 +615,9 @@ type MenuAt = number | ((size: number) => number);
 function openCtxMenu(x: MenuAt, y: MenuAt, back = document.activeElement as HTMLElement | null) {
   const menu = $('#ctxmenu');
   ctxReturn = back;
+  // Measured at the corner: where it was last, near an edge, it would be squeezed.
+  menu.style.left = '0';
+  menu.style.top = '0';
   menu.hidden = false;
   const w = menu.offsetWidth, h = menu.offsetHeight;
   const p = menuPlace(typeof x === 'number' ? x : x(w), typeof y === 'number' ? y : y(h), w, h, innerWidth, innerHeight);
@@ -660,7 +663,8 @@ export function autosize(el: HTMLTextAreaElement) {
 
 /** `send` resolves to null once the text went, or to why it did not; then the text, files and reply stay (L8). */
 export function bindComposer(box: Box, formSel: string, inputSel: string, send: (text: string, files: string[]) => Promise<string | null>) {
-  let sending = false;
+  // Who a send is on its way to ('' for the Dispatcher): a second Enter for the same one waits, another Worker's does not.
+  const sending = new Set<string>();
   const form = $<HTMLFormElement>(formSel);
   const input = $<HTMLTextAreaElement>(inputSel);
   // The composer floats over the end of its thread, so the thread keeps that much room below the last message.
@@ -685,24 +689,25 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (sending) return;
+    // The Worker composer is shared: what comes after the send belongs to the Worker it went to.
+    const target = box === 'ws' ? ui.wSel : null;
+    const to = target ?? '';
+    if (sending.has(to)) return;
     // A shell line takes no files and no reply: they stay for the next message.
     const sh = box === 'chat' && ui.shell;
     const files = sh ? [] : [...ui.attach[box]];
     const typed = input.value;
     const text = typed.trim() || (files.length ? t('attach.defaultText') : '');
     if (!text) return;
-    // The Worker composer is shared: what comes after the send belongs to the Worker it went to.
-    const target = box === 'ws' ? ui.wSel : null;
     const reply = ui.reply[box];
-    sending = true;
+    sending.add(to);
     // Sending goes to the end of the thread, scrolled up or not, and follows what comes after it.
     if (thread) {
       if (box === 'chat') renderChat(true); else renderSession(true);
       scrollQuietly(thread, thread.scrollHeight);
     }
     const err = await send(text, files);
-    sending = false;
+    sending.delete(to);
     if (box === 'ws' && ui.wSel !== target) {
       // Another Worker is on screen by now: what went leaves the draft kept for the one it went to.
       if (err) toast(err, true); else if (target) wsDrafts.sent(target, typed, files, reply as typeof ui.reply.ws);
