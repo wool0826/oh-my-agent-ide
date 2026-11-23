@@ -332,6 +332,8 @@ export async function saveSug(id: string) {
 export const SEEN_KEY = 'oma.lastSeen';
 
 export let away: AwayDigest | null = null;
+/** A digest that has not been drawn yet: only its first draw plays the entrance, so later redraws of the inbox leave it still. */
+let awayArrive = false;
 
 /** Sets `away` from another module, which cannot assign to an import. */
 export function setAway(v: AwayDigest | null) { away = v; }
@@ -350,6 +352,7 @@ export function checkAway() {
   markSeen();
   if (!d) return;
   away = d;
+  awayArrive = true;
   if (ui.view === 'chat') renderChatInspector();
 }
 
@@ -357,13 +360,16 @@ export function awayHtml() {
   if (!away) return '';
   const d = away;
   const span = d.minutes >= 60 * 24 ? t('away.since', { t: when(d.since) }) : tookText(d.minutes);
-  const counts = [d.failed.length ? t('away.failed', { n: d.failed.length }) : '', d.finished.length ? t('away.finished', { n: d.finished.length }) : '',
-    d.merged.length ? t('away.merged', { n: d.merged.length }) : '', d.waiting ? t('away.waiting', { n: d.waiting }) : ''].filter(Boolean).join(' · ');
+  // The counts are pills in the board's colours: red is a failure only, and "waiting for you" has the ask colour.
+  const counts = ([['red', d.failed.length, 'away.failed'], ['green', d.finished.length, 'away.finished'], ['purple', d.merged.length, 'away.merged'], ['ask', d.waiting, 'away.waiting']] as const)
+    .filter(([, n]) => n).map(([c, n, key]) => `<i class="pill ${c}">${t(key, { n })}</i>`).join('');
+  const arrive = awayArrive ? ' arrive' : '';
+  awayArrive = false;
   const rows = awayRows(d);
   const total = new Set([...d.failed, ...d.merged, ...d.finished].map((x) => x.id)).size;
   const pill = { failed: ['red', taskStatus('failed')], merged: ['purple', t('pr.merged')], finished: ['green', taskStatus('done')] } as const;
-  return `<div class="sect" id="sec-away"><div class="ins-h"><b>${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" title="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
-    <div class="group"><div class="mini"><span>${esc(counts)}</span></div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill ${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
+  return `<div class="sect${arrive}" id="sec-away"><div class="ins-h"><b>${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" title="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
+    <div class="group"><div class="mini away-counts">${counts}</div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" data-focus="away:${esc(x.id)}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill ${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
 }
 
 export function renderChatInspector() {

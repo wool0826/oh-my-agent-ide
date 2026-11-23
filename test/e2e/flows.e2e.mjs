@@ -183,6 +183,17 @@ flow('the palette finds a finished task, and coming back shows what happened', {
   await app.evaluate("localStorage.setItem('oma.lastSeen', new Date(Date.now() - 3600e3).toISOString()); document.querySelector('button[data-v=\"chat\"]').click(); window.dispatchEvent(new Event('focus')); return 1;");
   await app.until("!!document.querySelector('#sec-away')", '"While you were away"');
   assert.match(await app.evaluate("document.querySelector('#sec-away').innerText"), /1 finished[\s\S]*Tidy the changelog/);
+  // Other updates draw the inbox again: the card does not play its entrance again, and its focused row keeps the keyboard.
+  await app.evaluate("document.querySelector('#sec-away .away-row').focus(); return 1;");
+  const still = "[document.querySelector('#sec-away').classList.contains('arrive'), document.getAnimations().filter((a) => a.effect?.target?.closest?.('#sec-away')).length]";
+  // Checked the moment the card is drawn anew, while an entrance would still be running.
+  assert.deepEqual(await app.evaluate(`document.querySelector('#sec-away').dataset.old = '1'; document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })); await window.ide.call('preflight:run');
+    for (let i = 0; i < 100 && document.querySelector('#sec-away')?.dataset.old; i++) await new Promise((r) => requestAnimationFrame(r));
+    return ${still};`), [false, 0]);
+  assert.equal(await app.evaluate("document.activeElement?.dataset?.focus?.startsWith('away:') ?? false"), true);
+  await app.say('@fake say Something else happened.');
+  await app.until("document.querySelector('#chat-thread').innerText.includes('Something else happened')", 'the new message');
+  assert.deepEqual(await app.evaluate(still), [false, 0]);
 });
 
 flow('an issue of a repository is handed to the Dispatcher', {
