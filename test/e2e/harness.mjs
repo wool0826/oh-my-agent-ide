@@ -162,6 +162,11 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
     say: (text) => evaluate(`await window.ide.call('chat:send', ${JSON.stringify(text)}, []); return 1;`),
     click: (selector) => evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); el.click(); return 1;`),
     state: () => evaluate("return await window.ide.call('state');"),
+    /** Presses a key as the keyboard does (trusted events to the focused element). modifiers: 2 Ctrl, 4 Meta. */
+    async key(code, key, vk, modifiers = 0) {
+      await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', code, key, windowsVirtualKeyCode: vk, modifiers });
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', code, key, windowsVirtualKeyCode: vk, modifiers });
+    },
     workerLog: (wid) => evaluate(`return (await window.ide.call('worker:log', ${JSON.stringify(wid)})).items.map((x) => x.text).join('\\n');`),
     gh: () => JSON.parse(fs.readFileSync(ghFile, 'utf8')),
     /** Saves a picture of the window, for looking at a screen while writing a test. */

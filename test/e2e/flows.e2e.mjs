@@ -57,6 +57,37 @@ flow('a question is answered with one of its options', {}, async (app) => {
   assert.match(await app.workerLog(t.workerId), /Answer: Split/);
 });
 
+flow('decision cards take the keys: ↓ moves the selection, Enter allows, the next card gets the focus and a number picks', {}, async (app) => {
+  await app.say('@fake task - Install one\n@@fake permission npm install a\n@@fake result Installed.\n@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.');
+  const CARD = `${DEC}[data-dec]`;
+  await app.until(`document.querySelectorAll('${CARD}').length === 2`, 'both decision cards');
+  // One card is selected: the only Tab stop, with aria-current and its key hints; the other shows none.
+  const look = () => app.evaluate(`const c = [...document.querySelectorAll('${CARD}')]; return c.map((x) => ({ sel: x.getAttribute('aria-current') === 'true', tab: x.tabIndex, focus: document.activeElement === x, perm: !!x.querySelector('[data-val="deny"]'), kbd: [...x.querySelectorAll('kbd')].some((k) => getComputedStyle(k).display !== 'none') }));`);
+  let cards = await look();
+  assert.deepEqual(cards.map((c) => [c.sel, c.tab, c.kbd]), [[true, 0, true], [false, -1, false]]);
+  await app.evaluate(`document.querySelector('${CARD}[aria-current="true"]').focus(); return 1;`);
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  cards = await look();
+  assert.deepEqual(cards.map((c) => [c.sel, c.tab, c.focus, c.kbd]), [[false, -1, false, false], [true, 0, true, true]]);
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  // Go to the permission card and allow it with Enter.
+  if (!cards[0].perm) await app.key('ArrowDown', 'ArrowDown', 40);
+  await app.key('Enter', 'Enter', 13);
+  // The answered card goes; the question is selected and focused, and 2 picks its second option.
+  await app.until(`document.querySelectorAll('${CARD}').length === 1 && document.activeElement === document.querySelector('${CARD}')`, 'the focus on the next card');
+  await app.key('Digit2', '2', 50);
+  await app.until(`document.querySelectorAll('#chat-ins .res').length === 2`, 'both result cards');
+  const s = await app.state();
+  assert.match(await app.workerLog(task(s, 'Install one').workerId), /Ran: npm install a/);
+  assert.match(await app.workerLog(task(s, 'Pick one').workerId), /Answer: Right/);
+  // Ctrl/Cmd+/ lists the keys; Escape closes the list.
+  await app.key('Slash', '/', 191, process.platform === 'darwin' ? 4 : 2);
+  await app.until("!!document.querySelector('#dlg:not([hidden]) .dlg.keys')", 'the shortcut list');
+  assert.match(await app.evaluate("document.querySelector('.dlg.keys').innerText"), /D\b[\s\S]*1–9/);
+  await app.key('Escape', 'Escape', 27);
+  await app.until("document.querySelector('#dlg').hidden", 'the shortcut list closed');
+});
+
 flow('a plan waits for approval before the work goes on', {}, async (app) => {
   await app.say('@fake task - Plan the change\n@@fake plan WHAT: rename the field\\nHOW: one commit\\nOUTPUT: a PR\n@@fake result Carried out the plan.');
   await app.until(`!!document.querySelector('${DEC}')`, 'the plan card');

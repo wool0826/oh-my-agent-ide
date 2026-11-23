@@ -11,6 +11,7 @@ import { closePop } from './controls';
 import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, task, taskLabel, toast, ui, when, worker } from './core';
 import { go, nav } from './history';
 import { closeSettings, openSettings } from './settings';
+import { openShortcuts } from './shortcuts';
 import { hideUsagePop, ms, togglePanel, workerIcon } from './sidebar';
 
 export interface Cmd extends PaletteItem { icon: string; run: () => void; /** Listed only for a search: past tasks would bury the places to go. */ searchOnly?: boolean }
@@ -58,6 +59,7 @@ export function paletteItems(): Cmd[] {
     out.push({ id: 'pr-refresh', group: t('side.prs'), title: t('pr.refresh'), icon: sym('s-pr'), run: () => void call('pr:refresh').then((ok) => { if (ok) toast(t('pr.refreshed')); }) });
   out.push({ id: 'side', group: t('cmdk.window'), title: t('cmdk.side'), keys: `${mod}B`, icon: sym('s-side-l'), run: () => togglePanel('side') });
   out.push({ id: 'ins', group: t('cmdk.window'), title: t('cmdk.ins'), keys: isMac ? '⌥⌘B' : 'Ctrl+Alt+B', icon: sym('s-side-r'), run: () => togglePanel('ins') });
+  out.push({ id: 'keys', group: t('cmdk.window'), title: t('keys.title'), keys: `${mod}/`, icon: sym('s-key'), run: () => openShortcuts() });
   return out;
 }
 

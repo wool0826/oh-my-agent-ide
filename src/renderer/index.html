@@ -10,6 +10,9 @@
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
+    <symbol id="s-term" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4" width="14.4" height="12" rx="2.4"/><path d="M6.4 8.2l2.4 2-2.4 2M10.8 12.4h3"/></symbol>
+    <symbol id="s-edit" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.9 3.9l3.2 3.2-9 9-4 .8.8-4z"/><path d="M11.3 5.5l3.2 3.2"/></symbol>
+    <symbol id="s-key" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="5.2" width="15.2" height="9.6" rx="2"/><path d="M5.6 8.4h.01M8.4 8.4h.01M11.2 8.4h.01M14 8.4h.01M6.8 11.6h6.4"/></symbol>
     <symbol id="s-alert" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="7.6"/><path d="M10 6v4.6"/><circle cx="10" cy="13.7" r=".9" fill="currentColor" stroke="none"/></symbol>
     <symbol id="s-pr" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="6" cy="4.5" r="2"/><circle cx="6" cy="15.5" r="2"/><circle cx="14.5" cy="15.5" r="2"/><path d="M6 6.5v7M14.5 13.5V9a3 3 0 0 0-3-3H9.5"/><path d="M11 4l-1.8 2 1.8 2"/></symbol>
     <symbol id="s-check" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.6"/><path d="M6.6 10.3l2.3 2.3 4.5-5"/></symbol>
@@ -76,6 +79,7 @@
     <span class="pill orange" id="fake-badge" title="OMA_FAKE_AGENT=1" hidden>Fake agents</span>
     <button class="tbtn nodrag" id="cmdk-btn" data-action="cmdk-open" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#s-search"/></svg></button>
     <div class="usage nodrag" id="usage" tabindex="0" role="img" aria-label="Usage per account" aria-describedby="usage-pop"></div>
+    <button class="tbtn nodrag" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
   </header>
 
   <!-- chat -->
@@ -128,8 +132,6 @@
   </main>
   <aside class="inspector view" data-view="memory" id="mem-ins" hidden></aside>
   <div class="rz nodrag" id="rz-ins" role="separator" aria-label="Resize the sidebar" data-i18n-aria="aria.resize" aria-orientation="vertical" aria-controls="chat-ins wk-ins repo-ins mem-ins" tabindex="0"></div>
-  <!-- After the right sidebars, so the keyboard reaches it after their content. -->
-  <button class="tbtn" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
 </div>
 
 <div class="settings-win" id="sheet" role="dialog" aria-modal="true" hidden></div>
