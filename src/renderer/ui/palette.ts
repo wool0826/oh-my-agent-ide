@@ -10,14 +10,16 @@ import { chatAll, renderChat, renderChatInspector } from './chat';
 import { closePop } from './controls';
 import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, task, taskLabel, toast, ui, when, worker } from './core';
 import { go, nav } from './history';
+import { layerClose, layerOpen } from './layer';
 import { closeSettings, openSettings } from './settings';
 import { openShortcuts } from './shortcuts';
 import { hideUsagePop, ms, togglePanel, workerIcon } from './sidebar';
 import { openSide } from './side';
+import { openTerm } from './terminal';
 
 export interface Cmd extends PaletteItem { icon: string; run: () => void; /** Listed only for a search: past tasks would bury the places to go. */ searchOnly?: boolean }
 
-export const cmdk = { open: false, i: 0, all: [] as Cmd[], shown: [] as Cmd[], back: null as HTMLElement | null,
+export const cmdk = { open: false, i: 0, all: [] as Cmd[], shown: [] as Cmd[],
   /** What was typed, the things said that match it (read from the main process), and the timer that asks for them. */
   q: '', said: [] as Cmd[], saidFor: '', timer: 0 };
 
@@ -58,6 +60,7 @@ export function paletteItems(): Cmd[] {
   // A merge on GitHub shows within seconds anyway; this is for when it should show now.
   if (s.tasks.some((x) => x.prUrl && x.prState !== 'MERGED' && x.prState !== 'CLOSED'))
     out.push({ id: 'pr-refresh', group: t('side.prs'), title: t('pr.refresh'), icon: sym('s-pr'), run: () => void call('pr:refresh').then((ok) => { if (ok) toast(t('pr.refreshed')); }) });
+  out.push({ id: 'term', group: t('cmdk.window'), title: t('term.title'), keys: isMac ? '⌃`' : 'Ctrl+`', icon: sym('s-term'), run: () => { go({ view: 'chat' }); openTerm(); } });
   out.push({ id: 'sq', group: t('cmdk.window'), title: t('sq.title'), keys: `${mod}J`, icon: sym('s-side-q'), run: () => { go({ view: 'chat' }); openSide(); } });
   out.push({ id: 'side', group: t('cmdk.window'), title: t('cmdk.side'), keys: `${mod}B`, icon: sym('s-side-l'), run: () => togglePanel('side') });
   out.push({ id: 'ins', group: t('cmdk.window'), title: t('cmdk.ins'), keys: isMac ? '⌥⌘B' : 'Ctrl+Alt+B', icon: sym('s-side-r'), run: () => togglePanel('ins') });
@@ -77,7 +80,7 @@ export function openPalette(q = '') {
   hideUsagePop();
   $('#ctxmenu').hidden = true;
   cmdk.open = true;
-  cmdk.back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  layerOpen('cmdk');
   cmdk.all = paletteItems();
   const root = $('#cmdk');
   root.innerHTML = `<div class="dlg-back" data-action="cmdk-close"></div>
@@ -178,8 +181,7 @@ export function closePalette(restore = true) {
   const root = $('#cmdk');
   root.hidden = true;
   root.innerHTML = '';
-  if (restore && cmdk.back?.isConnected) cmdk.back.focus({ preventScroll: true });
-  cmdk.back = null;
+  layerClose('cmdk', restore);
   clearTimeout(cmdk.timer);
   cmdk.said = [];
   cmdk.saidFor = '';
@@ -188,7 +190,8 @@ export function closePalette(restore = true) {
 export function runPalette(i: number) {
   const c = cmdk.shown[i];
   if (!c) return;
-  closePalette(false);
+  // The focus goes back first; what runs may then move it (Settings, the side question).
+  closePalette();
   // Settings covers the window: leave it for anywhere else, stay in it for one of its own panes.
   if (ui.settingsShown && !c.id.startsWith('set:')) closeSettings();
   c.run();

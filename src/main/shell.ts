@@ -15,6 +15,7 @@ import type { ChatItem, ShellRun } from '../shared/types';
  * Lines the user runs from the chat with "!" (shared/shell.ts). They run as the user: in their own shell, in the IDE
  * home or a registered repository's checkout, with no Worker, slot or permission card. Each run is a chat item that
  * keeps the end of its output; when it ends, that end goes to the Dispatcher with its next turn (no turn of its own).
+ * The side terminal (main/terminal.ts) runs its lines the same way, kept apart from the chat.
  */
 /**
  * The line as PowerShell runs it: output in UTF-8 rather than the console's code page, and a native command's own
@@ -22,71 +23,105 @@ import type { ChatItem, ShellRun } from '../shared/types';
  */
 export const psLine = (line: string) => `[Console]::OutputEncoding = [Text.Encoding]::UTF8\n${line}\n$ok = $?; if ($ok) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }`;
 
+/** Where a line runs: a registered repository's checkout, or the IDE home ('' or null). Throws when it can't. */
+export function shellCwd(repo: string | null): { cwd: string; repo: string } {
+  const r = repo ? store.repo(repo) : null;
+  if (repo && !r) throw new Error(t('shell.err.noRepo', { name: repo }));
+  const cwd = r ? r.path : paths().home;
+  if (!fs.existsSync(cwd)) throw new Error(t('shell.err.noDir', { dir: cwd }));
+  return { cwd, repo: r?.name ?? '' };
+}
+
+/** A line on its way: Stop ends it and what it started. */
+export interface Running { stop(): void }
+
+/**
+ * Runs `run.cmd` in `cwd` and keeps the end of its output on `run` as it comes (`output`), then its exit code and
+ * time (`ended`, once).
+ */
+export function startLine(run: ShellRun, cwd: string, output: () => void, ended: () => void): Running {
+  const win = process.platform === 'win32';
+  const proc: ChildProcess = spawn(win ? 'powershell.exe' : (process.env.SHELL || '/bin/sh'), win ? ['-NoProfile', '-NonInteractive', '-Command', psLine(run.cmd)] : ['-lc', run.cmd], {
+    cwd, env: ghEnv(), windowsHide: true,
+    // Its own process group, so Stop also stops what it started.
+    detached: !win,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let out = '';
+  // Line breaks seen in all: the count of lines, past what is kept.
+  let breaks = 0;
+  const count = () => breaks + (out && !out.endsWith('\n') ? 1 : 0);
+  const keep = (text: string) => {
+    if (!text) return;
+    out = addOutput(out, text);
+    run.out = tailLines(out);
+    // Counted as kept: without terminal codes, with "\r\n" and "\r" as one break.
+    breaks += (addOutput('', text, Infinity).match(/\n/g) ?? []).length;
+    run.lines = count();
+    output();
+  };
+  // One decoder for each stream, so a character split between chunks stays whole.
+  for (const stream of [proc.stdout, proc.stderr]) {
+    const dec = new StringDecoder('utf8');
+    stream?.on('data', (d: Buffer) => keep(dec.write(d)));
+    stream?.on('end', () => keep(dec.end()));
+  }
+  const started = Date.now();
+  let done = false;
+  const end = (code: number | null, note = '') => {
+    if (done) return;
+    done = true;
+    if (note) out = addOutput(out, `${note}\n`);
+    run.out = tailLines(out);
+    run.lines = Math.max(count(), lineCount(out));
+    run.running = false;
+    run.code = run.stopped ? null : code;
+    run.ms = Date.now() - started;
+    log.info(`shell run in ${cwd} ended`, run.code);
+    ended();
+  };
+  proc.on('error', (e) => end(1, e.message));
+  proc.on('close', (code) => end(code));
+  log.info(`shell run in ${cwd}`, run.cmd);
+  return {
+    stop() {
+      if (done) return;
+      run.stopped = true;
+      kill(proc);
+      // A command that ignores the stop signal is ended for good a little later.
+      if (!win) {
+        setTimeout(() => {
+          if (!done && proc.pid) try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* gone */ }
+        }, 3000).unref();
+      }
+    },
+  };
+}
+
+/** A new run of `line` as it starts. */
+export const newRun = (line: string, repo: string): ShellRun => ({ cmd: line, repo, running: true, stopped: false, code: null, startedAt: nowIso(), ms: 0, out: '', lines: 0, sent: 'wait' });
+
 class Shell {
-  private procs = new Map<string, { proc: ChildProcess; out: string }>();
+  private procs = new Map<string, Running>();
   private pushTimer: NodeJS.Timeout | null = null;
 
   /** Starts `cmd` in `repo` ('' or null for the IDE home). Returns the chat item's id. */
   run(cmd: string, repo: string | null, script?: string): string {
     const line = cmd.trim();
     if (!line) throw new Error(t('shell.err.empty'));
-    const r = repo ? store.repo(repo) : null;
-    if (repo && !r) throw new Error(t('shell.err.noRepo', { name: repo }));
-    const cwd = r ? r.path : paths().home;
-    if (!fs.existsSync(cwd)) throw new Error(t('shell.err.noDir', { dir: cwd }));
-    const run: ShellRun = { cmd: line, repo: r?.name ?? '', running: true, stopped: false, code: null, startedAt: nowIso(), ms: 0, out: '', lines: 0, sent: 'wait', ...(script ? { script } : {}) };
+    const where = shellCwd(repo);
+    const run: ShellRun = { ...newRun(line, where.repo), ...(script ? { script } : {}) };
     const item: ChatItem = store.chat('shell', line);
     item.shell = run;
-    const win = process.platform === 'win32';
-    const proc = spawn(win ? 'powershell.exe' : (process.env.SHELL || '/bin/sh'), win ? ['-NoProfile', '-NonInteractive', '-Command', psLine(line)] : ['-lc', line], {
-      cwd, env: ghEnv(), windowsHide: true,
-      // Its own process group, so Stop also stops what it started.
-      detached: !win,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const entry = { proc, out: '' };
-    // Line breaks seen in all: the count of lines, past what is kept.
-    let breaks = 0;
-    const count = () => breaks + (entry.out && !entry.out.endsWith('\n') ? 1 : 0);
-    this.procs.set(item.id, entry);
-    const keep = (text: string) => {
-      if (!text) return;
-      entry.out = addOutput(entry.out, text);
-      run.out = tailLines(entry.out);
-      // Counted as kept: without terminal codes, with "\r\n" and "\r" as one break.
-      breaks += (addOutput('', text, Infinity).match(/\n/g) ?? []).length;
-      run.lines = count();
-      this.pushSoon();
-    };
-    // One decoder for each stream, so a character split between chunks stays whole.
-    for (const stream of [proc.stdout, proc.stderr]) {
-      const dec = new StringDecoder('utf8');
-      stream?.on('data', (d: Buffer) => keep(dec.write(d)));
-      stream?.on('end', () => keep(dec.end()));
-    }
-    const started = Date.now();
-    let ended = false;
-    const end = (code: number | null, note = '') => {
-      if (ended) return;
-      ended = true;
+    this.procs.set(item.id, startLine(run, where.cwd, () => this.pushSoon(), () => {
       this.procs.delete(item.id);
-      if (note) entry.out = addOutput(entry.out, `${note}\n`);
-      run.out = tailLines(entry.out);
-      run.lines = Math.max(count(), lineCount(entry.out));
-      run.running = false;
-      run.code = run.stopped ? null : code;
-      run.ms = Date.now() - started;
       if (run.stopped) run.sent = 'off';
       else {
         run.sent = 'queued';
         store.pushUpdate(handOver(run));
       }
-      log.info(`shell run in ${cwd} ended`, run.code);
       store.changed();
-    };
-    proc.on('error', (e) => end(1, e.message));
-    proc.on('close', (code) => end(code));
-    log.info(`shell run in ${cwd}`, line);
+    }));
     return item.id;
   }
 
@@ -94,14 +129,7 @@ class Shell {
     const e = this.procs.get(id);
     const item = store.data.chat.find((c) => c.id === id);
     if (!e || !item?.shell?.running) return;
-    item.shell.stopped = true;
-    kill(e.proc);
-    // A command that ignores the stop signal is ended for good a little later.
-    if (process.platform !== 'win32') {
-      setTimeout(() => {
-        if (this.procs.get(id) === e && e.proc.pid) try { process.kill(-e.proc.pid, 'SIGKILL'); } catch { /* gone */ }
-      }, 3000).unref();
-    }
+    e.stop();
     store.changed();
   }
 

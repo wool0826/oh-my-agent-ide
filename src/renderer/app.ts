@@ -7,7 +7,9 @@ import { issueMessage } from '../shared/issues';
 import { jiraMessage } from '../shared/jira';
 import { bundleMergeOrder, openBundles } from '../shared/bundle';
 import { normalizeQuickKey } from '../shared/quickKey';
-import { cleanTime } from '../shared/notifyRules';
+import { cleanTime, typedTime } from '../shared/notifyRules';
+import { rovingIndex } from '../shared/roving';
+import { threadKeys } from './ui/thread';
 import { focusSelector } from '../shared/focusKey';
 import { PAGE, pagesFor, slideOlder } from '../shared/paging';
 import { FONT_SIZE_DEFAULT } from '../shared/font';
@@ -19,7 +21,7 @@ import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo } from './ui/shell';
-import { $, announce, applyStaticText, call, esc, hhmm, ide, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
+import { $, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closePalette, Cmd, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
@@ -29,6 +31,7 @@ import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, re
 import { initResize } from './ui/resize';
 import { initTip } from './ui/tip';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
+import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { isPlacing, nextRow, watchPanes } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
@@ -61,7 +64,7 @@ export function renderAll(force = false) {
   renderDispatcherStatus();
   renderMemSync();
   if (ui.cancelAsk) renderCancelDialog();
-  if (ui.view === 'chat') { renderChat(force); renderChatInspector(); renderSide(); }
+  if (ui.view === 'chat') { renderChat(force); renderChatInspector(); renderSide(); renderTerm(); }
   if (ui.view === 'worker') { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
   if (ui.view === 'repo') renderRepos();
   if (ui.view === 'memory' && force) renderMemory();
@@ -167,6 +170,12 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'sq-toggle': toggleSide(); break;
+    // The side terminal (ui/terminal.ts).
+    case 'tm-toggle': toggleTerm(); break;
+    case 'tm-hide': hideTerm(); break;
+    case 'tm-clear': await call('term:clear'); $('#tm-input').focus(); break;
+    case 'tm-stop': (el as HTMLButtonElement).disabled = true; void tryCall('term:stop', id); break;
+    case 'tm-cwd': pickTermFolder(el); break;
     case 'sq-min': minimiseSide(); break;
     case 'sq-close': void closeSide(); break;
     case 'sq-model': pickSideModel(el); break;
@@ -237,8 +246,9 @@ export async function act(el: HTMLElement, e: Event) {
     }
     case 'ctx-compact': closeCtxMenu(); await call('dispatcher:compact'); break;
     case 'ctx-clear':
-      // The Dispatcher's context is gone for good: ask first (B2).
-      closeCtxMenu();
+      // The Dispatcher's context is gone for good: ask first (B2). The meter has the focus again, for the dialog to
+      // give back.
+      closeCtxMenu(true);
       ui.confirmAsk = { title: t('ctx.clearTitle'), body: `<p>${esc(t('ctx.clearBody'))}</p>`, ok: t('ctx.clear'), action: 'ctx-clear', id: '' };
       renderConfirmDialog();
       break;
@@ -834,13 +844,15 @@ export function init() {
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
     if (el.id === 'usage-every') { void call('settings:save', { usageRefreshMins: Number(el.value) }); return; }
     if (el.id === 'set-gh') el.value = hostOnly(el.value);
+    // A time that does not read as one gives way to the one in use, which is what stays saved.
+    if ((el.id === 'set-qfrom' || el.id === 'set-qto') && S) { el.value = typedTime(el.value, el.id === 'set-qfrom' ? S.settings.quietFrom : S.settings.quietTo); markBad(el, false); }
     if (el.closest?.('#sheet')) void saveSettingsNow();
   });
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
     if (el.id === 'cmdk-q') { renderPalette(el.value); return; }
-    if (el.id === 'set-qkey') el.classList.toggle('bad', normalizeQuickKey(el.value) === null);
-    if (el.id === 'set-qfrom' || el.id === 'set-qto') el.classList.toggle('bad', !!el.value.trim() && !cleanTime(el.value));
+    if (el.id === 'set-qkey') markBad(el, normalizeQuickKey(el.value) === null);
+    if (el.id === 'set-qfrom' || el.id === 'set-qto') markBad(el, !!el.value.trim() && !cleanTime(el.value));
     if (el.id === 'set-vol') syncSlider(el);
     if (el.classList.contains('step-v')) syncStep(el, false);
     if (el.id === 'set-fsize') previewFont();
@@ -915,6 +927,13 @@ export function init() {
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'Slash') { e.preventDefault(); if (shortcutsOpen()) closeShortcuts(); else if (!ui.settingsShown) openShortcuts(); return; }
     // Ctrl/Cmd+J: the side question, over the chat. Again from inside it, it goes back behind its button.
+    // Ctrl+` opens the side terminal, and hides it from inside; Ctrl on the Mac too, as in other editors.
+    if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.code === 'Backquote' && !ui.settingsShown) {
+      e.preventDefault();
+      if (term.open && $('#tm').contains(document.activeElement)) hideTerm();
+      else { if (ui.view !== 'chat') go({ view: 'chat' }); openTerm(); }
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !ui.settingsShown) {
       e.preventDefault();
       if (sq.open && $('#sq').contains(document.activeElement)) minimiseSide();
@@ -927,7 +946,7 @@ export function init() {
       const shown = (d: HTMLElement) => !!d.getClientRects().length;
       const dlg = [...document.querySelectorAll<HTMLElement>('.dlg[aria-modal="true"]')].find(shown) ?? [...document.querySelectorAll<HTMLElement>('#sheet[aria-modal="true"]')].find((d) => !d.hidden && shown(d));
       if (dlg) {
-        const stops = [...dlg.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(shown);
+        const stops = [...dlg.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter((x) => x.tabIndex >= 0 && shown(x));
         const at = stops.indexOf(document.activeElement as HTMLElement);
         e.preventDefault();
         stops[(at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length]?.focus();
@@ -935,6 +954,25 @@ export function init() {
       }
     }
     if (popKeys(e)) return;
+    // A tab list or a group of choices is one Tab stop: ←/→, Home and End move in it and choose (↑/↓ too among choices).
+    const set = !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && el.matches?.('button[role="tab"], button[role="radio"]') ? el.closest<HTMLElement>('[role="tablist"], [role="radiogroup"]') : null;
+    if (set) {
+      const all = [...set.querySelectorAll<HTMLButtonElement>('button[role="tab"], button[role="radio"]')].filter((b) => !b.disabled);
+      const to = rovingIndex(all.indexOf(el as HTMLButtonElement), e.key, all.length, set.matches('[role="radiogroup"]'));
+      if (to !== null) {
+        e.preventDefault();
+        const next = all[to];
+        if (next === el) return;
+        // Choosing may draw the list again: the choice is then found by what it is.
+        const again = next.dataset.segc ? `[data-segc="${next.dataset.segc}"][data-v="${CSS.escape(next.dataset.v ?? '')}"]` : focusSelector(next.tagName, next.dataset);
+        next.focus();
+        next.click();
+        if (document.activeElement !== next && again) document.querySelector<HTMLElement>(again)?.focus();
+        return;
+      }
+    }
+    // A conversation is one Tab stop, and ↑/↓ move between its messages.
+    if (threadKeys(e)) return;
     // ↑/↓ in the right sidebar's list rows (two panes) select the next row.
     if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.altKey && !e.ctrlKey && !e.metaKey && el.matches?.('#chat-ins .pk > .li')) {
       e.preventDefault();
@@ -1116,6 +1154,9 @@ export function init() {
     else if (ui.settingsShown && accChanged && !langChanged) openSettings();
   });
   bindSide();
+  bindTerm();
+  ide.onTermState(setTermView);
+  void call('term:state').then((v) => { if (v) setTermView(v); });
   ide.onSideState(setSideView);
   void call('side:state').then((v) => { if (v) setSideView(v); });
   ide.onWorkerLog((id, item) => {

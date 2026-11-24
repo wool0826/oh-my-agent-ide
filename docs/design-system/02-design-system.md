@@ -286,7 +286,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 
 ### Sidebar — `.row`, `.side-h`
 - Row: glyph box 18, gap 8, padding 6/8, radius 10. Title 13/500 `--text-primary`, meta 11 `--text-secondary`, badge 11/600 tabular.
-- States: hover `--surface-hover`, pressed `--surface-pressed`, selected (`aria-current`) `--surface-selected` + `--rim`, zero count = title in `--text-secondary`/400 and idle glyph (no opacity).
+- States: hover `--surface-hover`, pressed `--surface-pressed`, selected (`aria-current`) a 2px `--accent` ring with no fill (T-0062), zero count = title in `--text-secondary`/400 and idle glyph (no opacity).
 - Section header 11/600 `--text-tertiary`; "Needs your decision" uses `--danger-text` and pulses 3× when a decision arrives.
 
 ### Pills, badges, tags — `.pill[data-tone]`, `.count`, `.diff-tag`
@@ -310,7 +310,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 ### Task card — `.task`
 - Grid 22 / 1fr / auto, gap 10, padding 10/12, radius 14, 0.5px top hairline between cards.
 - Title "W-id title" 13/600; meta (repo, model, account, now) 12 `--text-secondary`; right side: context ring + K count + status pill.
-- States: hover `--surface-hover`, pressed `--surface-pressed`, selected `--surface-selected` + rim, archived = title `--text-secondary`/500 + archive glyph (no opacity).
+- States: hover `--surface-hover`, pressed `--surface-pressed`, selected a 2px `--accent` ring with no fill, archived = title `--text-secondary`/500 + archive glyph (no opacity).
 
 ### Inbox — `.group` of `.dec`, `.res`, `.aa`
 - Header `.ins-h`: 13/600 (was 700) + count badge or clear button (24, revealed on hover/focus).
@@ -364,7 +364,9 @@ One tooltip for the whole app, in place of the native `title` (which the OS draw
 ## 2.10 Accessibility summary
 
 - **Contrast**: 250/250 checked pairs pass AA in dark and light (`03-contrast-report.md`). Before → after (dark): white on the blue gradient 2.86 → 4.63; menu highlight 3.65 → 4.95; count badge 3.41 → 5.06; danger button 2.94 → 4.67; tertiary text in an inspector card 3.50 → 4.72; link in a card 3.16 → 5.36; focus ring against a panel 1.77 → 6.05.
-- **Focus**: one visible style, `2px solid --focus-ring`, offset 2 (fields: 0); `:focus-visible` everywhere except text fields.
+- **Focus**: one visible style, `2px solid --focus-ring`, offset 2 (fields: 0); `:focus-visible` everywhere except text fields. A message that has the keyboard gets the same ring round its bubble or card.
+- **Keyboard**: a layer (Settings, the palette, a dialog) takes the focus when it opens and gives it back when it closes. A tab list, a segmented choice and a conversation are one Tab stop each: the arrows, Home and End move inside (tabs and choices wrap and choose at once; messages stop at the ends), and Tab inside a message goes through its controls and then leaves the conversation.
+- **Invalid fields**: the outline always comes with `aria-invalid`.
 - **Targets**: every interactive control is ≥24×24.
 - **Motion and transparency**: both OS settings honored, plus attribute switches for testing.
 - **Color independence**: glyph shapes, pill words and meter numbers carry the meaning.

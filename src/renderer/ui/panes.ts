@@ -21,7 +21,7 @@ export function rowHtml(tab: PaneTab, key: string, sel: boolean, inner: string) 
 export const rowText = (title: string, small: string) => `<span class="t"><b>${esc(title)}</b>${small ? `<small>${esc(small)}</small>` : ''}</span>`;
 
 /** The tab's content scrolls in its own box under the tabs, so the tabs stay in view (data-scroll keeps its offset). */
-export const colsHtml = (list: string) => `<div class="ins-body" data-scroll="ins-body"><div class="ins-cols"><div class="ins-list">${list}</div><div class="ins-detail"></div></div></div>`;
+export const colsHtml = (list: string, attrs = '') => `<div class="ins-body" data-scroll="ins-body"${attrs}><div class="ins-cols"><div class="ins-list">${list}</div><div class="ins-detail"></div></div></div>`;
 
 /** The sidebar's width as the user set it; the aside itself is narrower by its inset. */
 function sidebarWidth(root: HTMLElement) {

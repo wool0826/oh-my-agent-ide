@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('ide', {
   onDecisionAlert: (fn: (loud: boolean) => void) => ipcRenderer.on('decision-alert', (_e, loud) => fn(loud !== false)),
   /** The side question's thread changed (main/side.ts). */
   onSideState: (fn: (v: unknown) => void) => ipcRenderer.on('side-state', (_e, v) => fn(v)),
+  /** The side terminal's runs changed (main/terminal.ts). */
+  onTermState: (fn: (v: unknown) => void) => ipcRenderer.on('term-state', (_e, v) => fn(v)),
   onDoneAlert: (fn: () => void) => ipcRenderer.on('done-alert', () => fn()),
   onOpenResult: (fn: (taskId: string) => void) => ipcRenderer.on('open-result', (_e, id) => fn(String(id))),
   /** Back or Forward from an app command (mouse side buttons, Back keys). */

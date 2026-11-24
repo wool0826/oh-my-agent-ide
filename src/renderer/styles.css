@@ -87,7 +87,7 @@ body { --lights-end: 0px; }
 .row .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .row .t b { font-weight: 500; font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .t small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row.sel { background: var(--surface-selected); box-shadow: var(--rim); }
+.row.sel { box-shadow: inset 0 0 0 2px var(--accent); }
 .row .badge { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .row.zero .t b { color: var(--text-secondary); font-weight: 400; } .row.zero .ic { --c: var(--state-idle); }
 .side-foot { flex: none; display: flex; align-items: center; justify-content: space-between; padding: var(--space-8) var(--space-10) var(--space-10); }
@@ -240,6 +240,9 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 /* The composer floats over the thread (its height is --composer-h), so the end of the thread clears it. */
 .thread { flex: 1; overflow-y: auto; padding: var(--space-12) var(--space-20) calc(var(--composer-h, 46px) + 30px); display: flex; flex-direction: column; gap: var(--space-8); -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
 .thread > * { flex-shrink: 0; }
+/* The message that has the keyboard (↑/↓ move between messages). */
+.thread > [tabindex="-1"]:focus { outline: none; }
+.thread > [tabindex="-1"]:focus-visible { outline: var(--focus-outline); outline-offset: 2px; border-radius: var(--radius-xl); }
 .stamp { align-self: center; font-size: var(--fs-caption2); color: var(--text-tertiary); font-weight: 500; margin: var(--space-6) 0 var(--space-2); }
 .bub { max-width: 78%; padding: var(--space-8) var(--space-12); border-radius: var(--radius-xl); font-size: var(--fs-body); line-height: var(--lh-body); user-select: text; overflow-wrap: anywhere; }
 .bub p + p { margin-top: var(--space-6); }
@@ -622,7 +625,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: var(--space-10); align-items: center; padding: var(--space-10) var(--space-12); border-radius: var(--radius-lg); box-shadow: inset 0 .5px 0 var(--border-subtle); cursor: default; }
 .li:first-child, .li.sel, .li.sel + .li { box-shadow: none; }
 .li:hover { background: var(--surface-hover); }
-.li.sel { background: var(--surface-selected); box-shadow: var(--rim); }
+.li.sel { box-shadow: inset 0 0 0 2px var(--accent); }
 .li.dim .m b { color: var(--text-secondary); font-weight: 500; }
 .li .m { min-width: 0; display: flex; flex-direction: column; }
 .li .m b { font-size: var(--fs-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1340,9 +1343,11 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .dhold i { flex: none; width: 48px; height: 3px; border-radius: 2px; background: var(--neutral-soft); overflow: hidden; }
 .dhold b { display: block; height: 100%; border-radius: 2px; background: var(--state-wait); transform-origin: 0 50%; transition: transform var(--dur-slow) linear; }
 .dhold.gone { color: var(--warning-text); }
-/* Selection is a ring and a tint on all four sides, never a coloured edge: one rule for decisions, auto-answers and
-   results. The transparent outline draws the ring in forced-colours mode. The keyboard focus ring stays its own. */
-:is(.dec, .aa, .res).sel { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; background: var(--accent-soft); border-radius: var(--radius-lg); }
+/* Selection is a ring on all four sides, with no fill under the text and never a coloured edge: one rule for decisions,
+   auto-answers and results, and the same ring on the sidebars' rows (.row, .li, .pk). The transparent outline draws
+   the ring in forced-colours mode. The keyboard focus ring stays its own. */
+@media (forced-colors: active) { .row.sel, .li.sel { outline: 2px solid Highlight; outline-offset: -2px; } }
+:is(.dec, .aa, .res).sel { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; border-radius: var(--radius-lg); }
 :is(.dec, .aa, .res).sel, :is(.dec, .aa, .res).sel + :is(.dec, .aa, .res) { border-top-color: transparent; }
 .dec[data-dec]:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
 /* Key hints only on the selected card, so colour is not the only sign of which card the keys answer. */
@@ -1366,8 +1371,8 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .dlg.keys .dlg-btns { grid-template-columns: 1fr; }
 
 /* ---------- right sidebar: one column, or list + detail from 560 (shared/insPanes, ui/panes.ts) ---------- */
-/* One column is at most 440 and centred; from 560 the list keeps 248 (LIST_W) and the selected card gets the rest,
-   at most 356, so its lines and buttons stay put while the sidebar is dragged. */
+/* One column is at most 440 and centred; from 560 the list keeps 248 (LIST_W) and the selected card gets all the
+   rest, so widening the sidebar widens only what is being read. */
 /* The tabs stay put: what is under them scrolls in .ins-body, which reaches the panel's edges so its bar sits there. */
 #chat-ins { overflow: hidden; padding-bottom: 0; }
 #chat-ins > .ins-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-inline: calc(-1 * var(--space-12)); padding: 2px var(--space-12) 14px; }
@@ -1375,7 +1380,7 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .ins-list { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--space-10); min-width: 0; }
 .ins-detail { display: none; }
 .ins-cols.split { display: grid; grid-template-columns: 248px minmax(0, 1fr); align-items: start; gap: var(--space-12); max-width: none; }
-.ins-cols.split .ins-detail { display: block; position: sticky; top: 0; max-width: 356px; min-width: 0; background: var(--surface-card); border-radius: var(--radius-lg); box-shadow: var(--rim); overflow: hidden; }
+.ins-cols.split .ins-detail { display: block; position: sticky; top: 0; min-width: 0; background: var(--surface-card); border-radius: var(--radius-lg); box-shadow: var(--rim); overflow: hidden; }
 .pk { min-width: 0; }
 .pk + .pk { border-top: .5px solid var(--border-subtle); }
 .pk.sel, .pk.sel + .pk { border-top-color: transparent; }
@@ -1394,8 +1399,8 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .pk.new > .li { background: var(--surface-card); box-shadow: var(--rim); border-radius: var(--radius-lg); }
 .pk.new > .li > .sym { color: var(--accent); }
 .pk.new.sel > .pk-c { margin-top: var(--space-10); }
-/* The selected row or card: a ring and a tint, as for decisions. In the detail pane the card is the selection. */
-.pk.sel > .li, .ins-list .pk.sel > .pk-c > .memo { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; background: var(--accent-soft); border-radius: var(--radius-lg); }
+/* The selected row or card: a ring, as for decisions. In the detail pane the card is the selection. */
+.pk.sel > .li, .ins-list .pk.sel > .pk-c > .memo { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; border-radius: var(--radius-lg); }
 .ins-detail .dec.sel { box-shadow: none; background: none; }
 .pk.sel .memo .acts, .ins-detail .memo .acts { opacity: 1; }
 .pk:not(.sel) > .pk-c > .memo[data-action]:hover { background: var(--surface-hover); }
@@ -1520,6 +1525,41 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .sqb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 @media (prefers-reduced-motion: reduce) { .sq { animation: none; } .sq-spin { animation: none; } }
 @media (forced-colors: active) { .sq { border: 1px solid CanvasText; } .sqb.on { outline: 2px solid Highlight; } }
+
+/* Side terminal (ui/terminal.ts): a floating surface at the chat's bottom left, sized by its top right corner. Its
+   lines are mono on the code surface; nothing in it is a chat message. */
+.tm { position: absolute; left: var(--space-16); bottom: 88px; z-index: calc(var(--z-composer) + 1); width: 560px; height: 320px; max-width: calc(100% - 2 * var(--space-16)); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-overlay-solid, var(--surface-overlay)); box-shadow: var(--rim-strong), var(--shadow-4); overflow: hidden; animation: upop-in var(--dur-base) var(--ease-standard); }
+.tm[hidden] { display: none; }
+.tm > header { flex: none; display: flex; align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
+.tm > header > .sym { font-size: var(--icon-md); color: var(--text-secondary); }
+.tm > header b { font-size: var(--fs-caption); font-weight: 600; }
+.tm > header .gap { flex: 1; }
+.tm > header .sh-cwd { flex: 0 1 auto; }
+.tm-tb { flex: none; height: 20px; padding: 0 var(--space-8); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font: inherit; font-size: var(--fs-caption2); font-weight: 600; cursor: pointer; }
+.tm-tb:hover { background: var(--surface-hover); color: var(--text-primary); }
+.tm-tb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.tm-grip { position: absolute; top: 0; right: 0; z-index: 1; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 0 var(--radius-xl) 0 var(--radius-sm); background: none; cursor: nesw-resize; touch-action: none; }
+.tm-grip::after { content: ''; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-top: 1.5px solid var(--text-tertiary); border-right: 1.5px solid var(--text-tertiary); border-top-right-radius: 2px; }
+.tm-grip:hover::after { border-color: var(--text-secondary); }
+.tm-grip:focus-visible { outline: var(--focus-outline); outline-offset: calc(-1 * var(--focus-offset)); }
+.tm-t { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-10); padding: var(--space-10) var(--space-12); background: var(--surface-code); }
+.tm-empty { margin: auto 0; font-size: var(--fs-caption); color: var(--text-tertiary); text-align: center; }
+.tm-run { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.tm-cmd { display: flex; align-items: center; gap: var(--space-8); min-width: 0; min-height: var(--control-sm); }
+.tm-ps { flex: none; font-family: var(--font-mono); font-size: var(--fs-code); font-weight: 700; color: var(--text-tertiary); }
+.tm-cmd code { flex: 0 1 auto; min-width: 0; background: none; padding: 0; font-size: var(--fs-code); font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-in { flex: 0 1 auto; min-width: 0; font-size: var(--fs-caption2); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-cmd .pill { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-4); }
+.tm-cmd time { flex: none; font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.tm-stop { flex: none; height: 20px; padding: 0 var(--space-8); font-size: var(--fs-caption2); }
+.tm-out { margin: 0; padding: 0 0 0 var(--space-16); background: none; font-size: var(--fs-caption2); color: var(--text-secondary); }
+.tm-c { flex: none; display: flex; align-items: flex-start; gap: var(--space-8); padding: var(--space-8) var(--space-12); box-shadow: inset 0 .5px 0 var(--border-subtle); }
+.tm-c .tm-ps { line-height: 20px; }
+.tm-input { flex: 1; min-width: 0; height: 20px; max-height: 120px; padding: 0; border: 0; background: none; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-code); line-height: 20px; resize: none; outline: none; }
+.tm-input::placeholder { color: var(--text-tertiary); }
+.tm:focus-within .tm-c { box-shadow: inset 0 .5px 0 var(--border-subtle), inset 0 -2px 0 var(--accent); }
+@media (prefers-reduced-motion: reduce) { .tm { animation: none; } }
+@media (forced-colors: active) { .tm { border: 1px solid CanvasText; } .tm-input { outline: 1px solid CanvasText; } }
 
 /* The app's one tooltip (ui/tip.ts), in place of the native title: the overlay surface, small, above every other
    layer. Its place is set in code; it comes in from the control's side. */

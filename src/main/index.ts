@@ -16,6 +16,7 @@ import { workers } from './agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
 import { runs } from './runs';
 import { shell as shellRuns } from './shell';
+import { terminal } from './terminal';
 import { addScript, removeScript, runScript, updateScript } from './scripts';
 import type { ScriptInput } from '../shared/scripts';
 import { side } from './side';
@@ -250,6 +251,11 @@ function registerIpc() {
   handle('side:stop', () => side.stop());
   handle('side:reset', () => side.reset());
   handle('side:state', () => side.state());
+  // The side terminal (main/terminal.ts): its runs stay out of the chat and away from the Dispatcher.
+  handle('term:run', (cmd: string, repo?: string | null) => terminal.run(String(cmd ?? ''), typeof repo === 'string' && repo ? repo : null));
+  handle('term:stop', (id: string) => terminal.stop(String(id)));
+  handle('term:clear', () => terminal.clear());
+  handle('term:state', () => terminal.state());
   handle('chat:send', (text: string, files?: string[], replyTo?: string | null) => dispatcher.send(text, files ?? [], typeof replyTo === 'string' ? replyTo : null));
   handle('chat:stop', () => dispatcher.stop());
   // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
@@ -516,6 +522,7 @@ async function boot() {
   accounts.on('changed', scheduleLimitRetry);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
   side.onChange((v) => win?.webContents.send('side-state', v));
+  terminal.onChange((v) => win?.webContents.send('term-state', v));
   // Worker news worth a turn of its own: the Dispatcher starts one by itself.
   store.on('wake', () => dispatcher.wake());
   onDecisionCreated((d) => {
@@ -573,6 +580,7 @@ else {
     destroyQuick();
     runs.stopAll();
     shellRuns.stopAll();
+    terminal.stopAll();
     side.reset();
     automations.stop();
     workers.closeAll();

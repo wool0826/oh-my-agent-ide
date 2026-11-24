@@ -2,6 +2,7 @@
 import { NOTES } from '../../shared/sounds';
 import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
 import type { SideView } from '../../shared/side';
+import type { TermView } from '../../shared/terminal';
 import { tr, type Key } from '../../shared/i18n';
 import { modelLabel as labelFor } from '../../shared/models';
 import { linkify } from '../../shared/linkify';
@@ -17,6 +18,7 @@ import { type NavDir, type Screen, type View, type WorkerFilter } from '../../sh
 import { init } from '../app';
 import { go, screen, show } from './history';
 import { ms } from './sidebar';
+import { keepThreadFocus } from './thread';
 
 declare global {
   interface Window {
@@ -26,6 +28,7 @@ declare global {
       onState(fn: (s: AppState) => void): void;
       onWorkerLog(fn: (id: string, item: WorkerLogItem) => void): void;
       onSideState(fn: (v: SideView) => void): void;
+      onTermState(fn: (v: TermView) => void): void;
       onDecisionAlert(fn: (loud: boolean) => void): void;
       /** A task-end notification was clicked: show that task's result card. */
       onOpenResult(fn: (taskId: string) => void): void;
@@ -645,9 +648,19 @@ export const NEW_FROM = '<i class="new-from" hidden></i>';
 
 export function setThread(th: HTMLElement, html: string, follow: boolean, older: boolean) {
   const fromEnd = th.scrollHeight - th.scrollTop;
+  // The message that has the keyboard is a new element after this: the focus goes to the one in its place.
+  const refocus = keepThreadFocus(th);
   th.innerHTML = html;
   if (older) scrollQuietly(th, th.scrollHeight - fromEnd);
   else if (follow) scrollQuietly(th, th.scrollHeight);
+  refocus?.(older);
+}
+
+/** A field whose text cannot be used: the red outline, and the same said to a screen reader. */
+export function markBad(el: Element | null, bad: boolean) {
+  if (!el) return;
+  el.classList.toggle('bad', bad);
+  if (bad) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
 }
 
 /** Fade in what a container shows now (a tab or a pane just picked). Later re-renders of it don't fade. */

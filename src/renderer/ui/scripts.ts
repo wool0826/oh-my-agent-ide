@@ -65,7 +65,7 @@ export function scriptsHtml() {
   if (ui.scriptEdit && !list.some((s) => s.id === ui.scriptEdit)) ui.scriptEdit = null;
   const isNew = ui.scriptSel === 'new';
   const head = slotHtml('new', isNew, rowHtml('script', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('script.new')}</b></span>`), add, ' new');
-  return `${head}<div class="sect"><div class="ins-h"><b>${t('ins.tabScript')}</b><small>${list.length}</small></div><div class="group">${list.map(scriptSlot).join('')}</div></div>`;
+  return `${head}<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.tabScript')}</b><small>${list.length}</small></div><div class="group">${list.map(scriptSlot).join('')}</div></div>`;
 }
 
 function formErrHtml() {

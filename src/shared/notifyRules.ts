@@ -25,6 +25,14 @@ export function cleanTime(v: unknown): string {
   return typeof v === 'string' ? parseTime(v) ?? '' : '';
 }
 
+/**
+ * What a typed time is saved as: the time when it reads as one, '' when the field was emptied, and the time in use
+ * when the text is not a time, so a slip of the hand does not switch the hours off.
+ */
+export function typedTime(v: string, inUse: string): string {
+  return v.trim() ? parseTime(v) ?? inUse : '';
+}
+
 /** Notifications of one source closer together than this are one burst: the first is shown, the rest are not. */
 export const BURST_MS = 20_000;
 

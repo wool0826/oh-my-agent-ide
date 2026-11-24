@@ -129,6 +129,17 @@ flow('from 560 wide the selected memo opens beside the list, and a draft keeps i
   let w = await where();
   assert.equal(w.rows, 2);
   assert.match(w.detail, /Prefer pnpm|Release notes/);
+  // Widest (End): the list keeps its width and the detail pane takes all the extra room.
+  const cols = () => app.evaluate("const q = (s) => Math.round(document.querySelector(s).getBoundingClientRect().width); return [q('#chat-ins .ins-list'), q('#chat-ins .ins-detail')];");
+  const [list576, detail576] = await cols();
+  await handle('End', 35);
+  await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) > 800", 'the widest sidebar');
+  const [listMax, detailMax] = await cols();
+  assert.equal(listMax, list576);
+  assert.ok(detailMax - detail576 > 200, `detail ${detail576} → ${detailMax}`);
+  await handle('Home', 36);
+  for (let i = 0; i < 4; i++) await handle('ArrowLeft', 37, true);
+  await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) === 576", 'back to 576');
   const other = await app.evaluate("return [...document.querySelectorAll('#chat-ins .pk')].find((p) => !p.classList.contains('sel')).dataset.pick;");
   await app.click(`#chat-ins .li[data-id="${other}"]`);
   await app.until(`document.querySelector('#chat-ins .ins-detail .pk-c')?.dataset.from === '${other}'`, 'the other memo in the detail pane');
@@ -213,6 +224,31 @@ flow('a saved script shows its command, runs only from its Run button into the c
   assert.equal(await app.evaluate("return document.querySelectorAll('#chat-ins .memo.script').length;"), 1);
   await app.click('#chat-ins .memo.script [data-action="script-remove"]');
   await app.until("!document.querySelector('#chat-ins .memo.script')", 'the script deleted');
+});
+
+flow('the side terminal runs lines apart from the chat, recalls them with the up arrow, clears and resizes', {}, async (app) => {
+  // Ctrl+` opens it with its input focused.
+  await app.key('Backquote', '`', 192, 2);
+  await app.until("!document.querySelector('#tm').hidden && document.activeElement?.id === 'tm-input'", 'the open terminal');
+  await app.evaluate("document.querySelector('#tm-input').value = 'echo side-terminal-ok'; return 1;");
+  await app.key('Enter', 'Enter', 13);
+  await app.until("[...document.querySelectorAll('#tm-thread .tm-run:not(.live) .tm-out')].some((o) => o.innerText.includes('side-terminal-ok'))", 'the output in the terminal');
+  // Not in the chat.
+  assert.equal(await app.evaluate("return document.querySelectorAll('#chat-thread .sh-run').length;"), 0);
+  assert.equal(await app.evaluate("return document.querySelector('#tm-input').value;"), '');
+  // ↑ brings the line back.
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  assert.equal(await app.evaluate("return document.querySelector('#tm-input').value;"), 'echo side-terminal-ok');
+  // The grip's arrows resize it.
+  const before = await app.evaluate("return document.querySelector('#tm').offsetWidth;");
+  await app.evaluate("document.querySelector('#tm-grip').focus(); return 1;");
+  await app.key('ArrowRight', 'ArrowRight', 39, 8);
+  assert.equal(await app.evaluate("return document.querySelector('#tm').offsetWidth;"), before + 64);
+  // Clear empties it; Esc hides it and the chat input has the focus.
+  await app.click('[data-action="tm-clear"]');
+  await app.until("!document.querySelector('#tm-thread .tm-run')", 'the cleared terminal');
+  await app.key('Escape', 'Escape', 27);
+  await app.until("document.querySelector('#tm').hidden && document.activeElement?.id === 'chat-input'", 'the hidden terminal');
 });
 
 flow('a plan waits for approval before the work goes on', {}, async (app) => {
@@ -627,11 +663,18 @@ flow('the quick message box completes a repository name, sends to the Dispatcher
 flow('do-not-disturb hours are set in Settings and kept as times', {}, async (app) => {
   await app.click('[data-action="open-settings"]');
   await app.click('[data-action="pane"][data-id="alerts"]');
-  const set = (id, v) => app.evaluate(`const el = document.getElementById(${JSON.stringify(id)}); el.value = ${JSON.stringify(v)}; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return el.classList.contains('bad');`);
-  // Something that is not a time is marked and not saved.
-  assert.equal(await set('set-qfrom', 'late'), true);
-  assert.equal(await set('set-qfrom', '22'), false);
-  assert.equal(await set('set-qto', '7:30'), false);
+  // Typing marks what is not a time, for the eye and for a screen reader; leaving the field shows what is kept.
+  const type = (id, v) => app.evaluate(`const el = document.getElementById(${JSON.stringify(id)}); el.value = ${JSON.stringify(v)}; el.dispatchEvent(new Event('input', { bubbles: true })); return el.classList.contains('bad') + '/' + el.getAttribute('aria-invalid');`);
+  const leave = (id) => app.evaluate(`const el = document.getElementById(${JSON.stringify(id)}); el.dispatchEvent(new Event('change', { bubbles: true })); return el.value + '|' + el.classList.contains('bad') + '/' + el.getAttribute('aria-invalid');`);
+  assert.equal(await type('set-qfrom', 'late'), 'true/true');
+  assert.equal(await leave('set-qfrom'), '|false/null');
+  assert.equal(await type('set-qfrom', '22'), 'false/null');
+  assert.equal(await leave('set-qfrom'), '22:00|false/null');
+  // A slip of the hand does not switch the hours off: the time in use comes back.
+  assert.equal(await type('set-qfrom', '22:6x'), 'true/true');
+  assert.equal(await leave('set-qfrom'), '22:00|false/null');
+  assert.equal(await type('set-qto', '7:30'), 'false/null');
+  assert.equal(await leave('set-qto'), '07:30|false/null');
   await app.click('#set-nres');
   const s = await app.until("return (await window.ide.call('state')).settings.quietTo === '07:30' && (await window.ide.call('state'));", 'the hours saved');
   assert.equal(s.settings.quietFrom, '22:00');
@@ -917,4 +960,100 @@ flow('starting a new conversation asks first, and the context menu opens only wi
   assert.equal((await app.state()).dispatcher.contextTokens, 0);
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Remember the pineapple rule')"), true);
   await app.until("document.querySelector('#chat-ctx').disabled", 'the meter closed again');
+});
+
+flow('a layer takes the focus and gives it back, and tabs and choices answer the arrow keys', {}, async (app) => {
+  const mod = process.platform === 'darwin' ? 4 : 2;
+  const esc = () => app.key('Escape', 'Escape', 27);
+  const inSettings = "!!document.querySelector('#sheet .snav-i.on') && document.activeElement === document.querySelector('#sheet .snav-i.on')";
+  await app.evaluate("document.querySelector('#chat-input').focus()");
+  // Settings takes the focus, so what is typed no longer goes to the chat behind it; closing gives it back.
+  await app.key('Comma', ',', 188, mod);
+  await app.until(inSettings, 'the focus in Settings');
+  await esc();
+  await app.until("document.activeElement?.id === 'chat-input'", 'the focus back from Settings');
+  await app.key('KeyK', 'k', 75, mod);
+  await app.until("document.activeElement?.id === 'cmdk-q'", 'the focus in the palette');
+  await esc();
+  await app.until("document.activeElement?.id === 'chat-input'", 'the focus back from the palette');
+  await app.key('Slash', '/', 191, mod);
+  await app.until("document.activeElement?.dataset.action === 'keys-close'", 'the focus in the list of keys');
+  await esc();
+  await app.until("document.activeElement?.id === 'chat-input'", 'the focus back from the list of keys');
+
+  // The inbox tabs are one Tab stop: the arrows, Home and End move and choose, and the pane is named by its tab.
+  const stops = "[...document.querySelectorAll('#chat-ins [role=\"tab\"]')].map((b) => b.tabIndex).join()";
+  assert.match(await app.evaluate(stops), /^0(,-1)+$/);
+  await app.evaluate("document.querySelector('#ins-tab-inbox').focus()");
+  await app.key('ArrowRight', 'ArrowRight', 39);
+  await app.until("document.activeElement?.id === 'ins-tab-memo' && document.activeElement.getAttribute('aria-selected') === 'true'", 'the next tab');
+  assert.match(await app.evaluate(stops), /^-1,0(,-1)+$/);
+  assert.equal(await app.evaluate("const p = document.querySelector('#ins-panel'); return p.getAttribute('role') + ' ' + p.getAttribute('aria-labelledby');"), 'tabpanel ins-tab-memo');
+  await app.key('ArrowLeft', 'ArrowLeft', 37);
+  await app.until("document.activeElement?.id === 'ins-tab-inbox'", 'the tab before');
+  await app.key('ArrowLeft', 'ArrowLeft', 37);
+  await app.until("document.activeElement === [...document.querySelectorAll('#chat-ins [role=\"tab\"]')].pop()", 'round the start to the last tab');
+  await app.key('Home', 'Home', 36);
+  await app.until("document.activeElement?.id === 'ins-tab-inbox'", 'the first tab');
+
+  // Opened from a tab, Settings gives the focus back to that tab. Its choices move with the arrows too, and a
+  // choice that has just been made keeps the focus while the sheet saves.
+  await app.key('Comma', ',', 188, mod);
+  await app.until(inSettings, 'the focus in Settings again');
+  const was = await app.evaluate("const b = [...document.querySelectorAll('#sheet button[role=\"radio\"][aria-checked=\"true\"]')].find((x) => x.getClientRects().length); b.focus(); return { group: b.dataset.segc, v: b.dataset.v, stops: [...b.parentElement.querySelectorAll('button[role=\"radio\"]')].filter((x) => x.tabIndex === 0).length };");
+  assert.equal(was.stops, 1, 'one Tab stop in the group');
+  await app.key('ArrowRight', 'ArrowRight', 39);
+  const now = await app.until(`const a = document.activeElement; return a?.dataset.segc === ${JSON.stringify(was.group)} && a.dataset.v !== ${JSON.stringify(was.v)} && a.getAttribute('aria-checked') === 'true' && a.tabIndex === 0 && { v: a.dataset.v, field: document.getElementById(a.dataset.segc).value };`, 'the next choice');
+  assert.equal(now.field, now.v);
+  await app.key('ArrowLeft', 'ArrowLeft', 37);
+  await app.until(`document.activeElement?.dataset.segc === ${JSON.stringify(was.group)} && document.activeElement.dataset.v === ${JSON.stringify(was.v)}`, 'the choice before');
+  await esc();
+  await app.until("document.activeElement?.id === 'ins-tab-inbox'", 'the focus back on the tab');
+});
+
+flow('a conversation is one Tab stop, and the arrows move between its messages', {}, async (app) => {
+  const tab = (shift = false) => app.key('Tab', 'Tab', 9, shift ? 8 : 0);
+  const up = () => app.key('ArrowUp', 'ArrowUp', 38);
+  // What has the focus: the composer, a message by its place in the thread, or a control in a message.
+  const AT = `const a = document.activeElement; const th = document.querySelector('#chat-thread');
+    if (a?.id === 'chat-input') return 'composer';
+    if (!th.contains(a)) return 'out';
+    const rows = [...th.children].filter((x) => !x.matches('.stamp, .who, .new-from'));
+    const i = rows.findIndex((r) => r.contains(a));
+    return (a === rows[i] ? 'message ' : 'control ') + (i - rows.length);`;
+  // An empty conversation has no message to stop on: Tab goes on to what it offers.
+  await app.evaluate("document.querySelector('#ins-toggle').focus()");
+  await tab();
+  assert.equal(await app.evaluate("document.activeElement?.dataset.action"), 'chat-start');
+  for (let i = 1; i <= 6; i++) {
+    await app.say(`Question ${i}\n@fake say Answer ${i} with https://example.com/${i}.`);
+    await app.until(`document.querySelector('#chat-thread').innerText.includes('Answer ${i} with')`, `answer ${i}`);
+  }
+  // From the toolbar, the thread is one stop (its last message), however many links and reply buttons it holds.
+  await app.evaluate("document.querySelector('#ins-toggle').focus()");
+  await tab();
+  await app.until("document.querySelector('#chat-thread').contains(document.activeElement)", 'the focus in the thread');
+  assert.equal(await app.evaluate(AT), 'message -1');
+  // Tab inside a message reaches its own controls, then leaves the thread for the composer.
+  const seen = [];
+  for (let i = 0; i < 6 && seen[seen.length - 1] !== 'composer'; i++) { await tab(); seen.push(await app.evaluate(AT)); }
+  assert.equal(seen[seen.length - 1], 'composer');
+  assert.ok(seen.length >= 2 && seen.slice(0, -1).every((x) => x === 'control -1'), `only the last message's controls on the way: ${seen}`);
+  // Back from the composer the thread is where it was left; the arrows move between messages and stop at the ends.
+  await tab(true);
+  assert.equal(await app.evaluate(AT), 'message -1');
+  await up(); await up();
+  assert.equal(await app.evaluate(AT), 'message -3');
+  await app.key('Home', 'Home', 36);
+  const first = await app.evaluate(AT);
+  await up();
+  assert.equal(await app.evaluate(AT), first, 'the first message is the end');
+  await app.key('End', 'End', 35);
+  assert.equal(await app.evaluate(AT), 'message -1');
+  await up();
+  // A new message draws the thread again: the focus stays on the message it was on.
+  await app.say('Question 7\n@fake say Answer 7.');
+  await app.until("document.querySelector('#chat-thread').innerText.includes('Answer 7.')", 'answer 7');
+  assert.equal(await app.evaluate(AT), 'message -4');
+  assert.equal(await app.evaluate("getComputedStyle(document.activeElement).outlineStyle"), 'solid');
 });

@@ -5,14 +5,16 @@ import { ASK_RULES } from '../../shared/grants';
 import { type Key } from '../../shared/i18n';
 import { normalizeQuickKey, quickKeyLabel } from '../../shared/quickKey';
 import { THEMES, cleanTheme } from '../../shared/theme';
-import { cleanTime } from '../../shared/notifyRules';
+import { typedTime } from '../../shared/notifyRules';
+import { focusSelector } from '../../shared/focusKey';
+import { layerClose, layerFocus, layerOpen } from './layer';
 import { DECISION_SOUNDS, DONE_SOUNDS } from '../../shared/sounds';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clampWaitSlot } from '../../shared/slots';
 import { fitAll } from './fit';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, clampFontSize, fontStack, normalizeFontFamily } from '../../shared/font';
 import { away } from './chat';
 import { closePop, installedFonts, markFont, openPop, Opt, pop, stepNum } from './controls';
-import { $, applyStaticText, call, cap1, esc, holdWhileComposing, ic, isMac, k, lang, lv, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
+import { $, applyStaticText, call, cap1, esc, holdWhileComposing, ic, isMac, k, lang, lv, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
 import { nav, show } from './history';
 import { renderMemSync } from './memory';
 import { jira, loadPreflight, preflight, preflightRows } from './repos';
@@ -119,7 +121,7 @@ export function syncModelRows() {
 /** Segmented control backed by a hidden input, so the form reads it like any field. */
 export function segc(id: string, value: string, opts: Opt[], label: string, extra = '') {
   const cur = opts.some((o) => o.value === value) ? value : opts[0].value;
-  return `<span class="segc" role="radiogroup" aria-label="${esc(label)}"><input type="hidden" id="${id}" value="${esc(cur)}" ${extra}>${opts.map((o) => `<button type="button" role="radio" data-segc="${id}" data-v="${esc(o.value)}" aria-checked="${o.value === cur}"${o.value === cur ? ' class="on"' : ''}>${esc(o.label)}</button>`).join('')}</span>`;
+  return `<span class="segc" role="radiogroup" aria-label="${esc(label)}"><input type="hidden" id="${id}" value="${esc(cur)}" ${extra}>${opts.map((o) => `<button type="button" role="radio" data-segc="${id}" data-v="${esc(o.value)}" aria-checked="${o.value === cur}" tabindex="${o.value === cur ? 0 : -1}"${o.value === cur ? ' class="on"' : ''}>${esc(o.label)}</button>`).join('')}</span>`;
 }
 
 export function pickSeg(btn: HTMLButtonElement) {
@@ -136,6 +138,8 @@ export function syncSegs(root: ParentNode = document) {
     const on = (document.getElementById(b.dataset.segc!) as HTMLInputElement | null)?.value === b.dataset.v;
     b.classList.toggle('on', on);
     b.setAttribute('aria-checked', String(on));
+    // The group is one Tab stop, on its choice; the arrows reach the others.
+    b.tabIndex = on ? 0 : -1;
   });
 }
 
@@ -415,7 +419,11 @@ export function openSettings(pane?: Pane) {
   const root = $('#sheet');
   const keep = new Map<string, string | boolean>();
   if (ui.settingsShown) root.querySelectorAll<HTMLInputElement>('.spanes input').forEach((el) => { if (el.id && el.id !== 'acc-rename') keep.set(el.id, el.type === 'checkbox' ? el.checked : el.value); });
-  const focusId = ui.settingsShown && root.contains(document.activeElement) ? (document.activeElement as HTMLElement).id : '';
+  layerOpen('settings');
+  const had = root.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+  const focusId = had?.id ?? '';
+  // A choice in a segmented control has no id: its group and value find it again.
+  const focusSel = !had || focusId ? null : had.dataset.segc ? `[data-segc="${had.dataset.segc}"][data-v="${CSS.escape(had.dataset.v ?? '')}"]` : focusSelector(had.tagName, had.dataset);
   const scroll = root.querySelector('.spanes')?.scrollTop ?? 0;
   clearTimeout(sheetTimer);
   root.classList.remove('closing');
@@ -433,13 +441,17 @@ export function openSettings(pane?: Pane) {
   const vol = document.getElementById('set-vol') as HTMLInputElement | null;
   if (vol) syncSlider(vol);
   const ren = document.getElementById('acc-rename') as HTMLInputElement | null;
-  if (ren) { ren.focus(); ren.select(); } else if (focusId) document.getElementById(focusId)?.focus();
+  if (ren) { ren.focus(); ren.select(); } else if (focusId) document.getElementById(focusId)?.focus(); else if (focusSel) root.querySelector<HTMLElement>(focusSel)?.focus();
   if (!pane) scrollQuietly(root.querySelector<HTMLElement>('.spanes')!, scroll);
   syncSoundRows();
   syncAccRows();
   filterPanes();
   root.hidden = false;
   document.body.classList.add('modal');
+  // The keyboard goes where the eyes are: into a dialog over the sheet, or to the pane that is open.
+  const over = root.querySelector<HTMLElement>('.dlg[aria-modal="true"]');
+  if (over) layerFocus(over, over.querySelector<HTMLElement>('.dlg-btns .btn'));
+  else layerFocus(root, root.querySelector<HTMLElement>('.snav-i.on') ?? root.querySelector<HTMLElement>('.snav-i'));
   if (!ui.version) void call<string>('app:version').then((v) => { if (v) { ui.version = v; const el = root.querySelector('#ver-n'); if (el) el.textContent = `v${v}`; } });
   void installedFonts().then(() => { const f = document.getElementById('set-font') as HTMLInputElement | null; if (f) markFont(f); });
 }
@@ -489,7 +501,7 @@ export async function saveSettingsNow() {
   setCustomCache(null);
   if (langChanged) { ui.settingsShown = false; applyStaticText(); openSettings(); }
   const r = await call<{ restart: boolean; quickKeyOk?: boolean }>('settings:save', patch);
-  if (patch.quickKey && r?.quickKeyOk === false) { toast(t('quick.taken'), true); $('#set-qkey')?.classList.add('bad'); }
+  if (patch.quickKey && r?.quickKeyOk === false) { toast(t('quick.taken'), true); markBad(document.getElementById('set-qkey'), true); }
   if (r?.restart && ui.settingsShown) { ui.restartAsk = true; openSettings(); }
 }
 
@@ -541,6 +553,7 @@ export function closeSettings() {
   clearTimeout(sheetTimer);
   if (d) { sheet.classList.add('closing'); sheetTimer = window.setTimeout(gone, d); } else gone();
   document.body.classList.remove('modal');
+  layerClose('settings');
   if (S) applyFont(S.settings.fontFamily, S.settings.fontSize);
 }
 
@@ -557,8 +570,8 @@ export function readSettingsForm() {
     archiveDays: Math.min(90, Math.max(0, Math.round(stepNum($<HTMLInputElement>('#set-arch'))))) || 0,
     notifications: ($('#set-noti') as HTMLInputElement).checked,
     notifyDone: ($('#set-nres') as HTMLInputElement).checked,
-    quietFrom: cleanTime(v('set-qfrom')),
-    quietTo: cleanTime(v('set-qto')),
+    quietFrom: typedTime(v('set-qfrom'), S!.settings.quietFrom),
+    quietTo: typedTime(v('set-qto'), S!.settings.quietTo),
     background: ($('#set-bg') as HTMLInputElement).checked,
     openAtLogin: ($('#set-login') as HTMLInputElement).checked,
     updateCheck: ($('#set-upd') as HTMLInputElement).checked,

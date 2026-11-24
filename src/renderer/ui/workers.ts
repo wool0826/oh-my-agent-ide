@@ -19,6 +19,7 @@ import { type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
 import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
 import { openPop } from './controls';
+import { layerClose, layerOpen } from './layer';
 import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go, show } from './history';
 import { grantsHtml } from './repos';
@@ -109,7 +110,7 @@ export function renderWorkerList() {
     return parts.length ? parts.join(' · ') : t('wk.counts', { a: active.length, b: arch.length });
   };
   if (!s.workers.length) {
-    root.innerHTML = `<div class="vhead"><b>Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b></div>`;
+    root.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">Worker</b></div><div class="empty-view">${sym('s-cpu')}<b>${t('wk.emptyTitle')}</b></div>`;
     return;
   }
   // Archived Workers come a page at a time, in every list that has them.
@@ -121,13 +122,13 @@ export function renderWorkerList() {
     if (f) {
       // The filter as a chip, with "All" to go back to every Worker.
       const label = t(f === 'today' ? 'side.doneToday' : 'side.archived');
-      const head = `<div class="vhead"><b>Worker</b><span class="wf"><span class="wf-chip">${ic(f === 'today' ? 'done' : 'arch')}${label}<small>${shown.length}</small></span><button type="button" class="linkbtn wf-all" data-action="worker-filter" data-v="">${t('wk.filterAll')}</button></span></div>`;
+      const head = `<div class="vhead"><b role="heading" aria-level="1">Worker</b><span class="wf"><span class="wf-chip">${ic(f === 'today' ? 'done' : 'arch')}${label}<small>${shown.length}</small></span><button type="button" class="linkbtn wf-all" data-action="worker-filter" data-v="">${t('wk.filterAll')}</button></span></div>`;
       root.innerHTML = shown.length
         ? `${head}${lst}${active.map(li).join('')}${arch.length && active.length ? `<div class="lst-h">${t('st.archived')}</div>` : ''}${archLis}</div>`
         : `${head}<div class="empty-view">${sym(f === 'today' ? 's-check' : 's-arch')}<b>${t(f === 'today' ? 'wk.noneToday' : 'wk.noneArchived')}</b></div>`;
       return;
     }
-    root.innerHTML = `<div class="vhead"><b>Worker</b><small>${esc(countsText())}</small></div>
+    root.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">Worker</b><small>${esc(countsText())}</small></div>
     ${lst}${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${archLis}` : ''}</div>`;
   });
 }
@@ -175,7 +176,7 @@ export function renderSession(force = false, older = false) {
   const tabs = w.repo ? (['chat', 'changes', 'summary'] as const) : (['chat', 'summary'] as const);
   if (!w.repo && ui.wTab === 'changes') ui.wTab = 'chat';
   $('#ws-tabs').hidden = false;
-  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" aria-selected="${ui.wTab === v}" class="${ui.wTab === v ? 'on' : ''}" data-action="ws-tab" data-v="${v}">${t(v === 'chat' ? 'ws.tabChat' : v === 'changes' ? 'ws.tabChanges' : 'ws.tabSummary')}</button>`).join('');
+  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" id="ws-tab-${v}" aria-controls="${v === 'chat' ? 'ws-thread' : v === 'changes' ? 'ws-diff' : 'ws-sum'}" aria-selected="${ui.wTab === v}" tabindex="${ui.wTab === v ? 0 : -1}" class="${ui.wTab === v ? 'on' : ''}" data-action="ws-tab" data-v="${v}">${t(v === 'chat' ? 'ws.tabChat' : v === 'changes' ? 'ws.tabChanges' : 'ws.tabSummary')}</button>`).join('');
   $('#ws-thread').hidden = ui.wTab !== 'chat';
   $('#ws-diff').hidden = ui.wTab !== 'changes';
   $('#ws-sum').hidden = ui.wTab !== 'summary';
@@ -394,7 +395,7 @@ export function waitingCardsHtml(w: Worker) {
       `<button class="danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>`,
     ].join('');
     const follow = followers.map((f) => `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(f.workerId ?? '')}"${f.workerId ? '' : ' disabled'}>${esc(f.id)} ${esc(oneLine(f.title, 60))}</button>`).join('<br>');
-    return `<div class="ins-h"><b>${t('q.title')}</b><span class="pill orange">${x.status === 'blocked' ? t('st.afterMerge') : queuedLabel(x)}</span></div>
+    return `<div class="ins-h"><b role="heading" aria-level="2">${t('q.title')}</b><span class="pill orange">${x.status === 'blocked' ? t('st.afterMerge') : queuedLabel(x)}</span></div>
     <div class="group qcard">
       <div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${esc([x.repo ?? t('general'), x.planFirst && !x.planApproved ? t('plan.badge') : ''].filter(Boolean).join(' · '))} · <time datetime="${esc(since)}" data-tip="${esc(hhmm(since))}">${t('q.since', { t: Date.now() - Date.parse(since) < 60_000 ? t('time.now') : t('time.ago', { d: ago(since) }) })}</time></span></div>
       <dl class="plan-sum q-sum"><dt>${t('q.why')}</dt><dd>${esc(q.why)}</dd><dt>${t('q.starts')}</dt><dd${q.cancelled ? ' class="warn"' : ''}>${esc(q.starts)}</dd>${q.again ? `<dt></dt><dd>${esc(q.again)}</dd>` : ''}</dl>
@@ -416,7 +417,7 @@ export function runHtml(w: Worker) {
     : `${r ? `<button class="btn" data-action="run-clear" data-id="${w.id}">${t('run.clear')}</button>` : ''}<button class="btn" data-action="run-start" data-id="${w.id}">${t(r ? 'run.again' : 'run.start')}</button>`;
   const url = r?.url && r.running ? `<a class="run-url" tabindex="0" role="link" data-action="open-url" data-href="${esc(r.url)}">${esc(r.url)}</a>` : '';
   const out = r?.tail.trim() ? `<pre class="run-out" data-scroll="run-${w.id}">${esc(lastLines(r.tail, 14))}</pre>` : '';
-  return `<div class="ins-h"><b>${t('run.title')}</b>${state}</div>
+  return `<div class="ins-h"><b role="heading" aria-level="2">${t('run.title')}</b>${state}</div>
     <div class="group run"><code class="run-cmd" data-tip="${esc(repo.run)}">${esc(oneLine(repo.run, 80))}</code>${url}${out}<div class="ins-act">${btns}</div></div>`;
 }
 
@@ -475,7 +476,7 @@ export function planCardHtml(x: Task | null | undefined, failed = false) {
     const st = s.doneAt ? 'done' : i !== v.at ? 'todo' : failed ? 'err' : 'cur';
     return `<li class="${st}"><i aria-hidden="true">${glyph[st]}</i><span>${esc(s.title)}</span>${mark[st] ? `<span class="sr-only">${mark[st]}</span>` : ''}</li>`;
   }).join('');
-  return `<div class="ins-h"><b>${t('plan.steps')}</b><small>${t('sum.steps', { done: v.done, total: v.total })}</small></div>
+  return `<div class="ins-h"><b role="heading" aria-level="2">${t('plan.steps')}</b><small>${t('sum.steps', { done: v.done, total: v.total })}</small></div>
     <ol class="group plan-steps">${rows}</ol>`;
 }
 
@@ -494,8 +495,8 @@ export function renderWorkerInspector() {
   // What stopped it, in words: the sidebar row has it only as a tooltip.
   const failText = failed ? plainStatus(w.status === 'error' ? w.statusText || cur?.summary : cur?.summary).split('\n')[0].trim() : '';
   keepScroll(root, () => { root.innerHTML = `
-    ${open.length ? `<div class="ins-h"><b>${t('ins.decisions')}</b><span class="count">${open.length}</span></div><div class="group">${open.map((d) => decisionHtml(d, true)).join('')}</div>` : ''}
-    <div class="ins-h"><b>${esc(w.id)}</b>${statusPill(w)}</div>
+    ${open.length ? `<div class="ins-h"><b role="heading" aria-level="2">${t('ins.decisions')}</b><span class="count">${open.length}</span></div><div class="group">${open.map((d) => decisionHtml(d, true)).join('')}</div>` : ''}
+    <div class="ins-h"><b role="heading" aria-level="2">${esc(w.id)}</b>${statusPill(w)}</div>
     ${waitingCardsHtml(w)}
     ${planCardHtml(cur, failed)}
     <div class="group kv">
@@ -512,7 +513,7 @@ export function renderWorkerInspector() {
       ${w.request && w.status !== 'archived' ? `<span>${t('kv.request')}</span><span data-tip="${esc(w.request.text)}">${esc(oneLine(w.request.text, 140))}</span>` : ''}
     </div>
     ${runHtml(w)}
-    <div class="ins-h"><b>${t('wk.tasks')}</b><small>${tasks.length}</small></div>
+    <div class="ins-h"><b role="heading" aria-level="2">${t('wk.tasks')}</b><small>${tasks.length}</small></div>
     <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}${grantsHtml(x)}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${canStop(w, cur) ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
@@ -569,11 +570,13 @@ export function renderConfirmDialog() {
     root.hidden = true;
     root.innerHTML = '';
     root.dataset.key = '';
+    layerClose('confirm');
     return;
   }
   const key = JSON.stringify(ask);
   if (!root.hidden && root.dataset.key === key) return;
   const opening = root.hidden === true;
+  if (opening) layerOpen('confirm');
   root.dataset.key = key;
   root.innerHTML = `<div class="dlg-back" data-action="confirm-dismiss"></div>
   <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="xdlg-t">
@@ -612,6 +615,7 @@ export function renderCancelDialog() {
     root.hidden = true;
     root.innerHTML = '';
     root.dataset.key = '';
+    layerClose('cancel');
     return;
   }
   const list = (xs: Task[]) => {
@@ -634,6 +638,7 @@ export function renderCancelDialog() {
   const key = JSON.stringify([title, body, ok]);
   if (!root.hidden && root.dataset.key === key) return;
   const opening = root.hidden;
+  if (opening) layerOpen('cancel');
   root.dataset.key = key;
   root.innerHTML = `<div class="dlg-back" data-action="cancel-dismiss"></div>
   <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="cdlg-t">
