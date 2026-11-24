@@ -5,7 +5,7 @@
 import { paneMode } from '../../shared/insPanes';
 import { $, esc } from './core';
 
-export type PaneTab = 'inbox' | 'memo' | 'auto';
+export type PaneTab = 'inbox' | 'memo' | 'auto' | 'script';
 
 /** One selectable item: its row for the list column, then its card. `cls` marks a kind of slot (" new"). */
 export function slotHtml(key: string, sel: boolean, row: string, card: string, cls = '') {

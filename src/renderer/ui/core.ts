@@ -161,13 +161,16 @@ export const ui = {
   /** The chat view's right sidebar shows the inbox or the memos; the memo being edited, and the one asked about before deleting. */
   /** The message being answered in each composer; the Worker's is dropped when another Worker is opened. */
   reply: { chat: null as Reply | null, ws: null as (Reply & { wid: string }) | null },
-  insTab: 'inbox' as 'inbox' | 'memo' | 'auto',
+  insTab: 'inbox' as 'inbox' | 'memo' | 'auto' | 'script',
   /** The Automations tab's add form: which trigger is picked, and weekdays only. */
   autoKind: 'daily' as 'daily' | 'merged',
   autoWk: false,
   /** The selected memo, and automation ('new': the add form), in the right sidebar (ui/panes.ts). */
   memoSel: null as string | null,
   autoSel: 'new' as string | null,
+  /** The selected saved script ('new': the add form), and the one being edited (ui/scripts.ts). */
+  scriptSel: 'new' as string | null,
+  scriptEdit: null as string | null,
   memoEdit: null as string | null,
   memoDel: null as string | null,
   /** The last chat item and Worker log length already drawn; what comes after them is new. */
@@ -186,7 +189,7 @@ export const ui = {
   stopping: new Set<string>(),
   /** Why the last send from a composer, a new memo or a new automation failed; shown until it is dismissed or sent again (L8). */
   sendErr: { chat: '', ws: '' } as Record<'chat' | 'ws', string>,
-  formErr: { memo: '', auto: '' } as Record<'memo' | 'auto', string>,
+  formErr: { memo: '', auto: '', script: '' } as Record<'memo' | 'auto' | 'script', string>,
 };
 
 /* ---------- helpers ---------- */

@@ -27,14 +27,14 @@ class Shell {
   private pushTimer: NodeJS.Timeout | null = null;
 
   /** Starts `cmd` in `repo` ('' or null for the IDE home). Returns the chat item's id. */
-  run(cmd: string, repo: string | null): string {
+  run(cmd: string, repo: string | null, script?: string): string {
     const line = cmd.trim();
     if (!line) throw new Error(t('shell.err.empty'));
     const r = repo ? store.repo(repo) : null;
     if (repo && !r) throw new Error(t('shell.err.noRepo', { name: repo }));
     const cwd = r ? r.path : paths().home;
     if (!fs.existsSync(cwd)) throw new Error(t('shell.err.noDir', { dir: cwd }));
-    const run: ShellRun = { cmd: line, repo: r?.name ?? '', running: true, stopped: false, code: null, startedAt: nowIso(), ms: 0, out: '', lines: 0, sent: 'wait' };
+    const run: ShellRun = { cmd: line, repo: r?.name ?? '', running: true, stopped: false, code: null, startedAt: nowIso(), ms: 0, out: '', lines: 0, sent: 'wait', ...(script ? { script } : {}) };
     const item: ChatItem = store.chat('shell', line);
     item.shell = run;
     const win = process.platform === 'win32';

@@ -1128,6 +1128,28 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 /* Switched off: the title steps down, as a row with nothing in it does. */
 .memo.auto.off p { color: var(--text-secondary); font-weight: 500; }
 
+/* ---------- saved scripts (ui/scripts.ts) ---------- */
+/* The command is always shown as it will run: mono, in a well, all of it once the card is selected. */
+.script-form { display: flex; flex-direction: column; gap: var(--space-8); }
+.script-form textarea.inp { min-height: 60px; }
+.script-f { display: flex; align-items: center; gap: var(--space-8); min-height: var(--control-md); }
+.script-f .gap { flex: 1; }
+.script-f .sh-cwd .sym { font-size: var(--fs-caption2); color: var(--text-tertiary); }
+.memo.script p { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.script-cmd { margin: 0; padding: var(--space-6) var(--space-8); border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: var(--well); font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code); color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; user-select: text; }
+.memo.script:not(.open) .script-cmd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.script-more, .sh-more { margin-left: var(--space-6); font-family: var(--font-sans); font-size: var(--fs-caption2); font-weight: 400; color: var(--text-tertiary); }
+.memo.script .meta { min-height: var(--control-md); }
+.memo.script .acts { opacity: 1; align-items: center; }
+.script-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.script-run { display: inline-flex; align-items: center; gap: var(--space-4); height: var(--control-sm); padding: 0 var(--space-10) 0 var(--space-8); }
+.memo .meta .script-run .sym { font-size: var(--fs-caption2); color: currentColor; }
+.script-run:disabled { opacity: .45; cursor: default; }
+.memo.script .facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-4) var(--space-12); margin: var(--space-4) 0 0; font-size: var(--fs-caption); line-height: var(--lh-ui); }
+.memo.script .facts dt { color: var(--text-secondary); }
+.memo.script .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.sh-run > header .sh-name { flex: 0 1 auto; max-width: 40%; font-size: var(--fs-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---------- checkpoints ---------- */
 /* Picking a checkpoint asks here, under the Changes tab's header, before the files are put back. */
 .ckpt-ask { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); animation: rise-in var(--dur-base) var(--ease-out); }
