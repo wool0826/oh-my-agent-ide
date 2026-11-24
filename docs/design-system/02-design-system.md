@@ -286,7 +286,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 
 ### Sidebar — `.row`, `.side-h`
 - Row: glyph box 18, gap 8, padding 6/8, radius 10. Title 13/500 `--text-primary`, meta 11 `--text-secondary`, badge 11/600 tabular.
-- States: hover `--surface-hover`, pressed `--surface-pressed`, selected (`aria-current`) `--surface-selected` + `--rim`, zero count = title in `--text-secondary`/400 and idle glyph (no opacity).
+- States: hover `--surface-hover`, pressed `--surface-pressed`, selected (`aria-current`) a 2px `--accent` ring with no fill (T-0062), zero count = title in `--text-secondary`/400 and idle glyph (no opacity).
 - Section header 11/600 `--text-tertiary`; "Needs your decision" uses `--danger-text` and pulses 3× when a decision arrives.
 
 ### Pills, badges, tags — `.pill[data-tone]`, `.count`, `.diff-tag`
@@ -310,7 +310,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 ### Task card — `.task`
 - Grid 22 / 1fr / auto, gap 10, padding 10/12, radius 14, 0.5px top hairline between cards.
 - Title "W-id title" 13/600; meta (repo, model, account, now) 12 `--text-secondary`; right side: context ring + K count + status pill.
-- States: hover `--surface-hover`, pressed `--surface-pressed`, selected `--surface-selected` + rim, archived = title `--text-secondary`/500 + archive glyph (no opacity).
+- States: hover `--surface-hover`, pressed `--surface-pressed`, selected a 2px `--accent` ring with no fill, archived = title `--text-secondary`/500 + archive glyph (no opacity).
 
 ### Inbox — `.group` of `.dec`, `.res`, `.aa`
 - Header `.ins-h`: 13/600 (was 700) + count badge or clear button (24, revealed on hover/focus).

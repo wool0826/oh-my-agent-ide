@@ -87,7 +87,7 @@ body { --lights-end: 0px; }
 .row .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .row .t b { font-weight: 500; font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .t small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row.sel { background: var(--surface-selected); box-shadow: var(--rim); }
+.row.sel { box-shadow: inset 0 0 0 2px var(--accent); }
 .row .badge { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .row.zero .t b { color: var(--text-secondary); font-weight: 400; } .row.zero .ic { --c: var(--state-idle); }
 .side-foot { flex: none; display: flex; align-items: center; justify-content: space-between; padding: var(--space-8) var(--space-10) var(--space-10); }
@@ -625,7 +625,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: var(--space-10); align-items: center; padding: var(--space-10) var(--space-12); border-radius: var(--radius-lg); box-shadow: inset 0 .5px 0 var(--border-subtle); cursor: default; }
 .li:first-child, .li.sel, .li.sel + .li { box-shadow: none; }
 .li:hover { background: var(--surface-hover); }
-.li.sel { background: var(--surface-selected); box-shadow: var(--rim); }
+.li.sel { box-shadow: inset 0 0 0 2px var(--accent); }
 .li.dim .m b { color: var(--text-secondary); font-weight: 500; }
 .li .m { min-width: 0; display: flex; flex-direction: column; }
 .li .m b { font-size: var(--fs-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1339,9 +1339,11 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .dhold i { flex: none; width: 48px; height: 3px; border-radius: 2px; background: var(--neutral-soft); overflow: hidden; }
 .dhold b { display: block; height: 100%; border-radius: 2px; background: var(--state-wait); transform-origin: 0 50%; transition: transform var(--dur-slow) linear; }
 .dhold.gone { color: var(--warning-text); }
-/* Selection is a ring and a tint on all four sides, never a coloured edge: one rule for decisions, auto-answers and
-   results. The transparent outline draws the ring in forced-colours mode. The keyboard focus ring stays its own. */
-:is(.dec, .aa, .res).sel { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; background: var(--accent-soft); border-radius: var(--radius-lg); }
+/* Selection is a ring on all four sides, with no fill under the text and never a coloured edge: one rule for decisions,
+   auto-answers and results, and the same ring on the sidebars' rows (.row, .li, .pk). The transparent outline draws
+   the ring in forced-colours mode. The keyboard focus ring stays its own. */
+@media (forced-colors: active) { .row.sel, .li.sel { outline: 2px solid Highlight; outline-offset: -2px; } }
+:is(.dec, .aa, .res).sel { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; border-radius: var(--radius-lg); }
 :is(.dec, .aa, .res).sel, :is(.dec, .aa, .res).sel + :is(.dec, .aa, .res) { border-top-color: transparent; }
 .dec[data-dec]:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
 /* Key hints only on the selected card, so colour is not the only sign of which card the keys answer. */
@@ -1393,8 +1395,8 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .pk.new > .li { background: var(--surface-card); box-shadow: var(--rim); border-radius: var(--radius-lg); }
 .pk.new > .li > .sym { color: var(--accent); }
 .pk.new.sel > .pk-c { margin-top: var(--space-10); }
-/* The selected row or card: a ring and a tint, as for decisions. In the detail pane the card is the selection. */
-.pk.sel > .li, .ins-list .pk.sel > .pk-c > .memo { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; background: var(--accent-soft); border-radius: var(--radius-lg); }
+/* The selected row or card: a ring, as for decisions. In the detail pane the card is the selection. */
+.pk.sel > .li, .ins-list .pk.sel > .pk-c > .memo { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; border-radius: var(--radius-lg); }
 .ins-detail .dec.sel { box-shadow: none; background: none; }
 .pk.sel .memo .acts, .ins-detail .memo .acts { opacity: 1; }
 .pk:not(.sel) > .pk-c > .memo[data-action]:hover { background: var(--surface-hover); }
