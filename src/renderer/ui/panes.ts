@@ -20,7 +20,8 @@ export function rowHtml(tab: PaneTab, key: string, sel: boolean, inner: string) 
 /** A row's text: the title on up to two lines, and one small line under it. */
 export const rowText = (title: string, small: string) => `<span class="t"><b>${esc(title)}</b>${small ? `<small>${esc(small)}</small>` : ''}</span>`;
 
-export const colsHtml = (list: string) => `<div class="ins-cols"><div class="ins-list">${list}</div><div class="ins-detail"></div></div>`;
+/** The tab's content scrolls in its own box under the tabs, so the tabs stay in view (data-scroll keeps its offset). */
+export const colsHtml = (list: string) => `<div class="ins-body" data-scroll="ins-body"><div class="ins-cols"><div class="ins-list">${list}</div><div class="ins-detail"></div></div></div>`;
 
 /** The sidebar's width as the user set it; the aside itself is narrower by its inset. */
 function sidebarWidth(root: HTMLElement) {
@@ -50,7 +51,7 @@ function moveKeep(node: HTMLElement, to: HTMLElement) {
 
 /** Puts the selected card where the width wants it: in the detail pane from SPLIT_AT, in its slot under it. */
 export function placeDetail(root: HTMLElement = $('#chat-ins')) {
-  const cols = root.querySelector<HTMLElement>(':scope > .ins-cols');
+  const cols = root.querySelector<HTMLElement>(':scope > .ins-body > .ins-cols');
   if (!cols) return;
   const detail = cols.querySelector<HTMLElement>(':scope > .ins-detail')!;
   const sel = cols.querySelector<HTMLElement>(':scope > .ins-list .pk.sel');

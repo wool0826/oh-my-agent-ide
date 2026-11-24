@@ -88,6 +88,24 @@ flow('decision cards take the keys: ↓ moves the selection, Enter allows, the n
   await app.until("document.querySelector('#dlg').hidden", 'the shortcut list closed');
 });
 
+flow('the sidebar tabs stay in view while the tab under them scrolls, and a redraw keeps the offset', {}, async (app) => {
+  await app.evaluate("for (let i = 1; i <= 12; i++) await window.ide.call('memo:add', 'Memo number ' + i + ' with enough words to take two lines in a narrow sidebar'); return 1;");
+  await app.click('[data-action="ins-tab"][data-v="memo"]');
+  await app.until("document.querySelectorAll('#chat-ins .pk').length === 12", 'twelve memos');
+  await app.size(1100, 420);
+  const look = () => app.evaluate("const b = document.querySelector('#chat-ins .ins-body'), r = document.querySelector('#chat-ins').getBoundingClientRect(); return { tabs: document.querySelector('#chat-ins .ins-tabs').getBoundingClientRect().top - r.top, top: b.scrollTop, room: b.scrollHeight - b.clientHeight };");
+  const before = await look();
+  assert.ok(before.room > 0, 'the memos overflow the sidebar');
+  await app.evaluate("const b = document.querySelector('#chat-ins .ins-body'); b.scrollTop = b.scrollHeight; return 1;");
+  const after = await look();
+  assert.ok(after.top > 0);
+  assert.equal(after.tabs, before.tabs);
+  // A state push draws the tab again: the list stays where it was scrolled to.
+  await app.evaluate("await window.ide.call('memo:add', 'One more'); return 1;");
+  await app.until("document.querySelectorAll('#chat-ins .pk').length === 13", 'the new memo');
+  assert.ok((await look()).top > 0);
+});
+
 flow('from 560 wide the selected memo opens beside the list, and a draft keeps its text and caret across 560', {}, async (app) => {
   await app.evaluate("await window.ide.call('memo:add', 'Release notes go out on Thursdays'); await window.ide.call('memo:add', 'Prefer pnpm in new repositories'); return 1;");
   await app.click('[data-action="ins-tab"][data-v="memo"]');
