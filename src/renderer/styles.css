@@ -1342,6 +1342,9 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 /* ---------- right sidebar: one column, or list + detail from 560 (shared/insPanes, ui/panes.ts) ---------- */
 /* One column is at most 440 and centred; from 560 the list keeps 248 (LIST_W) and the selected card gets the rest,
    at most 356, so its lines and buttons stay put while the sidebar is dragged. */
+/* The tabs stay put: what is under them scrolls in .ins-body, which reaches the panel's edges so its bar sits there. */
+#chat-ins { overflow: hidden; padding-bottom: 0; }
+#chat-ins > .ins-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-inline: calc(-1 * var(--space-12)); padding: 2px var(--space-12) 14px; }
 .ins-cols { flex: 1 0 auto; display: flex; flex-direction: column; width: 100%; max-width: 440px; margin-inline: auto; min-width: 0; }
 .ins-list { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--space-10); min-width: 0; }
 .ins-detail { display: none; }
