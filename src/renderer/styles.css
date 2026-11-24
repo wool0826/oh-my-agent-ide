@@ -327,7 +327,7 @@ button.ctx .pill { margin-left: var(--space-2); }
 .attach .body { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .attach .body b { font-size: var(--fs-body); font-weight: 600; }
 .attach .body .sm { font-size: var(--fs-caption); color: var(--text-secondary); user-select: text; overflow-wrap: anywhere; }
-.attach .links { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-12); font-size: var(--fs-caption); }
+.attach .links { display: flex; flex-wrap: wrap; gap: var(--space-8) var(--space-12); font-size: var(--fs-caption); }
 /* A failed task: the alert tile and the "Failed" pill say so, not an edge colour. Continue sits with the links. */
 .attach.fail .body b { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) var(--space-8); }
 .attach.fail .links { align-items: center; margin-top: var(--space-6); }
@@ -366,6 +366,10 @@ button.hrow:focus-visible { outline: var(--focus-outline); outline-offset: -2px;
 .field.input { font: inherit; font-size: var(--fs-body); color: var(--text-primary); outline: none; min-width: 0; resize: none; max-height: 50vh; line-height: var(--lh-ui); user-select: text; overflow-y: auto; scrollbar-width: none; }
 .field.input::-webkit-scrollbar { display: none; }
 .field.input::placeholder { color: var(--text-tertiary); }
+/* A placeholder is one line: what does not fit ends in an ellipsis, it never wraps under the field's edge.
+   The ellipsis comes from the field itself. */
+.field.input::placeholder, .inp::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.field.input, .inp { text-overflow: ellipsis; }
 .ctx { flex: none; display: flex; align-items: center; gap: var(--space-4); margin: 0 var(--space-2) 0 var(--space-4); font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; align-self: center; }
 .ctx svg { width: 15px; height: 15px; }
 button.ctx { border: 0; background: none; height: var(--control-lg); padding: 0 var(--space-10); margin: 0; border-radius: var(--radius-full); align-self: flex-end; cursor: pointer; font: inherit; font-size: var(--fs-caption2); }
@@ -465,18 +469,19 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .stp { --c: var(--state-run); }
 .stp.wait { --c: var(--state-wait); } .stp.err { --c: var(--state-error); } .stp.all { --c: var(--state-done); }
 /* Padded out to the left so the current dot's halo and the pop are not cut by the clip. */
-.row .t .stp { display: block; height: calc(var(--n) * 16px); margin: var(--space-4) 0 0 calc(-1 * var(--space-6)); padding-left: var(--space-6); overflow: hidden; }
+/* The rows follow the text size: their height, the "more" line and the roll are in the scaled unit. */
+.row .t .stp { display: block; height: calc(var(--n) * 16 * var(--px)); margin: var(--space-4) 0 0 calc(-1 * var(--space-6)); padding-left: var(--space-6); overflow: hidden; }
 .row-main:has(.stp) > .ic { align-self: flex-start; margin-top: 1px; }
 .stp-in { display: block; }
 /* The count of steps a long plan's window hides, above and below it, in line with the step titles. */
-.row .t .stp-more { display: block; height: 14px; margin-top: var(--space-4); padding-left: calc(9px + var(--space-6)); font-size: var(--fs-caption2); line-height: 14px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .t .stp-more { display: block; height: calc(14 * var(--px)); margin-top: var(--space-4); padding-left: calc(9px + var(--space-6)); font-size: var(--fs-caption2); line-height: calc(14 * var(--px)); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .t .stp-more + .stp, .row .t .stp + .stp-more { margin-top: 0; }
-.stp-in.adv { translate: 0 -16px; animation: roll-up var(--dur-glide) var(--ease-standard); }
-.stp .s { display: flex; align-items: center; gap: var(--space-6); height: 16px; font-size: var(--fs-caption2); color: var(--text-tertiary); }
+.stp-in.adv { translate: 0 calc(-16 * var(--px)); animation: roll-up var(--dur-glide) var(--ease-standard); }
+.stp .s { display: flex; align-items: center; gap: var(--space-6); height: calc(16 * var(--px)); font-size: var(--fs-caption2); color: var(--text-tertiary); }
 .stp .s em { flex: 1; min-width: 0; font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stp .s i { position: relative; flex: none; width: 9px; height: 9px; display: grid; place-items: center; }
 .stp .s i::after { content: ''; width: 7px; height: 7px; border-radius: var(--radius-full); box-shadow: inset 0 0 0 1.5px var(--border-default); }
-.stp .s + .s i::before { content: ''; position: absolute; left: 4px; bottom: calc(100% + 1px); width: 1px; height: 5px; background: var(--border-default); }
+.stp .s + .s i::before { content: ''; position: absolute; left: 4px; bottom: calc(100% + 1px); width: 1px; height: max(1px, calc(16 * var(--px) - 11px)); background: var(--border-default); }
 .stp .s i svg { position: absolute; inset: 0; width: 9px; height: 9px; fill: none; stroke: var(--c); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .stp .s.done i::after { display: none; }
 .stp.run .s.done i svg, .stp.wait .s.done i svg { opacity: .8; }
@@ -500,6 +505,12 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .linkbtn.danger { color: var(--danger-text); }
 .linkbtn:hover { text-decoration: underline; }
 .linkbtn:focus-visible { outline: var(--focus-outline); outline-offset: 1px; border-radius: var(--radius-xs); }
+/* A link that stands in a row or a meta line is one text line high. It keeps its look, and what takes the click
+   is 24px high and at least as wide. Links inside the sentences of a message keep the line's height. */
+:is(.linkbtn, .links a, .plan-links button, .run-url, .snav .ver .upd, .li a[role="link"], .mini a[role="link"], .sh-cwd,
+  a[data-action="reveal"], a[data-action="open-settings"], a[data-action="open-chat"], a[data-action^="shell-"]) { position: relative; }
+:is(.linkbtn, .links a, .plan-links button, .run-url, .snav .ver .upd, .li a[role="link"], .mini a[role="link"], .sh-cwd,
+  a[data-action="reveal"], a[data-action="open-settings"], a[data-action="open-chat"], a[data-action^="shell-"])::after { content: ''; position: absolute; left: 50%; top: 50%; width: 100%; min-width: 24px; height: 24px; translate: -50% -50%; }
 
 /* The chat view's right sidebar has two tabs: the inbox, and the user's memos. */
 .segc.ins-tabs { display: flex; flex: none; flex-wrap: nowrap; width: 100%; max-width: 360px; margin-inline: auto; }
@@ -543,7 +554,7 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .attach.flash { animation: flash-card var(--dur-attention) var(--ease-out); }
 @keyframes flash-card { 0%, 40% { background: var(--accent-soft); } 100% { background: var(--surface-card); } }
 @keyframes flash { 0%, 40% { background: var(--accent-soft); } 100% { background: transparent; } }
-.dec .src { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-caption2); color: var(--text-secondary); }
+.dec .src { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); font-size: var(--fs-caption2); color: var(--text-secondary); container-type: inline-size; }
 .dec .src .sym { font-size: var(--fs-body); }
 .dec .q { font-size: var(--fs-body); font-weight: 600; line-height: var(--lh-ui); user-select: text; overflow-wrap: anywhere; }
 .dec .d { font-size: var(--fs-caption); color: var(--text-secondary); user-select: text; }
@@ -1339,6 +1350,8 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 /* ---------- decision cards (D1, K1) ---------- */
 /* The kind is a grey chip with an icon; colour is left to the age (orange when late) and the slot clock. */
 .dec .src .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* In a narrow card the kind and the age leave the title a few letters: it takes a line of its own under them. */
+@container (max-width: 30em) { .dec .src .who { order: 1; flex-basis: 100%; } }
 .dkind { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px 7px; border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-primary); font-size: var(--fs-caption2); font-weight: 600; }
 .dec .src .dkind .sym { font-size: var(--icon-sm); color: var(--text-secondary); }
 .dage { flex: none; margin-left: auto; font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -1526,7 +1539,9 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .sqb .sym { font-size: var(--icon-md); }
 .sqb:hover { color: var(--text-primary); background: var(--surface-hover); }
 .sqb.on { background: var(--surface-selected); color: var(--text-primary); box-shadow: var(--rim); }
-.sqb i { position: absolute; right: 0; top: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: var(--radius-full); background: var(--neutral-soft); box-shadow: var(--rim); color: var(--text-primary); font-style: normal; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; }
+/* The count on a button that does not grow with the text: never under the 11px floor, and no larger than the
+   button's corner can hold. */
+.sqb i { --fs: clamp(11px, var(--fs-caption2), 13px); position: absolute; right: -3px; top: -3px; min-width: calc(var(--fs) + 4px); height: calc(var(--fs) + 4px); padding: 0 var(--space-4); border-radius: var(--radius-full); background: var(--neutral-soft); box-shadow: var(--rim); color: var(--text-primary); font-style: normal; font-size: var(--fs); font-weight: 700; line-height: calc(var(--fs) + 4px); text-align: center; }
 .sqb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 @media (prefers-reduced-motion: reduce) { .sq { animation: none; } .sq-spin { animation: none; } }
 @media (forced-colors: active) { .sq { border: 1px solid CanvasText; } .sqb.on { outline: 2px solid Highlight; } }
