@@ -337,7 +337,7 @@ function registerIpc() {
   handle('run:start', (id: string) => runs.start(id));
   handle('run:stop', (id: string) => runs.stop(id));
   handle('run:clear', (id: string) => runs.clear(id));
-  handle('shell:run', (cmd: string, repo?: string | null, script?: string | null) => shellRuns.run(String(cmd ?? ''), typeof repo === 'string' && repo ? repo : null, typeof script === 'string' && script ? script.slice(0, 60) : undefined));
+  handle('shell:run', (cmd: string, repo?: string | null) => shellRuns.run(String(cmd ?? ''), typeof repo === 'string' && repo ? repo : null));
   handle('shell:stop', (id: string) => shellRuns.stop(id));
   // Saved scripts: only the Run button starts one, and it runs the stored command (main/scripts.ts).
   handle('script:add', (input: Partial<ScriptInput>) => addScript(input));

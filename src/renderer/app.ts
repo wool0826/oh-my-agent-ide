@@ -163,7 +163,7 @@ export async function act(el: HTMLElement, e: Event) {
     }
     case 'shell-again': {
       const r = S?.chat.find((c) => c.id === id)?.shell;
-      if (r) void tryCall('shell:run', r.cmd, r.repo || null, r.script ?? null).then((x) => { if (!x.ok) toast(x.error, true); });
+      if (r) void tryCall('shell:run', r.cmd, r.repo || null).then((x) => { if (!x.ok) toast(x.error, true); });
       break;
     }
     case 'sq-toggle': toggleSide(); break;

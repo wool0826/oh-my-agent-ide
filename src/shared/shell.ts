@@ -67,7 +67,7 @@ export function handOver(r: Pick<ShellRun, 'cmd' | 'repo' | 'code' | 'ms' | 'out
   // A saved script is named, and its command, which can be several lines, comes fenced after the line.
   const cf = fenceFor(r.cmd);
   const head = r.script
-    ? `[Shell run] The user ran their saved script "${r.script}" in ${r.repo || home}: ${ended}. Script:\n${cf}\n${r.cmd}\n${cf}\n`
+    ? `[Shell run] The user ran their saved script ${JSON.stringify(r.script)} in ${r.repo || home}: ${ended}. Script:\n${cf}\n${r.cmd}\n${cf}\n`
     : `[Shell run] The user ran \`${r.cmd}\` in ${r.repo || home}: ${ended}. `;
   if (!body) return `${head}No output.`;
   const note = shown < r.lines ? `Last ${shown} of ${r.lines} lines` : 'Output';

@@ -1,7 +1,7 @@
 // The right sidebar's Scripts tab (shared/scripts.ts): shell commands the user saved, each with its folder, run only
 // with its Run button. A run is a "!" run (main/shell.ts): its block is in the chat and its end goes to the Dispatcher.
 import { keepPick } from '../../shared/insPanes';
-import { sortScripts } from '../../shared/scripts';
+import { SCRIPT_CMD_MAX, SCRIPT_NAME_MAX, sortScripts } from '../../shared/scripts';
 import type { ShellScript } from '../../shared/types';
 import { esc, S, sym, t, toast, tryCall, ui, when } from './core';
 import { openPop } from './controls';
@@ -10,19 +10,20 @@ import { rowHtml, rowText, slotHtml } from './panes';
 /** The open form's folder for each form ('new' or a script's id), until it is saved or cancelled. */
 const folders = new Map<string, string>();
 
-/** The folder is still a registered repository; else the IDE home. */
-const known = (repo: string) => (repo && S?.repos.some((r) => r.name === repo) ? repo : '');
+/** Where a script runs, as stored: a repository removed since is still named, and its run says it is gone. */
 const whereLabel = (repo: string) => repo || t('shell.home');
+/** Saves and runs on their way, so a held Enter or a double click does each once. */
+const busy = new Set<string>();
 
 function formHtml(key: string, s?: ShellScript) {
-  const repo = known(folders.get(key) ?? s?.repo ?? '');
+  const repo = folders.get(key) ?? s?.repo ?? '';
   const where = whereLabel(repo);
   const btns = s
     ? `<button class="btn" data-action="script-edit-cancel" data-id="${esc(key)}">${t('cancel')}</button><button class="btn def" data-action="script-save" data-id="${esc(key)}">${t('save')}</button>`
     : `<button class="btn def" data-action="script-save" data-id="new">${t('script.add')}</button>`;
   return `<div class="script-form" data-form="${esc(key)}">
-    <input class="inp" data-keep="script-name-${esc(key)}" data-enter="script-save" data-id="${esc(key)}" maxlength="60" placeholder="${t('script.name')}" aria-label="${t('script.name')}"${s ? ` value="${esc(s.name)}"` : ''}>
-    <textarea class="inp mono" data-keep="script-cmd-${esc(key)}" data-enter="script-save" data-id="${esc(key)}" spellcheck="false" placeholder="${t('script.cmd')}" aria-label="${t('script.cmd')}">${s ? esc(s.cmd) : ''}</textarea>
+    <input class="inp" data-keep="script-name-${esc(key)}" data-enter="script-save" data-id="${esc(key)}" maxlength="${SCRIPT_NAME_MAX}" placeholder="${t('script.name')}" aria-label="${t('script.name')}"${s ? ` value="${esc(s.name)}"` : ''}>
+    <textarea class="inp mono" data-keep="script-cmd-${esc(key)}" data-enter="script-save" data-id="${esc(key)}" maxlength="${SCRIPT_CMD_MAX}" spellcheck="false" placeholder="${t('script.cmd')}" aria-label="${t('script.cmd')}">${s ? esc(s.cmd) : ''}</textarea>
     <div class="script-f"><button type="button" class="sh-cwd" data-action="script-cwd" data-id="${esc(key)}" data-v="${esc(repo)}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('shell.folderAria', { where }))}">${sym('s-term')}${t('shell.in', { where: `<b>${esc(where)}</b>` })}<svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button><span class="gap"></span>${btns}</div></div>`;
 }
 
@@ -40,7 +41,7 @@ function runBtn(s: ShellScript) {
 function scriptSlot(s: ShellScript) {
   const sel = ui.scriptSel === s.id;
   const edit = ui.scriptEdit === s.id;
-  const where = whereLabel(known(s.repo));
+  const where = whereLabel(s.repo);
   const row = rowHtml('script', s.id, sel, rowText(s.name, edit ? `${where} · ${t('memo.editing')}` : where));
   if (edit) return slotHtml(s.id, sel, row, `<div class="memo script open">${formHtml(s.id, s)}</div>`);
   if (!sel) {
@@ -84,9 +85,11 @@ export async function saveScript(key: string): Promise<boolean> {
   if (!name || !cmd) return false;
   if (!name.value.trim()) { name.focus(); return false; }
   if (!cmd.value.trim()) { cmd.focus(); return false; }
-  const repo = known(folders.get(key) ?? (key === 'new' ? '' : S!.scripts.find((s) => s.id === key)?.repo ?? ''));
+  const repo = folders.get(key) ?? (key === 'new' ? '' : S!.scripts.find((s) => s.id === key)?.repo ?? '');
   const input = { name: name.value, cmd: cmd.value, repo };
-  const r = key === 'new' ? await tryCall<string>('script:add', input) : await tryCall('script:update', key, input);
+  if (busy.has(`save:${key}`)) return false;
+  busy.add(`save:${key}`);
+  const r = await (key === 'new' ? tryCall<string>('script:add', input) : tryCall('script:update', key, input)).finally(() => busy.delete(`save:${key}`));
   if (!r.ok) {
     if (key === 'new') ui.formErr.script = r.error; else toast(r.error, true);
     return false;
@@ -115,9 +118,12 @@ export function cancelScriptEdit() {
 
 /** Runs a saved script: only from its button. Main runs the stored command, not one sent from here. */
 export async function runScript(id: string, btn: HTMLButtonElement) {
+  if (busy.has(`run:${id}`)) return;
+  busy.add(`run:${id}`);
   btn.disabled = true;
   const r = await tryCall('script:run', id);
-  btn.disabled = false;
+  // A second click right after the first is the same click: it does not start the script again.
+  setTimeout(() => { busy.delete(`run:${id}`); btn.disabled = false; }, 800);
   if (!r.ok) toast(r.error, true);
 }
 
