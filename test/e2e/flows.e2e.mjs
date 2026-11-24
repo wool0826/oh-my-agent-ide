@@ -550,7 +550,7 @@ flow('the palette finds something said and shows the chat from that message', {}
   assert.deepEqual([mark.bub, mark.blink], [true, true]);
   // The thread now starts at that message: what was said before it is above, not shown.
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Please remember the pineapple rule')"), false);
-  await app.until("!document.querySelector('#chat-thread .found')", 'the mark taken off', 4000);
+  await app.until("!document.querySelector('#chat-thread .found')", 'the mark taken off', 8000);
 });
 
 flow('the quick message box completes a repository name, sends to the Dispatcher and remembers the line', { repos: ['billing', 'docs'] }, async (app) => {

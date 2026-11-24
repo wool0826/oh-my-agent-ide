@@ -406,7 +406,7 @@ export let sheetTimer: number | undefined;
 
 export function openSettings(pane?: Pane) {
   // A state update while a name is being typed with an IME waits for the syllable (core.ts, holdWhileComposing).
-  if (!pane && ui.settingsShown && holdWhileComposing($('#sheet'), () => { if (ui.settingsShown) openSettings(); })) return;
+  if (!pane && ui.settingsShown && holdWhileComposing($('#sheet'), () => { if (ui.settingsShown) openSettings(); }, 'input, textarea')) return;
   if (pane) ui.pane = pane;
   // Each time the window opens (button, shortcut or first run), not on every re-render.
   if (!ui.settingsShown) { void loadClaudeInfo(); void loadPreflight(); if (ui.pane === 'models') void loadModels('fresh'); }

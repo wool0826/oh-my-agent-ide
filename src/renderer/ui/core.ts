@@ -444,22 +444,28 @@ export async function tryCall<T = any>(ch: string, ...args: unknown[]): Promise<
 let composing: Element | null = null;
 /** Draws put off until that composition ends: the latest one per panel. */
 const held = new Map<Element, () => void>();
-document.addEventListener('compositionstart', (e) => { composing = e.target as Element; }, true);
-document.addEventListener('compositionend', () => {
+/** The composition is over: the draws held for it run, each through its own check again (a new one may have begun). */
+function release() {
   composing = null;
   const due = [...held.values()];
   held.clear();
   // After the input event that carries the finished syllable.
   setTimeout(() => due.forEach((draw) => draw()), 0);
-}, true);
+}
+document.addEventListener('compositionstart', (e) => { composing = e.target as Element; }, true);
+document.addEventListener('compositionend', release, true);
+// A field left mid-syllable does not always say compositionend.
+document.addEventListener('focusout', (e) => { if (e.target === composing) release(); }, true);
 
 /**
  * Drawing a panel again replaces its fields. Replacing the one being composed in ends the composition: the IME
  * commits the half-built syllable and the next key starts a new one ("하" + "ㄴ" becomes "하ㄴ", not "한").
  * True when a composition is going on inside `root`; `draw` then runs once it ends, and the caller draws nothing now.
  */
-export function holdWhileComposing(root: Element, draw: () => void): boolean {
-  if (!composing?.isConnected || !root.contains(composing)) return false;
+export function holdWhileComposing(root: Element, draw: () => void, replaced = '[data-keep]'): boolean {
+  if (composing && !composing.isConnected) release();
+  // Only a field the draw replaces: a composition elsewhere in the root does not hold it.
+  if (!composing || !root.contains(composing) || !composing.matches(replaced)) return false;
   held.set(root, draw);
   return true;
 }

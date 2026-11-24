@@ -119,12 +119,10 @@ function fitInput(input: HTMLTextAreaElement) {
 const SIZE_KEY = 'oma.sqSize';
 let size: SideSize = (() => { try { return parseSideSize(localStorage.getItem(SIZE_KEY)); } catch { return { w: null, h: null }; } })();
 
-/** The room in the chat: its width less the margins, its height above the composer less the top margin. */
+/** The room in the chat, as .sq's max-width and max-height in styles.css give it. */
 function room(): SideRoom {
-  const panel = $('#sq');
-  const host = panel.parentElement!;
-  const bottom = parseFloat(panel.style.bottom) || 88;
-  return { w: host.clientWidth - 32, h: host.clientHeight - bottom - 16 };
+  const host = $('#sq').parentElement!;
+  return { w: host.clientWidth - 32, h: host.clientHeight - 120 };
 }
 
 /** The size on the panel; CSS keeps it inside the chat when the window gets smaller (.sq, --sq-w and --sq-h). */
@@ -151,21 +149,25 @@ function startResize(e: PointerEvent) {
   const x0 = e.clientX;
   const y0 = e.clientY;
   const r = room();
+  const was = size;
+  let moved = false;
   grip.setPointerCapture(e.pointerId);
   panel.classList.add('sizing');
   // The panel is held in the bottom-right corner, so going left or up makes it bigger.
   const move = (ev: PointerEvent) => {
+    moved = true;
     size = clampSideSize({ w: edge === 'h' ? size.w : r0.width - (ev.clientX - x0), h: edge === 'w' ? size.h : r0.height - (ev.clientY - y0) }, r);
     applySize();
   };
-  const end = () => {
+  const end = (ev: PointerEvent) => {
     grip.removeEventListener('pointermove', move);
     grip.removeEventListener('pointerup', end);
     grip.removeEventListener('pointercancel', end);
     grip.removeEventListener('lostpointercapture', end);
     if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
     panel.classList.remove('sizing');
-    setSize(size);
+    // A press without a move (a click, a double-click) changes nothing; a cancelled drag goes back.
+    if (ev.type === 'pointercancel') { size = was; applySize(); } else if (moved) setSize(size);
   };
   grip.addEventListener('pointermove', move);
   grip.addEventListener('pointerup', end);
