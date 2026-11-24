@@ -96,7 +96,7 @@ flow('from 560 wide the selected memo opens beside the list, and a draft keeps i
   await app.size(1600);
   await app.evaluate("document.querySelector('#rz-ins').focus(); return 1;");
   const handle = async (code, vk, shift = false) => app.key(code, code, vk, shift ? 8 : 0);
-  const where = () => app.evaluate(`const ta = document.querySelector('#chat-ins textarea[data-keep^="memo-"]'); return {
+  const where = () => app.evaluate(`const ta = document.querySelector('#chat-ins textarea[data-keep^="memo-"]:not(#memo-new)'); return {
     split: !!document.querySelector('#chat-ins .ins-cols.split'),
     detail: document.querySelector('#chat-ins .ins-detail')?.innerText ?? '',
     rows: [...document.querySelectorAll('#chat-ins .pk > .li')].filter((r) => r.offsetParent).length,
@@ -142,6 +142,29 @@ flow('from 560 wide the selected memo opens beside the list, and a draft keeps i
   const after = await app.evaluate("const c = document.querySelector('#chat-ins .ins-detail [data-dec]'); return { id: c?.dataset.dec, focus: document.activeElement === c, sel: document.querySelector('#chat-ins .pk.sel')?.dataset.pick };");
   assert.notEqual(after.id, first);
   assert.deepEqual([after.focus, after.sel], [true, after.id]);
+});
+
+flow('a memo keeps its lines: Shift+Enter is a new line, Enter adds it, and Enter saves an edit', {}, async (app) => {
+  await app.click('[data-action="ins-tab"][data-v="memo"]');
+  await app.until("!!document.querySelector('#memo-new')", 'the memo box');
+  assert.equal(await app.evaluate("return document.querySelector('#memo-new').tagName;"), 'TEXTAREA');
+  await app.evaluate("const ta = document.querySelector('#memo-new'); ta.focus(); ta.value = 'Release checklist\\n- bump the version\\n- tag it'; return 1;");
+  // Shift+Enter leaves the text in the box; Enter adds the memo with all of its lines.
+  await app.key('Enter', 'Enter', 13, 8);
+  assert.equal(await app.evaluate("return document.querySelectorAll('#chat-ins [data-memo]').length;"), 0);
+  await app.key('Enter', 'Enter', 13);
+  await app.until("document.querySelectorAll('#chat-ins [data-memo]').length === 1", 'the memo');
+  assert.equal(await app.evaluate("return document.querySelector('#chat-ins [data-memo] p').innerText;"), 'Release checklist\n- bump the version\n- tag it');
+  assert.equal(await app.evaluate("return document.querySelector('#memo-new').value;"), '');
+  // Editing: Shift+Enter stays in the field, Enter saves the lines.
+  await app.click('#chat-ins [data-action="memo-edit"]');
+  await app.until("document.activeElement?.matches('#chat-ins textarea[data-keep^=\"memo-\"]:not(#memo-new)')", 'the edit field');
+  await app.evaluate("const ta = document.activeElement; ta.value = 'Release checklist\\n- tag it'; return 1;");
+  await app.key('Enter', 'Enter', 13, 8);
+  assert.ok(await app.evaluate("return !!document.querySelector('#chat-ins textarea:not(#memo-new)');"));
+  await app.key('Enter', 'Enter', 13);
+  await app.until("!document.querySelector('#chat-ins textarea:not(#memo-new)')", 'the edit saved');
+  await app.until("document.querySelector('#chat-ins [data-memo] p')?.innerText === 'Release checklist\\n- tag it'", 'the saved lines');
 });
 
 flow('a plan waits for approval before the work goes on', {}, async (app) => {

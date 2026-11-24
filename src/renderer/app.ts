@@ -655,6 +655,14 @@ export function swapDraft(from: string | null, to: string | null) {
   renderChips('ws');
 }
 
+/** A stand-in button for an action started from the keyboard: `dataset` has no setter, so it is filled key by key. */
+function actionAs(action: string, id?: string) {
+  const b = document.createElement('button');
+  b.dataset.action = action;
+  if (id !== undefined) b.dataset.id = id;
+  return b;
+}
+
 /** The composer grows with its text up to half the window; past that it scrolls with no visible bar. */
 export function autosize(el: HTMLTextAreaElement) {
   el.style.height = 'auto';
@@ -950,16 +958,18 @@ export function init() {
         addDiffNote();
       } else if (el.dataset.enter === 'memo-add') {
         void addMemo();
+      } else if (el.dataset.enter === 'memo-save') {
+        void act(actionAs('memo-save', el.dataset.id), e);
       } else if (el.dataset.enter === 'sug-save') {
         void saveSug(el.dataset.id ?? '');
       } else if (el.dataset.enter === 'aa-send') {
-        void act(Object.assign(document.createElement('button'), { dataset: { action: 'aa-send', id: el.dataset.id } }) as HTMLElement, e);
+        void act(actionAs('aa-send', el.dataset.id), e);
       }
       return;
     }
     if (el.id === 'acc-rename' && e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
-      void act(Object.assign(document.createElement('button'), { dataset: { action: 'acc-rename-save', id: el.dataset.id } }) as HTMLElement, e);
+      void act(actionAs('acc-rename-save', el.dataset.id), e);
       return;
     }
     // Escape closes one layer at a time, the top one first (L14).
