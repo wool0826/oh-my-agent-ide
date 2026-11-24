@@ -1,6 +1,7 @@
 // A side question (shared/side.ts, main/side.ts): a floating panel over the chat with its own thread, model, folder
 // and context meter. Nothing in it reaches the Dispatcher unless "Send to the Dispatcher" puts it on the composer.
 import { CONTEXT_WINDOW } from '../../shared/context';
+import { clampSideSize, keySideSize, parseSideSize, sideSizeText, type SideRoom, type SideSize } from '../../shared/sideSize';
 import { lastAnswer, sideModel, sideReply, SIDE_EMPTY, type SideView } from '../../shared/side';
 import { openPop, pop } from './controls';
 import type { ModelList } from '../../shared/types';
@@ -113,9 +114,85 @@ function fitInput(input: HTMLTextAreaElement) {
   input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
 }
 
+/* ---------- size: drag the top or left edge or the top-left corner, or arrow keys on the corner ---------- */
+
+const SIZE_KEY = 'oma.sqSize';
+let size: SideSize = (() => { try { return parseSideSize(localStorage.getItem(SIZE_KEY)); } catch { return { w: null, h: null }; } })();
+
+/** The room in the chat, as .sq's max-width and max-height in styles.css give it. */
+function room(): SideRoom {
+  const host = $('#sq').parentElement!;
+  return { w: host.clientWidth - 32, h: host.clientHeight - 120 };
+}
+
+/** The size on the panel; CSS keeps it inside the chat when the window gets smaller (.sq, --sq-w and --sq-h). */
+function applySize() {
+  const panel = $('#sq');
+  panel.style.setProperty('--sq-w', size.w == null ? '' : `${size.w}px`);
+  panel.style.setProperty('--sq-h', size.h == null ? '' : `${size.h}px`);
+}
+
+function setSize(s: SideSize) {
+  size = s;
+  applySize();
+  try { localStorage.setItem(SIZE_KEY, sideSizeText(s)); } catch { /* not kept */ }
+}
+
+function startResize(e: PointerEvent) {
+  const grip = e.currentTarget as HTMLElement;
+  if (e.button !== 0) return;
+  // No text selection starts from the press.
+  e.preventDefault();
+  const panel = $('#sq');
+  const edge = grip.dataset.edge;
+  const r0 = panel.getBoundingClientRect();
+  const x0 = e.clientX;
+  const y0 = e.clientY;
+  const r = room();
+  const was = size;
+  let moved = false;
+  grip.setPointerCapture(e.pointerId);
+  panel.classList.add('sizing');
+  // The panel is held in the bottom-right corner, so going left or up makes it bigger.
+  const move = (ev: PointerEvent) => {
+    moved = true;
+    size = clampSideSize({ w: edge === 'h' ? size.w : r0.width - (ev.clientX - x0), h: edge === 'w' ? size.h : r0.height - (ev.clientY - y0) }, r);
+    applySize();
+  };
+  const end = (ev: PointerEvent) => {
+    grip.removeEventListener('pointermove', move);
+    grip.removeEventListener('pointerup', end);
+    grip.removeEventListener('pointercancel', end);
+    grip.removeEventListener('lostpointercapture', end);
+    if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
+    panel.classList.remove('sizing');
+    // A press without a move (a click, a double-click) changes nothing; a cancelled drag goes back.
+    if (ev.type === 'pointercancel') { size = was; applySize(); } else if (moved) setSize(size);
+  };
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('pointercancel', end);
+  grip.addEventListener('lostpointercapture', end);
+}
+
 export function bindSide() {
   const panel = $('#sq');
   panel.addEventListener('keydown', keys);
+  applySize();
+  panel.querySelectorAll<HTMLElement>('[data-edge]').forEach((el) => {
+    el.addEventListener('pointerdown', startResize);
+    // A double-click goes back to the panel's own size.
+    el.addEventListener('dblclick', () => setSize({ w: null, h: null }));
+  });
+  $('#sq-rz').addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const r = panel.getBoundingClientRect();
+    const next = keySideSize(e.key, e.shiftKey, { w: r.width, h: r.height }, room());
+    if (!next) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSize(next);
+  });
   $('#sq-form').addEventListener('submit', (e) => { e.preventDefault(); void sendSide(); });
   const input = $<HTMLTextAreaElement>('#sq-input');
   input.addEventListener('input', () => { fitInput(input); sendButton(); });

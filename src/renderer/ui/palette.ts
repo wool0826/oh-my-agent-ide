@@ -68,7 +68,13 @@ export function paletteItems(): Cmd[] {
   return out;
 }
 
-export function openPalette() {
+/** What Ctrl/Cmd+F looks for first: the text selected on the page, when it is one short line. */
+export function findSeed() {
+  const s = String(window.getSelection() ?? '').trim();
+  return s.length <= 80 && !/[\r\n]/.test(s) ? s : '';
+}
+
+export function openPalette(q = '') {
   if (!S || cmdk.open) return;
   closePop();
   hideUsagePop();
@@ -85,8 +91,11 @@ export function openPalette() {
   root.hidden = false;
   root.classList.add('opening');
   setTimeout(() => root.classList.remove('opening'), ms('--dur-slow') + 40);
-  renderPalette('');
-  $('#cmdk-q').focus();
+  const input = $<HTMLInputElement>('#cmdk-q');
+  input.value = q;
+  renderPalette(q);
+  input.focus();
+  input.select();
 }
 
 /** The list for what is typed. Sections have their names only while nothing is typed: a search mixes them by rank. */
@@ -124,10 +133,13 @@ export function searchSaid(q: string) {
   }, 180);
 }
 
-/**
- * Shows the chat from a message on, loading older pages until it is there (at most 40), and marks it for a moment.
- */
+/** How long a message found by a search blinks (styles.css, .found: three blinks of 600 ms). */
+const FOUND_MS = 3 * 600 + 200;
 
+/**
+ * Shows the chat from a message on, loading older pages until it is there (at most 40), and makes it blink a few
+ * times so the eye finds it.
+ */
 export async function jumpToChat(id: string): Promise<boolean> {
   go({ view: 'chat' });
   for (let i = 0; i < 40 && !chatAll().some((c) => c.id === id); i++) {
@@ -141,11 +153,15 @@ export async function jumpToChat(id: string): Promise<boolean> {
   ui.chatFrom = id;
   ui.lastChatKey = '';
   renderChat(false, true);
-  const th = $('#chat-thread');
-  const hit = th.querySelector<HTMLElement>(':scope > .bub, :scope > .rp, :scope > div:not(.empty-view)');
+  // The thread now starts at the message, so the first message box in it is the one (a bubble, a card, a line).
+  const hit = $('#chat-thread').querySelector<HTMLElement>('.bub, .attach, .event, .sh-run, .hand');
   hit?.scrollIntoView({ block: 'start' });
-  hit?.classList.add('found');
-  setTimeout(() => hit?.classList.remove('found'), 1600);
+  if (hit) {
+    hit.classList.remove('found');
+    void hit.offsetWidth;
+    hit.classList.add('found');
+    setTimeout(() => hit.classList.remove('found'), FOUND_MS);
+  }
   return true;
 }
 

@@ -162,6 +162,8 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
     say: (text) => evaluate(`await window.ide.call('chat:send', ${JSON.stringify(text)}, []); return 1;`),
     click: (selector) => evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); el.click(); return 1;`),
     state: () => evaluate("return await window.ide.call('state');"),
+    /** A raw DevTools protocol call (IME composition, for one). */
+    cdp: send,
     /** Presses a key as the keyboard does (trusted events to the focused element). modifiers: 2 Ctrl, 4 Meta. */
     async key(code, key, vk, modifiers = 0) {
       await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', code, key, windowsVirtualKeyCode: vk, modifiers });

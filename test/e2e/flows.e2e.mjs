@@ -334,6 +334,37 @@ flow('a side question is asked and answered in its own panel, and reaches the Di
   await app.until("document.querySelector('#sq').hidden && !document.querySelector('#chat-sq i')", 'the thread forgotten');
 });
 
+flow('the side question panel is resized from its top-left corner by drag and by keys, and keeps its size', {}, async (app) => {
+  // A window with room for the panel to grow, whatever the screen the test runs on.
+  await app.size(1600, 1000);
+  await app.click('#chat-sq');
+  await app.until("!document.querySelector('#sq').hidden", 'the side question panel');
+  const box = () => app.evaluate("const r = document.querySelector('#sq').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right), bottom: Math.round(r.bottom) };");
+  const b0 = await box();
+  // Drag the corner up and to the left: the panel grows that way and stays in its corner.
+  const at = await app.evaluate("const r = document.querySelector('#sq-rz').getBoundingClientRect(); return { x: r.left + 8, y: r.top + 8 };");
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 60, y: at.y - 40, button: 'left', buttons: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 120, y: at.y - 80, button: 'left', buttons: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x - 120, y: at.y - 80, button: 'left', buttons: 0, clickCount: 1 });
+  const b1 = await box();
+  assert.deepEqual([b1.w - b0.w, b1.h - b0.h, b1.right, b1.bottom], [120, 80, b0.right, b0.bottom]);
+  // The keys on the corner: ← wider, ↓ shorter, Shift by four steps.
+  await app.evaluate("document.querySelector('#sq-rz').focus(); return 1;");
+  await app.key('ArrowLeft', 'ArrowLeft', 37, 8);
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  const b2 = await box();
+  assert.deepEqual([b2.w - b1.w, b2.h - b1.h], [64, -16]);
+  assert.equal(await app.evaluate("localStorage.getItem('oma.sqSize')"), `${b2.w}x${b2.h}`);
+  // Minimised and opened again, it keeps its size; a double-click goes back to its own size.
+  await app.click('#chat-sq');
+  await app.click('#chat-sq');
+  await app.until("!document.querySelector('#sq').hidden", 'the panel again');
+  assert.deepEqual(await box().then((b) => [b.w, b.h]), [b2.w, b2.h]);
+  await app.evaluate("document.querySelector('#sq-rz').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); return 1;");
+  assert.equal((await box()).w, b0.w);
+});
+
 flow('the hand-outs of one turn fold into one block with a row per task', {}, async (app) => {
   await app.say('@fake task - One\n@@fake result One.\n@fake task - Two\n@@fake permission npm run two\n@@fake result Two.');
   await app.until("document.querySelectorAll('#chat-thread .hand .hrow').length === 2", 'one block with two rows');
@@ -591,15 +622,23 @@ flow('the palette finds something said and shows the chat from that message', {}
   // Enough later messages that the first is not what the chat opens on.
   for (let i = 0; i < 3; i++) await app.say(`Filler ${i}\n@fake say Filler answer ${i}.`);
   await app.until("document.querySelector('#chat-thread').innerText.includes('Filler answer 2.')", 'the later messages');
-  await app.click('#cmdk-btn');
+  // Ctrl+F opens the palette to find something said.
+  await app.evaluate("document.querySelector('#chat-input').focus(); return 1;");
+  await app.key('KeyF', 'f', 70, 2);
+  await app.until("document.activeElement?.id === 'cmdk-q'", 'the palette opened by Ctrl+F');
   await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'pineapple fridays'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
   const row = await app.until("[...document.querySelectorAll('.cmdk-it')].findIndex((el) => el.innerText.includes('no pineapple on Fridays')) + 1", 'the message among the results');
+  // The blink is for a screen that allows motion (a CI runner may ask for less).
+  await app.cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await app.click(`#cmdk-${row - 1}`);
-  // Read in the same look that finds it: the mark is taken off again a moment later.
-  const found = await app.until("document.querySelector('#chat-thread .found')?.innerText ?? ''", 'the message marked in the chat');
-  assert.match(found, /no pineapple on Fridays/);
+  // Read in the same look that finds it: the bubble blinks, and the mark is taken off again a moment later.
+  const found = await app.until("const f = document.querySelector('#chat-thread .found'); return f && JSON.stringify({ text: f.innerText, bub: f.matches('.bub'), blink: f.getAnimations().some((a) => a.animationName === 'found') });", 'the message marked in the chat');
+  const mark = JSON.parse(found);
+  assert.match(mark.text, /no pineapple on Fridays/);
+  assert.deepEqual([mark.bub, mark.blink], [true, true]);
   // The thread now starts at that message: what was said before it is above, not shown.
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Please remember the pineapple rule')"), false);
+  await app.until("!document.querySelector('#chat-thread .found')", 'the mark taken off', 8000);
 });
 
 flow('the quick message box completes a repository name, sends to the Dispatcher and remembers the line', { repos: ['billing', 'docs'] }, async (app) => {
@@ -806,6 +845,29 @@ flow('a state update that changes nothing in a panel leaves the panel as it is',
   await app.evaluate(mark);
   await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })); await window.ide.call('preflight:run'); await new Promise((r) => setTimeout(r, 500)); return 1;");
   assert.deepEqual(await app.evaluate(kept), [false, false]);
+});
+
+flow('a Korean syllable being composed in a sidebar field is not split when the sidebar is drawn again', {}, async (app) => {
+  await app.click('#chat-ins [data-action="ins-tab"][data-v="memo"]');
+  await app.until("!!document.getElementById('memo-new')", 'the new memo field');
+  await app.evaluate("const i = document.getElementById('memo-new'); window.__field = i; window.__ends = 0; i.addEventListener('compositionend', () => window.__ends++); i.focus(); return 1;");
+  // A key first, so the draws that follow are real ones (skipSameHtml lets them through after user input).
+  await app.key('ShiftLeft', 'Shift', 16);
+  await app.cdp('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 });
+  await app.cdp('Input.imeSetComposition', { text: '하', selectionStart: 1, selectionEnd: 1 });
+  // The sidebar has something new to draw while the syllable is half built.
+  await app.say('@fake task - Something to list\n@@fake result Done.');
+  await app.until("return (await window.ide.call('state')).results.length > 0", 'the result');
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(await app.evaluate('window.__ends'), 0, 'the composition went on');
+  assert.equal(await app.evaluate("document.getElementById('memo-new') === window.__field"), true, 'the field was not replaced mid-syllable');
+  await app.cdp('Input.imeSetComposition', { text: '한', selectionStart: 1, selectionEnd: 1 });
+  await app.cdp('Input.insertText', { text: '한' });
+  assert.equal(await app.evaluate("document.getElementById('memo-new').value"), '한');
+  // The draw that waited for the syllable happens once it is done, and the text stays.
+  await app.until("document.getElementById('memo-new') !== window.__field", 'the held draw');
+  assert.equal(await app.evaluate("document.getElementById('memo-new').value"), '한');
+  assert.equal(await app.evaluate("document.activeElement?.id"), 'memo-new');
 });
 
 flow('the sidebar tab pill follows the sidebar width while it changes', {}, async (app) => {

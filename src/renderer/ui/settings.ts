@@ -14,7 +14,7 @@ import { fitAll } from './fit';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, clampFontSize, fontStack, normalizeFontFamily } from '../../shared/font';
 import { away } from './chat';
 import { closePop, installedFonts, markFont, openPop, Opt, pop, stepNum } from './controls';
-import { $, applyStaticText, call, cap1, esc, ic, isMac, k, lang, lv, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
+import { $, applyStaticText, call, cap1, esc, holdWhileComposing, ic, isMac, k, lang, lv, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
 import { nav, show } from './history';
 import { renderMemSync } from './memory';
 import { jira, loadPreflight, preflight, preflightRows } from './repos';
@@ -410,6 +410,8 @@ export async function loadClaudeInfo() {
 export let sheetTimer: number | undefined;
 
 export function openSettings(pane?: Pane) {
+  // A state update while a name is being typed with an IME waits for the syllable (core.ts, holdWhileComposing).
+  if (!pane && ui.settingsShown && holdWhileComposing($('#sheet'), () => { if (ui.settingsShown) openSettings(); }, 'input, textarea')) return;
   if (pane) ui.pane = pane;
   // Each time the window opens (button, shortcut or first run), not on every re-render.
   if (!ui.settingsShown) { void loadClaudeInfo(); void loadPreflight(); if (ui.pane === 'models') void loadModels('fresh'); }

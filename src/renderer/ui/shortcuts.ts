@@ -19,6 +19,7 @@ export function shortcutsHtml() {
     row(t('keys.move'), ['↓', '↑']),
   ].join('')) + group('keys.any', [
     row(t('keys.find'), [mod, 'K']),
+    row(t('keys.findSaid'), [mod, 'F']),
     row(t('keys.view'), [mod, '1–4']),
     row(t('sq.title'), [mod, 'J']),
     row(t('term.title'), [isMac ? '⌃' : 'Ctrl', '`']),
