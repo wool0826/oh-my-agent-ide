@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { linkify, urlEnd } from '../src/shared/linkify';
 
 const PR = 'https://github.com/wool0826/oh-my-agent-ide/pull/27';
-const a = (url: string) => `<a data-action="open-url" data-href="${url}">${url}</a>`;
+const a = (url: string) => `<a tabindex="0" role="link" data-action="open-url" data-href="${url}">${url}</a>`;
 
 test('a sentence-ending period stays outside the link', () => {
   assert.equal(linkify(`Opened ${PR}. CI is running.`), `Opened ${a(PR)}. CI is running.`);

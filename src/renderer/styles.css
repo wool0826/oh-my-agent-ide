@@ -240,6 +240,9 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 /* The composer floats over the thread (its height is --composer-h), so the end of the thread clears it. */
 .thread { flex: 1; overflow-y: auto; padding: var(--space-12) var(--space-20) calc(var(--composer-h, 46px) + 30px); display: flex; flex-direction: column; gap: var(--space-8); -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
 .thread > * { flex-shrink: 0; }
+/* The message that has the keyboard (↑/↓ move between messages). */
+.thread > [tabindex="-1"]:focus { outline: none; }
+.thread > [tabindex="-1"]:focus-visible { outline: var(--focus-outline); outline-offset: 2px; border-radius: var(--radius-xl); }
 .stamp { align-self: center; font-size: var(--fs-caption2); color: var(--text-tertiary); font-weight: 500; margin: var(--space-6) 0 var(--space-2); }
 .bub { max-width: 78%; padding: var(--space-8) var(--space-12); border-radius: var(--radius-xl); font-size: var(--fs-body); line-height: var(--lh-body); user-select: text; overflow-wrap: anywhere; }
 .bub p + p { margin-top: var(--space-6); }

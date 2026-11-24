@@ -72,7 +72,7 @@ export function renderMemory() {
     ins.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-sparkle"/></svg><b>${t('mem.pickTitle')}</b></div>`;
     return;
   }
-  ins.innerHTML = `<div class="ins-h"><b>${esc(ui.memSel)}</b></div>
-    <textarea class="inp memedit" id="mem-edit" spellcheck="false">${esc(ui.memText)}</textarea>
+  ins.innerHTML = `<div class="ins-h"><b role="heading" aria-level="2">${esc(ui.memSel)}</b></div>
+    <textarea class="inp memedit" id="mem-edit" aria-label="${esc(ui.memSel)}" spellcheck="false">${esc(ui.memText)}</textarea>
     <div class="ins-act">${ui.memSel.startsWith('repos/') ? `<button class="btn" data-action="mem-promote" data-id="${esc(ui.memSel.slice(6, -3))}" data-tip="${t('mem.promoteHint')}">${t('mem.promote')}</button>` : ''}<button class="btn def" data-action="mem-save">${t('save')}</button></div>`;
 }

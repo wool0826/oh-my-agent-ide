@@ -35,6 +35,6 @@ export function linkify(html: string): string {
     const url = run.slice(0, urlEnd(run));
     // "https://" alone, or with only punctuation after it, is not a link.
     if (!/^https?:\/\/[^/.]/.test(url)) return run;
-    return `<a data-action="open-url" data-href="${url}">${url}</a>${run.slice(url.length)}`;
+    return `<a tabindex="0" role="link" data-action="open-url" data-href="${url}">${url}</a>${run.slice(url.length)}`;
   });
 }

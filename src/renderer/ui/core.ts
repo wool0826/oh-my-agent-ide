@@ -18,6 +18,7 @@ import { type NavDir, type Screen, type View, type WorkerFilter } from '../../sh
 import { init } from '../app';
 import { go, screen, show } from './history';
 import { ms } from './sidebar';
+import { keepThreadFocus } from './thread';
 
 declare global {
   interface Window {
@@ -614,9 +615,19 @@ export const NEW_FROM = '<i class="new-from" hidden></i>';
 
 export function setThread(th: HTMLElement, html: string, follow: boolean, older: boolean) {
   const fromEnd = th.scrollHeight - th.scrollTop;
+  // The message that has the keyboard is a new element after this: the focus goes to the one in its place.
+  const refocus = keepThreadFocus(th);
   th.innerHTML = html;
   if (older) scrollQuietly(th, th.scrollHeight - fromEnd);
   else if (follow) scrollQuietly(th, th.scrollHeight);
+  refocus?.(older);
+}
+
+/** A field whose text cannot be used: the red outline, and the same said to a screen reader. */
+export function markBad(el: Element | null, bad: boolean) {
+  if (!el) return;
+  el.classList.toggle('bad', bad);
+  if (bad) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
 }
 
 /** Fade in what a container shows now (a tab or a pane just picked). Later re-renders of it don't fade. */
