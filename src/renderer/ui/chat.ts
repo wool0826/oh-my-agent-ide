@@ -196,18 +196,18 @@ export function chatItemHtml(c: ChatItem) {
   }
 }
 
-/** One reply under a report. The first Dispatcher message under a card says whose report it is about. */
-function replyRow(c: ChatItem, html: string, first: string | null, quoteShown: boolean) {
+/**
+ * One reply in a report's group, on its own side as in the rest of the chat. The group already says which report it
+ * answers (it sits under the card, or opens with the report's chip), so a quote of that report is left out.
+ */
+function replyRow(c: ChatItem, html: string) {
   const me = c.kind === 'user';
-  // Right under the card, a quote of the card itself says nothing the branch does not.
-  const r = me && !quoteShown ? parseReply(c.text) : null;
+  const r = me ? parseReply(c.text) : null;
   if (r && r.who === (task(c.replyTo)?.workerId ?? c.replyTo)) html = `<div class="bub me">${userText(r.body)}</div>`;
-  const wid = first ? task(first)?.workerId : null;
-  const who = wid && c.kind === 'dispatcher' ? `<span class="rth-who">${t('chat.onReport', { id: esc(wid) })}</span>` : '';
-  return `<div class="rth-r${me ? ' me' : ''}">${who}${me ? '<i class="rth-ld" aria-hidden="true"></i>' : ''}${html}</div>`;
+  return `<div class="rth-r${me ? ' me' : ''}">${html}</div>`;
 }
 
-/** Over a reply that came later: the report it answers, which the chip goes back to. */
+/** At the top of a group that came later: the report it answers, which the chip goes back to. */
 function reportRef(id: string) {
   const x = task(id);
   const what = [x?.title ?? id, x?.prUrl ? `PR #${prNum(x.prUrl)}` : ''].filter(Boolean).join(' · ');
@@ -267,7 +267,6 @@ export function renderChat(force = false, older = false) {
     if (fresh.length) announce(fresh[fresh.length - 1].text);
   }
   const slots = threadLayout(items.map(({ c }) => c));
-  let lateGroup = false;
   for (const [i, { c, n }] of items.entries()) {
     const slot = slots[i];
     const inGroup = slot.depth === 1 && !slot.start;
@@ -278,9 +277,9 @@ export function renderChat(force = false, older = false) {
     last = ts;
     const one = n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
     if (slot.depth === 0) { html += one; continue; }
-    if (slot.start) html += `${slot.late ? reportRef(slot.root!) : ''}<div class="rth${slot.late ? ' late' : ''}" role="group" aria-label="${esc(t('chat.repliesTo', { title: task(slot.root)?.title ?? slot.root! }))}">`;
-    if (slot.start) lateGroup = slot.late;
-    html += replyRow(c, one, slot.start && !slot.late ? slot.root! : null, lateGroup);
+    // A group is one well, one step in: right under its card, or further down opening with the report's chip.
+    if (slot.start) html += `<div class="rth${slot.late ? ' late' : ''}" role="group" aria-label="${esc(t('chat.repliesTo', { title: task(slot.root)?.title ?? slot.root! }))}">${slot.late ? reportRef(slot.root!) : ''}`;
+    html += replyRow(c, one);
     if (slots[i + 1]?.depth !== 1 || slots[i + 1].start) html += '</div>';
   }
   // A first start: a few starts that fill the composer for the user to finish. Nothing is sent.

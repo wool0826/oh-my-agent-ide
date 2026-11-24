@@ -454,6 +454,9 @@ flow("a reply to a Worker's report goes under its card, and so does the Dispatch
   // One step in, right after the card: the user's question with its branch across, then the answer.
   const shape = await app.evaluate("const g = document.querySelector('#chat-thread .rth'); let p = g.previousElementSibling; while (p && !p.matches('.attach, .bline, .bub, .event')) p = p.previousElementSibling; return { late: g.classList.contains('late'), after: p?.dataset.task ?? null, rows: [...g.querySelectorAll(':scope > .rth-r')].map((r) => r.classList.contains('me') ? 'me' : 'ai'), nested: !!g.querySelector('.rth .rth') };");
   assert.deepEqual(shape, { late: false, after: 'T-0001', rows: ['me', 'ai'], nested: false });
+  // One well with no connector lines: its rows stack without overlapping and stay inside it.
+  const fit = await app.evaluate("const g = document.querySelector('#chat-thread .rth'); const box = g.getBoundingClientRect(); const rows = [...g.querySelectorAll(':scope > .rth-r')].map((r) => r.getBoundingClientRect()); return { inside: rows.every((r) => r.left >= box.left && r.right <= box.right + 0.5), stacked: rows.every((r, i) => !i || r.top >= rows[i - 1].bottom - 0.5), lines: [...g.querySelectorAll('*')].some((el) => ['::before', '::after'].some((p) => getComputedStyle(el, p).borderLeftWidth !== '0px' && getComputedStyle(el, p).content !== 'none')), quoted: g.querySelector('.rth-r.me').innerText.includes('Wrote the notes') };");
+  assert.deepEqual(fit, { inside: true, stacked: true, lines: false, quoted: false });
   const chat = (await app.state()).chat;
   assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001']]);
 });
