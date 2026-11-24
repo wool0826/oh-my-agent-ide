@@ -189,15 +189,44 @@ export function bindTerm() {
   });
 }
 
-function runHtml(r: TermRun) {
+function headHtml(r: TermRun) {
   const where = r.repo || t('shell.home');
   const pill = r.running ? `<span class="pill blue"><i class="sh-spin" aria-hidden="true"></i>${t('shell.running')}</span>`
     : r.stopped ? `<span class="pill gray">${t('shell.stopped')}</span>`
     : `<span class="pill ${r.code === 0 ? 'green' : 'red'}">${t('shell.exit', { n: r.code ?? '?' })}</span>`;
   const time = r.running ? `<time data-start="${esc(r.startedAt)}">${shellClock(Date.now() - Date.parse(r.startedAt))}</time>` : `<time>${shellTook(r.ms)}</time>`;
   const stop = r.running ? `<button type="button" class="btn tm-stop" data-action="tm-stop" data-id="${esc(r.id)}" aria-label="${esc(t('shell.stopAria', { cmd: r.cmd }))}">${t('shell.stop')}</button>` : '';
-  const out = r.out.replace(/\n+$/, '');
-  return `<div class="tm-run${r.running ? ' live' : ''}" data-id="${esc(r.id)}"><div class="tm-cmd"><span class="tm-ps" aria-hidden="true">$</span><code>${esc(r.cmd)}</code><span class="tm-in">${esc(where)}</span>${pill}${time}${stop}</div>${out ? `<pre class="tm-out">${esc(out)}</pre>` : ''}</div>`;
+  return `<span class="tm-ps" aria-hidden="true">$</span><code>${esc(r.cmd)}</code><span class="tm-in">${esc(where)}</span>${pill}${time}${stop}`;
+}
+
+/**
+ * Each run's node is kept and changed in place, by its id: output being read, selected or scrolled stays put, and
+ * the log announces only what is new.
+ */
+function patchRuns(th: HTMLElement, runs: TermRun[]) {
+  if (!runs.length) { th.innerHTML = `<p class="tm-empty">${t('term.empty')}</p>`; return; }
+  th.querySelector('.tm-empty')?.remove();
+  const nodes = new Map([...th.querySelectorAll<HTMLElement>('.tm-run')].map((n) => [n.dataset.id!, n]));
+  const ids = new Set(runs.map((r) => r.id));
+  for (const [id, n] of nodes) if (!ids.has(id)) n.remove();
+  for (const r of runs) {
+    let n = nodes.get(r.id);
+    if (!n) {
+      n = document.createElement('div');
+      n.className = 'tm-run';
+      n.dataset.id = r.id;
+      n.innerHTML = '<div class="tm-cmd"></div>';
+      th.append(n);
+    }
+    n.classList.toggle('live', r.running);
+    // The header only when its state changed: a running time goes on by itself (the timer below).
+    const headKey = JSON.stringify([r.running, r.stopped, r.code, r.ms, r.repo, t('shell.home')]);
+    if (n.dataset.head !== headKey) { n.dataset.head = headKey; n.querySelector('.tm-cmd')!.innerHTML = headHtml(r); }
+    const out = r.out.replace(/\n+$/, '');
+    let pre = n.querySelector<HTMLElement>('.tm-out');
+    if (out && !pre) { pre = document.createElement('pre'); pre.className = 'tm-out'; n.append(pre); }
+    if (pre && pre.textContent !== out) { if (out) pre.textContent = out; else pre.remove(); }
+  }
 }
 
 /** The composer button: pressed while the panel shows, with how many runs are going while it is hidden. */
@@ -229,7 +258,7 @@ export function renderTerm() {
   cwd.innerHTML = `${t('shell.in', { where: `<b>${esc(where)}</b>` })}<svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg>`;
   cwd.setAttribute('aria-label', t('shell.folderAria', { where }));
   const th = $('#tm-thread');
-  th.innerHTML = term.view.runs.length ? term.view.runs.map(runHtml).join('') : `<p class="tm-empty">${t('term.empty')}</p>`;
+  patchRuns(th, term.view.runs);
   if (stick) th.scrollTop = th.scrollHeight;
 }
 

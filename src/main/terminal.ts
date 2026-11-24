@@ -52,6 +52,7 @@ class Terminal {
   }
 
   private emit() {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     this.view = { runs: this.runs.map((r) => ({ ...r })) };
     for (const fn of this.listeners) fn(this.view);
   }
