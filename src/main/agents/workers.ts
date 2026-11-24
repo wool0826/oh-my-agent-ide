@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tool, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { AgentSession, summarizeTool, type SessionEvents } from './session';
+import { connectorToolLabel } from './connectors';
 import { CodexSession, type CodexApproval, type CodexDecision } from './codexSession';
 import { codexClient } from '../codex/client';
 import { providerOf } from '../../shared/models';
@@ -211,6 +212,7 @@ class WorkerManager {
       mcpServers: { oma: workerTools(loadSettings().claudeMemory ? memDir : null, (kind, text) => this.fromWorker(w, kind, text), (op) => this.steps(w, op)) },
       disallowedTools: UNUSED_TOOLS,
       env: WORKER_ENV,
+      connectors: loadSettings().claudeConnectors,
       // With its task finished, an idle Worker is compacted much earlier (see WORKER_IDLE_COMPACT).
       compactAt: () => (this.currentTask(w) ? COMPACT_AT : WORKER_IDLE_COMPACT),
       compactInstructions: WORKER_COMPACT,
@@ -418,7 +420,7 @@ class WorkerManager {
         const cc = opts.decisionReason?.startsWith(ALWAYS_ASK_PREFIX) ? null : opts.decisionReason;
         const ans = await ask({
           source: 'permission', workerId: w.id, taskId: task?.id ?? null,
-          title: toolName === 'Bash' ? t('perm.bash') : t('perm.tool', { tool: toolName.replace(/^mcp__\w+__/, '') }),
+          title: toolName === 'Bash' ? t('perm.bash') : t('perm.tool', { tool: connectorToolLabel(toolName) ?? toolName.replace(/^mcp__\w+__/, '') }),
           detail: '',
           code: summarizeTool(toolName, input, 1200),
           options: this.permOptions(scope),

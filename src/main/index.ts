@@ -409,6 +409,7 @@ function registerIpc() {
     const langChanged = (!!patch.language && patch.language !== before.language)
       || (patch.claudeRules !== undefined && patch.claudeRules !== before.claudeRules)
       || (patch.claudeMemory !== undefined && patch.claudeMemory !== before.claudeMemory)
+      || (patch.claudeConnectors !== undefined && patch.claudeConnectors !== before.claudeConnectors)
       || (!!patch.dispatcherEffort && patch.dispatcherEffort !== before.dispatcherEffort)
       || (!!patch.dispatcherModel && patch.dispatcherModel !== before.dispatcherModel)
       || (patch.effortPerTask !== undefined && patch.effortPerTask !== before.effortPerTask);
