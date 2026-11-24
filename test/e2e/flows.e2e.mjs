@@ -299,6 +299,8 @@ flow('a side question is asked and answered in its own panel, and reaches the Di
 });
 
 flow('the side question panel is resized from its top-left corner by drag and by keys, and keeps its size', {}, async (app) => {
+  // A window with room for the panel to grow, whatever the screen the test runs on.
+  await app.size(1600, 1000);
   await app.click('#chat-sq');
   await app.until("!document.querySelector('#sq').hidden", 'the side question panel');
   const box = () => app.evaluate("const r = document.querySelector('#sq').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right), bottom: Math.round(r.bottom) };");
@@ -590,6 +592,8 @@ flow('the palette finds something said and shows the chat from that message', {}
   await app.until("document.activeElement?.id === 'cmdk-q'", 'the palette opened by Ctrl+F');
   await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'pineapple fridays'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
   const row = await app.until("[...document.querySelectorAll('.cmdk-it')].findIndex((el) => el.innerText.includes('no pineapple on Fridays')) + 1", 'the message among the results');
+  // The blink is for a screen that allows motion (a CI runner may ask for less).
+  await app.cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await app.click(`#cmdk-${row - 1}`);
   // Read in the same look that finds it: the bubble blinks, and the mark is taken off again a moment later.
   const found = await app.until("const f = document.querySelector('#chat-thread .found'); return f && JSON.stringify({ text: f.innerText, bub: f.matches('.bub'), blink: f.getAnimations().some((a) => a.animationName === 'found') });", 'the message marked in the chat');
