@@ -194,6 +194,18 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
     },
     workerLog: (wid) => evaluate(`return (await window.ide.call('worker:log', ${JSON.stringify(wid)})).items.map((x) => x.text).join('\\n');`),
     gh: () => JSON.parse(fs.readFileSync(ghFile, 'utf8')),
+    /** Changes one PR in the stand-in's file (CI, review, conflicts), under the lock the stand-in takes. */
+    async ghPr(url, fields) {
+      const lock = `${ghFile}.lock`;
+      for (let i = 0; ; i++) {
+        try { fs.mkdirSync(lock); break; } catch { if (i > 400) throw new Error('the gh stand-in lock was never free'); await sleep(15); }
+      }
+      try {
+        const db = JSON.parse(fs.readFileSync(ghFile, 'utf8'));
+        db.prs[url] = { state: 'OPEN', mergeable: 'MERGEABLE', reviewDecision: 'APPROVED', checks: [], ...db.prs[url], ...fields };
+        fs.writeFileSync(ghFile, JSON.stringify(db));
+      } finally { fs.rmdirSync(lock); }
+    },
     /** Saves a picture of the window, for looking at a screen while writing a test. */
     async shot(file, width = 1440, height = 900) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });

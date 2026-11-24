@@ -29,6 +29,28 @@ export function canMerge(c: PrChecks | null | undefined): boolean {
   return !!c && (c.ci === 'passing' || c.ci === 'none') && !c.conflicts && c.review !== 'changes' && c.review !== 'required';
 }
 
+/** What an open PR waits for before it can be merged; each names when the Merge button opens. */
+export type MergeWait = 'worker' | 'ci' | 'ciFailed' | 'conflicts' | 'changes' | 'review';
+
+/**
+ * The first thing an open PR waits for before it can be merged, or null when it can be merged now.
+ * `busy`: a Worker is still at work on the PR, so its head is about to change (as in readyToMerge).
+ */
+export function mergeWait(c: PrChecks, busy = false): MergeWait | null {
+  if (busy) return 'worker';
+  if (c.ci === 'pending') return 'ci';
+  if (c.ci === 'failing') return 'ciFailed';
+  if (c.conflicts) return 'conflicts';
+  if (c.review === 'changes') return 'changes';
+  if (c.review === 'required') return 'review';
+  return null;
+}
+
+/** The PRs (lower-cased URLs) a Worker is still at work on: queued, running, waiting or blocked. */
+export function busyPrs(tasks: readonly { prUrl: string | null; status: string }[]): Set<string> {
+  return new Set(tasks.filter((x) => x.prUrl && (x.status === 'running' || x.status === 'waiting' || x.status === 'queued' || x.status === 'blocked')).map((x) => x.prUrl!.toLowerCase()));
+}
+
 export type MergeMethod = 'squash' | 'merge' | 'rebase';
 
 /** The way to merge that the repository allows, preferring a squash, then a merge commit, then a rebase. */
@@ -44,7 +66,7 @@ export function mergeMethod(repo: { squashMergeAllowed?: boolean; mergeCommitAll
  */
 export function readyToMerge<T extends { id: string; prUrl: string | null; prState: string | null; status: string; prChecks?: PrChecks | null }>(tasks: readonly T[]): T[] {
   const seen = new Set<string>();
-  const busy = new Set(tasks.filter((x) => x.prUrl && (x.status === 'running' || x.status === 'waiting' || x.status === 'queued' || x.status === 'blocked')).map((x) => x.prUrl!.toLowerCase()));
+  const busy = busyPrs(tasks);
   const out: T[] = [];
   for (const x of tasks) {
     if (!x.prUrl || x.prState !== 'OPEN' || !canMerge(x.prChecks)) continue;
