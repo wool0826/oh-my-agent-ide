@@ -52,7 +52,8 @@ export interface SessionEvents {
   onTool?(name: string, summary: string): void;
   /**
    * queued: more input is waiting, so another turn follows and settles what this one left open.
-   * background: subagents or workflows the session started are still running; each one starts a turn by itself when it settles.
+   * background: subagents, workflows or background shells the session started are still running; each one starts a turn
+   * by itself when it settles.
    */
   onTurnEnd?(r: { text: string; isError: boolean; internal: boolean; queued?: boolean; background?: boolean }): void;
   /** What a turn cost (hidden turns and turns a usage limit cut off included; zero when it only set the baseline), before onTurnEnd. Keep `session` for `spent`. */
@@ -60,8 +61,8 @@ export interface SessionEvents {
   onContext?(tokens: number): void;
   onAccount?(accountId: string | null): void;
   onStatus?(status: 'busy' | 'idle' | 'error', text: string): void;
-  /** The number of background subagents and workflows still running changed (between turns too). */
-  onBackground?(n: number): void;
+  /** The number of background subagents/workflows (n) or shells/monitors (shells) still running changed (between turns too). */
+  onBackground?(n: number, shells: number): void;
   onLimited?(): void;
   /** Sent after Stop, while the stopped turn was ending: the input queue was dropped, so the owner sends them again. */
   onResend?(texts: string[]): void;
@@ -99,8 +100,13 @@ export class AgentSession {
   contextTokens = 0;
   busy = false;
   closed = false;
-  /** Background subagents and workflows still running in this session's process. Shells and monitors do not count. */
+  /** Background subagents and workflows still running in this session's process. */
   background = 0;
+  /**
+   * Background shells, monitors and MCP tasks still running in it (a test run or a build started in the background).
+   * Each one wakes the session when it ends, like a subagent, but one may also run on indefinitely (a dev server).
+   */
+  shells = 0;
   private q: Query | null = null;
   private input: PushQueue<SDKUserMessage> | null = null;
   private pendingInternal = 0;
@@ -151,6 +157,7 @@ export class AgentSession {
     this.input = new PushQueue<SDKUserMessage>();
     // Background work belongs to the process; a new one starts with none.
     this.background = 0;
+    this.shells = 0;
     this.interrupted = false;
     this.limitHit = false;
     const options: Options = {
@@ -315,9 +322,11 @@ export class AgentSession {
           this.turnText.push(m.content);
         } else if (m.subtype === 'background_tasks_changed') {
           const n = liveAgents(m.tasks);
-          if (n !== this.background) {
+          const sh = liveShells(m.tasks);
+          if (n !== this.background || sh !== this.shells) {
             this.background = n;
-            this.ev.onBackground?.(n);
+            this.shells = sh;
+            this.ev.onBackground?.(n, sh);
           }
         }
         return;
@@ -393,7 +402,7 @@ export class AgentSession {
         this.afterStop = [];
         if (queued && userStop) { this.dropQueued(); queued = false; }
         this.busy = queued;
-        this.ev.onTurnEnd?.({ text: finalText || text, isError, internal, queued, background: this.background > 0 });
+        this.ev.onTurnEnd?.({ text: finalText || text, isError, internal, queued, background: this.background + this.shells > 0 });
         // What was sent once Stop was pressed is new work, not part of the stopped turn: it goes out after the
         // stopped turn has settled.
         if (resend.length && !this.q) {
@@ -485,9 +494,17 @@ export class AgentSession {
   }
 }
 
-/** Background subagents and workflows in a background_tasks_changed list; shells, monitors and watchers can run on indefinitely. */
-export function liveAgents(tasks: { task_type: string; ambient?: boolean }[]) {
-  return tasks.filter((x) => !x.ambient && /agent|workflow/.test(x.task_type)).length;
+type BgTask = { task_type: string; ambient?: boolean };
+const isAgent = (x: BgTask) => /agent|workflow/.test(x.task_type);
+
+/** Background subagents and workflows in a background_tasks_changed list. Ambient tasks (watchers) are not activity. */
+export function liveAgents(tasks: BgTask[]) {
+  return tasks.filter((x) => !x.ambient && isAgent(x)).length;
+}
+
+/** The other live background tasks: shells, monitors, MCP tasks. Each wakes the session when it ends. */
+export function liveShells(tasks: BgTask[]) {
+  return tasks.filter((x) => !x.ambient && !isAgent(x)).length;
 }
 
 export function summarizeTool(name: string, input: any, max = 140): string {

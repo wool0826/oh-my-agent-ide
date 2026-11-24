@@ -38,6 +38,7 @@ export class FakeSession {
   busy = false;
   closed = false;
   background = 0;
+  shells = 0;
   private queue: string[] = [];
   private abort: AbortController | null = null;
 

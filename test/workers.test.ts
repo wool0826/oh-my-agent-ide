@@ -269,9 +269,11 @@ test('clearing the queue keeps an open PR whose review work was queued, and leav
 const feed = (s: unknown, ...ms: unknown[]) => ms.forEach((m) => (s as unknown as { handle(m: unknown): void }).handle(m));
 const said = (text: string) => ({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text }] } });
 const turnEnd = (text: string, queued = 0) => ({ type: 'result', subtype: 'success', is_error: false, result: text, queued_turn_count: queued });
-const agents = (n: number) => ({ type: 'system', subtype: 'background_tasks_changed', tasks: [
+/** Background tasks after a change: n subagents, `shells` background shells, and a watcher that is not activity. */
+const agents = (n: number, shells = 0) => ({ type: 'system', subtype: 'background_tasks_changed', tasks: [
   ...Array.from({ length: n }, (_, i) => ({ task_id: `a${i}`, task_type: 'local_agent', description: 'Explore' })),
-  { task_id: 'sh', task_type: 'local_bash', description: 'dev server' },
+  ...Array.from({ length: shells }, (_, i) => ({ task_id: `b${i}`, task_type: 'local_bash', description: 'npm run e2e' })),
+  { task_id: 'wt', task_type: 'local_bash', description: 'live-update watcher', ambient: true },
 ] });
 
 const PLAN = '# Plan\nWHAT: Add the thing.\nHOW: Change one file.\nOUTPUT: A PR.\n\n## Steps\n1. Edit it.';
@@ -382,6 +384,55 @@ test('an open task with nothing running it: the Worker is reminded once, then sh
   x.status = 'done';
   workers.sweepStalled(Date.now() + 13 * 60_000);
   assert.equal(w.stalledAt, null);
+});
+
+test('a Worker that waits on a background test run stays running on its open task until the run wakes it (T-0064)', () => {
+  // As the recurring bug went: the e2e run goes to the background, the turn ends without a report.
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  feed(s, agents(0, 1), said('The e2e run is going in the background; I will report when it finishes.'), turnEnd('The e2e run is going in the background; I will report when it finishes.'));
+  // Not settled as a result without RESULT lines, and not idle.
+  assert.equal(x.status, 'running');
+  assert.equal(x.finishedAt, null);
+  assert.equal(store.data.chat.filter((c) => c.kind === 'result').length, 0);
+  assert.equal(w.status, 'running');
+  assert.equal(w.statusText, 'Waiting for 1 background command(s) to finish');
+  // A long run is not a stall.
+  workers.sweepStalled(Date.now() + 20 * 60_000);
+  assert.equal(sent.get(w.id), undefined);
+  assert.equal(w.stalledAt ?? null, null);
+  // Subagents and shells together: the subagents are named first.
+  feed(s, agents(2, 1));
+  assert.equal(w.statusText, 'Waiting for 2 subagent(s) to report');
+  feed(s, agents(0, 1));
+  assert.equal(w.statusText, 'Waiting for 1 background command(s) to finish');
+  // The run ends and Claude Code starts a turn by itself; this one reports.
+  feed(s, agents(0, 0), said('Tests pass.'));
+  assert.equal(w.status, 'running');
+  feed(s, turnEnd('RESULT: Fixed it\nPR: none'));
+  assert.equal(x.status, 'done');
+  assert.equal(w.status, 'idle');
+});
+
+test('a background shell that never ends (a dev server) holds its Worker for 30 minutes, then the stall reminder goes out', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  feed(s, agents(0, 1), said('Server is up.'), turnEnd('Server is up.'));
+  assert.equal(w.status, 'running');
+  workers.sweepStalled(Date.now() + 29 * 60_000);
+  assert.equal(sent.get(w.id), undefined);
+  workers.sweepStalled(Date.now() + 31 * 60_000);
+  assert.match(sent.get(w.id)![0], new RegExp(`^\\[Dispatcher\\] Your task ${x.id} is still open`));
+  // The reminder's turn ends with the server still up: after another 30 minutes it is flagged, and shown idle.
+  feed(s, said('Still waiting.'), turnEnd('Still waiting.'));
+  assert.equal(w.status, 'running');
+  workers.sweepStalled(Date.now() + 62 * 60_000);
+  assert.equal(sent.get(w.id)!.length, 1);
+  assert.ok(w.stalledAt);
+  assert.equal(w.status, 'idle');
+  assert.match(store.data.pendingUpdates.at(-1)!, /looks stalled/);
 });
 
 test('a task that waits for the Dispatcher or a plan approval is never reminded as stalled', () => {

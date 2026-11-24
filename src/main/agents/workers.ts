@@ -123,10 +123,21 @@ class WorkerManager {
     store.changed();
   }
 
-  /** Background subagents its session still runs for its open task (they start a turn by themselves when they report). */
-  private subagents(w: Worker) {
-    const n = this.sessions.get(w.id)?.background ?? 0;
-    return n > 0 && this.currentTask(w)?.status === 'running' ? n : 0;
+  /**
+   * Background work its session still runs for its open task: subagents, and shells such as a test run or a build.
+   * Each starts a turn by itself when it ends, so the Worker is still at work, not idle.
+   */
+  private pending(w: Worker) {
+    const s = this.sessions.get(w.id);
+    if (!s || this.currentTask(w)?.status !== 'running') return { agents: 0, shells: 0 };
+    return { agents: s.background, shells: s.shells };
+  }
+
+  /** What a Worker waiting on background work shows, or null when it waits on none. */
+  private pendingText(w: Worker, p = this.pending(w)) {
+    if (p.agents > 0) return t('st.subagents', { n: p.agents });
+    if (p.shells > 0) return t('st.shells', { n: p.shells });
+    return null;
   }
 
   currentTask(w: Worker): Task | null {
@@ -244,11 +255,11 @@ class WorkerManager {
         if (st === 'busy') {
           if (w.status !== 'waiting') w.status = 'running';
           w.stalledAt = null;
-        } else if (st === 'idle' && !stopped && this.subagents(w) > 0) {
-          // The turn ended to wait for background subagents, and each one starts a turn by itself when it reports:
-          // the Worker is still at work on its task, not idle (T-0046).
+        } else if (st === 'idle' && !stopped && this.pendingText(w)) {
+          // The turn ended to wait for background subagents or shells (a long test run or build), and each one starts
+          // a turn by itself when it ends: the Worker is still at work on its task, not idle (T-0046, T-0064).
           w.status = 'running';
-          w.statusText = t('st.subagents', { n: this.subagents(w) });
+          w.statusText = this.pendingText(w)!;
         } else if (st === 'idle' || stopped) {
           w.status = 'idle';
           if (stopped) {
@@ -276,10 +287,11 @@ class WorkerManager {
         if (r.internal || r.queued) return;
         this.turnEnded(w, r.text, r.isError, !!r.background);
       },
-      // Between turns: the last subagent settled without a turn of its own starting (yet), so the Worker is idle.
-      onBackground: (n) => {
+      // Between turns: the last background task settled without a turn of its own starting (yet), so the Worker is idle.
+      onBackground: () => {
         if (this.sessions.get(w.id)?.busy || w.status !== 'running') return;
-        if (n > 0) w.statusText = t('st.subagents', { n });
+        const text = this.pendingText(w);
+        if (text) w.statusText = text;
         else {
           w.status = 'idle';
           w.statusText = '';
@@ -977,6 +989,8 @@ class WorkerManager {
         continue;
       }
       w.stalledAt = new Date(now).toISOString();
+      // Shown as running while it waited on background shells; stalled is shown on an idle Worker.
+      if (w.status === 'running') { w.status = 'idle'; w.statusText = ''; }
       store.log(w.id, 'event', t('log.stalled', { min }));
       store.pushUpdate(`${w.id} (${task.id} "${task.title}") looks stalled: its task is open, but its session has been idle for ${min} min with nothing running${this.stallNudged.has(task.id) ? ', even after a reminder to go on' : ''}. send_to_worker to tell it how to go on, or stop it.`, true);
       store.changed();
@@ -1188,9 +1202,9 @@ class WorkerManager {
     const w = store.worker(workerId);
     const task = w ? this.currentTask(w) : null;
     if (!w || !task || (task.status !== 'running' && task.status !== 'waiting')) return 'idle';
-    // Its turn ended to wait for background subagents: they go with their process, or one would start a turn on the
-    // stopped task when it reports. The next message resumes the same conversation in a new process.
-    if (s && s.background > 0) {
+    // Its turn ended to wait for background subagents or shells: they go with their process, or one would start a turn
+    // on the stopped task when it ends. The next message resumes the same conversation in a new process.
+    if (s && s.background + s.shells > 0) {
       s.close();
       this.sessions.delete(w.id);
     }

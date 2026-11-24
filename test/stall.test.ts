@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isStalled, shownStalled, STALL_MS } from '../src/shared/stall';
+import { isStalled, shownStalled, STALL_MS, SHELL_STALL_MS } from '../src/shared/stall';
+import { liveAgents, liveShells } from '../src/main/agents/session';
 import type { Task, Worker } from '../src/shared/types';
 
 const at = Date.parse('2026-11-22T12:00:00Z');
@@ -31,4 +32,23 @@ test('the stalled flag shows only while the Worker is still idle', () => {
   assert.equal(shownStalled(w({ stalledAt: 'x' })), true);
   assert.equal(shownStalled(w({ stalledAt: 'x', status: 'running' })), false);
   assert.equal(shownStalled(w()), false);
+});
+
+test('background shells hold off the stall for SHELL_STALL_MS, even while the Worker shows as running', () => {
+  const sh = { busy: false, background: 0, shells: 1 };
+  assert.equal(isStalled(w({ status: 'running' }), task(), sh, at + SHELL_STALL_MS - 1), false);
+  assert.equal(isStalled(w({ status: 'running' }), task(), sh, at + SHELL_STALL_MS), true);
+  assert.equal(isStalled(w(), task(), sh, later), false);
+  // Subagents still running win; an already flagged Worker stays flagged (ms 0).
+  assert.equal(isStalled(w(), task(), { ...sh, background: 1 }, at + SHELL_STALL_MS), false);
+  assert.equal(isStalled(w(), task(), sh, at, 0), true);
+});
+
+test('background tasks split into subagents/workflows and shells/monitors; ambient watchers are neither', () => {
+  const tasks = [
+    { task_type: 'local_agent' }, { task_type: 'local_workflow' }, { task_type: 'local_bash' },
+    { task_type: 'monitor_mcp' }, { task_type: 'mcp_task' }, { task_type: 'local_bash', ambient: true },
+  ];
+  assert.equal(liveAgents(tasks), 2);
+  assert.equal(liveShells(tasks), 3);
 });
