@@ -532,7 +532,10 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .memo textarea.inp { min-height: 64px; }
 .dec { padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-8); }
 .dec + .dec { border-top: .5px solid var(--border-subtle); }
-.dec.flash, .res.flash, .attach.flash { animation: flash var(--dur-attention) var(--ease-out); }
+.dec.flash, .res.flash { animation: flash var(--dur-attention) var(--ease-out); }
+/* A report card has a fill of its own, which the flash ends on. */
+.attach.flash { animation: flash-card var(--dur-attention) var(--ease-out); }
+@keyframes flash-card { 0%, 40% { background: var(--accent-soft); } 100% { background: var(--surface-card); } }
 @keyframes flash { 0%, 40% { background: var(--accent-soft); } 100% { background: transparent; } }
 .dec .src { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-caption2); color: var(--text-secondary); }
 .dec .src .sym { font-size: var(--fs-body); }

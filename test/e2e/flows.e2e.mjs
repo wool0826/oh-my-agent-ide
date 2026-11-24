@@ -457,8 +457,17 @@ flow("a reply to a Worker's report goes under its card, and so does the Dispatch
   // One well with no connector lines: its rows stack without overlapping and stay inside it.
   const fit = await app.evaluate("const g = document.querySelector('#chat-thread .rth'); const box = g.getBoundingClientRect(); const rows = [...g.querySelectorAll(':scope > .rth-r')].map((r) => r.getBoundingClientRect()); return { inside: rows.every((r) => r.left >= box.left && r.right <= box.right + 0.5), stacked: rows.every((r, i) => !i || r.top >= rows[i - 1].bottom - 0.5), lines: [...g.querySelectorAll('*')].some((el) => ['::before', '::after'].some((p) => getComputedStyle(el, p).borderLeftWidth !== '0px' && getComputedStyle(el, p).content !== 'none')), quoted: g.querySelector('.rth-r.me').innerText.includes('Wrote the notes') };");
   assert.deepEqual(fit, { inside: true, stacked: true, lines: false, quoted: false });
+  // A reply after other messages: its own well further down, opening with the report's chip, which goes back to the card.
+  await app.say('Something else\n@fake say Something else answered.');
+  await app.until("document.querySelector('#chat-thread').innerText.includes('Something else answered.')", 'the unrelated answer');
+  await app.click(link);
+  await app.evaluate("const i = document.querySelector('#chat-input'); i.value = 'And the tests?\\n@fake say They pass.'; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#chat-form').requestSubmit(); return 1;");
+  await app.until("document.querySelector('#chat-thread .rth.late')?.innerText.includes('They pass.')", 'the late group');
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread .rth.late').firstElementChild.matches('.rth-ref')"), true, 'the chip opens the well');
+  await app.click('#chat-thread .rth.late .rth-ref');
+  await app.until("!!document.querySelector('#chat-thread .attach[data-task=\"T-0001\"].flash')", 'the card flashed');
   const chat = (await app.state()).chat;
-  assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001']]);
+  assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001']]);
 });
 
 flow('a line run with ! shows its output in the chat, and the Dispatcher gets it with its next turn', {}, async (app) => {
