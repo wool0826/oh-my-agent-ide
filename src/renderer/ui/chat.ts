@@ -53,8 +53,10 @@ export function prBadges(x: Task) {
   if (rv) b.push(`<i class="${rv[0]}">${t(rv[1])}</i>`);
   // Not ready yet: the button is there but dimmed, and its tip says what it waits for. No data-action, so a click
   // does nothing; aria-disabled rather than disabled keeps it focusable and hoverable for the tip.
-  const wait = mergeWait(c, busyPrs(S!.tasks).has(x.prUrl!.toLowerCase()));
+  const wait = mergeWait(c, !!x.prUrl && busyPrs(S?.tasks ?? []).has(x.prUrl.toLowerCase()));
   if (wait) {
+    // A "Merge it?" asked before the PR went back to waiting is not carried over to when it opens again.
+    if (ui.mergeAsk === x.id) ui.mergeAsk = null;
     b.push(`<button type="button" class="prmerge wait" aria-disabled="true" data-tip="${esc(t(MERGE_WAIT[wait]))}">${t('pr.merge')}</button>`);
   } else {
     // Ready to merge: a button, asked once before it merges.

@@ -203,7 +203,9 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
       try {
         const db = JSON.parse(fs.readFileSync(ghFile, 'utf8'));
         db.prs[url] = { state: 'OPEN', mergeable: 'MERGEABLE', reviewDecision: 'APPROVED', checks: [], ...db.prs[url], ...fields };
-        fs.writeFileSync(ghFile, JSON.stringify(db));
+        // Whole and renamed, as the stand-in writes it, so a reader never sees half of it.
+        fs.writeFileSync(`${ghFile}.tmp`, JSON.stringify(db));
+        fs.renameSync(`${ghFile}.tmp`, ghFile);
       } finally { fs.rmdirSync(lock); }
     },
     /** Saves a picture of the window, for looking at a screen while writing a test. */
