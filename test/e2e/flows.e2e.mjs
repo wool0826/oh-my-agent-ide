@@ -129,6 +129,17 @@ flow('from 560 wide the selected memo opens beside the list, and a draft keeps i
   let w = await where();
   assert.equal(w.rows, 2);
   assert.match(w.detail, /Prefer pnpm|Release notes/);
+  // Widest (End): the list keeps its width and the detail pane takes all the extra room.
+  const cols = () => app.evaluate("const q = (s) => Math.round(document.querySelector(s).getBoundingClientRect().width); return [q('#chat-ins .ins-list'), q('#chat-ins .ins-detail')];");
+  const [list576, detail576] = await cols();
+  await handle('End', 35);
+  await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) > 800", 'the widest sidebar');
+  const [listMax, detailMax] = await cols();
+  assert.equal(listMax, list576);
+  assert.ok(detailMax - detail576 > 200, `detail ${detail576} → ${detailMax}`);
+  await handle('Home', 36);
+  for (let i = 0; i < 4; i++) await handle('ArrowLeft', 37, true);
+  await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) === 576", 'back to 576');
   const other = await app.evaluate("return [...document.querySelectorAll('#chat-ins .pk')].find((p) => !p.classList.contains('sel')).dataset.pick;");
   await app.click(`#chat-ins .li[data-id="${other}"]`);
   await app.until(`document.querySelector('#chat-ins .ins-detail .pk-c')?.dataset.from === '${other}'`, 'the other memo in the detail pane');
