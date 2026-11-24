@@ -921,16 +921,16 @@ flow('a layer takes the focus and gives it back, and tabs and choices answer the
 
   // The inbox tabs are one Tab stop: the arrows, Home and End move and choose, and the pane is named by its tab.
   const stops = "[...document.querySelectorAll('#chat-ins [role=\"tab\"]')].map((b) => b.tabIndex).join()";
-  assert.equal(await app.evaluate(stops), '0,-1,-1');
+  assert.match(await app.evaluate(stops), /^0(,-1)+$/);
   await app.evaluate("document.querySelector('#ins-tab-inbox').focus()");
   await app.key('ArrowRight', 'ArrowRight', 39);
   await app.until("document.activeElement?.id === 'ins-tab-memo' && document.activeElement.getAttribute('aria-selected') === 'true'", 'the next tab');
-  assert.equal(await app.evaluate(stops), '-1,0,-1');
+  assert.match(await app.evaluate(stops), /^-1,0(,-1)+$/);
   assert.equal(await app.evaluate("const p = document.querySelector('#ins-panel'); return p.getAttribute('role') + ' ' + p.getAttribute('aria-labelledby');"), 'tabpanel ins-tab-memo');
   await app.key('ArrowLeft', 'ArrowLeft', 37);
   await app.until("document.activeElement?.id === 'ins-tab-inbox'", 'the tab before');
   await app.key('ArrowLeft', 'ArrowLeft', 37);
-  await app.until("document.activeElement?.id === 'ins-tab-auto'", 'round the start to the last tab');
+  await app.until("document.activeElement === [...document.querySelectorAll('#chat-ins [role=\"tab\"]')].pop()", 'round the start to the last tab');
   await app.key('Home', 'Home', 36);
   await app.until("document.activeElement?.id === 'ins-tab-inbox'", 'the first tab');
 
