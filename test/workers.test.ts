@@ -249,7 +249,7 @@ test('cancelling a task waiting for a merge cancels the tasks waiting on it, and
   const rs = await workers.cancelTask(blocked.id, 'user');
   assert.deepEqual(rs.map((r) => [r.id, r.followerOf]), [[blocked.id, null], [next.id, blocked.id]]);
   assert.deepEqual([run.status, pr.status, blocked.status, next.status], ['running', 'pr_open', 'cancelled', 'cancelled']);
-  assert.ok(store.data.chat.some((c) => c.text.startsWith('Also cancelled 1 task(s) waiting for it')));
+  assert.ok(store.data.chat.some((c) => c.text.startsWith('Also cancelled 1 task waiting for it')));
 });
 
 test('clearing the queue keeps an open PR whose review work was queued, and leaves running work alone', async () => {
@@ -261,7 +261,7 @@ test('clearing the queue keeps an open PR whose review work was queued, and leav
   const rs = await workers.clearQueue('dispatcher');
   assert.deepEqual(rs.map((r) => [r.id, r.status]).sort(), [[x.id, 'cancelled'], [rev.id, 'pr_open']].sort());
   assert.deepEqual([x.status, rev.status, run.status], ['cancelled', 'pr_open', 'running']);
-  assert.ok(store.data.chat.some((c) => c.text === 'Cleared the queue: 2 task(s).'));
+  assert.ok(store.data.chat.some((c) => c.text === 'Cleared the queue: 2 tasks.'));
   assert.deepEqual(await workers.clearQueue('dispatcher'), []);
 });
 
@@ -301,7 +301,7 @@ test('a plan-first turn that ends while its subagents run leaves the task open; 
   assert.equal(store.data.chat.filter((c) => c.kind === 'result').length, 0);
   // Still at work: the subagents start a turn by themselves when they report.
   assert.equal(w.status, 'running');
-  assert.equal(w.statusText, 'Waiting for 3 subagent(s) to report');
+  assert.equal(w.statusText, 'Waiting for 3 subagents to report');
   // The explorers report back and Claude Code starts a turn by itself: the Worker is at work again.
   feed(s, agents(0), said('Got the reports. Writing the plan.'));
   assert.equal(w.status, 'running');
@@ -337,13 +337,13 @@ test('a message mid-wait for subagents leaves the Worker running on its task, no
   assert.equal(x.status, 'running');
   assert.equal(x.finishedAt, null);
   assert.equal(w.status, 'running');
-  assert.equal(w.statusText, 'Waiting for 3 subagent(s) to report');
+  assert.equal(w.statusText, 'Waiting for 3 subagents to report');
   // Nothing is stalled while they run, however long they take.
   workers.sweepStalled(Date.now() + 60 * 60_000);
   assert.equal(sent.get(w.id)!.length, 1);
   assert.equal(w.stalledAt ?? null, null);
   feed(s, agents(1));
-  assert.equal(w.statusText, 'Waiting for 1 subagent(s) to report');
+  assert.equal(w.statusText, 'Waiting for 1 subagent to report');
   // The last one reports and its turn starts: at work again.
   feed(s, agents(0), said('Got the reports.'));
   assert.equal(w.status, 'running');
@@ -397,7 +397,7 @@ test('a Worker that waits on a background test run stays running on its open tas
   assert.equal(x.finishedAt, null);
   assert.equal(store.data.chat.filter((c) => c.kind === 'result').length, 0);
   assert.equal(w.status, 'running');
-  assert.equal(w.statusText, 'Waiting for 1 background command(s) to finish');
+  assert.equal(w.statusText, 'Waiting for 1 background command to finish');
   // A long run is not a stall, and shells coming and going are not activity that restarts the wait.
   const since = w.lastActiveAt;
   feed(s, agents(0, 2), agents(0, 1));
@@ -407,9 +407,9 @@ test('a Worker that waits on a background test run stays running on its open tas
   assert.equal(w.stalledAt ?? null, null);
   // Subagents and shells together: the subagents are named first.
   feed(s, agents(2, 1));
-  assert.equal(w.statusText, 'Waiting for 2 subagent(s) to report');
+  assert.equal(w.statusText, 'Waiting for 2 subagents to report');
   feed(s, agents(0, 1));
-  assert.equal(w.statusText, 'Waiting for 1 background command(s) to finish');
+  assert.equal(w.statusText, 'Waiting for 1 background command to finish');
   // The run ends and Claude Code starts a turn by itself; this one reports.
   feed(s, agents(0, 0), said('Tests pass.'));
   assert.equal(w.status, 'running');

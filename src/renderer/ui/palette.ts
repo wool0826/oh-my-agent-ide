@@ -110,7 +110,7 @@ export function renderPalette(q: string, keep = false) {
     const head = heads && c.group !== last ? `<div class="cmdk-g" role="presentation">${esc(c.group)}</div>` : '';
     last = c.group;
     return `${head}<div class="cmdk-it" id="cmdk-${i}" role="option" data-action="cmdk-run" data-i="${i}">${c.icon}<b>${esc(c.title)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}<span class="gap"></span>${c.keys ? `<kbd>${esc(c.keys)}</kbd>` : ''}</div>`;
-  }).join('') || `<div class="cmdk-none">${t('cmdk.none')}</div>`;
+  }).join('') || `<div class="cmdk-none">${t('search.none')}</div>`;
   markPalette(keep);
 }
 

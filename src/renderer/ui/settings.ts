@@ -97,20 +97,26 @@ export async function loadModels(mode: 'cached' | 'fresh' | 'now') {
   syncModelRows();
 }
 
-export function modelsStatus() {
+/** The list's state in words; null while it is being read, when a skeleton stands in for them. */
+export function modelsStatus(): string | null {
   const m = ui.models;
-  if (ui.modelsLoading) return '…';
+  if (ui.modelsLoading) return null;
   if (m.error === 'no-account' && !m.models.length) return t('set.modelsNoAccount');
   if (m.error === 'no-token' && !m.models.length) return t('set.modelsNoToken');
   if (m.error && !m.models.length) return t('set.modelsFailed', { msg: m.error });
-  if (!m.fetchedAt) return '–';
+  if (!m.fetchedAt) return t('set.modelsNever');
   return t(m.error ? 'set.modelsStale' : 'set.modelsCount', { n: m.models.length, time: when(m.fetchedAt) });
+}
+
+function modelsStatusHtml() {
+  const s = modelsStatus();
+  return s === null ? `<span class="skel mlist" role="status" aria-label="${t('pre.checking')}"><i></i></span>` : esc(s);
 }
 
 /** Update the list status and the picker labels in place, without re-rendering Settings. */
 export function syncModelRows() {
   const st = document.getElementById('set-mlist');
-  if (st) { st.textContent = modelsStatus(); st.classList.toggle('bad', !!ui.models.error); }
+  if (st) { st.innerHTML = modelsStatusHtml(); st.classList.toggle('bad', !!ui.models.error && !ui.modelsLoading); }
   document.querySelectorAll<HTMLElement>('[data-dd]').forEach((b) => {
     const v = (document.getElementById(b.dataset.dd!) as HTMLInputElement | null)?.value;
     const s = b.querySelector('span');
@@ -339,10 +345,10 @@ export function settingsHtml() {
   const alerts = grp(`
       ${row(t('set.osNoti'), 'set-noti', `<input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}>`)}
       ${row(t('set.notiResults'), 'set-nres', `<input class="switch" id="set-nres" type="checkbox" ${st.notifyDone ? 'checked' : ''}>`)}
-      ${row(t('set.quiet'), 'set-qfrom', `<input class="inp time" id="set-qfrom" value="${esc(st.quietFrom)}" placeholder="22:00" inputmode="numeric" aria-label="${t('set.quietFrom')}"><span class="dash" aria-hidden="true">–</span><input class="inp time" id="set-qto" value="${esc(st.quietTo)}" placeholder="07:00" inputmode="numeric" aria-label="${t('set.quietTo')}">`)}
+      ${row(t('set.quiet'), 'set-qfrom', `<input class="inp time" id="set-qfrom" value="${esc(st.quietFrom)}" placeholder="--:--" inputmode="numeric" aria-label="${t('set.quietFrom')}"><span class="dash" aria-hidden="true">–</span><input class="inp time" id="set-qto" value="${esc(st.quietTo)}" placeholder="--:--" inputmode="numeric" aria-label="${t('set.quietTo')}">`)}
       ${row(t('set.sound'), 'set-sound', `<button class="segico" data-action="sound-test" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, DECISION_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
       ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
-      ${row(t('set.doneSound'), 'set-dsound', `<button class="segico" data-action="sound-test" data-v="done" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-dsound', st.doneSound, DONE_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.doneSound'))}`, 'wrap')}
+      ${row(t('set.doneSound'), 'set-dsound', `<button class="segico" data-action="sound-test" data-v="done" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-dsound', st.doneSound, DONE_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.doneSound'))}`, 'wrap dsound-row')}
       ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`);
 
   const ci = ui.claude;
@@ -359,7 +365,7 @@ export function settingsHtml() {
       ${row(t('set.claudeFolder'), 'set-cdir', `<span class="sval" id="set-cdir" data-tip="${esc(ci ? ci.home : '')}">${esc(ci ? shortPath(ci.home, 2) : '…')}</span><button class="btn" data-action="reveal-claude">${t('set.open')}</button>`)}`, 'Claude Code')}`;
 
   const models = `${grp(`
-      ${row(t('set.modelList'), 'set-mlist', `<span class="sval${ui.models.error ? ' bad' : ''}" id="set-mlist">${esc(modelsStatus())}</span><button class="btn" data-action="models-refresh">${t('diff.refresh')}</button>`)}`)}
+      ${row(t('set.modelList'), 'set-mlist', `<span class="sval${ui.models.error ? ' bad' : ''}" id="set-mlist">${modelsStatusHtml()}</span><button class="btn" data-action="models-refresh">${t('diff.refresh')}</button>`)}`)}
     ${grp(`
       ${row(t('set.model'), 'set-dm', modelPicker('set-dm', st.dispatcherModel, 'Dispatcher'))}
       ${row(t('set.effort'), 'set-de', segc('set-de', st.dispatcherEffort, effortOpts(), t('set.effort')), 'wrap')}`, 'Dispatcher')}
@@ -380,6 +386,7 @@ export function settingsHtml() {
       <nav class="snav" aria-label="${t('set.title')}">
         <label class="ssearch">${sym('s-search')}<input id="set-q" type="search" placeholder="${t('set.search')}" aria-label="${t('set.search')}" value="${esc(ui.setQ)}"></label>
         ${PANES.map((p) => `<button class="snav-i${ui.pane === p.id ? ' on' : ''}" data-action="pane" data-id="${p.id}"${ui.pane === p.id ? ' aria-current="page"' : ''}>${sym(p.glyph)}<span>${t(p.key)}</span>${p.id === 'accounts' && s.setupNeeded ? '<i class="dot"></i>' : ''}</button>`).join('')}
+        <p class="snav-none" id="set-none" role="status" hidden>${t('search.none')}</p>
         <span class="ver"><span id="ver-n">${ui.version ? `v${esc(ui.version)}` : ''}</span>${s.update ? `<a class="upd" tabindex="0" role="link" data-action="open-url" data-href="${esc(s.update.url)}">${t('upd.get', { v: s.update.version })}</a>` : ''}</span>
       </nav>
       <main class="spanes"><div class="sinner">${pane('accounts', accounts)}${pane('general', general)}${pane('display', display)}${pane('alerts', alerts)}${pane('memory', memory)}${pane('models', models)}</div></main>
@@ -444,6 +451,7 @@ export function openSettings(pane?: Pane) {
   if (ren) { ren.focus(); ren.select(); } else if (focusId) document.getElementById(focusId)?.focus(); else if (focusSel) root.querySelector<HTMLElement>(focusSel)?.focus();
   if (!pane) scrollQuietly(root.querySelector<HTMLElement>('.spanes')!, scroll);
   syncSoundRows();
+  markQuiet();
   syncAccRows();
   filterPanes();
   root.hidden = false;
@@ -476,6 +484,22 @@ export function syncAccRows() {
 export function syncSoundRows() {
   const kind = ($('#set-sound') as HTMLInputElement | null)?.value;
   document.querySelectorAll<HTMLElement>('.custom-row').forEach((el) => { el.hidden = kind !== 'custom'; });
+  // "Notify when a task ends" off: no task-end sound plays, so there is none to choose or to try.
+  const ends = ($('#set-nres') as HTMLInputElement | null)?.checked ?? true;
+  document.querySelectorAll<HTMLElement>('.dsound-row').forEach((el) => {
+    el.classList.toggle('off', !ends);
+    el.querySelectorAll('button').forEach((b) => { b.disabled = !ends; });
+  });
+}
+
+/** Do-not-disturb needs both times: with one only it is off, and the empty side says why. */
+export function markQuiet() {
+  const from = document.getElementById('set-qfrom') as HTMLInputElement | null;
+  const to = document.getElementById('set-qto') as HTMLInputElement | null;
+  if (!from || !to) return;
+  const a = !!from.value.trim(), b = !!to.value.trim();
+  if (!a) markBad(from, b);
+  if (!b) markBad(to, a);
 }
 
 /* Settings save as they change: switches, segments, pickers and steppers at once; typed text after a
@@ -518,6 +542,12 @@ export function filterPanes() {
     if (hit) hits.push(id);
   });
   if (q && hits.length && !hits.includes(ui.pane)) showPane(hits[0]);
+  // Nothing matches: the list says so, and no pane stays on screen as if it were the answer.
+  const none = !!q && !hits.length;
+  const msg = document.getElementById('set-none');
+  if (msg) msg.hidden = !none;
+  const panes = document.querySelector<HTMLElement>('#sheet .sinner');
+  if (panes) panes.hidden = none;
 }
 
 export function showPane(id: Pane) {

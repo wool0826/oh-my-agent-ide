@@ -1327,6 +1327,11 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .pre-cmd { font-size: var(--fs-code); user-select: text; overflow-wrap: anywhere; }
 .pre-fix { font-size: var(--fs-caption); color: var(--text-secondary); text-align: right; }
 .skel.pre { flex: 1; }
+.skel.mlist { display: inline-block; width: 96px; vertical-align: middle; }
+/* A row whose switch is off: it stays where it is, dimmed, and its controls do not answer. */
+.srow.off > .lbl, .srow.off .segc, .srow.off .segico { opacity: .45; }
+.srow.off button { cursor: default; }
+.snav-none { margin: var(--space-12) var(--space-10); font-size: var(--fs-caption); color: var(--text-secondary); }
 .skel.pre i { width: 40%; }
 .foot-btn.has-issue::after { content: ""; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg-canvas); }
 
@@ -1349,7 +1354,7 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 
 /* ---------- decision cards (D1, K1) ---------- */
 /* The kind is a grey chip with an icon; colour is left to the age (orange when late) and the slot clock. */
-.dec .src .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dec .src .who { flex: 1; min-width: 0; margin: 0; align-self: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* In a narrow card the kind and the age leave the title a few letters: it takes a line of its own under them. */
 @container (max-width: 30em) { .dec .src .who { order: 1; flex-basis: 100%; } }
 .dkind { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px 7px; border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-primary); font-size: var(--fs-caption2); font-weight: 600; }

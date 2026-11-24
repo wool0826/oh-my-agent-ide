@@ -77,7 +77,7 @@ test('a failed Worker says where it stopped and why', () => {
 
 test('a waiting or queued Worker shows what it waits for', () => {
   assert.equal(workerLine(en, w('waiting'), x('waiting'), { ask: 'Run npm install?' }).text, 'Run npm install?');
-  assert.equal(workerLine(en, w('waiting'), x('waiting'), {}).text, 'Waiting for you');
+  assert.equal(workerLine(en, w('waiting'), x('waiting'), {}).text, 'Needs your decision');
   assert.equal(workerLine(en, w('idle', { request: { text: 'Which branch do I base this on?', at: '' } }), x('waiting'), {}).text, 'Which branch do I base this on?');
   assert.deepEqual(workerLine(en, w('idle'), x('queued', { steps: plan(1) }), { queue: '2nd in line' }), { text: '2nd in line', steps: null });
 });
