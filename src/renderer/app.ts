@@ -193,9 +193,12 @@ export async function act(el: HTMLElement, e: Event) {
     case 'memo-edit': ui.memoEdit = id; ui.memoSel = id; ui.memoDel = null; renderChatInspector(); document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.focus(); break;
     case 'memo-edit-cancel': ui.memoEdit = null; renderChatInspector(); break;
     case 'memo-save': {
-      const text = document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.value ?? '';
+      const field = document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`);
+      const text = field?.value ?? '';
+      // An emptied memo is not saved: the field stays open for the text, and Delete is the way to remove it.
+      if (!text.trim()) { field?.focus(); break; }
       ui.memoEdit = null;
-      if (text.trim()) await call('memo:update', id, { text });
+      await call('memo:update', id, { text });
       renderChatInspector();
       break;
     }

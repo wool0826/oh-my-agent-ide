@@ -897,7 +897,7 @@ export async function addMemo() {
   ui.formErr.memo = r.ok ? '' : r.error;
   if (r.ok) { const now = $<HTMLTextAreaElement>('#memo-new'); if (now) now.value = ''; }
   renderChatInspector();
-  $<HTMLInputElement>('#memo-new')?.focus();
+  $<HTMLTextAreaElement>('#memo-new')?.focus();
 }
 
 /* ---------- attachments ---------- */
