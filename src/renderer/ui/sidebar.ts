@@ -60,10 +60,10 @@ export function renderSidebar() {
   const sec = (title: string, rows: string, cls = '') => rows ? `<section class="side-sec ${cls}"><h4 aria-level="3">${title}</h4>${rows}</section>` : '';
   const decRows = pending.map((d) => {
     const x = task(d.taskId);
-    // The title names the command or the question itself (two lines at most); the second line says who, what kind,
-    // and why it is asked, the same text as on the card and in the notification; the whole of it in the tooltip.
+    // The title names the command or the question itself (two lines at most); the second line says who and what
+    // kind, beside the age. Why it is asked is on the card and in the tooltip: here it was cut after a few letters.
     const kind = t(`dec.kind.${decisionKind(d)}` as Key);
-    const small = [d.workerId ?? 'Dispatcher', kind, d.reason?.why ?? x?.title].filter(Boolean).join(' · ');
+    const small = [d.workerId ?? 'Dispatcher', kind].join(' · ');
     const sel = ui.decSel === d.id;
     return `<div tabindex="0" role="button" class="row drow${sel ? ' sel' : ''}"${sel ? ' aria-current="true"' : ''} data-action="goto-decision" data-id="${d.id}"${d.reason ? ` data-tip="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(askLine(d), 160))}</b><small>${esc(small)}</small></span>${ageHtml(d)}</div>`;
   }).join('');
@@ -76,10 +76,10 @@ export function renderSidebar() {
     // stopped by an error keeps them, so the row says at which step.
     const failed = lastFailed(w, x);
     const v = x && (OPEN.has(x.status) || failed) ? stepView(x) : null;
-    const where = `${grouped ? '' : `${w.repo ?? t('general')}, `}${w.id}`;
-    const small = w.status === 'waiting' ? `${w.id}, ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id}, ${t('st.awaitDispatcher')}` : stalled ? `${w.id}, ${t('st.stalled')}`
+    const where = `${grouped ? '' : `${w.repo ?? t('general')} · `}${w.id}`;
+    const small = w.status === 'waiting' ? `${w.id} · ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id} · ${t('st.awaitDispatcher')}` : stalled ? `${w.id} · ${t('st.stalled')}`
       : v ? `${where} · ${t(v.allDone ? 'side.stepsDone' : failed ? 'side.stoppedAt' : 'side.stepsCount', { done: v.done, total: v.total })}`
-      : `${where}, ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
+      : `${where} · ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
     const tip = [failed ? plainStatus(w.status === 'error' ? w.statusText || x?.summary : x?.summary) : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
     return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` data-tip="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepperHtml(x!, failed ? 'err' : waits ? 'wait' : v.allDone ? 'all' : 'run') : ''}</span></button>${workerActs(w)}</div>`;
@@ -88,7 +88,7 @@ export function renderSidebar() {
   const runRows = groupByRepo(running, (w) => w.repo).map((g) =>
     `<div class="rg"><div class="rg-h">${ic('repo', 'box')}<b>${esc(g.repo ?? t('general'))}</b><span class="n">${g.items.length}</span></div>${g.items.map((w) => workerRow(w, true)).join('')}</div>`).join('');
   const errRows = failed.map((w) => workerRow(w)).join('');
-  const prRows = prs.map((x) => `<div tabindex="0" role="button" class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)}, ${t('st.inReview')}`)}</small></span></div>`).join('');
+  const prRows = prs.map((x) => `<div tabindex="0" role="button" class="row${selCls(x.workerId)}" data-action="open-worker" data-id="${x.workerId ?? ''}">${ic('pr')}<span class="t"><b>${esc(x.title)}</b><small>${esc(`${x.repo ?? ''} #${prNum(x.prUrl)} · ${t('st.inReview')}`)}</small></span></div>`).join('');
   // The queue as a line: the tasks waiting for a slot in the order they start, each with its place; then the ones
   // something else holds (a merge, a usage limit). The second line says what starts each (shared/queueWhy.ts).
   const qctx = queueCtx();

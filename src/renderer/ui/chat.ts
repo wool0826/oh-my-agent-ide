@@ -410,9 +410,14 @@ export function updateSendButton() {
   if (ui.shell) {
     if (send.getAttribute('aria-label') !== t('shell.run')) { send.classList.remove('stop'); send.innerHTML = sym('s-play'); send.setAttribute('aria-label', t('shell.run')); setTip(send, t('shell.run')); }
   } else set(send, false, t('chat.stop'));
+  // Nothing to send: the button is not ready either. As Stop it always is.
+  send.disabled = empty('chat');
   const w = worker(ui.wSel);
   const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
-  set($<HTMLButtonElement>('#ws-send'), !!w && canStop(w, cur) && empty('ws'), t('wk.stop'));
+  const ws = $<HTMLButtonElement>('#ws-send');
+  const stop = !!w && canStop(w, cur) && empty('ws');
+  set(ws, stop, t('wk.stop'));
+  if (ws) ws.disabled = !stop && empty('ws');
 }
 
 /** The free-text hint of a decision: it denies with a reason, asks for plan changes, or gives another answer. */

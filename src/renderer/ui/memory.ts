@@ -62,7 +62,7 @@ export function renderMemory() {
   if (ui.memHits) {
     list.innerHTML = ui.memHits.length
       ? ui.memHits.map((h) => `<div class="hit" data-action="mem-select" data-id="${esc(h.path)}"><small>${esc(h.path)}:${h.line}</small><span>${esc(h.text)}</span></div>`).join('') + moreBtn('mem-hits', ui.memTotal - ui.memHits.length, PAGE.memHits)
-      : `<div class="empty-view"><span>${t('mem.noHits')}</span></div>`;
+      : `<div class="empty-view"><span>${t('search.none')}</span></div>`;
   } else {
     list.innerHTML = ui.memFiles.map((f) => `<div tabindex="0" role="button" class="li${ui.memSel === f.path ? ' sel' : ''}" data-action="mem-select" data-id="${esc(f.path)}">${memIcon(f.kind)}<span class="m"><b>${esc(f.title)}</b><span>${esc(f.path)}</span></span><span class="r">${hhmm(f.updatedAt)}</span></div>`).join('')
       || `<div class="empty-view">${sym('s-sparkle')}<b>${t('mem.emptyTitle')}</b></div>`;

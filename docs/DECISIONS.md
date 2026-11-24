@@ -757,3 +757,13 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 178. **Selection is a 2px accent ring with no fill** (T-0062, asked for by the user; #139; replaces "a ring and a tint"). The tint under a selected row or card made its text harder to read. This applies to every selectable row or card: decisions, auto-answers, results, memo and automation rows, the left sidebar's rows and the Worker list. Nav and toggle buttons keep their own fill. The ring is at least 3.7:1 against its background in both themes.
 
 179. **An open PR always shows its Merge button, dimmed until the PR can be merged** (T-0062, asked for by the user). While a PR waits, the button is dimmed and does nothing, and its tooltip says when it opens. It waits for: the Worker to be done with the PR, CI to finish or pass, conflicts to be resolved, or a review to approve it (`mergeWait`, in that order). The badges beside it show the same state. The single button now also waits while a Worker is still at work on the PR, as "Merge N" already did, since the PR's head is about to change.
+
+180. **One name for a decision that waits, counted words in English, and states that say what they are** (T-0060, round 1 group 5).
+   - "Needs your decision" / "결정 필요" everywhere: the sidebar, the right sidebar's group, the status of a Worker and a task, the tray and the counts ("2 need your decision"). It was also "Waiting for you", "결정 대기" and "내 결정 대기".
+   - `tr()` reads `{n|task|tasks}`: the first word when `n` is 1, the second otherwise. English strings with "(s)" or an always-plural noun use it; Korean has one form. A string handed to another window as a template (`quick.files`) stays as it was.
+   - Sidebar rows join their second line with " · " everywhere. A decision row says who asks and what kind; why is on the card and in the tooltip, where it is not cut.
+   - A search that finds nothing says "Nothing found" in Settings, the palette and Memory (one key, `search.none`). In Settings the panes hide with it, so the last one does not stay as if it were the answer.
+   - The model list shows a skeleton while it is read and "Not loaded yet" before the first read, not a dash.
+   - Do-not-disturb fields show `--:--` when empty. With one time only the hours are off, and the empty side is marked (`aria-invalid`).
+   - The "Task end sound" row is dimmed and its controls are off while "Notify when a task ends" is off: no sound plays then. The other switch is now "System notification for a decision", which is what it turns off. The decision sound and the taskbar flash still do not follow that switch: whether they should is left to the user.
+   - The send button is disabled until there is text or a file; as Stop it stays on.

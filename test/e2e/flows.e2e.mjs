@@ -212,7 +212,7 @@ flow('a saved script shows its command, runs only from its Run button into the c
   const block = await app.evaluate("const b = document.querySelector('#chat-thread .sh-run'); return { name: b.querySelector('.sh-name')?.innerText, out: b.querySelector('.sh-out')?.innerText, code: b.querySelector('header code').innerText };");
   assert.equal(block.name, 'Say hello');
   assert.match(block.out, /first-line[\s\S]*saved-script-ok/);
-  assert.match(block.code, /^echo first-line \+1 lines$/);
+  assert.match(block.code, /^echo first-line \+1 line$/);
   // Edit: the form holds what is saved; Enter in the name saves the change.
   await app.click('#chat-ins .memo.script [data-action="script-edit"]');
   await app.until("document.activeElement?.matches('#chat-ins [data-keep^=\"script-name-\"]:not([data-keep=\"script-name-new\"])')", 'the edit form');
@@ -713,12 +713,18 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
   assert.equal(await leave('set-qfrom'), '|false/null');
   assert.equal(await type('set-qfrom', '22'), 'false/null');
   assert.equal(await leave('set-qfrom'), '22:00|false/null');
+  // One time alone switches nothing on: the empty side is marked, and its placeholder does not read as a time.
+  assert.equal(await app.evaluate("const el = document.getElementById('set-qto'); return el.placeholder + '|' + el.getAttribute('aria-invalid');"), '--:--|true');
   // A slip of the hand does not switch the hours off: the time in use comes back.
   assert.equal(await type('set-qfrom', '22:6x'), 'true/true');
   assert.equal(await leave('set-qfrom'), '22:00|false/null');
   assert.equal(await type('set-qto', '7:30'), 'false/null');
   assert.equal(await leave('set-qto'), '07:30|false/null');
+  // "Notify when a task ends" is off here: its sound cannot be chosen or tried until the switch is on.
+  const dsound = "return [...document.querySelectorAll('.dsound-row button')].map((b) => b.disabled).join() + '|' + document.querySelector('.dsound-row').classList.contains('off');";
+  assert.match(await app.evaluate(dsound), /^true(,true)+\|true$/);
   await app.click('#set-nres');
+  assert.match(await app.evaluate(dsound), /^false(,false)+\|false$/);
   const s = await app.until("return (await window.ide.call('state')).settings.quietTo === '07:30' && (await window.ide.call('state'));", 'the hours saved');
   assert.equal(s.settings.quietFrom, '22:00');
   // The harness saves the old `notifications: false`, which turns task-end notifications off too (notifyDoneFrom); the click turns them on.
@@ -1143,4 +1149,34 @@ flow('step rows grow with the text, link rows take a click 24px high, and a narr
   await app.until("document.querySelector('#chat-ins .dec .src').getBoundingClientRect().width > 400", 'a wide right sidebar');
   [down, who, line] = JSON.parse(await app.evaluate(src));
   assert.ok(Math.abs(down) < 8 && who < line * 0.9, `one line when there is room (${down}, ${who} of ${line})`);
+});
+
+flow('one name for a waiting decision, a search that finds nothing says so, and the send button waits for something to send', {}, async (app) => {
+  // Nothing typed: nothing to send.
+  const typeIn = (v) => app.evaluate(`const i = document.querySelector('#chat-input'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return document.querySelector('#chat-send').disabled;`);
+  assert.equal(await app.evaluate("document.querySelector('#chat-send').disabled"), true);
+  assert.equal(await typeIn('   '), true);
+  assert.equal(await typeIn('Hello'), false);
+  assert.equal(await typeIn(''), true);
+  // The sidebar, its row and the right sidebar use the same words for a decision that waits.
+  await app.say(['Hello', '@fake task - Write a note', '@@fake permission npm install left-pad'].join('\n'));
+  await app.until("document.querySelectorAll('#chat-ins .dec').length === 1 && !!document.querySelector('#side .drow')", 'a decision');
+  const text = await app.evaluate("document.body.innerText");
+  assert.ok(!/waiting for you/i.test(text), 'the old name is gone');
+  assert.ok(await app.evaluate("document.querySelector('#chat-ins').innerText.includes('Needs your decision')"));
+  // A decision row says who asks and what kind; a Worker row joins its parts the same way.
+  assert.equal(await app.evaluate("document.querySelector('#side .drow small').textContent"), 'W-01 · Command');
+  assert.equal(await app.evaluate("document.querySelector('#side .row.split small').textContent"), 'W-01 · Needs your decision');
+  // Settings: a search without a match hides the panes and says so; clearing it brings them back.
+  await app.click('[data-action="open-settings"]');
+  const search = (v) => app.evaluate(`const i = document.getElementById('set-q'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true }));
+    return [document.getElementById('set-none').hidden, document.querySelector('#sheet .sinner').hidden, [...document.querySelectorAll('#sheet .snav-i')].filter((b) => !b.hidden).length].join();`);
+  assert.equal(await search('zzzz'), 'false,true,0');
+  assert.equal(await app.evaluate("document.getElementById('set-none').textContent"), 'Nothing found');
+  assert.match(await search(''), /^true,false,[1-9]/);
+  // The model list never shows a bare dash for its state.
+  await app.click('[data-action="pane"][data-id="models"]');
+  await app.until("!document.querySelector('#set-mlist .skel')", 'the model list read');
+  const state = await app.evaluate("document.getElementById('set-mlist').textContent.trim()");
+  assert.ok(state.length > 1 && state !== '–', state);
 });

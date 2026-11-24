@@ -26,7 +26,7 @@ import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closePalette, Cmd, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
-import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
+import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initTip } from './ui/tip';
@@ -846,7 +846,8 @@ export function init() {
     if (el.id === 'usage-every') { void call('settings:save', { usageRefreshMins: Number(el.value) }); return; }
     if (el.id === 'set-gh') el.value = hostOnly(el.value);
     // A time that does not read as one gives way to the one in use, which is what stays saved.
-    if ((el.id === 'set-qfrom' || el.id === 'set-qto') && S) { el.value = typedTime(el.value, el.id === 'set-qfrom' ? S.settings.quietFrom : S.settings.quietTo); markBad(el, false); }
+    if ((el.id === 'set-qfrom' || el.id === 'set-qto') && S) { el.value = typedTime(el.value, el.id === 'set-qfrom' ? S.settings.quietFrom : S.settings.quietTo); markBad(el, false); markQuiet(); }
+    if (el.id === 'set-nres') syncSoundRows();
     if (el.closest?.('#sheet')) void saveSettingsNow();
   });
   document.addEventListener('input', (e) => {
