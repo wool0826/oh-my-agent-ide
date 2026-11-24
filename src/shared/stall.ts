@@ -19,7 +19,7 @@ export function isStalled(w: Worker, task: Task | null, session: { busy: boolean
   if (!task || task.status !== 'running') return false;
   if (session?.busy || (session?.background ?? 0) > 0) return false;
   const shells = (session?.shells ?? 0) > 0;
-  if (!shells && w.status !== 'idle') return false;
+  if (w.status !== 'idle' && !(shells && w.status === 'running')) return false;
   if ((task.planFirst && !task.planApproved) || w.request || w.ask) return false;
   return now - Date.parse(w.lastActiveAt) >= (shells && ms > 0 ? Math.max(ms, SHELL_STALL_MS) : ms);
 }

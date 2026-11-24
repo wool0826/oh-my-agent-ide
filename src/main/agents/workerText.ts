@@ -14,7 +14,7 @@ export const SLOT_FREE_MSG = 'Continue the task where you left off.';
 export const GO_ON_MSG ='[Dispatcher] Your answer was delivered. Go on with your task where you left off, and report it with the RESULT lines when it is done.';
 
 /** The one reminder a Worker gets when its task sits open with nothing running it (sweepStalled). */
-export const stallMsg = (taskId: string, min: number) => `[Dispatcher] Your task ${taskId} is still open, but your session has been idle for ${min} min with nothing running. Go on with it where you left off. If you are waiting for something, say what with tell_dispatcher; when the task is done, report it with the RESULT lines.`;
+export const stallMsg = (taskId: string, min: number, shells = false) => `[Dispatcher] Your task ${taskId} is still open, but your session has been idle for ${min} min with ${shells ? 'only background commands running. If one is a server or hung, stop it and go on; if a run is still useful, say so with tell_dispatcher' : 'nothing running'}. Go on with it where you left off. If you are waiting for something, say what with tell_dispatcher; when the task is done, report it with the RESULT lines.`;
 
 /** Built-in tools a Worker never needs. Left out, their definitions are not re-read on every step. */
 export const UNUSED_TOOLS = ['Workflow', 'ScheduleWakeup', 'ReportFindings', 'ListAgents'];

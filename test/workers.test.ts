@@ -398,7 +398,10 @@ test('a Worker that waits on a background test run stays running on its open tas
   assert.equal(store.data.chat.filter((c) => c.kind === 'result').length, 0);
   assert.equal(w.status, 'running');
   assert.equal(w.statusText, 'Waiting for 1 background command(s) to finish');
-  // A long run is not a stall.
+  // A long run is not a stall, and shells coming and going are not activity that restarts the wait.
+  const since = w.lastActiveAt;
+  feed(s, agents(0, 2), agents(0, 1));
+  assert.equal(w.lastActiveAt, since);
   workers.sweepStalled(Date.now() + 20 * 60_000);
   assert.equal(sent.get(w.id), undefined);
   assert.equal(w.stalledAt ?? null, null);
@@ -424,7 +427,7 @@ test('a background shell that never ends (a dev server) holds its Worker for 30 
   workers.sweepStalled(Date.now() + 29 * 60_000);
   assert.equal(sent.get(w.id), undefined);
   workers.sweepStalled(Date.now() + 31 * 60_000);
-  assert.match(sent.get(w.id)![0], new RegExp(`^\\[Dispatcher\\] Your task ${x.id} is still open`));
+  assert.match(sent.get(w.id)![0], new RegExp(`^\\[Dispatcher\\] Your task ${x.id} is still open, .* with only background commands running`));
   // The reminder's turn ends with the server still up: after another 30 minutes it is flagged, and shown idle.
   feed(s, said('Still waiting.'), turnEnd('Still waiting.'));
   assert.equal(w.status, 'running');
@@ -432,7 +435,7 @@ test('a background shell that never ends (a dev server) holds its Worker for 30 
   assert.equal(sent.get(w.id)!.length, 1);
   assert.ok(w.stalledAt);
   assert.equal(w.status, 'idle');
-  assert.match(store.data.pendingUpdates.at(-1)!, /looks stalled/);
+  assert.match(store.data.pendingUpdates.at(-1)!, /looks stalled: .* only 1 background command\(s\) left running/);
 });
 
 test('a task that waits for the Dispatcher or a plan approval is never reminded as stalled', () => {

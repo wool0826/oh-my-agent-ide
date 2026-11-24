@@ -39,6 +39,8 @@ test('background shells hold off the stall for SHELL_STALL_MS, even while the Wo
   assert.equal(isStalled(w({ status: 'running' }), task(), sh, at + SHELL_STALL_MS - 1), false);
   assert.equal(isStalled(w({ status: 'running' }), task(), sh, at + SHELL_STALL_MS), true);
   assert.equal(isStalled(w(), task(), sh, later), false);
+  // Only a Worker shown running (or idle) for its shells; one in error, starting or archived is not reminded.
+  for (const status of ['error', 'starting', 'archived'] as const) assert.equal(isStalled(w({ status }), task(), sh, at + SHELL_STALL_MS), false);
   // Subagents still running win; an already flagged Worker stays flagged (ms 0).
   assert.equal(isStalled(w(), task(), { ...sh, background: 1 }, at + SHELL_STALL_MS), false);
   assert.equal(isStalled(w(), task(), sh, at, 0), true);

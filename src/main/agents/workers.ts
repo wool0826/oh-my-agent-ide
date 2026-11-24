@@ -291,11 +291,10 @@ class WorkerManager {
       onBackground: () => {
         if (this.sessions.get(w.id)?.busy || w.status !== 'running') return;
         const text = this.pendingText(w);
-        if (text) w.statusText = text;
-        else {
-          w.status = 'idle';
-          w.statusText = '';
-        }
+        // Shells coming and going are not activity: they must not restart the wait before the stall reminder.
+        if (text) { w.statusText = text; return store.changed(); }
+        w.status = 'idle';
+        w.statusText = '';
         this.touch(w);
       },
       onLimited: () => this.pause(w, this.currentTask(w)),
@@ -984,7 +983,7 @@ class WorkerManager {
       if (s && !s.closed && !this.stallNudged.has(task.id)) {
         this.stallNudged.add(task.id);
         store.log(w.id, 'event', t('log.stallNudge', { min }));
-        s.send(stallMsg(task.id, min));
+        s.send(stallMsg(task.id, min, !!s.shells));
         this.touch(w);
         continue;
       }
@@ -992,7 +991,7 @@ class WorkerManager {
       // Shown as running while it waited on background shells; stalled is shown on an idle Worker.
       if (w.status === 'running') { w.status = 'idle'; w.statusText = ''; }
       store.log(w.id, 'event', t('log.stalled', { min }));
-      store.pushUpdate(`${w.id} (${task.id} "${task.title}") looks stalled: its task is open, but its session has been idle for ${min} min with nothing running${this.stallNudged.has(task.id) ? ', even after a reminder to go on' : ''}. send_to_worker to tell it how to go on, or stop it.`, true);
+      store.pushUpdate(`${w.id} (${task.id} "${task.title}") looks stalled: its task is open, but its session has been idle for ${min} min with ${s?.shells ? `only ${s.shells} background command(s) left running (a server or a hung run?)` : 'nothing running'}${this.stallNudged.has(task.id) ? ', even after a reminder to go on' : ''}. send_to_worker to tell it how to go on, or stop it.`, true);
       store.changed();
     }
   }
