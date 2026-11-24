@@ -16,6 +16,7 @@ import { canPick, openComparisons } from '../../shared/compare';
 import { awayDigest, awayRows, type AwayDigest } from '../../shared/away';
 import { bundleMergeOrder, openBundles } from '../../shared/bundle';
 import { memoSections } from '../../shared/memos';
+import { scriptsHtml } from './scripts';
 import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
 import { canStop } from '../../shared/canStop';
@@ -672,13 +673,14 @@ export function renderChatInspector() {
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
     // Each tab has an icon for a narrow sidebar: when the labels do not fit, the tabs not chosen show only that (data-fit).
-    const tab = (v: 'inbox' | 'memo' | 'auto', label: string, icon: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" data-tip="${label}" data-tip-clip aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    const tab = (v: 'inbox' | 'memo' | 'auto' | 'script', label: string, icon: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" data-tip="${label}" data-tip-clip aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
-    const tabs = `<div class="segc ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}</div>`;
+    const tabs = `<div class="segc ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}${tab('script', t('ins.tabScript'), 's-term')}</div>`;
     // The selected card is placed inside the draw, so the typed text and the focus go back to where it ends up.
     const draw = (list: string) => { root.innerHTML = tabs + colsHtml(list); placeDetail(root); };
     if (ui.insTab === 'memo') return draw(memosHtml());
     if (ui.insTab === 'auto') return draw(autosHtml());
+    if (ui.insTab === 'script') return draw(scriptsHtml());
     // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
     const results = paged('results', s.results.slice().reverse(), PAGE.results);
     const autos = paged('autos', visibleAutos(), PAGE.autos);

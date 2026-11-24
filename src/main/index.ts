@@ -16,6 +16,8 @@ import { workers } from './agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from './agents/memorySuggest';
 import { runs } from './runs';
 import { shell as shellRuns } from './shell';
+import { addScript, removeScript, runScript, updateScript } from './scripts';
+import type { ScriptInput } from '../shared/scripts';
 import { side } from './side';
 import { automations } from './automations';
 import { PICK_MESSAGE, canPick } from '../shared/compare';
@@ -123,6 +125,7 @@ function snapshot(): AppState {
     results: d.chat.filter((c) => (c.kind === 'result' || (c.kind === 'error' && c.ref)) && !c.cleared),
     memos: d.memos ?? [],
     automations: automations.list(),
+    scripts: d.scripts ?? [],
     runs: runs.views(),
     memorySync: memorySync(),
     update: updateInfo(),
@@ -334,8 +337,13 @@ function registerIpc() {
   handle('run:start', (id: string) => runs.start(id));
   handle('run:stop', (id: string) => runs.stop(id));
   handle('run:clear', (id: string) => runs.clear(id));
-  handle('shell:run', (cmd: string, repo?: string | null) => shellRuns.run(String(cmd ?? ''), typeof repo === 'string' && repo ? repo : null));
+  handle('shell:run', (cmd: string, repo?: string | null, script?: string | null) => shellRuns.run(String(cmd ?? ''), typeof repo === 'string' && repo ? repo : null, typeof script === 'string' && script ? script.slice(0, 60) : undefined));
   handle('shell:stop', (id: string) => shellRuns.stop(id));
+  // Saved scripts: only the Run button starts one, and it runs the stored command (main/scripts.ts).
+  handle('script:add', (input: Partial<ScriptInput>) => addScript(input));
+  handle('script:update', (id: string, input: Partial<ScriptInput>) => updateScript(id, input));
+  handle('script:remove', (id: string) => removeScript(id));
+  handle('script:run', (id: string) => runScript(id));
   handle('worker:unarchive', async (id: string) => { const w = store.worker(id); if (w) await workers.unarchive(w); });
   handle('repo:add', (url: string, name?: string, description?: string) => registerRepo({ url, name, description }).then((r) => { dispatcher.refreshContext(); return r; }));
   handle('repo:addCancel', () => cancelAddRepo());

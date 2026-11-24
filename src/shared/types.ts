@@ -269,6 +269,8 @@ export interface ShellRun {
   /** Lines of output in all. */
   lines: number;
   sent: 'wait' | 'queued' | 'sent' | 'off';
+  /** The saved script's name, when it was one (shared/scripts.ts). */
+  script?: string;
 }
 
 export interface ChatItem {
@@ -433,6 +435,8 @@ export interface AppState {
   /** The user's memos, shown in the right sidebar's Memos tab. */
   memos: Memo[];
   automations: Automation[];
+  /** Saved shell scripts, shown in the right sidebar's Scripts tab. */
+  scripts: ShellScript[];
   /** Run commands started in this session of the app. */
   runs: RunView[];
   /** The IDE memory's sync with its remote repository. */
@@ -444,6 +448,19 @@ export interface DiffFile { path: string; added: number; removed: number; status
 export interface DiffView { base: string; branch: string; files: DiffFile[]; truncated: boolean; error?: string }
 
 /** A note the user keeps in the app. A shared one is also given to the Dispatcher with its system prompt. */
+/** A shell command or script the user keeps and runs with a click (shared/scripts.ts). */
+export interface ShellScript {
+  id: string;
+  name: string;
+  /** One or more lines, run as one "!" line is. */
+  cmd: string;
+  /** Where it runs: a repository's name, or '' for the IDE home. */
+  repo: string;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt: string | null;
+}
+
 export interface Memo {
   id: string;
   text: string;

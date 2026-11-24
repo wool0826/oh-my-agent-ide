@@ -94,6 +94,8 @@ export function shellBlockHtml(c: ChatItem) {
   const more = keptLines > SHELL_FOLDED;
   const above = Math.max(0, r.lines - shownLines);
   const where = r.repo || t('shell.home');
+  // A saved script can be several lines: its name, then its first line here, all of it in the tooltip.
+  const lines = r.cmd.split('\n');
   const pill = r.running ? `<span class="pill blue"><i class="sh-spin" aria-hidden="true"></i>${t('shell.running')}</span>`
     : r.stopped ? `<span class="pill gray">${t('shell.stopped')}</span>`
     : `<span class="pill ${r.code === 0 ? 'green' : 'red'}">${t('shell.exit', { n: r.code ?? '?' })}</span>`;
@@ -107,7 +109,7 @@ export function shellBlockHtml(c: ChatItem) {
     : `<span class="sh-dlv wait"><i></i>${t('shell.willSend')}</span>`;
   const acts = r.running ? '' : `<span class="gap"></span><a tabindex="0" role="link" data-action="shell-copy" data-id="${esc(c.id)}">${t('shell.copy')}</a><a tabindex="0" role="link" data-action="shell-again" data-id="${esc(c.id)}">${t('shell.again')}</a>`;
   const out = shown ? `<pre class="sh-out">${esc(shown)}${r.running ? '<span class="sh-caret" aria-hidden="true"></span>' : ''}</pre>` : '';
-  return `<div class="sh-run${r.running ? ' live' : ''}" data-id="${esc(c.id)}" role="group" aria-label="${esc(t('shell.blockAria', { cmd: r.cmd }))}"><header><span class="sh-bang" aria-hidden="true">!</span><code>${esc(r.cmd)}</code><span class="sh-in">${t('shell.in', { where: esc(where) })}</span>${pill}${time}${stop}</header>${fold}${out}<footer>${dlv}${acts}</footer></div>`;
+  return `<div class="sh-run${r.running ? ' live' : ''}" data-id="${esc(c.id)}" role="group" aria-label="${esc(t('shell.blockAria', { cmd: r.cmd }))}"><header><span class="sh-bang" aria-hidden="true">!</span>${r.script ? `<b class="sh-name">${esc(r.script)}</b>` : ''}<code${lines.length > 1 ? ` data-tip="${esc(r.cmd)}"` : ''}>${esc(lines[0])}${lines.length > 1 ? ` <span class="sh-more">${t('script.moreLines', { n: lines.length - 1 })}</span>` : ''}</code><span class="sh-in">${t('shell.in', { where: esc(where) })}</span>${pill}${time}${stop}</header>${fold}${out}<footer>${dlv}${acts}</footer></div>`;
 }
 
 /** What makes a run's block change: drawn again when it does. */

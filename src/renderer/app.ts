@@ -28,6 +28,7 @@ import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon,
 import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initTip } from './ui/tip';
+import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { isPlacing, nextRow, watchPanes } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
@@ -117,6 +118,9 @@ async function pick(el: HTMLElement, e: Event) {
     if (ui.memoSel === id) return;
     // A memo being edited stays open with its draft; it is only no longer the selected one.
     ui.memoSel = id;
+  } else if (el.dataset.tab === 'script') {
+    if (ui.scriptSel === id) return;
+    ui.scriptSel = id;
   } else {
     if (ui.autoSel === id) return;
     ui.autoSel = id;
@@ -159,7 +163,7 @@ export async function act(el: HTMLElement, e: Event) {
     }
     case 'shell-again': {
       const r = S?.chat.find((c) => c.id === id)?.shell;
-      if (r) void tryCall('shell:run', r.cmd, r.repo || null).then((x) => { if (!x.ok) toast(x.error, true); });
+      if (r) void tryCall('shell:run', r.cmd, r.repo || null, r.script ?? null).then((x) => { if (!x.ok) toast(x.error, true); });
       break;
     }
     case 'sq-toggle': toggleSide(); break;
@@ -176,9 +180,9 @@ export async function act(el: HTMLElement, e: Event) {
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
       break;
     }
-    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' ? 'memo' : el.dataset.v === 'auto' ? 'auto' : 'inbox'; ui.memoEdit = null; ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
+    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' || el.dataset.v === 'auto' || el.dataset.v === 'script' ? el.dataset.v : 'inbox'; ui.memoEdit = null; cancelScriptEdit(); ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
     case 'send-err-x': { const box = el.dataset.box === 'ws' ? 'ws' : 'chat'; setSendErr(box, ''); $(box === 'chat' ? '#chat-input' : '#ws-input').focus(); break; }
-    case 'form-err-x': if (id === 'memo' || id === 'auto') { ui.formErr[id] = ''; renderChatInspector(); } break;
+    case 'form-err-x': if (id === 'memo' || id === 'auto' || id === 'script') { ui.formErr[id] = ''; renderChatInspector(); } break;
     // The Worker composer: send a normal message past the open decision, or answer it after all (M7).
     case 'dec-as-message': if (id) { ui.decAsMessage.add(id); renderComposerDecision(); $('#ws-input').focus(); } break;
     case 'dec-answer-it': if (id) { ui.decAsMessage.delete(id); renderComposerDecision(); $('#ws-input').focus(); } break;
@@ -186,6 +190,13 @@ export async function act(el: HTMLElement, e: Event) {
     case 'pick': await pick(el, e); break;
     case 'open-chat': if (id && !(await jumpToChat(id))) toast(t('auto.runGone')); break;
     case 'auto-add': await addAuto(); break;
+    // Saved scripts (ui/scripts.ts). Run is the only way one starts.
+    case 'script-save': await saveScript(id ?? 'new'); renderChatInspector(); break;
+    case 'script-run': if (id) await runScript(id, el as HTMLButtonElement); break;
+    case 'script-cwd': pickScriptFolder(el, renderChatInspector); break;
+    case 'script-edit': if (id) { editScript(id); renderChatInspector(); document.querySelector<HTMLInputElement>(`#chat-ins [data-keep="script-name-${CSS.escape(id)}"]`)?.focus(); } break;
+    case 'script-edit-cancel': cancelScriptEdit(); renderChatInspector(); break;
+    case 'script-remove': if (ui.memoDel === id) { ui.memoDel = null; await call('script:remove', id); } else askMemoDel(id ?? null); break;
     case 'cmp-changes': if (id) go({ view: 'worker', wSel: id, wOpen: true, wTab: 'changes' }); break;
     case 'cmp-pick': (el as HTMLButtonElement).disabled = true; await call('compare:pick', id); break;
     case 'auto-remove': if (ui.memoDel === id) { ui.memoDel = null; await call('auto:remove', id); } else askMemoDel(id ?? null); break;
@@ -961,6 +972,8 @@ export function init() {
         addDiffNote();
       } else if (el.dataset.enter === 'memo-add') {
         void addMemo();
+      } else if (el.dataset.enter === 'script-save') {
+        void act(actionAs('script-save', el.dataset.id), e);
       } else if (el.dataset.enter === 'memo-save') {
         void act(actionAs('memo-save', el.dataset.id), e);
       } else if (el.dataset.enter === 'sug-save') {
