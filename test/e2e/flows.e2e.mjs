@@ -1091,3 +1091,47 @@ flow('a conversation is one Tab stop, and the arrows move between its messages',
   assert.equal(await app.evaluate(AT), 'message -4');
   assert.equal(await app.evaluate("getComputedStyle(document.activeElement).outlineStyle"), 'solid');
 });
+
+flow('step rows grow with the text, link rows take a click 24px high, and a narrow card gives its title a line', { repos: ['billing'], settings: { fontSize: 20 } }, async (app) => {
+  await app.size(1200, 760);
+  await app.say(['Hello', '@fake task - First task with a rather long title that goes on', '@@fake steps Read the code | Write the change | Run the tests | Open the PR', '@@fake step 2',
+    '@@fake permission Bash: npm test', '@fake task - Second', '@@fake result Done.'].join('\n'));
+  await app.until("document.querySelectorAll('#chat-ins .dec').length === 1 && !!document.querySelector('#side .stp .s') && !!document.querySelector('#chat-thread .links a')", 'a decision, a step list and a result');
+  // The largest text: a step's row is as high as its text, and the list is as high as its rows.
+  const steps = JSON.parse(await app.evaluate(`const stp = document.querySelector('#side .stp');
+    return JSON.stringify({ n: Number(getComputedStyle(stp).getPropertyValue('--n')), box: stp.getBoundingClientRect().height,
+      rows: [...stp.querySelectorAll('.s')].map((s) => [s.getBoundingClientRect().height, s.querySelector('em').getBoundingClientRect().height]) });`));
+  assert.ok(steps.rows.length >= 2);
+  for (const [row, text] of steps.rows) assert.ok(row >= text - 0.5 && row > 20, `a row of ${row}px for a text of ${text}px`);
+  assert.ok(Math.abs(steps.box - steps.n * steps.rows[0][0]) < 1, 'the list is as high as the rows it shows');
+  const more = JSON.parse(await app.evaluate("const m = document.querySelector('#side .stp-more'); return JSON.stringify(m ? [m.getBoundingClientRect().height, parseFloat(getComputedStyle(m).fontSize)] : null);"));
+  if (more) assert.ok(more[0] >= more[1] * 1.2, 'the "more" line holds its text');
+  // The placeholders are short and stay on one line.
+  assert.equal(await app.evaluate("document.querySelector('#chat-input').placeholder"), 'Ask the Dispatcher');
+  assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#chat-input'), '::placeholder').whiteSpace"), 'nowrap');
+  assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#chat-ins .dec input.inp')).textOverflow"), 'ellipsis');
+  // At the usual size a link row is one text line high, and the click is taken 11px above and below its middle.
+  await app.evaluate("document.documentElement.style.setProperty('--ui-font-size', '13px'); return 1;");
+  const hits = await app.evaluate(`const out = [];
+    for (const el of document.querySelectorAll('#chat-thread .links a, #chat-thread .linkbtn')) {
+      const r = el.getBoundingClientRect();
+      if (!r.width) continue;
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const hit = (y) => { const t = document.elementFromPoint(cx, y); return !!t && (t === el || el.contains(t)); };
+      out.push((el.dataset.action || 'link') + ' ' + Math.round(r.height) + ' ' + (hit(cy - 11) && hit(cy + 11)));
+    }
+    return out.join(', ');`);
+  assert.ok(hits.length > 0 && !hits.includes('false'), hits);
+  assert.match(hits, / 1[0-9] true/, 'a link row lower than 24px was measured');
+  // The source line of a decision card: in the narrow right sidebar the title has the line under the kind and the age.
+  const src = "const s = document.querySelector('#chat-ins .dec .src'); const top = (q) => s.querySelector(q).getBoundingClientRect().top; return JSON.stringify([top('.who') - top('.dkind'), s.querySelector('.who').getBoundingClientRect().width, s.getBoundingClientRect().width]);";
+  let [down, who, line] = JSON.parse(await app.evaluate(src));
+  assert.ok(down > 10 && who > line * 0.9, `the title has its own line (${down}, ${who} of ${line})`);
+  // A wide one keeps them on one line.
+  await app.size(1500, 760);
+  await app.evaluate("document.querySelector('#rz-ins').focus(); return 1;");
+  for (let i = 0; i < 30; i++) await app.key('ArrowLeft', 'ArrowLeft', 37);
+  await app.until("document.querySelector('#chat-ins .dec .src').getBoundingClientRect().width > 400", 'a wide right sidebar');
+  [down, who, line] = JSON.parse(await app.evaluate(src));
+  assert.ok(Math.abs(down) < 8 && who < line * 0.9, `one line when there is room (${down}, ${who} of ${line})`);
+});

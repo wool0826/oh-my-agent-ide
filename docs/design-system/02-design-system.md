@@ -215,7 +215,7 @@ Nested corners stay concentric (inner ≈ outer − padding).
 | `--icon-sm/md/lg/hero` | 13/16/18/44 | in-button icons / glyph art / glyph box / empty states |
 | Layout | 272 · 344 · 52 · 8 | sidebar, inspector, toolbar height, panel inset (unchanged) |
 
-Targets smaller than 24px visually (chip remove 20, clear 24) get a transparent inset so the clickable area is ≥24×24 (WCAG 2.5.8).
+Targets smaller than 24px visually (chip remove 20, clear 24) get a transparent inset so the clickable area is ≥24×24 (WCAG 2.5.8). Link rows (`.linkbtn`, `.links a`, plan links) are one text line high and get the same 24px-high area through `::after`; links inside a sentence keep the height of their line.
 
 ## 2.6 Elevation and glass
 
