@@ -57,7 +57,7 @@ export function renderSidebar() {
     return '';
   };
 
-  const sec = (title: string, rows: string, cls = '') => rows ? `<section class="side-sec ${cls}"><h4>${title}</h4>${rows}</section>` : '';
+  const sec = (title: string, rows: string, cls = '') => rows ? `<section class="side-sec ${cls}"><h4 aria-level="3">${title}</h4>${rows}</section>` : '';
   const decRows = pending.map((d) => {
     const x = task(d.taskId);
     // The title names the command or the question itself (two lines at most); the second line says who, what kind,
@@ -119,7 +119,7 @@ export function renderSidebar() {
   const empty = any ? '' : `<div class="side-empty">${sym('s-check')}<span>${t('side.emptyTitle')}</span></div>`;
   // A filter's row is selected while the Worker list it filters is on screen.
   const filterCls = (f: WorkerFilter, n: number) => `${n ? '' : ' zero'}${ui.view === 'worker' && !ui.wOpen && ui.wFilter === f ? ' sel' : ''}`;
-  const misc = `<section class="side-sec"><h4>${t('side.history')}</h4>
+  const misc = `<section class="side-sec"><h4 aria-level="3">${t('side.history')}</h4>
     <div class="row split${filterCls('today', doneToday)}"><button type="button" class="row-main" data-action="worker-filter" data-v="today">${ic('done')}<span class="t"><b>${t('side.doneToday')}</b></span><span class="badge">${doneToday}</span></button>${doneToday ? `<button class="disc" data-action="done-toggle" aria-expanded="${ui.doneOpen}" data-tip="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}" aria-label="${t(ui.doneOpen ? 'side.doneHide' : 'side.doneShow')}"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>` : ''}</div>${doneToday && ui.doneOpen ? doneList(doneTasks) : ''}
     <div tabindex="0" role="button" class="row${filterCls('archived', archived)}" data-action="worker-filter" data-v="archived">${ic('arch')}<span class="t"><b>${t('side.archived')}</b></span><span class="badge">${archived}</span></div>
   </section>`;

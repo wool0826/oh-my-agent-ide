@@ -660,7 +660,7 @@ export function awayHtml() {
   const rows = awayRows(d);
   const total = new Set([...d.failed, ...d.merged, ...d.finished].map((x) => x.id)).size;
   const pill = { failed: ['red', taskStatus('failed')], merged: ['purple', t('pr.merged')], finished: ['green', taskStatus('done')] } as const;
-  return `<div class="sect${arrive}" id="sec-away"><div class="ins-h"><b>${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" data-tip="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
+  return `<div class="sect${arrive}" id="sec-away"><div class="ins-h"><b role="heading" aria-level="2">${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" data-tip="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
     <div class="group"><div class="mini away-counts">${counts}</div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" data-focus="away:${esc(x.id)}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill ${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
 }
 
@@ -673,11 +673,11 @@ export function renderChatInspector() {
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
     // Each tab has an icon for a narrow sidebar: when the labels do not fit, the tabs not chosen show only that (data-fit).
-    const tab = (v: 'inbox' | 'memo' | 'auto' | 'script', label: string, icon: string, n = 0) => `<button type="button" role="tab" data-action="ins-tab" data-v="${v}" data-tip="${label}" data-tip-clip aria-selected="${ui.insTab === v}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    const tab = (v: 'inbox' | 'memo' | 'auto' | 'script', label: string, icon: string, n = 0) => `<button type="button" role="tab" id="ins-tab-${v}" aria-controls="ins-panel" data-action="ins-tab" data-v="${v}" data-tip="${label}" data-tip-clip aria-selected="${ui.insTab === v}" tabindex="${ui.insTab === v ? 0 : -1}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
     const tabs = `<div class="segc ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}${tab('script', t('ins.tabScript'), 's-term')}</div>`;
     // The selected card is placed inside the draw, so the typed text and the focus go back to where it ends up.
-    const draw = (list: string) => { root.innerHTML = tabs + colsHtml(list); placeDetail(root); };
+    const draw = (list: string) => { root.innerHTML = tabs + colsHtml(list, ` role="tabpanel" id="ins-panel" aria-labelledby="ins-tab-${ui.insTab}"`); placeDetail(root); };
     if (ui.insTab === 'memo') return draw(memosHtml());
     if (ui.insTab === 'auto') return draw(autosHtml());
     if (ui.insTab === 'script') return draw(scriptsHtml());
@@ -686,20 +686,20 @@ export function renderChatInspector() {
     const autos = paged('autos', visibleAutos(), PAGE.autos);
     let html = '';
     selectedDecision();
-    if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b>${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map(decisionSlot).join('')}</div></div>`;
+    if (pending.length) html += `<div class="sect" id="sec-dec"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.decisions')}</b><span class="count" id="dec-count">${pending.length}</span></div><div class="group">${pending.map(decisionSlot).join('')}</div></div>`;
     // Decisions stay on top; what happened meanwhile comes right under them.
     html += awayHtml();
     html += comparisonsHtml();
     html += bundlesHtml();
     if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" data-tip="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.items.length) {
-      html += `<div class="sect"><div class="ins-h"><b>${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
+      html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
         const lk = resultLinks(x);
         return `<div class="res" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span></div>`;
       }).join('')}${results.more}</div></div>`;
     }
-    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b>${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
+    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
     if (!html) {
       const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
       html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
@@ -755,7 +755,7 @@ export function comparisonsHtml() {
       <div class="cmp-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="cmp-changes" data-id="${esc(x.workerId)}">${t('cmp.changes')}</button>` : ''}<span class="gap"></span><button class="btn def" data-action="cmp-pick" data-id="${esc(x.id)}"${canPick(x) ? '' : ' disabled'}>${t('cmp.pick')}</button></div></div>`;
   }).join('')}</div>`).join('');
   const title = (g: (typeof groups)[number]) => esc(g.tasks[0].title.replace(/ \([^()]*\)$/, ''));
-  return `<div class="sect"><div class="ins-h"><b>${t('cmp.title')}</b><small>${groups.length === 1 ? title(groups[0]) : groups.length}</small></div><div class="group">${cards}</div></div>`;
+  return `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('cmp.title')}</b><small>${groups.length === 1 ? title(groups[0]) : groups.length}</small></div><div class="group">${cards}</div></div>`;
 }
 
 /**
@@ -777,7 +777,7 @@ export function bundlesHtml() {
         <span class="bnd-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(x.workerId)}">${esc(x.workerId)}</button>` : ''}${x.prUrl ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}<span class="gap"></span><i class="pill${cls}">${label}</i></span></div>`;
     }).join('');
     const btn = b.ready || busy ? `<div class="mini bnd-act"><button class="btn def" data-action="bundle-merge" data-id="${esc(b.name)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'bundle.mergeSure' : 'bundle.merge', { n })}</button></div>` : '';
-    return `<div class="sect"><div class="ins-h"><b>${t('bundle.title')}</b><small>${esc(b.name)}</small></div><div class="group">${rows}${btn}</div></div>`;
+    return `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('bundle.title')}</b><small>${esc(b.name)}</small></div><div class="group">${rows}${btn}</div></div>`;
   }).join('');
 }
 
@@ -829,7 +829,7 @@ export function autosHtml() {
   ui.autoSel = keepPick(list.map((a) => a.id), ui.autoSel, 'new');
   const isNew = ui.autoSel === 'new';
   const head = slotHtml('new', isNew, rowHtml('auto', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('auto.new')}</b></span>`), add, ' new');
-  return `${head}<div class="sect"><div class="ins-h"><b>${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${list.map(autoSlot).join('')}</div></div>`;
+  return `${head}<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${list.map(autoSlot).join('')}</div></div>`;
 }
 
 export async function addAuto() {
@@ -860,7 +860,7 @@ export function memosHtml() {
   const { shared, mine } = memoSections(S!.memos);
   const ids = [...shared, ...mine].map((m) => m.id);
   ui.memoSel = keepPick(ids, ui.memoSel, ui.memoEdit ?? ids[0] ?? null);
-  const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b>${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoSlot).join('')}</div></div>` : '';
+  const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoSlot).join('')}</div></div>` : '';
   const add = `<div class="memo-add"><textarea class="inp" id="memo-new" rows="1" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"></textarea><button class="btn" data-action="memo-add" data-tip="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
   const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
   return add + formErrHtml('memo') + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);

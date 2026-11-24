@@ -49,7 +49,7 @@ function mdLinks(h: string, links: string[]) {
       i = open + 1;
       continue;
     }
-    links.push(`<a data-action="open-url" data-href="${url}" title="${url}">${emphasis(h.slice(open + 1, close))}</a>`);
+    links.push(`<a tabindex="0" role="link" data-action="open-url" data-href="${url}" title="${url}">${emphasis(h.slice(open + 1, close))}</a>`);
     out += `${h.slice(i, open)}\u0000${links.length - 1}\u0000`;
     i = end + 1;
   }

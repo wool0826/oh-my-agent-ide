@@ -83,9 +83,9 @@ export function renderRepos() {
   const main = $('#repo-main');
   const addBtn = (cls: string) => `<button class="btn ${cls}" data-action="repo-add-open"${ui.repoAdd ? ' disabled' : ''}>${t('repo.add')}</button>`;
   if (!s.repos.length) {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('def')}</div>${jiraHtml()}`;
+    main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('def')}</div>${jiraHtml()}`;
   } else keepScroll(main, () => {
-    main.innerHTML = `<div class="vhead"><b>${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
+    main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
@@ -103,18 +103,18 @@ export function renderRepos() {
   keepInputs(ins, () => {
     const all = s.tasks.filter((x) => x.repo === r.name).reverse();
     const ts = paged(`repo-tasks:${r.name}`, all, PAGE.repoTasks);
-    ins.innerHTML = `<div class="ins-h"><b>${esc(r.name)}</b>${r.local ? `<span class="pill">${t('repo.local')}</span>` : ''}</div>
+    ins.innerHTML = `<div class="ins-h"><b role="heading" aria-level="2">${esc(r.name)}</b>${r.local ? `<span class="pill">${t('repo.local')}</span>` : ''}</div>
       ${r.local ? `<div class="repo-local-note">${t('repo.localNote')}</div>` : ''}
       <div class="group kv"><span>${t('kv.path')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(r.path)}" data-tip="${esc(r.path)}">${esc(shortPath(r.path))}</a></span><span>${t('kv.url')}</span><span data-tip="${esc(r.url)}">${esc(shortPath(r.url))}</span><span>${t('kv.defaultBranch')}</span><span>${esc(r.defaultBranch)}</span></div>
-      <div class="ins-h"><b>${t('repo.desc')}</b></div>
-      <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" data-scroll="repo-desc-${esc(r.name)}" id="repo-desc">${esc(r.description)}</textarea>
-      <div class="ins-h"><b>${t('repo.setup')}</b></div>
+      <div class="ins-h"><b role="heading" aria-level="2">${t('repo.desc')}</b></div>
+      <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" data-scroll="repo-desc-${esc(r.name)}" id="repo-desc" aria-label="${t('repo.desc')}">${esc(r.description)}</textarea>
+      <div class="ins-h"><b role="heading" aria-level="2">${t('repo.setup')}</b></div>
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" data-scroll="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
-      <div class="ins-h"><b>${t('repo.run')}</b></div>
+      <div class="ins-h"><b role="heading" aria-level="2">${t('repo.run')}</b></div>
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-run-${esc(r.name)}" data-scroll="repo-run-${esc(r.name)}" id="repo-run" placeholder="${esc(t('repo.runPh'))}">${esc(r.run ?? '')}</textarea>
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
       ${issuesHtml(r)}
-      <div class="ins-h"><b>${t('wk.tasks')}</b><small>${all.length}</small></div>
+      <div class="ins-h"><b role="heading" aria-level="2">${t('wk.tasks')}</b><small>${all.length}</small></div>
       <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
       <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
@@ -126,7 +126,7 @@ export function issuesHtml(r: Repo) {
   const v = ui.issues.get(r.name);
   if (v === undefined) { void loadIssues(r.name); }
   const refresh = `<button class="clear-x always" data-action="issues-refresh" data-id="${esc(r.name)}" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
-  const head = (n: string) => `<div class="ins-h"><b>${t('issue.title')}</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
+  const head = (n: string) => `<div class="ins-h"><b role="heading" aria-level="2">${t('issue.title')}</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
   if (v === undefined || v === 'loading') return `${head('')}<div class="group" role="status" aria-label="${t('issue.loading')}">${skel(3, 'mini')}</div>`;
   // The error itself, not only in a tooltip, with a way to ask again (L17).
   if (!Array.isArray(v)) return `${head('')}<div class="group"><div class="mini" role="alert"><b>${t('issue.err')}</b>${v.error !== t('issue.err') ? `<span class="err">${esc(v.error)}</span>` : ''}<span><button type="button" class="linkbtn" data-action="issues-refresh" data-id="${esc(r.name)}">${t('retry')}</button></span></div></div>`;
@@ -152,9 +152,9 @@ export function repoAddHtml() {
   const off = ui.repoAdding ? ' disabled' : '';
   // While it clones: git's last progress line, and Cancel stops the clone (nothing is registered).
   const progress = ui.repoAdding ? S!.repoAdding?.progress || t('repo.adding') : '';
-  return `<div class="ins-h"><b>${t('repo.add')}</b></div>
+  return `<div class="ins-h"><b role="heading" aria-level="2">${t('repo.add')}</b></div>
     <div class="repo-add-row"><input class="inp" id="repo-add-url" data-keep="repo-add-url" data-enter="repo-add" placeholder="${esc(t('repo.addUrl'))}" aria-label="${esc(t('repo.addUrl'))}" spellcheck="false"${off}><button class="btn" data-action="repo-add-pick"${off}>${t('repo.pickFolder')}</button></div>
-    <div class="ins-h"><b>${t('repo.desc')}</b></div>
+    <div class="ins-h"><b role="heading" aria-level="2">${t('repo.desc')}</b></div>
     <textarea class="inp" id="repo-add-desc" data-keep="repo-add-desc" placeholder="${esc(t('repo.addDescPh'))}"${off}></textarea>
     ${progress ? `<div class="repo-add-progress" role="status">${esc(progress)}</div>` : ''}
     ${!ui.repoAdding && ui.repoAddError ? `<div class="repo-add-error" role="alert">${esc(ui.repoAddError)}</div>` : ''}

@@ -45,7 +45,7 @@ test('md: strikethrough, and only marked text is bold', () => {
   assert.equal(mdHtml('~~old~~ and ~~two words~~'), '<p><s>old</s> and <s>two words</s></p>');
   assert.equal(mdHtml('a ~~ b ~~ c, ~x, `~~code~~`'), '<p>a ~~ b ~~ c, ~x, <code>~~code~~</code></p>');
   assert.match(mdHtml('~~see https://x.dev/a~~'), /^<p><s>see <a [^>]*data-href="https:\/\/x.dev\/a"[^>]*>https:\/\/x.dev\/a<\/a><\/s><\/p>$/);
-  assert.equal(mdHtml('[~~gone~~](https://a.io)'), '<p><a data-action="open-url" data-href="https://a.io" title="https://a.io"><s>gone</s></a></p>');
+  assert.equal(mdHtml('[~~gone~~](https://a.io)'), '<p><a tabindex="0" role="link" data-action="open-url" data-href="https://a.io" title="https://a.io"><s>gone</s></a></p>');
   // The full sample from the bug report: <b> wraps only the bold word and the heading.
   const h = mdHtml('## Title\n**bold**, *italic*, ~~strike~~, `code`, [link](https://x.dev) end.\n\n> quote\n\n1. one\n2. two\n   - nested\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n---\n\n```ts\nconst ok = true;\n```');
   assert.deepEqual(h.match(/<b[^>]*>[^<]*<\/b>/g), ['<b class="mh">Title</b>', '<b>bold</b>']);
@@ -79,7 +79,7 @@ test('md: everything is escaped, headings and code blocks still work', () => {
 });
 
 test('md: [text](url) links, with brackets in the text and parentheses in the URL', () => {
-  const a = (url: string, text: string) => `<a data-action="open-url" data-href="${url}" title="${url}">${text}</a>`;
+  const a = (url: string, text: string) => `<a tabindex="0" role="link" data-action="open-url" data-href="${url}" title="${url}">${text}</a>`;
   assert.equal(mdHtml('Sources:\n- [Docs](https://x.dev/a)'), `<p>Sources:</p><ul><li>${a('https://x.dev/a', 'Docs')}</li></ul>`);
   assert.equal(mdHtml('[[Bug] spawn (gh) fails](https://github.com/o/r/issues/1)'), `<p>${a('https://github.com/o/r/issues/1', '[Bug] spawn (gh) fails')}</p>`);
   assert.equal(mdHtml('see [wiki](https://en.wikipedia.org/wiki/Queue_(abstract)).'), `<p>see ${a('https://en.wikipedia.org/wiki/Queue_(abstract)', 'wiki')}.</p>`);
@@ -87,7 +87,7 @@ test('md: [text](url) links, with brackets in the text and parentheses in the UR
   // Not http(s), or no URL: left as written.
   assert.equal(mdHtml('[x](javascript:alert(1)) [y] [z](relative)'), '<p>[x](javascript:alert(1)) [y] [z](relative)</p>');
   // Quotes cannot break out of the attribute.
-  assert.equal(mdHtml('[x](https://a.io/"onmouseover="y)'), '<p>[x](<a data-action="open-url" data-href="https://a.io/">https://a.io/</a>&quot;onmouseover=&quot;y)</p>');
+  assert.equal(mdHtml('[x](https://a.io/"onmouseover="y)'), '<p>[x](<a tabindex="0" role="link" data-action="open-url" data-href="https://a.io/">https://a.io/</a>&quot;onmouseover=&quot;y)</p>');
   assert.equal(mdHtml('[<img src=x>](https://a.io)'), `<p>${a('https://a.io', '&lt;img src=x&gt;')}</p>`);
   assert.equal(mdHtml('`[a](https://a.io)`'), '<p><code>[a](https://a.io)</code></p>');
   assert.equal(mdHtml('[`foo.ts`](https://a.io) 2 [b](https://b.io?x=1&y=_2_)'), `<p>${a('https://a.io', '<code>foo.ts</code>')} 2 ${a('https://b.io?x=1&amp;y=_2_', 'b')}</p>`);
