@@ -1105,10 +1105,10 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .prmerge { font: inherit; font-size: var(--fs-caption2); font-weight: 600; line-height: var(--lh-body); padding: 0 var(--space-8); border: 0; border-radius: var(--radius-full); position: relative; background: var(--accent-solid); color: var(--text-on-accent); cursor: pointer; white-space: nowrap; transition: background var(--dur-fast) var(--ease-standard), scale var(--dur-instant) var(--ease-out); }
 /* It is as tall as the pills beside it; the place to hit is 24px. */
 .prmerge::after { content: ""; position: absolute; inset: -4px 0; }
-.prmerge:hover:not(:disabled) { filter: brightness(.94); }
-.prmerge:active:not(:disabled) { scale: .95; }
+.prmerge:hover:not(:disabled, .wait) { filter: brightness(.94); }
+.prmerge:active:not(:disabled, .wait) { scale: .95; }
 .prmerge.sure { background: var(--success-solid); color: var(--text-on-solid); }
-.prmerge:disabled { opacity: .45; cursor: default; }
+.prmerge:disabled, .prmerge.wait { opacity: .45; cursor: default; }
 .prmerge:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 
 /* ---------- run command in a Worker's worktree ---------- */

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canMerge, conflictBody, mergeMethod, planConflictFix, readyToMerge } from '../src/shared/prMerge';
+import { busyPrs, canMerge, conflictBody, mergeMethod, mergeWait, planConflictFix, readyToMerge } from '../src/shared/prMerge';
 import type { PrChecks } from '../src/shared/types';
 
 const ok: PrChecks = { ci: 'passing', failed: [], conflicts: false, review: null };
@@ -57,4 +57,29 @@ test('"Merge N" takes each ready open PR once and leaves out one still being wor
     { id: 'T-8', prUrl: null, prState: null, status: 'done', prChecks: null },
   ];
   assert.deepEqual(readyToMerge(tasks).map((x) => x.id), ['T-1', 'T-7']);
+});
+
+test('mergeWait names the first thing a PR waits for, and nothing exactly when canMerge holds', () => {
+  assert.equal(mergeWait(ok), null);
+  assert.equal(mergeWait({ ...ok, ci: 'none' }), null);
+  assert.equal(mergeWait(ok, true), 'worker');
+  assert.equal(mergeWait({ ...ok, ci: 'pending', conflicts: true }), 'ci');
+  assert.equal(mergeWait({ ...ok, ci: 'failing' }), 'ciFailed');
+  assert.equal(mergeWait({ ...ok, conflicts: true, review: 'required' }), 'conflicts');
+  assert.equal(mergeWait({ ...ok, review: 'changes' }), 'changes');
+  assert.equal(mergeWait({ ...ok, review: 'required' }), 'review');
+  for (const ci of ['passing', 'failing', 'pending', 'none'] as const) for (const conflicts of [false, true]) for (const review of [null, 'approved', 'changes', 'required'] as const) {
+    const c = { ...ok, ci, conflicts, review };
+    assert.equal(mergeWait(c) === null, canMerge(c), JSON.stringify(c));
+  }
+});
+
+test('busyPrs: the PRs a queued, running, waiting or blocked task works on', () => {
+  const busy = busyPrs([
+    { prUrl: 'https://github.com/o/r/pull/1', status: 'running' },
+    { prUrl: 'https://github.com/O/R/pull/2', status: 'blocked' },
+    { prUrl: 'https://github.com/o/r/pull/3', status: 'pr_open' },
+    { prUrl: null, status: 'running' },
+  ]);
+  assert.deepEqual([...busy], ['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2']);
 });

@@ -10,7 +10,7 @@ import { handoutCounts, handoutFolded, handoutRuns, handoutSettled, handoutState
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars, type Spend } from '../../shared/spend';
 import { linkify } from '../../shared/linkify';
-import { canMerge } from '../../shared/prMerge';
+import { busyPrs, mergeWait, type MergeWait } from '../../shared/prMerge';
 import { parseTime } from '../../shared/automations';
 import { canPick, openComparisons } from '../../shared/compare';
 import { awayDigest, awayRows, type AwayDigest } from '../../shared/away';
@@ -38,6 +38,9 @@ export const CI_BADGE: Record<string, [string, Key]> = { passing: ['ok', 'pr.ciP
 
 export const REVIEW_BADGE: Record<string, [string, Key]> = { approved: ['ok', 'pr.approved'], changes: ['warn', 'pr.changes'], required: ['', 'pr.reviewNeeded'] };
 
+/** The tip of a Merge button that cannot be pressed yet: when it opens. */
+const MERGE_WAIT: Record<MergeWait, Key> = { worker: 'pr.waitWorker', ci: 'pr.waitCi', ciFailed: 'pr.waitCiFailed', conflicts: 'pr.waitConflicts', changes: 'pr.waitChanges', review: 'pr.waitReview' };
+
 /** Is an open PR ready to merge: CI, conflicts, review. */
 export function prBadges(x: Task) {
   const c = x.prChecks;
@@ -48,8 +51,15 @@ export function prBadges(x: Task) {
   if (c.conflicts) b.push(`<i class="bad">${t('pr.conflicts')}</i>`);
   const rv = c.review ? REVIEW_BADGE[c.review] : null;
   if (rv) b.push(`<i class="${rv[0]}">${t(rv[1])}</i>`);
-  // Ready to merge: a button, asked once before it merges.
-  if (canMerge(c)) {
+  // Not ready yet: the button is there but dimmed, and its tip says what it waits for. No data-action, so a click
+  // does nothing; aria-disabled rather than disabled keeps it focusable and hoverable for the tip.
+  const wait = mergeWait(c, !!x.prUrl && busyPrs(S?.tasks ?? []).has(x.prUrl.toLowerCase()));
+  if (wait) {
+    // A "Merge it?" asked before the PR went back to waiting is not carried over to when it opens again.
+    if (ui.mergeAsk === x.id) ui.mergeAsk = null;
+    b.push(`<button type="button" class="prmerge wait" aria-disabled="true" data-tip="${esc(t(MERGE_WAIT[wait]))}">${t('pr.merge')}</button>`);
+  } else {
+    // Ready to merge: a button, asked once before it merges.
     const busy = ui.merging.has(x.id), sure = ui.mergeAsk === x.id;
     b.push(`<button type="button" class="prmerge${sure ? ' sure' : ''}" data-action="pr-merge" data-id="${esc(x.id)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'pr.mergeSure' : 'pr.merge')}</button>`);
   }

@@ -394,8 +394,17 @@ flow('a code task opens a PR, which is merged from the app', { repos: ['demo'] }
   const url = 'https://github.com/o/demo/pull/1';
   await app.say(`@fake task demo Add a line\n@@fake write README.md # Demo\\nA line.\n@@fake commit Add a line\n@@fake pr ${url}\n@@fake result Added the line.`);
   await app.until("return (await window.ide.call('state')).tasks.some((x) => x.status === 'pr_open');", 'the task with its PR open');
+  // Waiting for a review: the button is there, dimmed, says when it opens, and a click does nothing.
+  await app.ghPr(url, { reviewDecision: 'REVIEW_REQUIRED' });
   await app.evaluate("await window.ide.call('pr:check'); return 1;");
-  await app.until("!!document.querySelector('#chat-ins .prmerge')", 'the Merge button');
+  await app.until("!!document.querySelector('#chat-ins .prmerge.wait')", 'the Merge button, not ready yet');
+  assert.deepEqual(await app.evaluate("const b = document.querySelector('#chat-ins .prmerge.wait'); return [b.getAttribute('aria-disabled'), b.dataset.tip, getComputedStyle(b).opacity];"), ['true', 'Merge opens once the PR is approved', '0.45']);
+  await app.click('#chat-ins .prmerge.wait');
+  assert.equal(await app.evaluate("!!document.querySelector('#chat-ins .prmerge.sure')"), false);
+  // Approved: the same button opens.
+  await app.ghPr(url, { reviewDecision: 'APPROVED' });
+  await app.evaluate("await window.ide.call('pr:check'); return 1;");
+  await app.until("!!document.querySelector('#chat-ins .prmerge:not(.wait)')", 'the Merge button');
   await app.click('#chat-ins .prmerge');
   await app.until("!!document.querySelector('#chat-ins .prmerge.sure')", 'the question before merging');
   await app.click('#chat-ins .prmerge.sure');
