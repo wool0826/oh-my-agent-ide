@@ -91,6 +91,7 @@ export const LIMIT_RE = /rate.?limit|usage limit|limit reached|\b429\b|5-hour|we
 const ABORTED = new Set(['aborted_streaming', 'aborted_tools']);
 
 /** The session's flag settings plus the app's context window, so Claude Code compacts by itself before reaching it. */
+/** A settings file path (a string) is passed as is: neither the context window nor the connector switch is added. */
 export function sessionSettings(settings: Options['settings'], connectors?: boolean): Options['settings'] {
   if (typeof settings === 'string') return settings;
   return { ...(connectors === undefined ? {} : connectorSettings(connectors)), ...settings, autoCompactWindow: CONTEXT_WINDOW };
@@ -165,6 +166,10 @@ export class AgentSession {
     // Background work belongs to the process; a new one starts with none.
     this.background = 0;
     this.shells = 0;
+    // Connectors belong to the process too: the new one is looked at after its first turn, from scratch.
+    this.lastConnectorCheck = 0;
+    this.connectorSeen.clear();
+    this.reconnectTried.clear();
     this.interrupted = false;
     this.limitHit = false;
     const options: Options = {
@@ -473,11 +478,13 @@ export class AgentSession {
     const q = this.q;
     try {
       const st = await q.mcpServerStatus();
+      // Closed or restarted meanwhile: these statuses are of a process that is gone.
+      if (this.q !== q) return;
       for (const line of connectorChanges(st, this.connectorSeen)) log.info(`[${this.cfg.label}] connector ${line}`);
       for (const name of toReconnect(st, this.reconnectTried, Date.now())) {
         this.reconnectTried.set(name, Date.now());
         log.info(`[${this.cfg.label}] reconnecting ${name}`);
-        q.reconnectMcpServer(name).catch((e) => log.warn(`[${this.cfg.label}] reconnect ${name}`, (e as Error).message));
+        void Promise.resolve().then(() => q.reconnectMcpServer(name)).catch((e) => log.warn(`[${this.cfg.label}] reconnect ${name}`, (e as Error).message));
       }
     } catch (e) {
       log.warn(`[${this.cfg.label}] connector status`, (e as Error).message);

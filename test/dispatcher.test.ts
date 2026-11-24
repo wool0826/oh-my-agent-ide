@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createTask, dispatcher, readWorker } from '../src/main/agents/dispatcher';
+import { createTask, dispatcher, readWorker, systemPrompt } from '../src/main/agents/dispatcher';
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
@@ -338,4 +338,15 @@ test('a reply held by a usage limit: the answer, when it goes, is filed under th
   dispatcher.retryHeld();
   turn('T-1 is fine.');
   assert.deepEqual(replies(), [['Hi.', null], ['T-1 is fine.', 'T-1']]);
+});
+
+test('the Claude Dispatcher is told about claude.ai artifacts and has the Artifact tool; a Codex one is not told', () => {
+  assert.match(systemPrompt(), /claude\.ai artifacts and connectors:/);
+  assert.doesNotMatch(systemPrompt(true), /claude\.ai artifacts/);
+  loadSettings().claudeConnectors = false;
+  try {
+    assert.doesNotMatch(systemPrompt(), /claude\.ai artifacts/);
+  } finally {
+    loadSettings().claudeConnectors = true;
+  }
 });
