@@ -2,6 +2,7 @@
 import { NOTES } from '../../shared/sounds';
 import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
 import type { SideView } from '../../shared/side';
+import type { TermView } from '../../shared/terminal';
 import { tr, type Key } from '../../shared/i18n';
 import { modelLabel as labelFor } from '../../shared/models';
 import { linkify } from '../../shared/linkify';
@@ -26,6 +27,7 @@ declare global {
       onState(fn: (s: AppState) => void): void;
       onWorkerLog(fn: (id: string, item: WorkerLogItem) => void): void;
       onSideState(fn: (v: SideView) => void): void;
+      onTermState(fn: (v: TermView) => void): void;
       onDecisionAlert(fn: (loud: boolean) => void): void;
       /** A task-end notification was clicked: show that task's result card. */
       onOpenResult(fn: (taskId: string) => void): void;

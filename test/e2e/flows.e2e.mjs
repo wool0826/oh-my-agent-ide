@@ -226,6 +226,31 @@ flow('a saved script shows its command, runs only from its Run button into the c
   await app.until("!document.querySelector('#chat-ins .memo.script')", 'the script deleted');
 });
 
+flow('the side terminal runs lines apart from the chat, recalls them with the up arrow, clears and resizes', {}, async (app) => {
+  // Ctrl+` opens it with its input focused.
+  await app.key('Backquote', '`', 192, 2);
+  await app.until("!document.querySelector('#tm').hidden && document.activeElement?.id === 'tm-input'", 'the open terminal');
+  await app.evaluate("document.querySelector('#tm-input').value = 'echo side-terminal-ok'; return 1;");
+  await app.key('Enter', 'Enter', 13);
+  await app.until("[...document.querySelectorAll('#tm-thread .tm-run:not(.live) .tm-out')].some((o) => o.innerText.includes('side-terminal-ok'))", 'the output in the terminal');
+  // Not in the chat.
+  assert.equal(await app.evaluate("return document.querySelectorAll('#chat-thread .sh-run').length;"), 0);
+  assert.equal(await app.evaluate("return document.querySelector('#tm-input').value;"), '');
+  // ↑ brings the line back.
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  assert.equal(await app.evaluate("return document.querySelector('#tm-input').value;"), 'echo side-terminal-ok');
+  // The grip's arrows resize it.
+  const before = await app.evaluate("return document.querySelector('#tm').offsetWidth;");
+  await app.evaluate("document.querySelector('#tm-grip').focus(); return 1;");
+  await app.key('ArrowRight', 'ArrowRight', 39, 8);
+  assert.equal(await app.evaluate("return document.querySelector('#tm').offsetWidth;"), before + 64);
+  // Clear empties it; Esc hides it and the chat input has the focus.
+  await app.click('[data-action="tm-clear"]');
+  await app.until("!document.querySelector('#tm-thread .tm-run')", 'the cleared terminal');
+  await app.key('Escape', 'Escape', 27);
+  await app.until("document.querySelector('#tm').hidden && document.activeElement?.id === 'chat-input'", 'the hidden terminal');
+});
+
 flow('a plan waits for approval before the work goes on', {}, async (app) => {
   await app.say('@fake task - Plan the change\n@@fake plan WHAT: rename the field\\nHOW: one commit\\nOUTPUT: a PR\n@@fake result Carried out the plan.');
   await app.until(`!!document.querySelector('${DEC}')`, 'the plan card');

@@ -93,6 +93,12 @@
       <div class="sq-t" id="sq-thread"></div>
       <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button></form>
     </section>
+    <section class="tm" id="tm" role="region" aria-labelledby="tm-title" hidden>
+      <button type="button" class="tm-grip" id="tm-grip" data-i18n-tip="term.resize"></button>
+      <header><svg class="sym" aria-hidden="true"><use href="#s-term"/></svg><b id="tm-title" data-i18n="term.title">Terminal</b><button type="button" class="sh-cwd" id="tm-cwd" data-action="tm-cwd" aria-haspopup="listbox" aria-expanded="false"></button><span class="gap"></span><button type="button" class="tm-tb" data-action="tm-clear" data-i18n="term.clear">Clear</button><button type="button" class="sq-ib" data-action="tm-hide" data-i18n-tip="term.hide"><svg aria-hidden="true"><use href="#s-minus"/></svg></button></header>
+      <div class="tm-t" id="tm-thread" role="log"></div>
+      <form class="tm-c" id="tm-form" autocomplete="off"><span class="tm-ps" aria-hidden="true">$</span><textarea class="tm-input" id="tm-input" rows="1" spellcheck="false" data-i18n-aria="term.inputAria" data-i18n-ph="term.placeholder"></textarea></form>
+    </section>
     <form class="composer" id="chat-form" autocomplete="off">
       <div class="dstat" id="chat-dstat" hidden></div>
       <div class="cerr" id="chat-err" role="alert" hidden></div>
@@ -101,6 +107,7 @@
       <div class="sh-bar" id="chat-shbar" hidden></div>
       <span class="sh-bang" id="chat-bang" aria-hidden="true" hidden>!</span>
       <textarea class="field input" id="chat-input" rows="1" aria-label="Message" data-i18n-aria="aria.message"></textarea>
+      <button type="button" class="sqb" id="chat-tm" data-action="tm-toggle" aria-pressed="false" aria-label="Terminal"></button>
       <button type="button" class="sqb" id="chat-sq" data-action="sq-toggle" aria-pressed="false" aria-label="Side question"></button>
       <button type="button" class="ctx" id="chat-ctx" data-action="ctx-menu" aria-haspopup="menu"></button>
       <button class="send" type="submit" id="chat-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
