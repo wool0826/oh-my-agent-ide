@@ -470,7 +470,7 @@ flow("a reply to a Worker's report goes under its card, and so does the Dispatch
   assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001']]);
 });
 
-flow('a line run with ! shows its output in the chat, and the Dispatcher gets it with its next turn', {}, async (app) => {
+flow('a line run with ! shows its output in the chat; with the reply chip off, the Dispatcher gets it with its next turn', {}, async (app) => {
   const typeIn = (value) => app.evaluate(`const i = document.querySelector('#chat-input'); i.focus(); i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
   const shellMode = () => app.evaluate("document.querySelector('#chat-form').classList.contains('shell')");
   // "!" first: shell mode, and the "!" leaves the text. Esc goes back to a message.
@@ -482,12 +482,18 @@ flow('a line run with ! shows its output in the chat, and the Dispatcher gets it
 
   await typeIn('!node -e "console.log(41 + 1)"');
   assert.equal(await shellMode(), true);
+  // The chip on the bar: on by default; off, the result waits for the next message, and the setting is saved.
+  assert.equal(await app.evaluate("document.querySelector('#chat-shbar .sh-ask').getAttribute('aria-pressed')"), 'true');
+  await app.click('#chat-shbar .sh-ask');
+  assert.equal(await app.evaluate("document.querySelector('#chat-shbar .sh-ask').getAttribute('aria-pressed')"), 'false');
+  await app.until("return (await window.ide.call('state')).settings.shellAsk === false;", 'the setting saved');
   await app.evaluate("document.querySelector('#chat-form').requestSubmit(); return 1;");
   await app.until("document.querySelector('#chat-thread .sh-run')?.innerText.includes('Exit 0')", 'the run block with Exit 0');
-  const block = await app.evaluate("const b = document.querySelector('#chat-thread .sh-run'); return { cmd: b.querySelector('code').textContent, out: b.querySelector('.sh-out')?.textContent ?? '', dlv: b.querySelector('.sh-dlv').className };");
+  const block = await app.evaluate("const b = document.querySelector('#chat-thread .sh-run'); return { cmd: b.querySelector('code').textContent, out: b.querySelector('.sh-out')?.textContent ?? '', dlv: b.querySelector('.sh-dlv').className, said: b.querySelector('.sh-dlv').textContent };");
   assert.equal(block.cmd, 'node -e "console.log(41 + 1)"');
   assert.match(block.out, /42/);
   assert.match(block.dlv, /wait/, 'waits for the Dispatcher');
+  assert.equal(block.said, "Waiting for the Dispatcher's turn");
   assert.equal(await shellMode(), false, 'a run leaves shell mode');
 
   // No turn of its own: it goes with the next message.
@@ -497,6 +503,22 @@ flow('a line run with ! shows its output in the chat, and the Dispatcher gets it
   const said = await app.evaluate("[...document.querySelectorAll('#chat-thread .bub.ai')].map((b) => b.innerText).join('\\n')");
   // The bubble draws the command's backticks as code.
   assert.match(said, /\[Shell run\] The user ran node -e "console\.log\(41 \+ 1\)" in the IDE home: exit 0/);
+});
+
+flow('a line run with ! hands its result to the Dispatcher, which replies without being asked', {}, async (app) => {
+  const line = `!node -e "console.log('@fake echo handed you')"`;
+  await app.evaluate(`const i = document.querySelector('#chat-input'); i.focus(); i.value = ${JSON.stringify(line)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  assert.equal(await app.evaluate("document.querySelector('#chat-shbar .sh-ask').getAttribute('aria-pressed')"), 'true');
+  await app.evaluate("document.querySelector('#chat-form').requestSubmit(); return 1;");
+  // The Dispatcher's turn starts by itself, with the run's result and what to do with it.
+  await app.until("[...document.querySelectorAll('#chat-thread .bub.ai')].some((b) => b.innerText.includes('handed you its result'))", "the Dispatcher's turn for the run");
+  await app.until("!!document.querySelector('#chat-thread .sh-run .sh-dlv.ok')", '"The Dispatcher has it"');
+  const st = await app.state();
+  assert.equal(st.chat.filter((c) => c.kind === 'user').length, 0, 'the user typed nothing');
+  assert.equal(st.chat.find((c) => c.kind === 'shell')?.shell?.ask, true);
+  // One turn, not more: the Dispatcher cannot run "!" itself, so nothing starts another.
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-thread .bub.ai').length"), 1);
 });
 
 flow('the palette finds a finished task, and coming back shows what happened', {}, async (app) => {

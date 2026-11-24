@@ -390,6 +390,12 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .sh-cwd .chev { flex: none; width: 5px; height: 9px; rotate: 90deg; color: var(--text-tertiary); }
 .sh-cwd:hover { background: var(--surface-hover); }
 .sh-cwd:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.sh-ask { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px var(--space-8); border: 0; border-radius: var(--radius-full); background: transparent; box-shadow: var(--rim); font: inherit; font-size: var(--fs-caption2); color: var(--text-tertiary); cursor: pointer; white-space: nowrap; }
+.sh-ask[aria-pressed="true"] { background: var(--accent-soft); box-shadow: none; color: var(--accent-text); }
+.sh-ask .sym { flex: none; font-size: var(--icon-sm); }
+.sh-ask:hover { background: var(--surface-hover); }
+.sh-ask[aria-pressed="true"]:hover { background: var(--accent-soft); color: var(--text-primary); }
+.sh-ask:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .sh-hint { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); font-size: var(--fs-caption2); color: var(--text-tertiary); }
 .sh-hint kbd + kbd, .sh-hint kbd:not(:first-child) { margin-left: var(--space-6); }
 .sh-bang { flex: none; align-self: center; width: 20px; height: 20px; display: grid; place-items: center; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--fs-caption); font-weight: 700; }

@@ -271,6 +271,8 @@ export interface ShellRun {
   sent: 'wait' | 'queued' | 'sent' | 'off';
   /** The saved script's name, when it was one (shared/scripts.ts). */
   script?: string;
+  /** When it ends, the Dispatcher takes a turn for its result (Settings shellAsk when it started); else it goes with the next message. */
+  ask?: boolean;
 }
 
 export interface ChatItem {
@@ -358,6 +360,8 @@ export interface SettingsView {
   claudeConnectors: boolean;
   /** Offer to remember reusable facts from decision answers and corrections. */
   memorySuggest: boolean;
+  /** A "!" run or a saved script the user ran hands its result to the Dispatcher, which takes a turn for it. */
+  shellAsk: boolean;
   /** Closing the window leaves the app working, with an icon in the tray. */
   background: boolean;
   /** Start with the window hidden when the user signs in to the OS. */

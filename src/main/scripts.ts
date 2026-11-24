@@ -1,6 +1,7 @@
 import { store } from './store';
 import { shell } from './shell';
 import { t } from './i18n';
+import { loadSettings } from './settings';
 import { nowIso, uid } from './util';
 import { cleanScript, type ScriptInput } from '../shared/scripts';
 import type { ShellScript } from '../shared/types';
@@ -43,7 +44,7 @@ export function removeScript(id: string) {
 export function runScript(id: string): string {
   const s = store.data.scripts?.find((x) => x.id === id);
   if (!s) throw new Error(t('script.err.gone'));
-  const chatId = shell.run(s.cmd, s.repo || null, s.name);
+  const chatId = shell.run(s.cmd, s.repo || null, { script: s.name, ask: loadSettings().shellAsk });
   s.lastRunAt = nowIso();
   store.changed();
   return chatId;

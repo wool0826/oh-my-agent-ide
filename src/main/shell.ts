@@ -105,12 +105,17 @@ class Shell {
   private procs = new Map<string, Running>();
   private pushTimer: NodeJS.Timeout | null = null;
 
-  /** Starts `cmd` in `repo` ('' or null for the IDE home). Returns the chat item's id. */
-  run(cmd: string, repo: string | null, script?: string): string {
+  /**
+   * Starts `cmd` in `repo` ('' or null for the IDE home). Returns the chat item's id.
+   * `ask`: when it ends, the Dispatcher takes a turn for the result (store 'shell-done'). Only the user's own runs
+   * pass it, and the Dispatcher has no way to start one, so a run can never lead to another by itself.
+   */
+  run(cmd: string, repo: string | null, opts: { script?: string; ask?: boolean } = {}): string {
+    const { script, ask } = opts;
     const line = cmd.trim();
     if (!line) throw new Error(t('shell.err.empty'));
     const where = shellCwd(repo);
-    const run: ShellRun = { ...newRun(line, where.repo), ...(script ? { script } : {}) };
+    const run: ShellRun = { ...newRun(line, where.repo), ...(script ? { script } : {}), ...(ask ? { ask } : {}) };
     const item: ChatItem = store.chat('shell', line);
     item.shell = run;
     this.procs.set(item.id, startLine(run, where.cwd, () => this.pushSoon(), () => {
@@ -121,6 +126,7 @@ class Shell {
         store.pushUpdate(handOver(run));
       }
       store.changed();
+      if (run.ask && !run.stopped) store.emit('shell-done');
     }));
     return item.id;
   }
