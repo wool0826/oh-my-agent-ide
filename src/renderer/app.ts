@@ -29,6 +29,7 @@ import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, re
 import { initResize } from './ui/resize';
 import { initTip } from './ui/tip';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
+import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { isPlacing, nextRow, watchPanes } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
@@ -61,7 +62,7 @@ export function renderAll(force = false) {
   renderDispatcherStatus();
   renderMemSync();
   if (ui.cancelAsk) renderCancelDialog();
-  if (ui.view === 'chat') { renderChat(force); renderChatInspector(); renderSide(); }
+  if (ui.view === 'chat') { renderChat(force); renderChatInspector(); renderSide(); renderTerm(); }
   if (ui.view === 'worker') { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
   if (ui.view === 'repo') renderRepos();
   if (ui.view === 'memory' && force) renderMemory();
@@ -167,6 +168,12 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'sq-toggle': toggleSide(); break;
+    // The side terminal (ui/terminal.ts).
+    case 'tm-toggle': toggleTerm(); break;
+    case 'tm-hide': hideTerm(); break;
+    case 'tm-clear': await call('term:clear'); $('#tm-input').focus(); break;
+    case 'tm-stop': (el as HTMLButtonElement).disabled = true; void tryCall('term:stop', id); break;
+    case 'tm-cwd': pickTermFolder(el); break;
     case 'sq-min': minimiseSide(); break;
     case 'sq-close': void closeSide(); break;
     case 'sq-model': pickSideModel(el); break;
@@ -913,6 +920,13 @@ export function init() {
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'Slash') { e.preventDefault(); if (shortcutsOpen()) closeShortcuts(); else if (!ui.settingsShown) openShortcuts(); return; }
     // Ctrl/Cmd+J: the side question, over the chat. Again from inside it, it goes back behind its button.
+    // Ctrl+` opens the side terminal, and hides it from inside; Ctrl on the Mac too, as in other editors.
+    if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.code === 'Backquote' && !ui.settingsShown) {
+      e.preventDefault();
+      if (term.open && $('#tm').contains(document.activeElement)) hideTerm();
+      else { if (ui.view !== 'chat') go({ view: 'chat' }); openTerm(); }
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !ui.settingsShown) {
       e.preventDefault();
       if (sq.open && $('#sq').contains(document.activeElement)) minimiseSide();
@@ -1114,6 +1128,9 @@ export function init() {
     else if (ui.settingsShown && accChanged && !langChanged) openSettings();
   });
   bindSide();
+  bindTerm();
+  ide.onTermState(setTermView);
+  void call('term:state').then((v) => { if (v) setTermView(v); });
   ide.onSideState(setSideView);
   void call('side:state').then((v) => { if (v) setSideView(v); });
   ide.onWorkerLog((id, item) => {
