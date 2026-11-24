@@ -8,7 +8,7 @@ import { paths } from './paths';
 import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
 import { PAGE, itemsBefore, pageBefore } from '../shared/paging';
 import { stampQueued } from '../shared/queue';
-import type { Memo, Automation } from '../shared/types';
+import type { Memo, Automation, ShellScript } from '../shared/types';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
 
 export interface DispatcherState {
@@ -38,6 +38,8 @@ export interface Data {
   memos?: Memo[];
   /** Automations (shared/automations.ts). Unset in state files saved before they existed. */
   automations?: Automation[];
+  /** Saved shell scripts (shared/scripts.ts). Unset in state files saved before they existed. */
+  scripts?: ShellScript[];
   /** Paths the user attached to messages (see attachments.ts) */
   attachments?: string[];
 }

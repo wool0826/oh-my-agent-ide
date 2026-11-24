@@ -10,6 +10,7 @@ import { oneLine } from '../util';
 import { store } from '../store';
 import { type Task, type Worker } from '../../shared/types';
 import { question } from './workerText';
+import { connectorPrompt } from './connectors';
 
 /** `codex`: the Worker runs on Codex, which has no AskUserQuestion, no subagents and no Claude Code memory. */
 export function workerPrompt(w: Worker, codex = false) {
@@ -67,6 +68,7 @@ export function workerPrompt(w: Worker, codex = false) {
       ? ["- Your Claude Code auto-memory folder is shared by every Worker on this repository and by the user's own Claude Code sessions in it. Save only durable facts about the repository or the user's preferences there; never task progress or anything specific to this branch. Update an existing memory instead of adding a duplicate."]
       : []),
     '',
+    ...(s.claudeConnectors && !codex ? [...connectorPrompt(), ''] : []),
     'Questions:',
     codex
       ? '- Make minor choices yourself and mention them in the final report. When the user really must decide, end your turn with the BLOCKED line below and the question.'

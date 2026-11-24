@@ -88,6 +88,24 @@ flow('decision cards take the keys: ↓ moves the selection, Enter allows, the n
   await app.until("document.querySelector('#dlg').hidden", 'the shortcut list closed');
 });
 
+flow('the sidebar tabs stay in view while the tab under them scrolls, and a redraw keeps the offset', {}, async (app) => {
+  await app.evaluate("for (let i = 1; i <= 12; i++) await window.ide.call('memo:add', 'Memo number ' + i + ' with enough words to take two lines in a narrow sidebar'); return 1;");
+  await app.click('[data-action="ins-tab"][data-v="memo"]');
+  await app.until("document.querySelectorAll('#chat-ins .pk').length === 12", 'twelve memos');
+  await app.size(1100, 420);
+  const look = () => app.evaluate("const b = document.querySelector('#chat-ins .ins-body'), r = document.querySelector('#chat-ins').getBoundingClientRect(); return { tabs: document.querySelector('#chat-ins .ins-tabs').getBoundingClientRect().top - r.top, top: b.scrollTop, room: b.scrollHeight - b.clientHeight };");
+  const before = await look();
+  assert.ok(before.room > 0, 'the memos overflow the sidebar');
+  await app.evaluate("const b = document.querySelector('#chat-ins .ins-body'); b.scrollTop = b.scrollHeight; return 1;");
+  const after = await look();
+  assert.ok(after.top > 0);
+  assert.equal(after.tabs, before.tabs);
+  // A state push draws the tab again: the list stays where it was scrolled to.
+  await app.evaluate("await window.ide.call('memo:add', 'One more'); return 1;");
+  await app.until("document.querySelectorAll('#chat-ins .pk').length === 13", 'the new memo');
+  assert.ok((await look()).top > 0);
+});
+
 flow('from 560 wide the selected memo opens beside the list, and a draft keeps its text and caret across 560', {}, async (app) => {
   await app.evaluate("await window.ide.call('memo:add', 'Release notes go out on Thursdays'); await window.ide.call('memo:add', 'Prefer pnpm in new repositories'); return 1;");
   await app.click('[data-action="ins-tab"][data-v="memo"]');
@@ -165,6 +183,36 @@ flow('a memo keeps its lines: Shift+Enter is a new line, Enter adds it, and Ente
   await app.key('Enter', 'Enter', 13);
   await app.until("!document.querySelector('#chat-ins textarea:not(#memo-new)')", 'the edit saved');
   await app.until("document.querySelector('#chat-ins [data-memo] p')?.innerText === 'Release checklist\\n- tag it'", 'the saved lines');
+});
+
+flow('a saved script shows its command, runs only from its Run button into the chat, and is edited and deleted', {}, async (app) => {
+  await app.click('[data-action="ins-tab"][data-v="script"]');
+  await app.until("!!document.querySelector('#chat-ins [data-keep=\"script-name-new\"]')", 'the new script form');
+  // Saving does not run it: nothing is in the chat until Run.
+  await app.evaluate("document.querySelector('#chat-ins [data-keep=\"script-name-new\"]').value = 'Say hello'; const c = document.querySelector('#chat-ins [data-keep=\"script-cmd-new\"]'); c.value = 'echo first-line\\necho saved-script-ok'; c.focus(); return 1;");
+  await app.key('Enter', 'Enter', 13);
+  await app.until("document.querySelectorAll('#chat-ins .memo.script').length === 1", 'the saved script');
+  assert.equal(await app.evaluate("return document.querySelector('#chat-ins .memo.script .script-cmd').innerText;"), 'echo first-line\necho saved-script-ok');
+  assert.equal(await app.evaluate("return document.querySelectorAll('#chat-thread .sh-run').length;"), 0);
+  assert.equal(await app.evaluate("return document.querySelector('#chat-ins [data-keep=\"script-name-new\"]').value;"), '');
+  // Run: its block in the chat, named, with both lines' output.
+  await app.click('#chat-ins .memo.script [data-action="script-run"]');
+  await app.until("!!document.querySelector('#chat-thread .sh-run:not(.live)')", 'the run ended');
+  const block = await app.evaluate("const b = document.querySelector('#chat-thread .sh-run'); return { name: b.querySelector('.sh-name')?.innerText, out: b.querySelector('.sh-out')?.innerText, code: b.querySelector('header code').innerText };");
+  assert.equal(block.name, 'Say hello');
+  assert.match(block.out, /first-line[\s\S]*saved-script-ok/);
+  assert.match(block.code, /^echo first-line \+1 lines$/);
+  // Edit: the form holds what is saved; Enter in the name saves the change.
+  await app.click('#chat-ins .memo.script [data-action="script-edit"]');
+  await app.until("document.activeElement?.matches('#chat-ins [data-keep^=\"script-name-\"]:not([data-keep=\"script-name-new\"])')", 'the edit form');
+  await app.evaluate("const n = document.activeElement; n.value = 'Say hi'; return 1;");
+  await app.key('Enter', 'Enter', 13);
+  await app.until("document.querySelector('#chat-ins .memo.script.open p')?.innerText === 'Say hi'", 'the renamed script');
+  // Delete asks first.
+  await app.click('#chat-ins .memo.script [data-action="script-remove"]');
+  assert.equal(await app.evaluate("return document.querySelectorAll('#chat-ins .memo.script').length;"), 1);
+  await app.click('#chat-ins .memo.script [data-action="script-remove"]');
+  await app.until("!document.querySelector('#chat-ins .memo.script')", 'the script deleted');
 });
 
 flow('a plan waits for approval before the work goes on', {}, async (app) => {

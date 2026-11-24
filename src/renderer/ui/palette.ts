@@ -33,7 +33,7 @@ export function paletteItems(): Cmd[] {
   }
   const views: [View, string, string][] = [['chat', t('nav.chat'), 's-chat'], ['worker', 'Worker', 's-cpu'], ['repo', t('nav.repo'), 's-box'], ['memory', t('nav.memory'), 's-doc']];
   views.forEach(([v, title, icon], i) => out.push({ id: `view:${v}`, group: t('cmdk.go'), title, keys: `${mod}${i + 1}`, icon: sym(icon), run: () => go({ view: v }) }));
-  const tabs: [typeof ui.insTab, Key][] = [['inbox', 'ins.tabInbox'], ['memo', 'ins.tabMemo'], ['auto', 'ins.tabAuto']];
+  const tabs: [typeof ui.insTab, Key][] = [['inbox', 'ins.tabInbox'], ['memo', 'ins.tabMemo'], ['auto', 'ins.tabAuto'], ['script', 'ins.tabScript']];
   for (const [v, key] of tabs) {
     out.push({ id: `tab:${v}`, group: t('cmdk.go'), title: t(key), hint: t('nav.chat'), icon: sym('s-side-r'),
       run: () => { ui.insTab = v; if (ui.insMin) togglePanel('ins'); go({ view: 'chat' }); renderChatInspector(); } });

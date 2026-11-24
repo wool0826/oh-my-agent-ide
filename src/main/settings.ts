@@ -80,6 +80,7 @@ export const DEFAULTS: SettingsView = {
   theme: 'dark',
   claudeRules: true,
   claudeMemory: true,
+  claudeConnectors: true,
   memorySuggest: true,
   background: true,
   openAtLogin: false,
