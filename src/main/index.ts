@@ -343,7 +343,7 @@ function registerIpc() {
   handle('run:start', (id: string) => runs.start(id));
   handle('run:stop', (id: string) => runs.stop(id));
   handle('run:clear', (id: string) => runs.clear(id));
-  handle('shell:run', (cmd: string, repo?: string | null) => shellRuns.run(String(cmd ?? ''), typeof repo === 'string' && repo ? repo : null));
+  handle('shell:run', (cmd: string, repo?: string | null) => shellRuns.run(String(cmd ?? ''), typeof repo === 'string' && repo ? repo : null, { ask: loadSettings().shellAsk }));
   handle('shell:stop', (id: string) => shellRuns.stop(id));
   // Saved scripts: only the Run button starts one, and it runs the stored command (main/scripts.ts).
   handle('script:add', (input: Partial<ScriptInput>) => addScript(input));
@@ -525,6 +525,7 @@ async function boot() {
   terminal.onChange((v) => win?.webContents.send('term-state', v));
   // Worker news worth a turn of its own: the Dispatcher starts one by itself.
   store.on('wake', () => dispatcher.wake());
+  store.on('shell-done', () => dispatcher.shellDone());
   onDecisionCreated((d) => {
     // Simple decisions carry their answers as buttons on the notification.
     const actions = notifyActions(d).map((a) => ({ text: 'key' in a.label ? t(a.label.key) : a.label.text, run: () => answerByUser(d.id, a.answer) }));

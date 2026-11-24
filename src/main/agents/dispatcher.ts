@@ -62,6 +62,7 @@ const MAX_AUTO_TURNS = 8;
 const MAX_AUTO_SENDS = 3;
 /** The whole reply of an automatic turn with nothing to say; it is not shown. */
 const NOOP_RE = /^[\s`*"'.]*NOOP[\s`*"'.!]*$/i;
+const SHELL_NOTE = '[Shell result] The user ran the command in the [Shell run] above themselves and handed you its result. Tell them in a few lines what it shows and what to do next, if anything. Do not start tasks or write to Workers for it unless they asked for that.';
 const AUTO_NOTE = '[Automatic turn] No message from the user: the Worker updates above started this turn. Judge them, tell the user only what they should know, and act only where needed. If there is nothing to say or do, reply with exactly NOOP.';
 
 /** Local time of something a Worker said, for the Dispatcher: HH:MM, with the date when it was not today. */
@@ -694,6 +695,23 @@ class Dispatcher {
     }
     this.deliver(s, [full], to);
     return id;
+  }
+
+  /**
+   * A "!" run or saved script the user started ended, with its result among the updates: the user handed it over,
+   * so the Dispatcher takes a turn for it now, as if they had asked "look at this".
+   */
+  shellDone() {
+    this.userSpoke();
+    const s = this.open();
+    if (s) { this.deliver(s, [SHELL_NOTE]); return; }
+    // No account at all: the result waits for the next message, as with the chip off.
+    if (!accounts.list().length) return;
+    // Several runs ending during a usage limit: one note goes with all their results when it resets.
+    if (this.held.includes(SHELL_NOTE)) return;
+    this.hold(SHELL_NOTE, null);
+    store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
+    store.changed();
   }
 
   /** The user answered a question the Dispatcher posted. */

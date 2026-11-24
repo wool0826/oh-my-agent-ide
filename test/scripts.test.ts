@@ -9,6 +9,7 @@ import { cleanScript, sortScripts, SCRIPT_CMD_MAX, SCRIPT_NAME_MAX } from '../sr
 import { handOver } from '../src/shared/shell';
 import { store } from '../src/main/store';
 import { addScript, removeScript, runScript, updateScript } from '../src/main/scripts';
+import { shell } from '../src/main/shell';
 import type { ShellScript } from '../src/shared/types';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-scripts-'));
@@ -50,8 +51,13 @@ test('a script is added, edited, run as it is stored, and deleted; the state kee
   assert.equal(saved?.cmd, 'echo script-ok');
   assert.equal(saved?.lastRunAt, null);
 
+  let handed = 0;
+  const count = () => { handed++; };
+  store.on('shell-done', count);
   const chatId = runScript(id);
   const item = store.data.chat.find((c) => c.id === chatId)!;
+  // Settings shellAsk is on by default: the Dispatcher takes a turn for the result once it ends.
+  assert.equal(item.shell?.ask, true);
   assert.equal(item.shell?.script, 'Hello');
   assert.equal(item.shell?.cmd, 'echo script-ok');
   for (let i = 0; i < 300 && item.shell?.running; i++) await new Promise((r) => setTimeout(r, 50));
@@ -59,9 +65,35 @@ test('a script is added, edited, run as it is stored, and deleted; the state kee
   assert.match(item.shell?.out ?? '', /script-ok/);
   assert.ok(store.data.scripts?.find((s) => s.id === id)?.lastRunAt);
   assert.ok(store.data.pendingUpdates.some((u) => u.includes('saved script "Hello"')));
+  assert.equal(handed, 1);
+  store.off('shell-done', count);
 
   removeScript(id);
   assert.equal(store.data.scripts?.length, 0);
   assert.throws(() => runScript(id), /no longer saved/);
   assert.throws(() => updateScript(id, { name: 'x', cmd: 'y' }), /no longer saved/);
+});
+
+test('a run hands its result over for a turn only when asked to, and never when the user stopped it', async () => {
+  let handed = 0;
+  const count = () => { handed++; };
+  store.on('shell-done', count);
+  const ended = async (id: string) => {
+    const item = store.data.chat.find((c) => c.id === id)!;
+    for (let i = 0; i < 300 && item.shell?.running; i++) await new Promise((r) => setTimeout(r, 50));
+    return item.shell!;
+  };
+  // Not asked: the result waits for the user's next message.
+  const quiet = await ended(shell.run('echo quiet', null));
+  assert.deepEqual([quiet.code, quiet.sent, quiet.ask, handed], [0, 'queued', undefined, 0]);
+  // Asked, then stopped by the user: nothing is handed over.
+  const long = shell.run('node -e "setTimeout(() => {}, 20000)"', null, { ask: true });
+  await new Promise((r) => setTimeout(r, 300));
+  shell.stop(long);
+  const stopped = await ended(long);
+  assert.deepEqual([stopped.stopped, stopped.sent, handed], [true, 'off', 0]);
+  // Asked: one turn when it ends.
+  const asked = await ended(shell.run('echo asked', null, { ask: true }));
+  assert.deepEqual([asked.code, asked.sent, handed], [0, 'queued', 1]);
+  store.off('shell-done', count);
 });

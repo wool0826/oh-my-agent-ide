@@ -2,7 +2,7 @@
 // in the thread. The run itself is main/shell.ts; what is kept and handed over is shared/shell.ts.
 import { SHELL_FOLDED, shellClock, shellTook, tailLines } from '../../shared/shell';
 import type { ChatItem } from '../../shared/types';
-import { $, esc, S, sym, t, ui } from './core';
+import { $, call, esc, S, sym, t, ui } from './core';
 import { openPop, pop } from './controls';
 
 /** The composer goes into shell mode: the "!" leaves the text and turns the composer red, with Shell and the folder. */
@@ -36,7 +36,22 @@ export function renderShellBar() {
   if (!ui.shell) { bar.innerHTML = ''; return; }
   const repo = repoNow();
   const where = repo || t('shell.home');
-  bar.innerHTML = `<span class="sh-mode">${sym('s-term')}${t('shell.mode')}</span><button type="button" class="sh-cwd" data-action="shell-cwd" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('shell.folderAria', { where }))}">${t('shell.in', { where: `<b>${esc(where)}</b>` })}<svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button><span class="gap"></span><span class="sh-hint"><kbd>↵</kbd>${t('shell.hintRun')}<kbd>Esc</kbd>${t('shell.hintMessage')}</span>`;
+  bar.innerHTML = `<span class="sh-mode">${sym('s-term')}${t('shell.mode')}</span><button type="button" class="sh-cwd" data-action="shell-cwd" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('shell.folderAria', { where }))}">${t('shell.in', { where: `<b>${esc(where)}</b>` })}<svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>${askChip()}<span class="gap"></span><span class="sh-hint"><kbd>↵</kbd>${t('shell.hintRun')}<kbd>Esc</kbd>${t('shell.hintMessage')}</span>`;
+}
+
+/** Whether a run hands its result to the Dispatcher for a turn of its own (Settings shellAsk), switched on the bar. */
+function askChip() {
+  const on = S?.settings.shellAsk !== false;
+  return `<button type="button" class="sh-ask" data-action="shell-ask" aria-pressed="${on}" data-tip="${esc(t(on ? 'shell.askOnTip' : 'shell.askOffTip'))}">${on ? sym('s-check') : ''}${t('shell.ask')}</button>`;
+}
+
+/** The ask chip was pressed: saved as the setting, and the bar shows it at once. */
+export function toggleShellAsk() {
+  if (!S) return;
+  S.settings.shellAsk = S.settings.shellAsk === false;
+  void call('settings:save', { shellAsk: S.settings.shellAsk });
+  renderShellBar();
+  $('#chat-input').focus();
 }
 
 /** The folder picker on the shell bar: the IDE home, then each registered repository. */
@@ -106,7 +121,7 @@ export function shellBlockHtml(c: ChatItem) {
   const dlv = r.sent === 'sent' ? `<span class="sh-dlv ok">${sym('s-check')}${t('shell.sent')}</span>`
     : r.sent === 'queued' ? `<span class="sh-dlv wait"><i></i>${t('shell.queued')}</span>`
     : r.sent === 'off' ? `<span class="sh-dlv off">${t('shell.notSent')}</span>`
-    : `<span class="sh-dlv wait"><i></i>${t('shell.willSend')}</span>`;
+    : `<span class="sh-dlv wait"><i></i>${t(r.ask ? 'shell.willAsk' : 'shell.willSend')}</span>`;
   const acts = r.running ? '' : `<span class="gap"></span><a tabindex="0" role="link" data-action="shell-copy" data-id="${esc(c.id)}">${t('shell.copy')}</a><a tabindex="0" role="link" data-action="shell-again" data-id="${esc(c.id)}">${t('shell.again')}</a>`;
   const out = shown ? `<pre class="sh-out">${esc(shown)}${r.running ? '<span class="sh-caret" aria-hidden="true"></span>' : ''}</pre>` : '';
   return `<div class="sh-run${r.running ? ' live' : ''}" data-id="${esc(c.id)}" role="group" aria-label="${esc(t('shell.blockAria', { cmd: r.cmd }))}"><header><span class="sh-bang" aria-hidden="true">!</span>${r.script ? `<b class="sh-name">${esc(r.script)}</b>` : ''}<code${lines.length > 1 ? ` data-tip="${esc(r.cmd)}"` : ''}>${esc(lines[0])}${lines.length > 1 ? ` <span class="sh-more">${t('script.moreLines', { n: lines.length - 1 })}</span>` : ''}</code><span class="sh-in">${t('shell.in', { where: esc(where) })}</span>${pill}${time}${stop}</header>${fold}${out}<footer>${dlv}${acts}</footer></div>`;

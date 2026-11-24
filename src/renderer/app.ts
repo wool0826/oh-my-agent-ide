@@ -20,7 +20,7 @@ import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAwa
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
-import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo } from './ui/shell';
+import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
 import { $, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
@@ -157,6 +157,7 @@ export async function act(el: HTMLElement, e: Event) {
     // A task can have several cards (a result, then a follow-up): the one the group answers is the last one above it.
     case 'goto-report': flashCard([...document.querySelectorAll<HTMLElement>(`#chat-thread .attach[data-task="${CSS.escape(id)}"]`)].filter((c) => c.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop() ?? null); break;
     case 'shell-cwd': pickShellFolder(el); break;
+    case 'shell-ask': toggleShellAsk(); break;
     case 'shell-stop': (el as HTMLButtonElement).disabled = true; void tryCall('shell:stop', id); break;
     case 'shell-fold': if (!ui.shellOpen.delete(id)) ui.shellOpen.add(id); renderChat(true); break;
     case 'shell-copy': {
