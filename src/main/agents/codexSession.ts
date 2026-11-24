@@ -56,6 +56,7 @@ export class CodexSession {
   closed = false;
   /** Codex has no background subagents that outlive a turn. */
   readonly background = 0;
+  readonly shells = 0;
   private turnId: string | null = null;
   private queue: string[] = [];
   private pumping = false;
