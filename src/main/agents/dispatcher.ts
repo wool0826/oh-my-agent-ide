@@ -704,8 +704,14 @@ class Dispatcher {
   shellDone() {
     this.userSpoke();
     const s = this.open();
-    if (!s) { this.hold(SHELL_NOTE, null); return; }
-    this.deliver(s, [SHELL_NOTE]);
+    if (s) { this.deliver(s, [SHELL_NOTE]); return; }
+    // No account at all: the result waits for the next message, as with the chip off.
+    if (!accounts.list().length) return;
+    // Several runs ending during a usage limit: one note goes with all their results when it resets.
+    if (this.held.includes(SHELL_NOTE)) return;
+    this.hold(SHELL_NOTE, null);
+    store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
+    store.changed();
   }
 
   /** The user answered a question the Dispatcher posted. */
