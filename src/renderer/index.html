@@ -89,6 +89,7 @@
   <main class="content view" data-view="chat">
     <div class="thread" id="chat-thread"></div>
     <section class="sq" id="sq" role="dialog" aria-labelledby="sq-title" hidden>
+      <span class="sq-edge w" data-edge="w" aria-hidden="true"></span><span class="sq-edge h" data-edge="h" aria-hidden="true"></span><button type="button" class="sq-rz" id="sq-rz" data-edge="both" data-i18n-aria="sq.resize" data-i18n-tip="sq.resize"></button>
       <header><svg class="sym" aria-hidden="true"><use href="#s-side-q"/></svg><b id="sq-title" data-i18n="sq.title">Side question</b><span class="sq-wall"><svg class="sym" aria-hidden="true"><use href="#s-lock"/></svg><span data-i18n="sq.wall">Separate context</span></span><span class="gap"></span><button type="button" class="sq-ib" data-action="sq-min" data-i18n-tip="sq.minimise"><svg aria-hidden="true"><use href="#s-minus"/></svg></button><button type="button" class="sq-ib" data-action="sq-close" data-i18n-tip="sq.close"><svg aria-hidden="true"><use href="#s-x"/></svg></button></header>
       <div class="sq-t" id="sq-thread"></div>
       <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button></form>

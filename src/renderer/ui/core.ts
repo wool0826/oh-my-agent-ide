@@ -438,8 +438,35 @@ export async function tryCall<T = any>(ch: string, ...args: unknown[]): Promise<
   }
 }
 
+/* ---------- IME composition ---------- */
+
+/** The field a composition (Korean, Japanese) is going on in, from compositionstart to compositionend. */
+let composing: Element | null = null;
+/** Draws put off until that composition ends: the latest one per panel. */
+const held = new Map<Element, () => void>();
+document.addEventListener('compositionstart', (e) => { composing = e.target as Element; }, true);
+document.addEventListener('compositionend', () => {
+  composing = null;
+  const due = [...held.values()];
+  held.clear();
+  // After the input event that carries the finished syllable.
+  setTimeout(() => due.forEach((draw) => draw()), 0);
+}, true);
+
+/**
+ * Drawing a panel again replaces its fields. Replacing the one being composed in ends the composition: the IME
+ * commits the half-built syllable and the next key starts a new one ("하" + "ㄴ" becomes "하ㄴ", not "한").
+ * True when a composition is going on inside `root`; `draw` then runs once it ends, and the caller draws nothing now.
+ */
+export function holdWhileComposing(root: Element, draw: () => void): boolean {
+  if (!composing?.isConnected || !root.contains(composing)) return false;
+  held.set(root, draw);
+  return true;
+}
+
 /** Keep typed values and focus across re-renders (inputs with data-keep, rows with data-focus), and scroll offsets (keepScroll). */
 export function keepInputs(root: HTMLElement, render: () => void) {
+  if (holdWhileComposing(root, () => keepInputs(root, render))) return;
   const vals = new Map<string, string>();
   root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep]').forEach((el) => vals.set(el.dataset.keep!, el.value));
   const active = document.activeElement as HTMLInputElement | null;

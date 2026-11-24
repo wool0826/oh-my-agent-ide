@@ -22,7 +22,7 @@ import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo } from '.
 import { $, announce, applyStaticText, call, esc, hhmm, ide, lang, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
-import { closePalette, Cmd, cmdk, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
+import { closePalette, Cmd, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
@@ -898,6 +898,8 @@ export function init() {
     const el = e.target as HTMLElement;
     // Ctrl/Cmd+K opens the palette from anywhere, and closes it.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyK') { e.preventDefault(); if (cmdk.open) closePalette(); else openPalette(); return; }
+    // Ctrl/Cmd+F opens the same palette to find something said, with a short text selected on the page already in it.
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyF') { e.preventDefault(); if (cmdk.open) $('#cmdk-q').focus(); else openPalette(findSeed()); return; }
     if (cmdk.open) { paletteKeys(e); return; }
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'Slash') { e.preventDefault(); if (shortcutsOpen()) closeShortcuts(); else if (!ui.settingsShown) openShortcuts(); return; }

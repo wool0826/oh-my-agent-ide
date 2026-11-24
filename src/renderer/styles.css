@@ -1291,7 +1291,11 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 
 /* ---------- a message found by search ---------- */
 /* A ring, not a wash: the bubble keeps its fill, so its text keeps its contrast. */
-.thread > .found .bub, .thread > .bub.found, .rth > .found .bub { box-shadow: 0 0 0 2px var(--focus-ring); }
+/* A message found by a search blinks three times with the focus ring (palette.ts, jumpToChat); with less motion it holds the ring still. */
+.thread .found { animation: found 600ms var(--ease-in-out) 3; }
+@keyframes found { 0%, 100% { box-shadow: 0 0 0 2px transparent; } 40%, 60% { box-shadow: 0 0 0 2px var(--focus-ring), 0 0 0 6px var(--accent-soft); } }
+@media (prefers-reduced-motion: reduce) { .thread .found { animation: none; box-shadow: 0 0 0 2px var(--focus-ring); } }
+:root[data-motion="reduced"] .thread .found { animation: none; box-shadow: 0 0 0 2px var(--focus-ring); }
 
 /* ---------- do-not-disturb hours ---------- */
 .srow .inp.time { width: 64px; flex: none; text-align: center; font-variant-numeric: tabular-nums; }
@@ -1444,8 +1448,17 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .mini .err { color: var(--danger-text); overflow-wrap: anywhere; white-space: normal; }
 
 /* Side question (ui/side.ts): its own floating surface over the chat, with its own thread and meter. */
-.sq { position: absolute; right: var(--space-16); bottom: 88px; z-index: calc(var(--z-composer) + 1); width: min(420px, calc(100% - 2 * var(--space-16))); max-height: calc(100% - 120px); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-overlay-solid, var(--surface-overlay)); box-shadow: var(--rim-strong), var(--shadow-4); overflow: hidden; animation: upop-in var(--dur-base) var(--ease-standard); }
+.sq { position: absolute; right: var(--space-16); bottom: 88px; z-index: calc(var(--z-composer) + 1); width: min(var(--sq-w, 420px), calc(100% - 2 * var(--space-16))); height: var(--sq-h, auto); max-height: calc(100% - 120px); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-overlay-solid, var(--surface-overlay)); box-shadow: var(--rim-strong), var(--shadow-4); overflow: hidden; animation: upop-in var(--dur-base) var(--ease-standard); }
 .sq[hidden] { display: none; }
+/* Resizing (side.ts): the top and left edges and the top-left corner, which also takes the arrow keys. */
+.sq-edge { position: absolute; z-index: 1; }
+.sq-edge.w { left: 0; top: 14px; bottom: 0; width: 5px; cursor: ew-resize; }
+.sq-edge.h { top: 0; left: 14px; right: 0; height: 5px; cursor: ns-resize; }
+.sq-rz { position: absolute; z-index: 2; left: 0; top: 0; width: 16px; height: 16px; padding: 0; border: 0; border-top-left-radius: var(--radius-xl); background: none; cursor: nwse-resize; }
+.sq-rz::before { content: ''; position: absolute; left: 5px; top: 5px; width: 7px; height: 7px; border: solid var(--text-tertiary); border-width: 1.5px 0 0 1.5px; border-top-left-radius: 6px; opacity: 0; transition: opacity var(--dur-fast) var(--ease-standard); }
+.sq:hover .sq-rz::before, .sq.sizing .sq-rz::before, .sq-rz:focus-visible::before { opacity: 1; }
+.sq-rz:focus-visible { outline: var(--focus-outline); outline-offset: calc(-1 * var(--focus-offset) - 2px); }
+.sq.sizing { animation: none; user-select: none; }
 .win.ins-min .sq { right: calc(var(--panel-inset) + var(--space-10) + var(--control-lg) + var(--space-8)); }
 .sq > header { flex: none; display: flex; align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
 .sq > header > .sym { font-size: var(--icon-md); color: var(--text-secondary); }
