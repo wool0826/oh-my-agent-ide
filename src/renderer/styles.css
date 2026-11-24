@@ -1143,7 +1143,7 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .memo.script .acts { opacity: 1; align-items: center; }
 .script-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .script-run { display: inline-flex; align-items: center; gap: var(--space-4); height: var(--control-sm); padding: 0 var(--space-10) 0 var(--space-8); }
-.script-run .sym { font-size: var(--fs-caption2); }
+.memo .meta .script-run .sym { font-size: var(--fs-caption2); color: currentColor; }
 .script-run:disabled { opacity: .45; cursor: default; }
 .memo.script .facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-4) var(--space-12); margin: var(--space-4) 0 0; font-size: var(--fs-caption); line-height: var(--lh-ui); }
 .memo.script .facts dt { color: var(--text-secondary); }
