@@ -193,9 +193,12 @@ export async function act(el: HTMLElement, e: Event) {
     case 'memo-edit': ui.memoEdit = id; ui.memoSel = id; ui.memoDel = null; renderChatInspector(); document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.focus(); break;
     case 'memo-edit-cancel': ui.memoEdit = null; renderChatInspector(); break;
     case 'memo-save': {
-      const text = document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`)?.value ?? '';
+      const field = document.querySelector<HTMLTextAreaElement>(`[data-keep="memo-${id}"]`);
+      const text = field?.value ?? '';
+      // An emptied memo is not saved: the field stays open for the text, and Delete is the way to remove it.
+      if (!text.trim()) { field?.focus(); break; }
       ui.memoEdit = null;
-      if (text.trim()) await call('memo:update', id, { text });
+      await call('memo:update', id, { text });
       renderChatInspector();
       break;
     }
@@ -655,6 +658,14 @@ export function swapDraft(from: string | null, to: string | null) {
   renderChips('ws');
 }
 
+/** A stand-in button for an action started from the keyboard: `dataset` has no setter, so it is filled key by key. */
+function actionAs(action: string, id?: string) {
+  const b = document.createElement('button');
+  b.dataset.action = action;
+  if (id !== undefined) b.dataset.id = id;
+  return b;
+}
+
 /** The composer grows with its text up to half the window; past that it scrolls with no visible bar. */
 export function autosize(el: HTMLTextAreaElement) {
   el.style.height = 'auto';
@@ -950,16 +961,18 @@ export function init() {
         addDiffNote();
       } else if (el.dataset.enter === 'memo-add') {
         void addMemo();
+      } else if (el.dataset.enter === 'memo-save') {
+        void act(actionAs('memo-save', el.dataset.id), e);
       } else if (el.dataset.enter === 'sug-save') {
         void saveSug(el.dataset.id ?? '');
       } else if (el.dataset.enter === 'aa-send') {
-        void act(Object.assign(document.createElement('button'), { dataset: { action: 'aa-send', id: el.dataset.id } }) as HTMLElement, e);
+        void act(actionAs('aa-send', el.dataset.id), e);
       }
       return;
     }
     if (el.id === 'acc-rename' && e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
-      void act(Object.assign(document.createElement('button'), { dataset: { action: 'acc-rename-save', id: el.dataset.id } }) as HTMLElement, e);
+      void act(actionAs('acc-rename-save', el.dataset.id), e);
       return;
     }
     // Escape closes one layer at a time, the top one first (L14).

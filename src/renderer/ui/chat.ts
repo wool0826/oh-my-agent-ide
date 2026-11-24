@@ -723,7 +723,7 @@ function memoSlot(m: Memo) {
 
 export function memoHtml(m: Memo, sel = true) {
   if (ui.memoEdit === m.id) {
-    return `<div class="memo${sel ? ' sel' : ''}"><textarea class="inp" data-keep="memo-${m.id}" aria-label="${t('memo.edit')}">${esc(m.text)}</textarea>
+    return `<div class="memo${sel ? ' sel' : ''}"><textarea class="inp" data-keep="memo-${m.id}" data-enter="memo-save" data-id="${m.id}" aria-label="${t('memo.edit')}">${esc(m.text)}</textarea>
       <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn def" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
   }
   if (!sel) {
@@ -859,7 +859,7 @@ export function memosHtml() {
   const ids = [...shared, ...mine].map((m) => m.id);
   ui.memoSel = keepPick(ids, ui.memoSel, ui.memoEdit ?? ids[0] ?? null);
   const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b>${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoSlot).join('')}</div></div>` : '';
-  const add = `<div class="memo-add"><input class="inp" id="memo-new" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"><button class="btn" data-action="memo-add" data-tip="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
+  const add = `<div class="memo-add"><textarea class="inp" id="memo-new" rows="1" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"></textarea><button class="btn" data-action="memo-add" data-tip="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
   const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
   return add + formErrHtml('memo') + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
 }
@@ -890,14 +890,14 @@ export async function removeMemo(id: string) {
 }
 
 export async function addMemo() {
-  const inp = $<HTMLInputElement>('#memo-new');
+  const inp = $<HTMLTextAreaElement>('#memo-new');
   const text = inp?.value.trim();
   if (!text) { inp?.focus(); return; }
   const r = await tryCall('memo:add', text);
   ui.formErr.memo = r.ok ? '' : r.error;
-  if (r.ok) { const now = $<HTMLInputElement>('#memo-new'); if (now) now.value = ''; }
+  if (r.ok) { const now = $<HTMLTextAreaElement>('#memo-new'); if (now) now.value = ''; }
   renderChatInspector();
-  $<HTMLInputElement>('#memo-new')?.focus();
+  $<HTMLTextAreaElement>('#memo-new')?.focus();
 }
 
 /* ---------- attachments ---------- */
