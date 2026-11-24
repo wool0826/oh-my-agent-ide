@@ -959,6 +959,10 @@ flow('a conversation is one Tab stop, and the arrows move between its messages',
     const rows = [...th.children].filter((x) => !x.matches('.stamp, .who, .new-from'));
     const i = rows.findIndex((r) => r.contains(a));
     return (a === rows[i] ? 'message ' : 'control ') + (i - rows.length);`;
+  // An empty conversation has no message to stop on: Tab goes on to what it offers.
+  await app.evaluate("document.querySelector('#ins-toggle').focus()");
+  await tab();
+  assert.equal(await app.evaluate("document.activeElement?.dataset.action"), 'chat-start');
   for (let i = 1; i <= 6; i++) {
     await app.say(`Question ${i}\n@fake say Answer ${i} with https://example.com/${i}.`);
     await app.until(`document.querySelector('#chat-thread').innerText.includes('Answer ${i} with')`, `answer ${i}`);

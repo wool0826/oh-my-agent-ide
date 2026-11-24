@@ -36,6 +36,16 @@ function focusRow(th: HTMLElement, row: HTMLElement, scroll = true) {
   if (scroll) row.scrollIntoView({ block: 'nearest' });
 }
 
+/** Puts the focus on a thread's message: the one it was last on, else the last. False for a thread without messages. */
+function enter(th: HTMLElement): boolean {
+  const rs = rows(th);
+  const kept = last.get(th);
+  const row = kept && rs.includes(kept) ? kept : rs[rs.length - 1];
+  if (!row) return false;
+  focusRow(th, row);
+  return true;
+}
+
 /** Keys in and around a thread. True when the key was taken. */
 export function threadKeys(e: KeyboardEvent): boolean {
   if (e.altKey || e.ctrlKey || e.metaKey) return false;
@@ -49,22 +59,21 @@ export function threadKeys(e: KeyboardEvent): boolean {
     const all = tabbables();
     const at = all.indexOf(el);
     const back = e.shiftKey;
-    const next = back ? all[at < 0 ? all.length - 1 : at - 1] : all[at + 1];
     const BEFORE = Node.DOCUMENT_POSITION_PRECEDING, AFTER = Node.DOCUMENT_POSITION_FOLLOWING;
+    // Where the browser would go. What has the focus may be outside the Tab order itself (a row that was clicked,
+    // the page): its place in the document then says what comes next.
+    const next = at >= 0 ? (back ? all[at - 1] : all[at + 1])
+      : back ? all.filter((x) => el.compareDocumentPosition(x) & BEFORE && !x.contains(el)).pop() : all.find((x) => el.compareDocumentPosition(x) & AFTER);
     const passed = (t: HTMLElement) => {
       if (!(t.compareDocumentPosition(el) & (back ? AFTER : BEFORE))) return false;
       return !next || t.contains(next) || !!(t.compareDocumentPosition(next) & (back ? BEFORE : AFTER));
     };
-    const ths = [...document.querySelectorAll<HTMLElement>(THREAD)].filter((t) => shown(t) && passed(t));
+    // A thread without messages has nothing to stop on, and is not in the way of one that has.
+    const ths = [...document.querySelectorAll<HTMLElement>(THREAD)].filter((t) => shown(t) && rows(t).length && passed(t));
     const into = back ? ths[ths.length - 1] : ths[0];
     if (!into) return false;
-    const rs = rows(into);
-    const kept = last.get(into);
-    const row = kept && rs.includes(kept) ? kept : rs[rs.length - 1];
-    if (!row) return false;
     e.preventDefault();
-    focusRow(into, row);
-    return true;
+    return enter(into);
   }
   const rs = rows(th);
   const row = rs.find((r) => r.contains(el));
@@ -80,7 +89,10 @@ export function threadKeys(e: KeyboardEvent): boolean {
     const out = tabbables().filter((x) => !th.contains(x));
     const after = out.find((x) => th.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING);
     const before = out.filter((x) => th.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_PRECEDING).pop();
-    (e.shiftKey ? before ?? out[out.length - 1] : after ?? out[0])?.focus();
+    const dest = e.shiftKey ? before ?? out[out.length - 1] : after ?? out[0];
+    // Into another conversation beside this one: on its message, as from anywhere else.
+    const other = dest?.closest<HTMLElement>(THREAD);
+    if (!other || !enter(other)) dest?.focus();
     return true;
   }
   // The arrows move between messages only from a message itself: inside a control they keep their own meaning.

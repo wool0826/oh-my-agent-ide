@@ -40,6 +40,8 @@ export function shortcutsOpen() {
 export function openShortcuts() {
   const root = $('#dlg');
   if (ui.confirmAsk || ui.cancelAsk || !root.hidden) return;
+  // Another dialog may have taken this one's place without closing it: start from where the focus is now.
+  layerClose('keys', false);
   layerOpen('keys');
   root.dataset.key = 'keys';
   root.innerHTML = `<div class="dlg-back" data-action="keys-close"></div>
