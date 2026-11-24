@@ -352,6 +352,8 @@ export interface SettingsView {
   claudeRules: boolean;
   /** Workers read and write the Claude Code memory of their repository's checkout. */
   claudeMemory: boolean;
+  /** claude.ai connectors (Claude Docs) and the Artifact tool in the Dispatcher's and Workers' Claude sessions. */
+  claudeConnectors: boolean;
   /** Offer to remember reusable facts from decision answers and corrections. */
   memorySuggest: boolean;
   /** Closing the window leaves the app working, with an icon in the tray. */

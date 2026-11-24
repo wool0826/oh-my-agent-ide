@@ -1326,3 +1326,17 @@ test('a repository with origin keeps the fetch and origin base in its task messa
     store.data.repos = store.data.repos.filter((r) => r.name !== 'rem');
   }
 });
+
+test('Worker sessions get the claude.ai artifacts and connectors, unless they are off in Settings', () => {
+  const on = workers.ensureSession(addWorker({ sessionId: 'sa' }))! as AgentSession;
+  assert.equal(on.cfg.connectors, true);
+  assert.match(on.cfg.systemAppend, /claude\.ai artifacts and connectors:/);
+  loadSettings().claudeConnectors = false;
+  try {
+    const off = workers.ensureSession(addWorker({ sessionId: 'sb' }))! as AgentSession;
+    assert.equal(off.cfg.connectors, false);
+    assert.doesNotMatch(off.cfg.systemAppend, /claude\.ai artifacts/);
+  } finally {
+    loadSettings().claudeConnectors = true;
+  }
+});

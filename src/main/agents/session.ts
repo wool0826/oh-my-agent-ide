@@ -6,6 +6,7 @@ import { PushQueue } from '../util';
 import { SpendMeter, spendOf, type SessionSpend, type Spend } from '../../shared/spend';
 import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW } from '../../shared/context';
 import { compactCommand } from '../../shared/compactInstructions';
+import { CONNECTOR_CHECK_MS, connectorChanges, connectorSettings, toReconnect } from './connectors';
 
 /** Compaction as the owner sees it: Claude Code's own (mid-turn) and the app's /compact alike. */
 export type CompactEvent =
@@ -44,6 +45,11 @@ export interface SessionConfig {
   compactInstructions?: string;
   /** Extra environment for this session's Claude Code process, over the account's. */
   env?: NodeJS.ProcessEnv;
+  /**
+   * claude.ai connectors and the Artifact tool (connectors.ts): true keeps them on and reconnects connectors that
+   * failed; false keeps them out. Unset leaves Claude Code's defaults.
+   */
+  connectors?: boolean;
 }
 
 export interface SessionEvents {
@@ -85,8 +91,10 @@ export const LIMIT_RE = /rate.?limit|usage limit|limit reached|\b429\b|5-hour|we
 const ABORTED = new Set(['aborted_streaming', 'aborted_tools']);
 
 /** The session's flag settings plus the app's context window, so Claude Code compacts by itself before reaching it. */
-export function sessionSettings(settings: Options['settings']): Options['settings'] {
-  return typeof settings === 'string' ? settings : { ...settings, autoCompactWindow: CONTEXT_WINDOW };
+/** A settings file path (a string) is passed as is: neither the context window nor the connector switch is added. */
+export function sessionSettings(settings: Options['settings'], connectors?: boolean): Options['settings'] {
+  if (typeof settings === 'string') return settings;
+  return { ...(connectors === undefined ? {} : connectorSettings(connectors)), ...settings, autoCompactWindow: CONTEXT_WINDOW };
 }
 
 /**
@@ -158,6 +166,10 @@ export class AgentSession {
     // Background work belongs to the process; a new one starts with none.
     this.background = 0;
     this.shells = 0;
+    // Connectors belong to the process too: the new one is looked at after its first turn, from scratch.
+    this.lastConnectorCheck = 0;
+    this.connectorSeen.clear();
+    this.reconnectTried.clear();
     this.interrupted = false;
     this.limitHit = false;
     const options: Options = {
@@ -176,7 +188,7 @@ export class AgentSession {
       additionalDirectories: this.cfg.additionalDirectories,
       hooks: this.cfg.hooks,
       tools: this.cfg.tools,
-      settings: sessionSettings(this.cfg.settings),
+      settings: sessionSettings(this.cfg.settings, this.cfg.connectors),
       agents: this.cfg.agents,
       resume: this.sessionId ?? undefined,
       pathToClaudeCodeExecutable: claudeExecutable(),
@@ -413,6 +425,7 @@ export class AgentSession {
           });
         }
         void this.readPlanUsage();
+        void this.checkConnectors();
         // A failed /compact is not a failed turn: the session stays usable and its task goes on.
         const failed = isError && !internal;
         if (!this.busy) this.ev.onStatus?.(failed ? 'error' : 'idle', failed ? text.slice(0, 300) : '');
@@ -448,6 +461,33 @@ export class AgentSession {
       if (u?.rate_limits_available && u.rate_limits) accounts.applyUsage(this.cfg.accountId, u.rate_limits);
     } catch (e) {
       log.warn(`[${this.cfg.label}] usage read`, (e as Error).message);
+    }
+  }
+
+  /**
+   * After a turn, look at the claude.ai connectors (at most once a minute): log what changed, and reconnect one that
+   * failed (at most every 5 minutes). Claude Code reconnects one that dropped by itself; one that needs a sign-in
+   * stays so, and the agent says so when it needs it. Failures are ignored.
+   */
+  private lastConnectorCheck = 0;
+  private connectorSeen = new Map<string, string>();
+  private reconnectTried = new Map<string, number>();
+  private async checkConnectors() {
+    if (!this.q || !this.cfg.connectors || Date.now() - this.lastConnectorCheck < CONNECTOR_CHECK_MS) return;
+    this.lastConnectorCheck = Date.now();
+    const q = this.q;
+    try {
+      const st = await q.mcpServerStatus();
+      // Closed or restarted meanwhile: these statuses are of a process that is gone.
+      if (this.q !== q) return;
+      for (const line of connectorChanges(st, this.connectorSeen)) log.info(`[${this.cfg.label}] connector ${line}`);
+      for (const name of toReconnect(st, this.reconnectTried, Date.now())) {
+        this.reconnectTried.set(name, Date.now());
+        log.info(`[${this.cfg.label}] reconnecting ${name}`);
+        void Promise.resolve().then(() => q.reconnectMcpServer(name)).catch((e) => log.warn(`[${this.cfg.label}] reconnect ${name}`, (e as Error).message));
+      }
+    } catch (e) {
+      log.warn(`[${this.cfg.label}] connector status`, (e as Error).message);
     }
   }
 
