@@ -1636,10 +1636,10 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .edge-rz:focus-visible::after { outline: var(--focus-outline); outline-offset: 2px; }
 .sq-wall { display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px var(--space-8) 1px var(--space-6); border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); font-size: var(--fs-caption2); font-weight: 600; white-space: nowrap; }
 .sq-wall .sym { font-size: var(--icon-sm); }
-.sq-ib { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
-.sq-ib svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
-.sq-ib:hover { background: var(--text-secondary); color: var(--bg-canvas); }
-.sq-ib:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.dock-ib { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+.dock-ib svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.dock-ib:hover { background: var(--text-secondary); color: var(--bg-canvas); }
+.dock-ib:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .sq-t { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-12) var(--space-12) var(--space-6); -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px); mask-image: linear-gradient(to bottom, transparent 0, #000 10px); }
 .sq-t .bub { max-width: 92%; font-size: var(--fs-caption); }
 .sq-m { align-self: center; display: flex; align-items: center; gap: var(--space-4); font-size: var(--fs-caption2); color: var(--text-tertiary); white-space: nowrap; }

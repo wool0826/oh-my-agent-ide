@@ -103,12 +103,16 @@ export function startLine(run: ShellRun, cwd: string, output: () => void, ended:
   const end = (code: number | null, note = '') => {
     if (done) return;
     done = true;
-    if (note) out = addOutput(out, `${note}\n`);
+    if (note) {
+      out = addOutput(out, `${note}\n`);
+      // Counted like any other output, so the stderr lines before it keep their place.
+      breaks += (addOutput('', `${note}\n`, Infinity).match(/\n/g) ?? []).length;
+    }
     run.out = tailLines(out);
     run.lines = Math.max(count(), lineCount(out));
     syncErr();
     // Why it could not start is an error line too: the last one.
-    if (note) run.err = [...(run.err ?? []), lineCount(run.out) - 1];
+    if (note) run.err = [...new Set([...(run.err ?? []), lineCount(run.out) - 1])];
     run.running = false;
     run.code = run.stopped ? null : code;
     run.ms = Date.now() - started;

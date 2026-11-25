@@ -63,8 +63,8 @@ export function outHtml(id: string, text: string, err: readonly number[] | undef
   return parts.map((p, i) => {
     const tail = i === parts.length - 1 ? end : '';
     if (!p.err) return `<span class="o-seg">${esc(p.lines.join('\n'))}${tail}</span>`;
-    // Opened by its first line, which stays the same while the output goes on below it.
-    const key = `${id}:${p.lines[0]}`;
+    // Opened by where it starts in the kept output, so two stretches with the same first line open apart.
+    const key = `${id}:${offset + p.at}`;
     const open = ui.errOpen.has(key);
     const rest = p.lines.length - 1;
     const shown = open ? p.lines : p.lines.slice(0, 1);
