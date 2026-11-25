@@ -205,13 +205,21 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
      * seen the moves yet.
      */
     async drag(selector, dx, { dy = 0, steps = 3, ms = 16, hold = false, ready = null } = {}) {
-      const p = await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
-      const x0 = Math.round(p.x), y0 = Math.round(p.y);
-      const hit = await evaluate(`const at = document.elementFromPoint(${x0}, ${y0}); return !!at && !!at.closest(${JSON.stringify(selector)});`);
-      if (!hit) throw new Error(`The press for ${selector} would land on another element`);
+      // The pointer rests on the element first, and the press waits until the element stays where it was measured and
+      // is the one at that point: a list can still shift as the pointer arrives (a macOS runner moved a row by 15px).
+      const where = () => evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2); return { x, y, hit: !!document.elementFromPoint(x, y)?.closest(${JSON.stringify(selector)}) };`);
+      let p = await where();
+      for (let i = 0; ; i++) {
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y });
+        await sleep(100);
+        const q = await where();
+        if (q.hit && q.x === p.x && q.y === p.y) break;
+        if (i === 40) throw new Error(`The press for ${selector} would land on another element`);
+        p = q;
+      }
+      const x0 = p.x, y0 = p.y;
       // What the page saw of the drag, for the message when it never gets there.
       if (ready) await evaluate(`if (!window.__drag) { window.__drag = []; for (const t of ['pointerdown', 'scroll', 'click', 'focusin', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'dragstart', 'mousedown', 'mousemove']) window.addEventListener(t, (e) => { window.__drag.push([t, Math.round(e.clientX), e.button, e.buttons, e.pointerType ?? '', e.isPrimary ?? '', e.ctrlKey, String(e.target?.className ?? '').slice(0, 24), Math.round(e.clientY), e.defaultPrevented].join(' ')); }, true); } window.__drag.length = 0; return 1;`);
-      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
       await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: y0, button: 'left', buttons: 1, clickCount: 1 });
       for (let i = 1; i <= steps; i++) {
         await sleep(ms);
