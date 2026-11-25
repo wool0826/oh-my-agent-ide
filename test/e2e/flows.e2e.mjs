@@ -57,15 +57,22 @@ flow('a question is answered with one of its options', {}, async (app) => {
   assert.match(await app.workerLog(t.workerId), /Answer: Split/);
 });
 
-flow('decision cards take the keys: ↓ moves the selection, Enter allows, the next card gets the focus and a number picks', {}, async (app) => {
+flow('decision cards take the keys: none is selected at first, Enter or ↓ selects, Enter allows, the next card gets the focus and a number picks', {}, async (app) => {
   await app.say('@fake task - Install one\n@@fake permission npm install a\n@@fake result Installed.\n@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.');
   const CARD = `${DEC}[data-dec]`;
   await app.until(`document.querySelectorAll('${CARD}').length === 2`, 'both decision cards');
-  // One card is selected: the only Tab stop, with aria-current and its key hints; the other shows none.
+  // Nothing is selected and no card shows key hints; the first card is the list's one Tab stop.
   const look = () => app.evaluate(`const c = [...document.querySelectorAll('${CARD}')]; return c.map((x) => ({ sel: x.getAttribute('aria-current') === 'true', tab: x.tabIndex, focus: document.activeElement === x, perm: !!x.querySelector('[data-val="deny"]'), kbd: [...x.querySelectorAll('kbd')].some((k) => getComputedStyle(k).display !== 'none') }));`);
   let cards = await look();
+  assert.deepEqual(cards.map((c) => [c.sel, c.tab, c.kbd]), [[false, 0, false], [false, -1, false]]);
+  // The focus alone selects nothing, and Enter on a card that is not selected selects it instead of answering.
+  await app.evaluate(`document.querySelector('${CARD}').focus(); return 1;`);
+  cards = await look();
+  assert.deepEqual(cards.map((c) => [c.sel, c.focus]), [[false, true], [false, false]]);
+  await app.key('Enter', 'Enter', 13);
+  cards = await look();
   assert.deepEqual(cards.map((c) => [c.sel, c.tab, c.kbd]), [[true, 0, true], [false, -1, false]]);
-  await app.evaluate(`document.querySelector('${CARD}[aria-current="true"]').focus(); return 1;`);
+  assert.equal((await app.state()).decisions.filter((d) => d.status === 'pending').length, 2);
   await app.key('ArrowDown', 'ArrowDown', 40);
   cards = await look();
   assert.deepEqual(cards.map((c) => [c.sel, c.tab, c.focus, c.kbd]), [[false, -1, false, false], [true, 0, true, true]]);
@@ -123,8 +130,12 @@ flow('from 560 wide the selected memo opens beside the list, and a draft keeps i
   await handle('Home', 36);
   await app.until("!document.querySelector('#chat-ins .ins-cols.split')", 'one column');
   assert.equal((await where()).rows, 0);
-  // At 576 the list is rows and the first memo, selected, is in the detail pane; a row selects another one.
+  // At 576 with nothing selected it stays one column; a click on a memo selects it, and the list becomes rows with
+  // that memo in the detail pane; a row selects another one.
   for (let i = 0; i < 4; i++) await handle('ArrowLeft', 37, true);
+  await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) === 576", 'the sidebar at 576');
+  assert.equal((await where()).split, false);
+  await app.click('#chat-ins .pk-c > .memo[data-action="pick"]');
   await app.until("!!document.querySelector('#chat-ins .ins-cols.split')", 'two panes');
   let w = await where();
   assert.equal(w.rows, 2);
@@ -132,6 +143,7 @@ flow('from 560 wide the selected memo opens beside the list, and a draft keeps i
   // Widest (End): the list keeps its width and the detail pane takes all the extra room.
   const cols = () => app.evaluate("const q = (s) => Math.round(document.querySelector(s).getBoundingClientRect().width); return [q('#chat-ins .ins-list'), q('#chat-ins .ins-detail')];");
   const [list576, detail576] = await cols();
+  await app.evaluate("document.querySelector('#rz-ins').focus(); return 1;");
   await handle('End', 35);
   await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) > 800", 'the widest sidebar');
   const [listMax, detailMax] = await cols();
@@ -165,7 +177,11 @@ flow('from 560 wide the selected memo opens beside the list, and a draft keeps i
   // Inbox in two panes: ↓ on the card in the detail pane selects the next decision, which takes the pane and the focus.
   await app.say('@fake task - Install one\n@@fake permission npm install a\n@@fake result Installed.\n@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.');
   await app.click('[data-action="ins-tab"][data-v="inbox"]');
-  await app.until("document.querySelectorAll('#chat-ins [data-dec]').length === 2 && !!document.querySelector('#chat-ins .ins-detail [data-dec]')", 'two decisions, one in the detail pane');
+  await app.until("document.querySelectorAll('#chat-ins [data-dec]').length === 2", 'two decisions');
+  // Nothing is selected, so the sidebar stays one column until a card is clicked.
+  assert.equal(await app.evaluate("return !!document.querySelector('#chat-ins .ins-cols.split');"), false);
+  await app.click('#chat-ins .dec[data-dec] .q');
+  await app.until("!!document.querySelector('#chat-ins .ins-detail [data-dec]')", 'the clicked decision in the detail pane');
   const first = await app.evaluate("const c = document.querySelector('#chat-ins .ins-detail [data-dec]'); c.focus(); return c.dataset.dec;");
   await app.key('ArrowDown', 'ArrowDown', 40);
   const after = await app.evaluate("const c = document.querySelector('#chat-ins .ins-detail [data-dec]'); return { id: c?.dataset.dec, focus: document.activeElement === c, sel: document.querySelector('#chat-ins .pk.sel')?.dataset.pick };");
@@ -185,7 +201,9 @@ flow('a memo keeps its lines: Shift+Enter is a new line, Enter adds it, and Ente
   await app.until("document.querySelectorAll('#chat-ins [data-memo]').length === 1", 'the memo');
   assert.equal(await app.evaluate("return document.querySelector('#chat-ins [data-memo] p').innerText;"), 'Release checklist\n- bump the version\n- tag it');
   assert.equal(await app.evaluate("return document.querySelector('#memo-new').value;"), '');
-  // Editing: Shift+Enter stays in the field, Enter saves the lines.
+  // Editing (the memo is selected first: nothing is by default): Shift+Enter stays in the field, Enter saves the lines.
+  await app.click('#chat-ins .memo[data-action="pick"]');
+  await app.until("!!document.querySelector('#chat-ins [data-action=\"memo-edit\"]')", 'the memo selected');
   await app.click('#chat-ins [data-action="memo-edit"]');
   await app.until("document.activeElement?.matches('#chat-ins textarea[data-keep^=\"memo-\"]:not(#memo-new)')", 'the edit field');
   await app.evaluate("const ta = document.activeElement; ta.value = 'Release checklist\\n- tag it'; return 1;");
@@ -1342,4 +1360,54 @@ flow('one name for a waiting decision, a search that finds nothing says so, and 
   await app.until("!document.querySelector('#set-mlist .skel')", 'the model list read');
   const state = await app.evaluate("document.getElementById('set-mlist').textContent.trim()");
   assert.ok(state.length > 1 && state !== '–', state);
+});
+
+flow('a result is cleared on its own by its ✕ or Delete and comes back with Undo, and the list answers the arrows at any width', {}, async (app) => {
+  await app.say('@fake task - First one\n@@fake result One.\n@fake task - Second one\n@@fake result Two.\n@fake task - Third one\n@@fake result Three.');
+  await app.until("document.querySelectorAll('#chat-ins .res').length === 3", 'three result cards');
+  // The default sidebar is one column: the list is one Tab stop, nothing is selected, and its header says "Clear all".
+  assert.equal(await app.evaluate("return !!document.querySelector('#chat-ins .ins-cols.split');"), false);
+  const stops = () => app.evaluate("return [...document.querySelectorAll('#chat-ins .ins-list [data-nav]')].filter((x) => x.tabIndex === 0).map((x) => x.dataset.nav);");
+  assert.equal((await stops()).length, 1);
+  assert.equal(await app.evaluate("document.querySelector('#chat-ins [data-action=\"clear\"][data-kind=\"result\"]').textContent"), 'Clear all');
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-ins .sel, #chat-ins [aria-current=\"true\"]').length"), 0);
+  // ↓ and ↑ move the focus between results; the focused one is the Tab stop and shows its ✕.
+  const ids = await app.evaluate("return [...document.querySelectorAll('#chat-ins .res')].map((x) => x.dataset.nav);");
+  await app.evaluate("document.querySelector('#chat-ins .res').focus(); return 1;");
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  const focused = () => app.evaluate("return document.activeElement?.dataset.nav ?? null;");
+  assert.equal(await focused(), ids[1]);
+  assert.deepEqual(await stops(), [ids[1]]);
+  await app.until("getComputedStyle(document.activeElement.querySelector('.row-acts')).opacity === '1'", 'the ✕ of the focused row');
+  assert.equal(await app.evaluate("document.activeElement.querySelector('.row-x').dataset.tipKey"), 'Delete');
+  await app.key('End', 'End', 35);
+  assert.equal(await focused(), ids[2]);
+  // Delete on the last one clears it alone; the focus goes to the one before it, and the toast offers Undo.
+  await app.key('Delete', 'Delete', 46);
+  await app.until("document.querySelectorAll('#chat-ins .res').length === 2", 'one result cleared');
+  assert.equal(await focused(), ids[1]);
+  assert.match(await app.evaluate("document.querySelector('.toast')?.innerText ?? ''"), /Cleared 1 result/);
+  // Ctrl/Cmd+Z puts it back.
+  await app.key('KeyZ', 'z', 90, process.platform === 'darwin' ? 4 : 2);
+  await app.until("document.querySelectorAll('#chat-ins .res').length === 3", 'the result back');
+  // The ✕ on the first one clears only that one.
+  await app.click(`#chat-ins .res[data-nav="${ids[0]}"] .row-x`);
+  await app.until("document.querySelectorAll('#chat-ins .res').length === 2", 'the first result cleared');
+  assert.deepEqual(await app.evaluate("return [...document.querySelectorAll('#chat-ins .res')].map((x) => x.dataset.nav);"), [ids[1], ids[2]]);
+  // "Clear all" clears the rest.
+  await app.click('#chat-ins [data-action="clear"][data-kind="result"]');
+  await app.until("document.querySelectorAll('#chat-ins .res').length === 0", 'all cleared');
+  // Memos: none is selected at first; ↓ from a focused memo at the default width selects it, then the next one.
+  await app.evaluate("for (const x of ['Alpha memo', 'Beta memo', 'Gamma memo']) await window.ide.call('memo:add', x); return 1;");
+  await app.click('[data-action="ins-tab"][data-v="memo"]');
+  await app.until("document.querySelectorAll('#chat-ins .pk').length === 3", 'three memos');
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-ins .pk.sel').length"), 0);
+  await app.evaluate("document.querySelector('#chat-ins .pk-c > .memo[data-nav]').focus(); return 1;");
+  const first = await focused();
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-ins .pk.sel').length"), 0);
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  await app.until(`document.querySelector('#chat-ins .pk.sel > .pk-c > .memo')?.dataset.nav === '${first}'`, 'the focused memo selected');
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  await app.until(`!!document.querySelector('#chat-ins .pk.sel') && document.querySelector('#chat-ins .pk.sel > .pk-c > .memo')?.dataset.nav !== '${first}'`, 'the next memo selected');
+  assert.equal(await focused(), await app.evaluate("document.querySelector('#chat-ins .pk.sel > .pk-c > .memo').dataset.nav"));
 });

@@ -80,6 +80,9 @@ test('moving between cards stops at the ends; an answered card hands the selecti
   assert.equal(keepCard(['a', 'c'], 'c', ['a', 'b', 'c']), 'c');
   assert.equal(keepCard(['a', 'c'], 'b', ['a', 'b', 'c']), 'c');
   assert.equal(keepCard(['a', 'b'], 'c', ['a', 'b', 'c']), 'b');
-  assert.equal(keepCard(['x'], null, []), 'x');
+  // Nothing is selected until the user selects a card: no first card by default.
+  assert.equal(keepCard(['x'], null, []), null);
+  assert.equal(keepCard(['x', 'y'], null, ['x', 'y']), null);
+  assert.equal(keepCard(['x'], 'gone', []), null);
   assert.equal(keepCard([], 'a', ['a']), null);
 });

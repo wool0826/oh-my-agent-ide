@@ -16,6 +16,23 @@ export function keepPick(ids: string[], cur: string | null, fallback: string | n
   return cur && ids.includes(cur) ? cur : fallback;
 }
 
+/** The item ↑/↓ (and Home/End) go to in a list of `count` from `at`, stopping at the ends; null for other keys. */
+export function listStep(count: number, at: number, key: string): number | null {
+  if (!count) return null;
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  if (key !== 'ArrowDown' && key !== 'ArrowUp') return null;
+  if (at < 0) return 0;
+  return Math.min(count - 1, Math.max(0, at + (key === 'ArrowDown' ? 1 : -1)));
+}
+
+/** The item that takes the focus once `gone` is removed from `keys`: the next one, the one before it at the end. */
+export function focusAfter(keys: string[], gone: string): string | null {
+  const i = keys.indexOf(gone);
+  if (i < 0) return null;
+  return keys[i + 1] ?? keys[i - 1] ?? null;
+}
+
 export type DayWord = 'today' | 'tomorrow' | 'yesterday' | 'week' | 'date';
 
 /** How a day reads next to `now`, in local time: a word for the days around today, a weekday within a week ahead. */
