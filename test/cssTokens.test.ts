@@ -60,7 +60,7 @@ function bare(value: string): string {
 }
 
 function lengths(value: string, ok: RegExp): string[] {
-  return (bare(value).match(/-?\d*\.?\d+(?:px|rem|pt)\b/g) ?? []).filter((n) => !ok.test(n));
+  return (bare(value).match(/-?\d*\.?\d+(?:px|rem|pt)\b/gi) ?? []).filter((n) => !ok.test(n));
 }
 
 const decls = files.flatMap(declarations);
@@ -79,7 +79,7 @@ function problems(kind: string, test: (d: Decl) => string[]): string[] {
 }
 
 const colourProblems = problems('colour', (d) => {
-  const m = d.value.replace(/--[w-]+/g, '').match(COLOR);
+  const m = d.value.replace(/--[\w-]+/g, '').match(COLOR);
   return m ? [m[0]] : [];
 });
 const sizeProblems = [

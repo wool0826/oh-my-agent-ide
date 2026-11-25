@@ -7,7 +7,8 @@ Product and user docs are in `README.md`; past choices are in `docs/DECISIONS.md
 
 - Put every rule (what to show, when to retry, how to merge, what a string means) in a pure module in `src/shared/`:
   no Electron, DOM or file system in it. Main and renderer only call it and wire up the result.
-- Each `src/shared/<name>.ts` has a unit test `test/<name>.test.ts`. A new rule gets its test in the same PR.
+- Each shared module is covered by a unit test in `test/`, usually `test/<name>.test.ts`. A new rule gets its
+  test in the same PR.
 
 ## Checks
 
@@ -29,7 +30,7 @@ The spec, tokens and component gallery are in `docs/design-system/` (start with 
 
 - **Tokens only.** Colours, font sizes, radii and spacing in `src/renderer/styles.css` are `var(--…)` from
   `src/renderer/tokens.css`. `test/cssTokens.test.ts` fails on literals; it allows 0, 1px hairlines, em/%, numbers
-  inside `calc()`, and a short explicit allow-list. Add a token to `tokens.css` only when none fits, for both themes.
+  inside `var()` fallbacks and `calc()`/`min()`/`max()`/`clamp()`, and a short explicit allow-list. Add a token to `tokens.css` only when none fits, for both themes.
 - **Dark is the default theme**; light must work too. Check both.
 - **Selection is a ring, never a fill**: a selected row or card gets a 2px accent ring, no tint under its text.
 - **No explanatory help sentences in the UI.** Labels, titles and tooltips are enough. No native `select`,
