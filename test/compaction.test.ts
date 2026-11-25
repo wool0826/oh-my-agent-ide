@@ -265,6 +265,18 @@ test('a new task under the threshold, or hardly grown since the last compaction,
   workers.closeAll();
 });
 
+test('a Stop during the compaction before a task stops only the compaction: the task still goes out', async () => {
+  const s = new AgentSession({ label: 'S', model: 'claude-opus-5-5', cwd: tmp, systemAppend: '', accountId: 'a1', resume: 'sid' }, {});
+  assert.equal(s.compactFirst(WORKER_TASK_COMPACT, WORKER_TASK_COMPACT + 30_000), true);
+  s.send('[Task T-2] Next');
+  await s.interrupt();
+  feed(s, result({ subtype: 'error_during_execution', is_error: true, errors: ['Interrupted'] }));
+  await tick();
+  assert.deepEqual(sent(), [compactCommand(undefined), '[Task T-2] Next']);
+  assert.equal(s.busy, true);
+  s.close();
+});
+
 test('a task message that waited for a compaction a limit stopped goes on another account, or back to the owner', () => {
   const held: string[][] = [];
   const s = new AgentSession({ label: 'S', model: 'claude-opus-5-5', cwd: tmp, systemAppend: '', accountId: 'a1', resume: 'sid' }, {

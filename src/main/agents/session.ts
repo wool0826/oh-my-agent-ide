@@ -320,6 +320,7 @@ export class AgentSession {
 
   close() {
     this.closed = true;
+    if (this.heldForCompact?.length) log.warn(`[${this.cfg.label}] closed while compacting; ${this.heldForCompact.length} message(s) not sent`);
     this.heldForCompact = null;
     this.input?.close();
     try { this.q?.close(); } catch { /* ignore */ }
@@ -486,13 +487,15 @@ export class AgentSession {
         const resend = this.afterStop;
         this.afterStop = [];
         if (queued && userStop) { this.dropQueued(); queued = false; }
-        // The compaction compactFirst asked for is over: what waited for it goes out now (as new work after a Stop).
+        // The compaction compactFirst asked for is over: what waited for it goes out now. A Stop stopped only the
+        // compaction; the task it waited for has not started yet.
         if (internal && this.heldForCompact) {
           const held = this.takeHeld();
-          if (userStop) resend.push(...held);
-          else if (held.length) {
+          if (held.length && this.q) {
             held.forEach((x) => this.input!.push(userMsg(x)));
             queued = true;
+          } else if (held.length) {
+            setImmediate(() => { if (!this.closed) held.forEach((x) => this.send(x)); });
           }
         }
         this.busy = queued;
