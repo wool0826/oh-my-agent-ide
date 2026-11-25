@@ -1,7 +1,7 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { AgentSession, type SessionEvents } from './session';
-import { ARTIFACT_TOOLS, connectorPrompt } from './connectors';
+import { ARTIFACT_TOOLS, connectorAllowedTools, connectorPrompt } from './connectors';
 import { CodexSession } from './codexSession';
 import { codexToolsFrom, type SdkToolDef } from './codexTools';
 import { codexClient } from '../codex/client';
@@ -406,7 +406,7 @@ export function systemPrompt(codex = false) {
     'A message prefixed with "[Worker updates]" lists what happened to Workers since your last turn. With a message from the user, use what is relevant to the request; no need to report the rest.',
     '"[Automatic turn]" means nobody wrote to you: Worker news started this turn. Judge it. If the user should know (an answer you asked for, a problem, a result that changes what happens next), tell them in one to three sentences what it means for them, not a copy of it; every finished task already shows a result card. Act where needed: answer the Worker, create the next task, or ask the user with request_decision. If there is nothing to say or do, reply with exactly NOOP and nothing else.',
     '"[Decision answer]" is the user\'s answer from the decision inbox. Follow up accordingly.',
-    ...(loadSettings().claudeConnectors && !codex ? ['', ...connectorPrompt()] : []),
+    ...(loadSettings().claudeConnectors && !codex ? ['', ...connectorPrompt(loadSettings().artifactAutoReply)] : []),
     'A user message that starts with "[Reply to NAME]" and a quoted line answers that one earlier message (yours, or a Worker\'s when NAME is its id): read the rest as being about the quoted message.',
     '',
     `Today: ${today()}`,
@@ -601,6 +601,7 @@ class Dispatcher {
       // Artifact appears only once the account has it; claude.ai connectors are MCP servers, not in this list.
       tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', ...(loadSettings().claudeConnectors ? ARTIFACT_TOOLS : [])],
       connectors: loadSettings().claudeConnectors,
+      allowedTools: connectorAllowedTools(loadSettings().claudeConnectors, loadSettings().artifactAutoReply),
       additionalDirectories: [paths().repos],
       effort: loadSettings().dispatcherEffort,
       compactInstructions: DISPATCHER_COMPACT,

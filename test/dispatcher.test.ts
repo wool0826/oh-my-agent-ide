@@ -343,6 +343,10 @@ test('a reply held by a usage limit: the answer, when it goes, is filed under th
 test('the Claude Dispatcher is told about claude.ai artifacts and has the Artifact tool; a Codex one is not told', () => {
   assert.match(systemPrompt(), /claude\.ai artifacts and connectors:/);
   assert.doesNotMatch(systemPrompt(true), /claude\.ai artifacts/);
+  // The settings file here has no artifactAutoReply: it is on by default, so only the comment tool is allowed.
+  assert.equal(loadSettings().artifactAutoReply, true);
+  assert.match(systemPrompt(), /Answer it with ArtifactComments/);
+  assert.deepEqual((dispatcher as unknown as { open(): AgentSession }).open().cfg.allowedTools, ['ArtifactComments']);
   loadSettings().claudeConnectors = false;
   try {
     assert.doesNotMatch(systemPrompt(), /claude\.ai artifacts/);

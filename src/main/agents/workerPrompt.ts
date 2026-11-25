@@ -68,7 +68,7 @@ export function workerPrompt(w: Worker, codex = false) {
       ? ["- Your Claude Code auto-memory folder is shared by every Worker on this repository and by the user's own Claude Code sessions in it. Save only durable facts about the repository or the user's preferences there; never task progress or anything specific to this branch. Update an existing memory instead of adding a duplicate."]
       : []),
     '',
-    ...(s.claudeConnectors && !codex ? [...connectorPrompt(), ''] : []),
+    ...(s.claudeConnectors && !codex ? [...connectorPrompt(s.artifactAutoReply), ''] : []),
     'Questions:',
     codex
       ? '- Make minor choices yourself and mention them in the final report. When the user really must decide, end your turn with the BLOCKED line below and the question.'

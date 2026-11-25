@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tool, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { AgentSession, summarizeTool, type SessionEvents } from './session';
-import { connectorToolLabel } from './connectors';
+import { connectorAllowedTools, connectorToolLabel } from './connectors';
 import { CodexSession, type CodexApproval, type CodexDecision } from './codexSession';
 import { codexClient } from '../codex/client';
 import { providerOf } from '../../shared/models';
@@ -213,6 +213,7 @@ class WorkerManager {
       disallowedTools: UNUSED_TOOLS,
       env: WORKER_ENV,
       connectors: loadSettings().claudeConnectors,
+      allowedTools: connectorAllowedTools(loadSettings().claudeConnectors, loadSettings().artifactAutoReply),
       // With its task finished, an idle Worker is compacted much earlier (see WORKER_IDLE_COMPACT).
       compactAt: () => (this.currentTask(w) ? COMPACT_AT : WORKER_IDLE_COMPACT),
       compactInstructions: WORKER_COMPACT,

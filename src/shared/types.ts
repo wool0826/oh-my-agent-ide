@@ -358,6 +358,8 @@ export interface SettingsView {
   claudeMemory: boolean;
   /** claude.ai connectors (Claude Docs) and the Artifact tool in the Dispatcher's and Workers' Claude sessions. */
   claudeConnectors: boolean;
+  /** With the connectors on: sessions may reply to comments on their artifacts without asking (ArtifactComments). */
+  artifactAutoReply: boolean;
   /** Offer to remember reusable facts from decision answers and corrections. */
   memorySuggest: boolean;
   /** A "!" run or a saved script the user ran hands its result to the Dispatcher, which takes a turn for it. */

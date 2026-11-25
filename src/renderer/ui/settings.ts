@@ -362,6 +362,7 @@ export function settingsHtml() {
       ${row(t('set.claudeRules'), 'set-crules', `<span class="sval${ci && !ci.rules.length ? ' muted' : ''}" data-tip="${esc(ci ? ci.home : '')}">${esc(rulesText)}</span><input class="switch" id="set-crules" type="checkbox" ${st.claudeRules ? 'checked' : ''}>`)}
       ${row(t('set.claudeMemory'), 'set-cmem', `<input class="switch" id="set-cmem" type="checkbox" ${st.claudeMemory ? 'checked' : ''}>`)}
       ${row(t('set.claudeConnectors'), 'set-cconn', `<input class="switch" id="set-cconn" type="checkbox" ${st.claudeConnectors ? 'checked' : ''}>`)}
+      ${row(t('set.artifactAutoReply'), 'set-creply', `<input class="switch" id="set-creply" type="checkbox" ${st.artifactAutoReply ? 'checked' : ''}>`)}
       ${row(t('set.claudeFolder'), 'set-cdir', `<span class="sval" id="set-cdir" data-tip="${esc(ci ? ci.home : '')}">${esc(ci ? shortPath(ci.home, 2) : '…')}</span><button class="btn btn-lg" data-action="reveal-claude">${t('set.open')}</button>`)}`, 'Claude Code')}`;
 
   const models = `${grp(`
@@ -632,5 +633,6 @@ export function readSettingsForm() {
     claudeRules: ($('#set-crules') as HTMLInputElement).checked,
     claudeMemory: ($('#set-cmem') as HTMLInputElement).checked,
     claudeConnectors: ($('#set-cconn') as HTMLInputElement).checked,
+    artifactAutoReply: ($('#set-creply') as HTMLInputElement).checked,
   };
 }
