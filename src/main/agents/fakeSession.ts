@@ -9,6 +9,10 @@ import { FAKE_DEFAULT_REPORT, fakeReport, parseFakeScript, type FakeStep } from 
 import type { StepsFn } from './workerTools';
 import type { SessionEvents } from './session';
 import { run } from '../util';
+import { shouldCompact } from '../../shared/context';
+
+/** How long the fake agent's pretend compaction takes. */
+const FAKE_COMPACT_MS = 400;
 
 export interface FakeSessionConfig {
   label: string;
@@ -60,10 +64,33 @@ export class FakeSession {
   send(text: string) {
     if (this.closed) return;
     this.queue.push(text);
+    if (this.compactingFirst) return;
     if (!this.busy) void this.drain();
   }
 
   compact() { /* nothing to compact */ }
+
+  /** Like AgentSession.compactFirst: a short pretend compaction to a quarter, and what is sent meanwhile waits for it. */
+  private compactingFirst = false;
+  private floor = 0;
+  compactFirst(at: number, known = 0) {
+    if (!this.contextTokens) this.contextTokens = known;
+    if (this.closed || this.busy || this.compactingFirst || !shouldCompact(this.contextTokens, this.floor, at)) return false;
+    const from = this.contextTokens;
+    this.compactingFirst = true;
+    this.ev.onStatus?.('busy', '');
+    this.ev.onCompact?.({ phase: 'start', tokens: from });
+    setTimeout(() => {
+      this.compactingFirst = false;
+      if (this.closed) return;
+      this.contextTokens = this.floor = Math.round(from / 4);
+      this.ev.onContext?.(this.contextTokens);
+      this.ev.onCompact?.({ phase: 'done', from, to: this.contextTokens });
+      if (this.queue.length) void this.drain();
+      else this.ev.onStatus?.('idle', '');
+    }, FAKE_COMPACT_MS);
+    return true;
+  }
   setEffort() { /* no model */ }
   async setMode(mode: string) { this.cfg.permissionMode = mode; }
   async interrupt() { this.abort?.abort(); }

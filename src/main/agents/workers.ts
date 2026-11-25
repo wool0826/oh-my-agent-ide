@@ -43,7 +43,7 @@ import { FakeSession } from './fakeSession';
 import { fakeMode } from '../fake';
 import type { Key } from '../../shared/i18n';
 import { addSpend, hasSpend, spendVars } from '../../shared/spend';
-import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
+import { COMPACT_AT, WORKER_TASK_COMPACT, kTokens } from '../../shared/context';
 import { WORKER_COMPACT } from '../../shared/compactInstructions';
 import { needsPlan, parseResult, taskStarted, workerPrompt } from './workerPrompt';
 import { linkUrl } from '../../shared/linkify';
@@ -219,8 +219,8 @@ class WorkerManager {
       env: WORKER_ENV,
       connectors: loadSettings().claudeConnectors,
       allowedTools: connectorAllowedTools(loadSettings().claudeConnectors, loadSettings().artifactAutoReply),
-      // With its task finished, an idle Worker is compacted much earlier (see WORKER_IDLE_COMPACT).
-      compactAt: () => (this.currentTask(w) ? COMPACT_AT : WORKER_IDLE_COMPACT),
+      // Not when its task has finished: it is compacted before its next task instead (startTask, WORKER_TASK_COMPACT).
+      compactAt: () => (this.currentTask(w) ? COMPACT_AT : Infinity),
       compactInstructions: WORKER_COMPACT,
       accountId: acc.id,
       resume: w.sessionId,
@@ -309,7 +309,11 @@ class WorkerManager {
         w.statusText = '';
         this.touch(w);
       },
-      onLimited: () => this.pause(w, this.currentTask(w)),
+      // A task message that waited for a compaction goes out when the limit resets.
+      onLimited: (held) => {
+        if (held?.length) this.held.set(w.id, [...(this.held.get(w.id) ?? []), ...held]);
+        this.pause(w, this.currentTask(w));
+      },
       // Messages sent while a stopped turn was ending: its task is stopped now, so they go out as new messages do
       // (a follow-up reopens it, or waits for a slot).
       onResend: (texts) => texts.forEach((m) => this.post(w, m)),
@@ -915,10 +919,14 @@ class WorkerManager {
     this.startTask(w, s, task);
   }
 
-  /** Send the task message, with the task's effort and plan mode in place first; `after` follows it. */
+  /**
+   * Send the task message, with the task's effort and plan mode in place first; `after` follows it.
+   * A Worker with a large context from earlier tasks is compacted first; the message waits for that.
+   */
   private startTask(w: Worker, s: WorkerSession, task: Task, after: string[] = []) {
     task.startedAt = nowIso();
     this.checkpoint(w, task.title);
+    if ('compactFirst' in s) s.compactFirst(WORKER_TASK_COMPACT, w.contextTokens);
     s.setEffort(this.effortFor(task));
     // Plan mode must be in place before the task message arrives.
     void s.setMode(needsPlan(task) ? 'plan' : 'auto').then(() => {

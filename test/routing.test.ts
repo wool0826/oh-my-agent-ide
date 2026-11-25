@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { REUSE_MAX_CONTEXT, describePick, keywords, pickWorker, rankWorkers, reuseBlock, type NewTask } from '../src/shared/routing';
+import { REUSE_MAX_CONTEXT, describePick, keywords, newWorkLine, pickWorker, rankWorkers, reuseBlock, type NewTask } from '../src/shared/routing';
+import { WORKER_TASK_COMPACT } from '../src/shared/context';
 import type { Task, Worker } from '../src/shared/types';
 
 const NOW = Date.parse('2026-11-21T12:00:00Z');
@@ -59,6 +60,13 @@ test('routing: busy, open-work, near-compaction, archived and other-model Worker
   assert.equal(reuseBlock(ws[5], tasks), 'stopped with an error');
   // A PR in review does not hold the Worker: review comments come back as a new turn on the same task.
   assert.equal(reuseBlock(ws[1], [task('T-1', { workerId: 'W-02', status: 'pr_open' })]), null);
+});
+
+test('routing: the New work line says when an idle Worker is compacted before the task it takes', () => {
+  assert.equal(newWorkLine(worker('W-01', { contextTokens: WORKER_TASK_COMPACT - 1 }), []), 'can take it');
+  assert.equal(newWorkLine(worker('W-01', { contextTokens: 90_000 }), []), 'can take it (context 90K is compacted before it starts)');
+  assert.equal(newWorkLine(worker('W-01', { contextTokens: REUSE_MAX_CONTEXT }), []), `context ${REUSE_MAX_CONTEXT / 1000}K is near compaction`);
+  assert.equal(newWorkLine(worker('W-01', { status: 'running', contextTokens: 90_000 }), []), 'busy');
 });
 
 test('routing: the Worker that did related work wins over a fresher one', () => {

@@ -2,13 +2,13 @@
 // repository (and, better, the same area of it), with room left in its context and nothing else open.
 // A new Worker is created only when none fits. Shared so the rules can be tested without the app.
 
-import { CONTEXT_WINDOW, kTokens } from './context';
+import { CONTEXT_WINDOW, WORKER_TASK_COMPACT, kTokens } from './context';
 import { memTerms } from './memorySuggest';
 import type { Task, Worker } from './types';
 
 /**
- * A Worker at or above this context is not given new work by itself. Claude Code compacts mid-turn at 217K and the app
- * between turns at 200K (src/shared/context.ts), so a new task would soon cut the very context that made it worth reusing.
+ * A Worker at or above this context is not given new work by itself. It would be compacted before the new task
+ * (from WORKER_TASK_COMPACT, src/shared/context.ts), which cuts most of the very context that made it worth reusing.
  */
 export const REUSE_MAX_CONTEXT = Math.round(CONTEXT_WINDOW * 0.6);
 
@@ -54,6 +54,13 @@ export function reuseBlock(w: W, tasks: T[]): string | null {
   if (tasks.some((x) => x.workerId === w.id && OPEN.has(x.status))) return 'has open work';
   if (w.contextTokens >= REUSE_MAX_CONTEXT) return `context ${kTokens(w.contextTokens)} is near compaction`;
   return null;
+}
+
+/** The "New work" line of list_workers: whether the Worker can take a task, and that it is compacted first. */
+export function newWorkLine(w: W, tasks: T[]): string {
+  const block = reuseBlock(w, tasks);
+  if (block) return block;
+  return w.contextTokens >= WORKER_TASK_COMPACT ? `can take it (context ${kTokens(w.contextTokens)} is compacted before it starts)` : 'can take it';
 }
 
 /**

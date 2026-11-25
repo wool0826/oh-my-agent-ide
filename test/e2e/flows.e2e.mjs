@@ -44,6 +44,30 @@ flow('a permission is asked once, allowed for the task, and the result card has 
   assert.match(log, /Ran: npm install is-odd/);
 });
 
+flow('a Worker is compacted before its next task, not when its task finishes', {}, async (app) => {
+  await app.say('@fake task - Write the release notes\n@@fake tokens 90000\n@@fake result Wrote the release notes.');
+  await app.until("!!document.querySelector('#chat-thread .attach[data-task] [data-action=\"reply\"]')", 'the first result');
+  let s = await app.state();
+  const first = task(s, 'Write the release notes');
+  assert.equal(first.status, 'done');
+  // Finished with a large context: left as it is, so a follow-up still has all of it.
+  assert.equal(s.workers.find((w) => w.id === first.workerId).contextTokens, 90000);
+  assert.doesNotMatch(await app.workerLog(first.workerId), /Compact/);
+  // The next task on the same Worker: compacted first, then the task message goes out.
+  await app.say('@fake task - Polish the release notes\n@@fake result Polished the release notes.');
+  await app.until("document.querySelectorAll('#chat-thread .attach[data-task] [data-action=\"reply\"]').length === 2", 'the second result');
+  s = await app.state();
+  const second = task(s, 'Polish the release notes');
+  assert.equal(second.workerId, first.workerId, 'the same Worker took it');
+  assert.equal(second.status, 'done');
+  const log = await app.workerLog(first.workerId);
+  const at = (re) => log.search(re);
+  // The conversation shows the task as given, then the compaction, then the work on it.
+  assert.ok(at(/Compacting the conversation \(90K\)/) > at(/\[Task T-0002\]/), log);
+  assert.ok(at(/Compacted the conversation \(90K → 23K\)/) < at(/RESULT: Polished/), log);
+  assert.equal(s.workers.find((w) => w.id === first.workerId).contextTokens, 22500);
+});
+
 flow('a URL in a result is a short link on the card and a link in its words', {}, async (app) => {
   await app.say('@fake task - Publish notes\n@@fake result Published [Release notes](https://claude.ai/artifact/abc123), see https://claude.ai/artifact/abc123 today.');
   await app.until("!!document.querySelector('#chat-thread .attach .links a[data-href=\"https://claude.ai/artifact/abc123\"]')", 'the artifact link on the result card');
