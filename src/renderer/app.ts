@@ -147,7 +147,7 @@ export async function act(el: HTMLElement, e: Event) {
     case 'side-toggle': togglePanel('side'); break;
     case 'reply': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
-      const r = { who: el.dataset.who ?? '', quote: el.dataset.quote ?? '', ...(box === 'chat' && el.dataset.task ? { task: el.dataset.task } : {}) };
+      const r = { who: el.dataset.who ?? '', quote: el.dataset.quote ?? '', ...(box === 'chat' && el.dataset.task ? { task: el.dataset.task } : {}), ...(el.dataset.src ? { src: el.dataset.src } : {}) };
       if (box === 'ws') ui.reply.ws = { ...r, wid: ui.wSel ?? '' }; else ui.reply.chat = r;
       renderReply(box);
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
@@ -285,6 +285,21 @@ export async function act(el: HTMLElement, e: Event) {
       input.dispatchEvent(new Event('input'));
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
+      break;
+    }
+    case 'reply-fold': {
+      ui.replyOpen.set(id, el.getAttribute('aria-expanded') !== 'true');
+      renderChat();
+      document.querySelector<HTMLElement>(`.t-fold[data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+      break;
+    }
+    // A quote at the top of a reply: back to the message it quotes, the nearest one above with those words.
+    case 'goto-quote': {
+      const th = el.closest('.thread');
+      const src = [...(th?.querySelectorAll<HTMLElement>('[data-action="reply"]') ?? [])]
+        .filter((b) => b.dataset.who === el.dataset.who && b.dataset.quote === el.dataset.quote && b.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      const msg = src?.closest<HTMLElement>('.t-row, .attach') ?? src?.closest('.bline')?.querySelector<HTMLElement>('.bub') ?? null;
+      if (msg) flashCard(msg); else toast(t('reply.gone'));
       break;
     }
     case 'hand-fold': {

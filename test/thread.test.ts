@@ -1,7 +1,7 @@
 // Replies under a Worker's report in the chat (shared/thread.ts).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { threadLayout, turnReplyTo, type ThreadItem } from '../src/shared/thread';
+import { replyThreads, threadLayout, threadOpen, turnReplyTo, type ThreadItem } from '../src/shared/thread';
 
 const card = (id: string): ThreadItem => ({ kind: 'result', ref: id });
 const fail = (id: string): ThreadItem => ({ kind: 'error', ref: id });
@@ -44,4 +44,27 @@ test('a turn answers a report only when exactly one report started it', () => {
 
 test('a reply to the earlier of two reports back to back is late, under its own chip', () => {
   assert.deepEqual(shape([card('T-1'), card('T-2'), me('T-1'), ai('T-1'), ai('T-2')]), ['-', '-', 'late:T-1', 'in:T-1', 'late:T-2']);
+});
+
+/** Each thread as its first index, card kind and rows, with ids `c0`, `c1`… by position. */
+const threads = (items: ThreadItem[]) => [...replyThreads(items.map((_, i) => ({ id: `c${i}` })), threadLayout(items))].map(([at, g]) => [at, g.late ? 'late' : 'under', g.root, g.rows.join(','), g.key].join(' '));
+
+test('a thread is the replies to one report in a row: under its card, or a later card of its own', () => {
+  assert.deepEqual(threads([card('T-1'), ai('T-1'), me('T-1'), ai(), me('T-1'), ai('T-1'), card('T-2'), ai('T-2')]),
+    ['1 under T-1 1,2 c1', '4 late T-1 4,5 c4', '7 under T-2 7 c7']);
+  // A late thread right after a card of another report is not that card's.
+  assert.deepEqual(threads([card('T-1'), ai(), card('T-2'), me('T-1')]), ['3 late T-1 3 c3']);
+  assert.deepEqual(threads([ai(), me()]), []);
+});
+
+test('only the newest thread is open by default; what the user opened or folded stays so', () => {
+  const set = new Map<string, boolean>();
+  assert.equal(threadOpen('c4', 'c4', set), true);
+  assert.equal(threadOpen('c1', 'c4', set), false);
+  set.set('c1', true).set('c4', false);
+  assert.equal(threadOpen('c1', 'c4', set), true);
+  assert.equal(threadOpen('c4', 'c4', set), false);
+  // A newer thread arrives: the one folded by default folds, the ones the user set keep their state.
+  assert.equal(threadOpen('c7', 'c7', set), true);
+  assert.equal(threadOpen('c1', 'c7', set), true);
 });

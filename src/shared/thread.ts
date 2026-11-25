@@ -56,3 +56,26 @@ export function turnReplyTo(reports: string[]): string | null {
   const ids = [...new Set(reports)];
   return ids.length === 1 ? ids[0] : null;
 }
+
+/** A reply thread as one card (T-0072): the replies to one report in a row. `key` is its first reply's id. */
+export interface ReplyThread { root: string; late: boolean; rows: number[]; key: string }
+
+/** The reply threads of a laid-out chat (threadLayout), by the index of their first reply. */
+export function replyThreads(items: { id: string }[], slots: ThreadSlot[]): Map<number, ReplyThread> {
+  const out = new Map<number, ReplyThread>();
+  let g: ReplyThread | null = null;
+  slots.forEach((slot, i) => {
+    if (slot.depth !== 1) { g = null; return; }
+    if (slot.start || !g) out.set(i, (g = { root: slot.root!, late: slot.late, rows: [], key: items[i].id }));
+    g.rows.push(i);
+  });
+  return out;
+}
+
+/**
+ * Whether a thread is open: as the user left it, else open for the newest thread only, so older talk folds to its
+ * heading as the chat moves on. `set`: the threads the user opened (true) or folded (false), by key.
+ */
+export function threadOpen(key: string, newest: string | undefined, set: ReadonlyMap<string, boolean>): boolean {
+  return set.get(key) ?? key === newest;
+}

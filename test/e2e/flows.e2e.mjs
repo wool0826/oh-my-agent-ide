@@ -484,32 +484,65 @@ flow('a merged PR fires the automation set for merges', { repos: ['demo'] }, asy
   await app.until("document.querySelector('#chat-thread').innerText.includes('The automation ran.')", "the automation's turn in the chat");
 });
 
-flow("a reply to a Worker's report goes under its card, and so does the Dispatcher's answer", {}, async (app) => {
+flow("a reply to a Worker's report becomes a row of its card, folds to a count, and a quote goes back to its message", {}, async (app) => {
+  const send = (text) => app.evaluate(`const i = document.querySelector('#chat-input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#chat-form').requestSubmit(); return 1;`);
   // The Worker reports after the Dispatcher's turn has ended, so nothing comes between the card and the reply.
   await app.say('@fake task - Write the notes\n@@fake wait 800\n@@fake result Wrote the notes.');
   const link = '#chat-thread .attach[data-task] [data-action="reply"]';
   await app.until(`!!document.querySelector(${JSON.stringify(link)})`, 'Reply on the result card');
   await app.click(link);
-  await app.until("!document.querySelector('#chat-reply').hidden", 'the reply chip on the composer');
-  await app.evaluate("const i = document.querySelector('#chat-input'); i.value = 'Why so short?\\n@fake say The notes cover one change.'; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#chat-form').requestSubmit(); return 1;");
-  await app.until("document.querySelector('#chat-thread .rth')?.innerText.includes('The notes cover one change.')", "the Dispatcher's answer under the card");
-  // One step in, right after the card: the user's question with its branch across, then the answer.
-  const shape = await app.evaluate("const g = document.querySelector('#chat-thread .rth'); let p = g.previousElementSibling; while (p && !p.matches('.attach, .bline, .bub, .event')) p = p.previousElementSibling; return { late: g.classList.contains('late'), after: p?.dataset.task ?? null, rows: [...g.querySelectorAll(':scope > .rth-r')].map((r) => r.classList.contains('me') ? 'me' : 'ai'), nested: !!g.querySelector('.rth .rth') };");
-  assert.deepEqual(shape, { late: false, after: 'T-0001', rows: ['me', 'ai'], nested: false });
-  // One well with no connector lines: its rows stack without overlapping and stay inside it.
-  const fit = await app.evaluate("const g = document.querySelector('#chat-thread .rth'); const box = g.getBoundingClientRect(); const rows = [...g.querySelectorAll(':scope > .rth-r')].map((r) => r.getBoundingClientRect()); return { inside: rows.every((r) => r.left >= box.left && r.right <= box.right + 0.5), stacked: rows.every((r, i) => !i || r.top >= rows[i - 1].bottom - 0.5), lines: [...g.querySelectorAll('*')].some((el) => ['::before', '::after'].some((p) => getComputedStyle(el, p).borderLeftWidth !== '0px' && getComputedStyle(el, p).content !== 'none')), quoted: g.querySelector('.rth-r.me').innerText.includes('Wrote the notes') };");
-  assert.deepEqual(fit, { inside: true, stacked: true, lines: false, quoted: false });
-  // A reply after other messages: its own well further down, opening with the report's chip, which goes back to the card.
+  await app.until("!document.querySelector('#chat-reply').hidden", 'the quote card on the composer');
+  // While it is written: two lines in the composer, and the card it answers ringed.
+  const writing = await app.evaluate("const c = document.querySelector('#chat-reply'); return { who: c.querySelector('b').textContent, lines: !!c.querySelector(':scope > span'), ringed: document.querySelector('#chat-thread .attach[data-task=\"T-0001\"]').classList.contains('target') };");
+  assert.deepEqual(writing, { who: 'W-01', lines: true, ringed: true });
+  await send('Why so short?\n@fake say The notes cover one change.');
+  await app.until("document.querySelector('#chat-thread .tcard')?.innerText.includes('The notes cover one change.')", "the Dispatcher's answer in the card");
+  // One card: the report on top, the heading with the count, then a row per reply, never deeper. The quote of the
+  // report is not said again, and the ring went with the reply.
+  const shape = await app.evaluate("const g = document.querySelector('#chat-thread .tcard'); return { top: g.firstElementChild.dataset.task, fold: [g.querySelector('.t-fold').getAttribute('aria-expanded'), g.querySelector('.t-fold b').textContent], rows: [...g.querySelectorAll('.t-rows > .t-row')].map((r) => r.classList.contains('me') ? 'me' : 'ai'), who: [...g.querySelectorAll('.t-row .who b')].map((b) => b.textContent), nested: !!g.querySelector('.tcard .tcard, .t-row .t-row'), quoted: g.querySelector('.t-row.me').innerText.includes('Wrote the notes'), ring: !!document.querySelector('#chat-thread .target') };");
+  assert.deepEqual(shape, { top: 'T-0001', fold: ['true', '2 replies'], rows: ['me', 'ai'], who: ['You', 'Dispatcher'], nested: false, quoted: false, ring: false });
+  const fit = await app.evaluate("const g = document.querySelector('#chat-thread .tcard'); const box = g.getBoundingClientRect(); const rows = [...g.querySelectorAll('.t-row')].map((r) => r.getBoundingClientRect()); return { inside: rows.every((r) => r.left >= box.left && r.right <= box.right + 0.5 && r.bottom <= box.bottom + 0.5), stacked: rows.every((r, i) => !i || r.top >= rows[i - 1].bottom - 0.5) };");
+  assert.deepEqual(fit, { inside: true, stacked: true });
+  // A reply to the plain answer that follows: a quote at the top of the user's bubble, which goes back to it.
   await app.say('Something else\n@fake say Something else answered.');
-  await app.until("document.querySelector('#chat-thread').innerText.includes('Something else answered.')", 'the unrelated answer');
+  await app.until("[...document.querySelectorAll('#chat-thread > .bline')].some((b) => b.innerText.includes('Something else answered.'))", 'the unrelated answer');
+  await app.evaluate("[...document.querySelectorAll('#chat-thread > .bline')].find((b) => b.innerText.includes('Something else answered.')).querySelector('.rbtn').click(); return 1;");
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread > .bline.target')?.innerText.includes('Something else answered.') ?? false"), true, 'the answered bubble ringed');
+  await send('Thanks\n@fake say Any time.');
+  await app.until("!!document.querySelector('#chat-thread .bub.me .bq')", 'the quote in the bubble');
+  await app.click('#chat-thread .bub.me .bq');
+  await app.until("[...document.querySelectorAll('#chat-thread .bub.flash')].some((b) => b.innerText.includes('Something else answered.'))", 'the quoted bubble flashed');
+  // A reply after other messages: a card of its own whose top line goes back to the report. Being the newest, it is
+  // open; the first card folds to its count and its last line.
   await app.click(link);
-  await app.evaluate("const i = document.querySelector('#chat-input'); i.value = 'And the tests?\\n@fake say They pass.'; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#chat-form').requestSubmit(); return 1;");
-  await app.until("document.querySelector('#chat-thread .rth.late')?.innerText.includes('They pass.')", 'the late group');
-  assert.equal(await app.evaluate("document.querySelector('#chat-thread .rth.late').firstElementChild.matches('.rth-ref')"), true, 'the chip opens the well');
-  await app.click('#chat-thread .rth.late .rth-ref');
+  await send('And the tests?\n@fake say They pass.');
+  await app.until("document.querySelector('#chat-thread .tcard.late')?.innerText.includes('They pass.')", 'the later card');
+  const folded = await app.evaluate("const [a, b] = document.querySelectorAll('#chat-thread .tcard'); return { first: [a.querySelector('.t-fold').getAttribute('aria-expanded'), a.querySelector('.t-fold').innerText.replace(/\\s+/g, ' ').trim(), !!a.querySelector('.t-rows')], late: [b.firstElementChild.matches('.t-head'), b.querySelector('.t-fold').getAttribute('aria-expanded')] };");
+  assert.deepEqual(folded, { first: ['false', '2 replies Dispatcher: The notes cover one change.', false], late: [true, 'true'] });
+  await app.click('#chat-thread .tcard.late .t-head');
   await app.until("!!document.querySelector('#chat-thread .attach[data-task=\"T-0001\"].flash')", 'the card flashed');
+  // The heading folds from the keyboard, keeps the focus, and a redraw keeps what the user chose.
+  await app.evaluate("document.querySelector('#chat-thread .tcard:not(.late) .t-fold').focus(); return 1;");
+  // A key with its text, as a keyboard sends it: that is what makes a focused button act.
+  await app.cdp('Input.dispatchKeyEvent', { type: 'keyDown', code: 'Enter', key: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+  await app.cdp('Input.dispatchKeyEvent', { type: 'keyUp', code: 'Enter', key: 'Enter', windowsVirtualKeyCode: 13 });
+  await app.until("document.querySelector('#chat-thread .tcard:not(.late) .t-fold')?.getAttribute('aria-expanded') === 'true'", 'the first card opened');
+  assert.equal(await app.evaluate("document.activeElement?.matches('.tcard:not(.late) .t-fold') ?? false"), true, 'the focus stays on the heading');
+  // A reply to a row that is not right above it: a one-line quote on its row, which goes back to the row.
+  const replyTo = (words) => app.evaluate(`[...document.querySelectorAll('#chat-thread .tcard.late .t-row:not(.me)')].find((r) => r.innerText.includes(${JSON.stringify(words)})).querySelector('.rbtn').click(); return 1;`);
+  await replyTo('They pass.');
+  await send('Which ones?\n@fake say All of them.');
+  await app.until("document.querySelector('#chat-thread .tcard.late')?.innerText.includes('All of them.')", 'the answer in the later card');
+  await replyTo('They pass.');
+  await send('Even the slow ones?\n@fake say Yes.');
+  await app.until("!!document.querySelector('#chat-thread .tcard.late .t-q')", 'the quote line on the row');
+  const rows = await app.evaluate("return [...document.querySelectorAll('#chat-thread .tcard.late .t-row.me')].map((r) => !!r.querySelector('.t-q'));");
+  assert.deepEqual(rows, [false, false, true], 'only the quote of a row further up shows');
+  await app.click('#chat-thread .tcard.late .t-q');
+  await app.until("document.querySelector('#chat-thread .t-row.flash')?.innerText.includes('They pass.') ?? false", 'the quoted row flashed');
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread .tcard:not(.late) .t-fold').getAttribute('aria-expanded')"), 'true', 'still open after the redraws');
   const chat = (await app.state()).chat;
-  assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001']]);
+  assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001']]);
 });
 
 flow('a line run with ! shows its output in the chat; with the reply chip off, the Dispatcher gets it with its next turn', {}, async (app) => {

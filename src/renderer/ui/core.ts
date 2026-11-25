@@ -112,6 +112,8 @@ export const ui = {
   undo: [] as { kind: 'result' | 'auto'; ids: string[] }[],
   /** Hand-out blocks the user opened or folded against their default (by their first line). */
   handToggled: new Set<string>(),
+  /** Reply threads in the chat the user opened or folded, by their first reply's id; the rest follow their default. */
+  replyOpen: new Map<string, boolean>(),
   /** Inbox results whose summary is shown in full. */
   resOpen: new Set<string>(),
   lastChatKey: '',
@@ -206,23 +208,46 @@ export function inline(s: unknown) {
   return esc(s).replace(/`([^`\n]+)`/g, '<code>$1</code>');
 }
 
-/** An agent's bubble with the Reply button beside it. `box` is the composer the reply is written in. */
-export function replyable(bubble: string, box: 'chat' | 'ws', who: string, text: string, task?: string) {
+/**
+ * The Reply button of an agent's message. `box` is the composer the reply is written in; `task` files the reply under
+ * that report; `src` names the message, so it is ringed while it is being answered. Empty for a message with no text.
+ */
+export function replyBtn(box: 'chat' | 'ws', who: string, text: string, task?: string, src?: string) {
   const quote = replyExcerpt(text);
-  if (!quote) return bubble;
-  return `<div class="bline">${bubble}<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}"${task ? ` data-task="${esc(task)}"` : ''} data-tip="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button></div>`;
+  if (!quote) return '';
+  return `<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}"${task ? ` data-task="${esc(task)}"` : ''}${src ? ` data-src="${esc(src)}"` : ''} data-tip="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button>`;
+}
+
+/** An agent's bubble with the Reply button beside it (replyBtn). */
+export function replyable(bubble: string, box: 'chat' | 'ws', who: string, text: string, task?: string, src?: string) {
+  const btn = replyBtn(box, who, text, task, src);
+  return btn ? `<div class="bline"${src ? ` data-src="${esc(src)}"` : ''}>${bubble}${btn}</div>` : bubble;
 }
 
 /** Whose message a quote is from, as shown: a side question's answer reads as one. */
-const whoLabel = (who: string) => (who === SIDE_WHO ? t('sq.from') : who);
+export const whoLabel = (who: string) => (who === SIDE_WHO ? t('sq.from') : who);
 
-/** The chip above a composer's text: whose message is being answered, its first words, and a way out. */
+/**
+ * The quote card inside a composer while a reply is written: whose message, two lines of it, and a way out. The
+ * message being answered is ringed in the thread (markReplyTarget).
+ */
 export function renderReply(box: 'chat' | 'ws') {
   if (box === 'ws' && ui.reply.ws && ui.reply.ws.wid !== ui.wSel) ui.reply.ws = null;
   const r = ui.reply[box];
   const el = $(box === 'chat' ? '#chat-reply' : '#ws-reply');
   el.hidden = !r;
-  el.innerHTML = r ? `${sym(r.icon ?? 's-reply')}<b>${esc(whoLabel(r.who))}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" data-tip="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
+  el.innerHTML = r ? `${r.icon ? sym(r.icon) : ''}<b>${esc(whoLabel(r.who))}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" data-tip="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
+  el.classList.toggle('has-icon', !!r?.icon);
+  markReplyTarget(box);
+}
+
+/** Rings the message a composer's reply answers, wherever its thread draws it (`data-src`). */
+export function markReplyTarget(box: 'chat' | 'ws') {
+  const th = document.querySelector(box === 'chat' ? '#chat-thread' : '#ws-thread');
+  if (!th) return;
+  const src = ui.reply[box]?.src;
+  for (const el of th.querySelectorAll('.target')) if (el.getAttribute('data-src') !== src) el.classList.remove('target');
+  if (src) for (const el of th.querySelectorAll(`[data-src="${CSS.escape(src)}"]:not(.rbtn)`)) el.classList.add('target');
 }
 
 /** The text to send from a composer, with the quote on top while a reply is open. The reply stays until the send succeeds. */
@@ -245,10 +270,20 @@ export function md(src: string) {
   return mdHtml(src);
 }
 
+/**
+ * What a reply quotes: whose message and its first words. It goes back to the message (goto-quote); a side
+ * question's answer has no message in the thread, so its quote only reads. `cls`: `bq` at the top of a bubble, `t-q`
+ * a line in a reply thread.
+ */
+export function quoteHtml(who: string, quote: string, cls: 'bq' | 't-q') {
+  const inner = `${cls === 't-q' ? sym('s-reply') : ''}<b>${esc(whoLabel(who))}</b><span>${esc(quote)}</span>`;
+  return who === SIDE_WHO ? `<span class="${cls}">${inner}</span>` : `<button type="button" class="${cls}" data-action="goto-quote" data-who="${esc(who)}" data-quote="${esc(quote)}">${inner}</button>`;
+}
+
 /** A user message: plain text, with the "[Attached files]" block shown as file chips. */
 export function userText(text: string): string {
   const reply = parseReply(text);
-  if (reply) return `<span class="quote"><b>${esc(whoLabel(reply.who))}</b><span>${esc(reply.quote)}</span></span>${userText(reply.body)}`;
+  if (reply) return `${quoteHtml(reply.who, reply.quote, 'bq')}${userText(reply.body)}`;
   const i = text.indexOf('\n\n[Attached files]\n');
   if (i < 0) return linkify(esc(text));
   const files = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));

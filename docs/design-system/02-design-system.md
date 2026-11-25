@@ -302,6 +302,10 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - Event line: 12 `--text-secondary`, centered, glyph 13; `.is-error` in `--danger-text`; clickable events (`.event-btn`) are cards with radius 14.
 - Stamp 11/500 `--text-tertiary`; typing dots on `--surface-raised`.
 - Result card: radius 20, padding 12/16, glyph 20, title 600, summary 12 `--text-secondary`, links 12.
+- Reply thread (`.tcard`, design B): a report and its replies are one card, `--surface-card` + rim, radius 20, width min(560, 92%). The report sits on top over a `--border-subtle` hairline; then the fold heading (`.t-fold`: chevron, count 12/600 `--text-primary`, and when folded the last reply in one line, `--text-secondary`); then a row per reply (`.t-row`: padding 6/10, radius 10, name 11/600 with the time in `--text-tertiary`, the user's name in `--accent-text`; text 13/1.5). Never deeper than one row. Hover: `--surface-hover`; the Reply button sits at the row's top right. A thread that comes later is a card of its own whose top line (`.t-head`) names the report and goes back to it.
+- Folding: the newest thread is open, older ones fold to their heading; what the user opens or folds stays across redraws. The heading is a button with `aria-expanded` and keeps the focus when it toggles.
+- Quotes: in a thread row, one line (`.t-q`: reply glyph, name 600, words with an ellipsis) only when it quotes a message other than the report or the row right above. In the user's bubble, two lines at the top over a `--on-accent-line` hairline (`.bq`), `--surface-on-accent` under the pointer. Both go back to the quoted message, which flashes a 2px `--accent` ring. Cut words show in full in the tooltip.
+- While a reply is written: a two-line quote card inside the composer (`--surface-card` + rim, radius 14: name 11/600, two lines of the quote, a 20 close button), and the message it answers has a 2px `--accent` ring, no fill.
 
 ### Composer — `.composer`
 - Floating capsule, radius 24, padding 6/6/6/16, `--surface-composer` + `--blur-overlay` + `--rim-strong` + `--shadow-3`.
@@ -366,6 +370,7 @@ One tooltip for the whole app, in place of the native `title` (which the OS draw
 ## 2.10 Accessibility summary
 
 - **Contrast**: 250/250 checked pairs pass AA in dark and light (`03-contrast-report.md`). Before → after (dark): white on the blue gradient 2.86 → 4.63; menu highlight 3.65 → 4.95; count badge 3.41 → 5.06; danger button 2.94 → 4.67; tertiary text in an inspector card 3.50 → 4.72; link in a card 3.16 → 5.36; focus ring against a panel 1.77 → 6.05.
+- **Focus on the blue bubble**: the blue ring would not show on blue, so controls inside the user's bubble use `--on-accent-focus` (2px white), offset 1.
 - **Focus**: one visible style, `2px solid --focus-ring`, offset 2 (fields: 0); `:focus-visible` everywhere except text fields. A message that has the keyboard gets the same ring round its bubble or card.
 - **Keyboard**: a layer (Settings, the palette, a dialog) takes the focus when it opens and gives it back when it closes. A tab list, a segmented choice and a conversation are one Tab stop each: the arrows, Home and End move inside (tabs and choices wrap and choose at once; messages stop at the ends), and Tab inside a message goes through its controls and then leaves the conversation.
 - **Invalid fields**: the outline always comes with `aria-invalid`.
