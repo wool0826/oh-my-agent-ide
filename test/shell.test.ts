@@ -1,7 +1,7 @@
 // Lines run from the chat with "!" (shared/shell.ts): the mode, what is kept of the output, and the hand-over.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addOutput, handOver, HANDOVER_MAX, lineCount, shellClock, shellCommand, shellTook, tailLines, SHELL_KEEP, SHELL_KEEP_CHARS } from '../src/shared/shell';
+import { addOutput, errRows, handOver, HANDOVER_MAX, lineCount, markErr, outParts, shellClock, shellCommand, shellRisky, shellTook, tailLines, SHELL_KEEP, SHELL_KEEP_CHARS } from '../src/shared/shell';
 import { parseFakeScript } from '../src/shared/fakeScript';
 
 test('a line that starts with "!" is a command; anything else is a message', () => {
@@ -64,4 +64,39 @@ test('a long output is cut to its end, from a line start, under the cap', () => 
 
 test('the fake agent can say back the lines it was sent that contain a text', () => {
   assert.deepEqual(parseFakeScript('@fake echo [Shell run]'), [{ do: 'echo', match: '[Shell run]' }]);
+});
+
+test('stderr lines are kept by their number, only within what is kept', () => {
+  assert.deepEqual(markErr([], 3, 5, 0), [3, 4, 5]);
+  assert.deepEqual(markErr([1, 4], 3, 5, 0), [1, 3, 4, 5]);
+  // Lines before what is kept go.
+  assert.deepEqual(markErr([1, 2, 8], 9, 9, 2), [2, 8, 9]);
+  assert.deepEqual(markErr([], 0, 1_000_000, 999_998), [999_998, 999_999, 1_000_000]);
+});
+
+test('the kept output knows its stderr lines by index, however much went before', () => {
+  // Lines 0..9 in all, the last 4 kept (6..9): stderr lines 5, 7 and 8 are 1 and 2 there.
+  assert.deepEqual(errRows([5, 7, 8], 9, 4), [1, 2]);
+  assert.deepEqual(errRows([], 9, 4), []);
+});
+
+test('output is cut into stretches by where its lines came from', () => {
+  assert.deepEqual(outParts('a\nb\nc\nd', [1, 2]), [
+    { err: false, at: 0, lines: ['a'] },
+    { err: true, at: 1, lines: ['b', 'c'] },
+    { err: false, at: 3, lines: ['d'] },
+  ]);
+  // A folded block shows only its end: the stderr indexes still count from the kept output's start.
+  assert.deepEqual(outParts('c\nd', [1, 2], 2), [{ err: true, at: 0, lines: ['c'] }, { err: false, at: 1, lines: ['d'] }]);
+  assert.deepEqual(outParts('', [0]), []);
+  assert.deepEqual(outParts('x', undefined), [{ err: false, at: 0, lines: ['x'] }]);
+});
+
+test('a line that deletes, overwrites or forces is risky; everyday lines are not', () => {
+  for (const cmd of ['rm -rf build', 'sudo rm x', 'git push --force origin main', 'git push -f', 'git reset --hard HEAD~1', 'git clean -fdx', 'Remove-Item -Recurse dist', 'del /s *.log', 'git branch x -D', 'psql -c "DROP TABLE users"', 'npm ci && rm -r node_modules']) {
+    assert.equal(shellRisky(cmd), true, cmd);
+  }
+  for (const cmd of ['git status', 'npm run build', 'ls -la', 'git push origin main', 'echo rm', 'git log --format=%H', 'npm run format', 'grep -r delete src', 'node -e "console.log(1)"']) {
+    assert.equal(shellRisky(cmd), false, cmd);
+  }
 });

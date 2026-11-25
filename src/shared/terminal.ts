@@ -25,26 +25,3 @@ export function pushHistory(history: readonly string[], line: string): string[] 
   if (!l || history[history.length - 1] === l) return [...history];
   return [...history, l].slice(-TERM_HISTORY);
 }
-
-/** The panel's size, as the user dragged it, kept within its limits and the room it has. */
-export const TERM_MIN = { w: 360, h: 180 };
-export const TERM_DEF = { w: 560, h: 320 };
-export function clampTermSize(w: number, h: number, room: { w: number; h: number }): { w: number; h: number } {
-  const fit = (v: number, min: number, max: number, def: number) => Math.round(Math.max(min, Math.min(Number.isFinite(v) ? v : def, Math.max(min, max))));
-  return { w: fit(w, TERM_MIN.w, room.w, TERM_DEF.w), h: fit(h, TERM_MIN.h, room.h, TERM_DEF.h) };
-}
-
-/** One arrow key press on a resize handle; with Shift, four. */
-export const TERM_STEP = 16;
-/**
- * The panel sits in the chat's bottom-left corner and grows up and to the right: → and ↑ make it bigger, ← and ↓
- * smaller. The top handle (`h`) takes ↑ ↓, the side one (`w`) ← →. Null for any other key.
- */
-export function keyTermSize(edge: 'w' | 'h', key: string, shift: boolean, now: { w: number; h: number }, room: { w: number; h: number }): { w: number; h: number } | null {
-  const step = TERM_STEP * (shift ? 4 : 1);
-  const keys: Record<string, [number, number]> = edge === 'w' ? { ArrowRight: [step, 0], ArrowLeft: [-step, 0] } : { ArrowUp: [0, step], ArrowDown: [0, -step] };
-  const d = keys[key];
-  if (!d) return null;
-  const s = clampTermSize(now.w, now.h, room);
-  return clampTermSize(s.w + d[0], s.h + d[1], room);
-}

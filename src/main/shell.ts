@@ -10,7 +10,7 @@ import { t } from './i18n';
 import { log } from './log';
 import { nowIso } from './util';
 import { loadSettings } from './settings';
-import { addOutput, dropRcNoise, handOver, lineCount, shellArgs, tailLines } from '../shared/shell';
+import { addOutput, dropRcNoise, errRows, handOver, lineCount, markErr, shellArgs, SHELL_KEEP, tailLines } from '../shared/shell';
 import type { ChatItem, ShellRun } from '../shared/types';
 
 /**
@@ -60,37 +60,59 @@ export function startLine(run: ShellRun, cwd: string, output: () => void, ended:
   // Line breaks seen in all: the count of lines, past what is kept.
   let breaks = 0;
   const count = () => breaks + (out && !out.endsWith('\n') ? 1 : 0);
-  const keep = (text: string) => {
+  // stderr lines by their number over all the output; the run keeps where they are in its kept end (G2).
+  let errAbs: number[] = [];
+  const syncErr = () => {
+    if (!errAbs.length) return;
+    // The kept end drops the line breaks it ends with: its last line is the one before them.
+    const lastAbs = breaks - (/\n*$/.exec(out)?.[0].length ?? 0);
+    const rows = errRows(errAbs, lastAbs, lineCount(run.out));
+    if (rows.length) run.err = rows; else delete run.err;
+  };
+  const keep = (text: string, err = false) => {
     if (!text) return;
+    // The line this chunk starts on (the one being written, or the next).
+    const from = breaks;
     out = addOutput(out, text);
     run.out = tailLines(out);
     // Counted as kept: without terminal codes, with "\r\n" and "\r" as one break.
     breaks += (addOutput('', text, Infinity).match(/\n/g) ?? []).length;
     run.lines = count();
+    if (err) {
+      const to = out.endsWith('\n') ? breaks - 1 : breaks;
+      if (to >= from) errAbs = markErr(errAbs, from, to, Math.max(0, breaks - SHELL_KEEP - 1));
+    }
+    syncErr();
     output();
   };
   // One decoder for each stream, so a character split between chunks stays whole.
-  // A marked run's output starts with what the rc files print; it is dropped up to RC_DONE (stderr is on stdout then).
-  let rc: string | null = how.marked ? '' : null;
-  const fromShell = (text: string, last = false) => {
-    const r = dropRcNoise(rc, text, last);
-    rc = r.pending;
-    keep(r.show);
-  };
-  for (const [stream, shell] of [[proc.stdout, true], [proc.stderr, false]] as const) {
+  // A marked run's output starts with what the rc files print; each pipe drops it up to its own RC_DONE.
+  for (const [stream, err] of [[proc.stdout, false], [proc.stderr, true]] as const) {
     const dec = new StringDecoder('utf8');
-    const take = shell ? fromShell : keep;
+    let rc: string | null = how.marked ? '' : null;
+    const take = (text: string, last = false) => {
+      const r = dropRcNoise(rc, text, last);
+      rc = r.pending;
+      keep(r.show, err);
+    };
     stream?.on('data', (d: Buffer) => take(dec.write(d)));
-    stream?.on('end', () => (shell ? fromShell(dec.end(), true) : keep(dec.end())));
+    stream?.on('end', () => take(dec.end(), true));
   }
   const started = Date.now();
   let done = false;
   const end = (code: number | null, note = '') => {
     if (done) return;
     done = true;
-    if (note) out = addOutput(out, `${note}\n`);
+    if (note) {
+      out = addOutput(out, `${note}\n`);
+      // Counted like any other output, so the stderr lines before it keep their place.
+      breaks += (addOutput('', `${note}\n`, Infinity).match(/\n/g) ?? []).length;
+    }
     run.out = tailLines(out);
     run.lines = Math.max(count(), lineCount(out));
+    syncErr();
+    // Why it could not start is an error line too: the last one.
+    if (note) run.err = [...new Set([...(run.err ?? []), lineCount(run.out) - 1])];
     run.running = false;
     run.code = run.stopped ? null : code;
     run.ms = Date.now() - started;

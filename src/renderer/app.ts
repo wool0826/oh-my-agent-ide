@@ -33,6 +33,7 @@ import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, re
 import { initResize } from './ui/resize';
 import { initTip } from './ui/tip';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
+import { bindDock } from './ui/dock';
 import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
 import { bindThread, closeThread, openThread, revealQuoted } from './ui/threadPanel';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
@@ -233,11 +234,21 @@ export async function act(el: HTMLElement, e: Event) {
     case 'sq-toggle': toggleSide(); break;
     // The side terminal (ui/terminal.ts).
     case 'tm-toggle': toggleTerm(); break;
-    case 'tm-hide': hideTerm(); break;
+    // The dock under the chat (ui/dock.ts): its tabs, and putting it away.
+    case 'dock-tab': if (el.dataset.v === 'sq') openSide(); else openTerm(); break;
+    case 'dock-hide': if (sq.open) minimiseSide(); else hideTerm(); break;
+    // A stretch of stderr opened past its first line, or folded back (G2): in the chat's runs and the terminal's.
+    case 'out-err': {
+      const k = el.dataset.k ?? '';
+      if (!ui.errOpen.delete(k)) ui.errOpen.add(k);
+      renderChat(true);
+      renderTerm();
+      document.querySelector<HTMLElement>(`[data-action="out-err"][data-k="${CSS.escape(k)}"]`)?.focus({ preventScroll: true });
+      break;
+    }
     case 'tm-clear': await call('term:clear'); $('#tm-input').focus(); break;
     case 'tm-stop': (el as HTMLButtonElement).disabled = true; void tryCall('term:stop', id); break;
     case 'tm-cwd': pickTermFolder(el); break;
-    case 'sq-min': minimiseSide(); break;
     case 'sq-close': void closeSide(); break;
     case 'sq-model': pickSideModel(el); break;
     case 'sq-folder': pickSideFolder(el); break;
@@ -1032,13 +1043,13 @@ export function init() {
     // Ctrl+` opens the side terminal, and hides it from inside; Ctrl on the Mac too, as in other editors.
     if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.code === 'Backquote' && !ui.settingsShown) {
       e.preventDefault();
-      if (term.open && $('#tm').contains(document.activeElement)) hideTerm();
+      if (term.open && $('#dock').contains(document.activeElement)) hideTerm();
       else { if (ui.view !== 'chat') go({ view: 'chat' }); openTerm(); }
       return;
     }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !ui.settingsShown) {
       e.preventDefault();
-      if (sq.open && $('#sq').contains(document.activeElement)) minimiseSide();
+      if (sq.open && $('#dock').contains(document.activeElement)) minimiseSide();
       else { if (ui.view !== 'chat') go({ view: 'chat' }); openSide(); }
       return;
     }
@@ -1259,6 +1270,7 @@ export function init() {
   bindSide();
   bindThread();
   bindTerm();
+  bindDock((tab) => { if (tab === 'sq') openSide(); else openTerm(); });
   ide.onTermState(setTermView);
   void call('term:state').then((v) => { if (v) setTermView(v); });
   ide.onSideState(setSideView);

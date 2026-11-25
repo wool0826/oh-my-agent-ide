@@ -1,11 +1,11 @@
 // "!" in the chat composer (T-0053 item 2): shell mode, where Enter runs the line as the user, and the run's block
 // in the thread. The run itself is main/shell.ts; what is kept and handed over is shared/shell.ts.
-import { SHELL_FOLDED, shellClock, shellTook, tailLines } from '../../shared/shell';
+import { outParts, SHELL_FOLDED, shellClock, shellRisky, shellTook, tailLines } from '../../shared/shell';
 import type { ChatItem } from '../../shared/types';
 import { $, call, esc, S, sym, t, ui } from './core';
 import { openPop, pop } from './controls';
 
-/** The composer goes into shell mode: the "!" leaves the text and turns the composer red, with Shell and the folder. */
+/** The composer goes into shell mode: the "!" leaves the text and the composer gets a warn ring, with Shell and the folder. */
 export function enterShell() {
   if (ui.shell) return;
   ui.shell = true;
@@ -33,10 +33,44 @@ export function renderShellBar() {
   input.classList.toggle('mono', ui.shell);
   input.setAttribute('aria-label', t(ui.shell ? 'shell.aria' : 'aria.message'));
   input.placeholder = ui.shell ? t('shell.placeholder') : '';
-  if (!ui.shell) { bar.innerHTML = ''; return; }
+  if (!ui.shell) { bar.innerHTML = ''; markRisky(input); return; }
   const repo = repoNow();
   const where = repo || t('shell.home');
-  bar.innerHTML = `<span class="sh-mode">${sym('s-term')}${t('shell.mode')}</span><button type="button" class="sh-cwd" data-action="shell-cwd" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('shell.folderAria', { where }))}">${t('shell.in', { where: `<b>${esc(where)}</b>` })}<svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>${askChip()}<span class="gap"></span><span class="sh-hint"><kbd>↵</kbd>${t('shell.hintRun')}<kbd>Esc</kbd>${t('shell.hintMessage')}</span>`;
+  bar.innerHTML = `<span class="sh-mode">${sym('s-term')}${t('shell.mode')}</span>${cwdButton('shell-cwd', where)}${askChip()}<span class="sh-risk" hidden>${sym('s-alert')}${t('shell.risky')}</span><span class="gap"></span><span class="sh-hint"><kbd>↵</kbd>${t('shell.hintRun')}<kbd>Esc</kbd>${t('shell.hintMessage')}</span>`;
+  markRisky(input);
+}
+
+/** The folder button of the shell bar and the terminal: "in <folder>" as one piece of text, then its chevron. */
+export function cwdButton(action: string, where: string, id = '') {
+  return `<button type="button" class="sh-cwd"${id ? ` id="${id}"` : ''} data-action="${action}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('shell.folderAria', { where }))}"><span class="sh-cwd-t">${t('shell.in', { where: `<b>${esc(where)}</b>` })}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
+}
+
+/** A line that deletes, overwrites or forces (shared/shell.ts shellRisky): the composer turns red and says so (G3). */
+export function markRisky(input: HTMLTextAreaElement) {
+  const risky = ui.shell && shellRisky(input.value);
+  $('#chat-form').classList.toggle('risky', risky);
+  const chip = document.querySelector<HTMLElement>('#chat-shbar .sh-risk');
+  if (chip) chip.hidden = !risky;
+}
+
+/**
+ * A run's output as shown (G2): stdout lines as they are, and each stretch of stderr in the danger colour with only its
+ * first line until "+N lines" opens it. `id` names the run for what is opened (ui.errOpen); `text` is the kept output
+ * from line `offset` on; `end` goes after the last line.
+ */
+export function outHtml(id: string, text: string, err: readonly number[] | undefined, offset = 0, end = '') {
+  const parts = outParts(text, err, offset);
+  return parts.map((p, i) => {
+    const tail = i === parts.length - 1 ? end : '';
+    if (!p.err) return `<span class="o-seg">${esc(p.lines.join('\n'))}${tail}</span>`;
+    // Opened by where it starts in the kept output, so two stretches with the same first line open apart.
+    const key = `${id}:${offset + p.at}`;
+    const open = ui.errOpen.has(key);
+    const rest = p.lines.length - 1;
+    const shown = open ? p.lines : p.lines.slice(0, 1);
+    const more = rest ? `<button type="button" class="o-more" data-action="out-err" data-k="${esc(key)}" aria-expanded="${open}">${open ? t('shell.errLess') : t('shell.errMore', { n: rest })}</button>` : '';
+    return `<span class="o-seg o-err">${esc(shown.join('\n'))}${tail}</span>${more}`;
+  }).join('');
 }
 
 /** Whether a run hands its result to the Dispatcher for a turn of its own (Settings shellAsk), switched on the bar. */
@@ -89,7 +123,7 @@ export function shellKeys(e: KeyboardEvent, input: HTMLTextAreaElement): boolean
 
 /** After the text changed: a "!" at the start of the text moves into the mode. */
 export function shellInput(input: HTMLTextAreaElement) {
-  if (ui.shell || !input.value.startsWith('!')) return;
+  if (ui.shell || !input.value.startsWith('!')) { markRisky(input); return; }
   const at = input.selectionStart;
   input.value = input.value.slice(1);
   input.setSelectionRange(Math.max(0, at - 1), Math.max(0, at - 1));
@@ -123,13 +157,13 @@ export function shellBlockHtml(c: ChatItem) {
     : r.sent === 'off' ? `<span class="sh-dlv off">${t('shell.notSent')}</span>`
     : `<span class="sh-dlv wait"><i></i>${t(r.ask ? 'shell.willAsk' : 'shell.willSend')}</span>`;
   const acts = r.running ? '' : `<span class="gap"></span><a tabindex="0" role="link" data-action="shell-copy" data-id="${esc(c.id)}">${t('shell.copy')}</a><a tabindex="0" role="link" data-action="shell-again" data-id="${esc(c.id)}">${t('shell.again')}</a>`;
-  const out = shown ? `<pre class="sh-out">${esc(shown)}${r.running ? '<span class="sh-caret" aria-hidden="true"></span>' : ''}</pre>` : '';
+  const out = shown ? `<pre class="sh-out">${outHtml(c.id, shown, r.err, keptLines - shownLines, r.running ? '<span class="sh-caret" aria-hidden="true"></span>' : '')}</pre>` : '';
   return `<div class="sh-run${r.running ? ' live' : ''}" data-id="${esc(c.id)}" role="group" aria-label="${esc(t('shell.blockAria', { cmd: r.cmd }))}"><header><span class="sh-bang" aria-hidden="true">!</span>${r.script ? `<b class="sh-name">${esc(r.script)}</b>` : ''}<code${lines.length > 1 ? ` data-tip="${esc(r.cmd)}"` : ''}>${esc(lines[0])}${lines.length > 1 ? ` <span class="sh-more">${t('script.moreLines', { n: lines.length - 1 })}</span>` : ''}</code><span class="sh-in">${t('shell.in', { where: esc(where) })}</span>${pill}${time}${stop}</header>${fold}${out}<footer>${dlv}${acts}</footer></div>`;
 }
 
 /** What makes a run's block change: drawn again when it does. */
 export function shellKey(items: ChatItem[]) {
-  return items.filter((c) => c.shell).map((c) => `${c.id}${c.shell!.running}${c.shell!.sent}${c.shell!.lines}${c.shell!.out.length}${ui.shellOpen.has(c.id)}`).join();
+  return items.filter((c) => c.shell).map((c) => `${c.id}${c.shell!.running}${c.shell!.sent}${c.shell!.lines}${c.shell!.out.length}${c.shell!.err?.length ?? 0}${ui.shellOpen.has(c.id)}${[...ui.errOpen].filter((k) => k.startsWith(`${c.id}:`)).join('|')}`).join();
 }
 
 /** The time on running blocks goes on by itself, without drawing the thread again. */
