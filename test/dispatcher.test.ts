@@ -315,6 +315,23 @@ test('a message the user files under a report, and the answer to it, go under th
   assert.equal(store.data.chat.filter((c) => c.kind === 'user').pop()?.replyTo, undefined);
 });
 
+test('a reply to a Dispatcher message opens a thread on it; a reply to one of its replies stays in that thread', async () => {
+  dispatcher.send('Plan?');
+  turn('Here is the plan.');
+  const root = store.data.chat.filter((c) => c.kind === 'dispatcher').pop()!;
+  dispatcher.send('And step 2?', [], root.id);
+  turn('Step 2 is tests.');
+  const answer = store.data.chat.filter((c) => c.kind === 'dispatcher').pop()!;
+  assert.equal(answer.replyTo, root.id);
+  dispatcher.send('Which tests?', [], answer.id);
+  assert.equal(store.data.chat.filter((c) => c.kind === 'user').pop()?.replyTo, root.id);
+  turn('Unit.');
+  // The user's own message is no root: a reply to it is a plain message.
+  const mine = store.data.chat.filter((c) => c.kind === 'user' && !c.replyTo).pop()!;
+  dispatcher.send('Again', [], mine.id);
+  assert.equal(store.data.chat.filter((c) => c.kind === 'user').pop()?.replyTo, undefined);
+});
+
 test("the user's message to the Dispatcher's turn in progress: its answer goes where the message was filed", async () => {
   card('T-1');
   dispatcher.send('Hello');
