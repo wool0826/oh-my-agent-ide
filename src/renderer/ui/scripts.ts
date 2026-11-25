@@ -19,8 +19,8 @@ function formHtml(key: string, s?: ShellScript) {
   const repo = folders.get(key) ?? s?.repo ?? '';
   const where = whereLabel(repo);
   const btns = s
-    ? `<button class="btn" data-action="script-edit-cancel" data-id="${esc(key)}">${t('cancel')}</button><button class="btn def" data-action="script-save" data-id="${esc(key)}">${t('save')}</button>`
-    : `<button class="btn def" data-action="script-save" data-id="new">${t('script.add')}</button>`;
+    ? `<button class="btn" data-action="script-edit-cancel" data-id="${esc(key)}">${t('cancel')}</button><button class="btn btn-primary" data-action="script-save" data-id="${esc(key)}">${t('save')}</button>`
+    : `<button class="btn btn-primary" data-action="script-save" data-id="new">${t('script.add')}</button>`;
   return `<div class="script-form" data-form="${esc(key)}">
     <input class="inp" data-keep="script-name-${esc(key)}" data-enter="script-save" data-id="${esc(key)}" maxlength="${SCRIPT_NAME_MAX}" placeholder="${t('script.name')}" aria-label="${t('script.name')}"${s ? ` value="${esc(s.name)}"` : ''}>
     <textarea class="inp mono" data-keep="script-cmd-${esc(key)}" data-enter="script-save" data-id="${esc(key)}" maxlength="${SCRIPT_CMD_MAX}" spellcheck="false" placeholder="${t('script.cmd')}" aria-label="${t('script.cmd')}">${s ? esc(s.cmd) : ''}</textarea>
@@ -35,7 +35,7 @@ function cmdHtml(cmd: string, all: boolean) {
 }
 
 function runBtn(s: ShellScript) {
-  return `<button class="btn def script-run" data-action="script-run" data-id="${esc(s.id)}" aria-label="${esc(t('script.runAria', { name: s.name }))}">${sym('s-play')}${t('script.run')}</button>`;
+  return `<button class="btn btn-primary script-run" data-action="script-run" data-id="${esc(s.id)}" aria-label="${esc(t('script.runAria', { name: s.name }))}">${sym('s-play')}${t('script.run')}</button>`;
 }
 
 function scriptSlot(s: ShellScript) {
@@ -70,7 +70,7 @@ export function scriptsHtml() {
 
 function formErrHtml() {
   const msg = ui.formErr.script;
-  return msg ? `<div class="ferr" role="alert"><span>${esc(t('err.notSent', { msg }))}</span><button type="button" class="clear-x always" data-action="form-err-x" data-id="script" data-tip="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg><use href="#s-x"/></svg></button></div>` : '';
+  return msg ? `<div class="ferr" role="alert"><span>${esc(t('err.notSent', { msg }))}</span><button type="button" class="btn btn-icon btn-sm clear-x always" data-action="form-err-x" data-id="script" data-tip="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg><use href="#s-x"/></svg></button></div>` : '';
 }
 
 const field = <T extends HTMLElement>(name: string, key: string) => document.querySelector<T>(`#chat-ins [data-keep="script-${name}-${CSS.escape(key)}"]`);

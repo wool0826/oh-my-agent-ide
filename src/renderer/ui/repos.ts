@@ -32,7 +32,7 @@ export async function loadJira() {
 export function jiraHtml() {
   if (!jiraOn()) return '';
   if (jira === undefined) void loadJira();
-  const refresh = `<button class="clear-x always" data-action="jira-refresh" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
+  const refresh = `<button class="btn btn-icon btn-sm clear-x always" data-action="jira-refresh" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
   const head = (n: string) => `<div class="jira-h"><b>Jira</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
   if (jira === undefined || jira === 'loading') return `${head('')}<div class="jira-list" role="status" aria-label="${t('issue.loading')}">${skel(3, 'file')}</div>`;
   if (!Array.isArray(jira)) return `${head('')}<div class="jira-list"><div class="jira-msg err">${esc(jira.error)}</div></div>`;
@@ -69,7 +69,7 @@ export function preflightRows() {
     // A missing tool and a tool that is there but not signed in read differently (gh: not installed vs `gh auth login`).
     const why = c.ok ? '' : c.missing ? t('pre.missing') : c.id === 'ghAuth' ? t('pre.fix.ghAuth') : cmd ? '' : t(`pre.fix.${c.id}` as Key);
     const fix = (why ? `<span class="pre-fix">${esc(why)}</span>` : '') + (cmd ? `<code class="pre-cmd">${esc(cmd)}</code>` : c.missing ? `<span class="pre-fix">${t(`pre.fix.${c.id}` as Key)}</span>` : '');
-    return `<div class="srow"><span class="lbl">${esc(name)}</span><span class="pre-r"${c.detail ? ` tabindex="0" data-tip="${esc(c.detail)}"` : ''}>${fix}<i class="pill ${c.ok ? 'green' : 'red'}">${t(c.ok ? 'pre.ok' : 'pre.fail')}</i></span></div>`;
+    return `<div class="srow"><span class="lbl">${esc(name)}</span><span class="pre-r"${c.detail ? ` tabindex="0" data-tip="${esc(c.detail)}"` : ''}>${fix}<i class="pill" data-tone="${c.ok ? 'success' : 'danger'}">${t(c.ok ? 'pre.ok' : 'pre.fail')}</i></span></div>`;
   }).join('');
 }
 
@@ -83,14 +83,14 @@ export function renderRepos() {
   const main = $('#repo-main');
   const addBtn = (cls: string) => `<button class="btn ${cls}" data-action="repo-add-open"${ui.repoAdd ? ' disabled' : ''}>${t('repo.add')}</button>`;
   if (!s.repos.length) {
-    main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('def')}</div>${jiraHtml()}`;
+    main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('btn-primary')}</div>${jiraHtml()}`;
   } else keepScroll(main, () => {
     main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
       const local = r.local ? `<span class="pill" data-tip="${esc(t('repo.localNote'))}">${t('repo.local')}</span>` : '';
-      return `<div tabindex="0" role="button" class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${local}${run ? `<span class="pill blue">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill pr-open">PR ${pr}</span>` : ''}</span></div>`;
+      return `<div tabindex="0" role="button" class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${local}${run ? `<span class="pill" data-tone="accent">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill" data-tone="pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}${jiraHtml()}</div>`;
   });
   const ins = $('#repo-ins');
@@ -116,7 +116,7 @@ export function renderRepos() {
       ${issuesHtml(r)}
       <div class="ins-h"><b role="heading" aria-level="2">${t('wk.tasks')}</b><small>${all.length}</small></div>
       <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
-      <div class="ins-act"><button class="btn danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
+      <div class="ins-act"><button class="btn btn-danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
 }
 
@@ -125,7 +125,7 @@ export function issuesHtml(r: Repo) {
   if (!ghRepoRef(r.url)) return '';
   const v = ui.issues.get(r.name);
   if (v === undefined) { void loadIssues(r.name); }
-  const refresh = `<button class="clear-x always" data-action="issues-refresh" data-id="${esc(r.name)}" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
+  const refresh = `<button class="btn btn-icon btn-sm clear-x always" data-action="issues-refresh" data-id="${esc(r.name)}" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`;
   const head = (n: string) => `<div class="ins-h"><b role="heading" aria-level="2">${t('issue.title')}</b>${n ? `<small>${n}</small>` : ''}<span class="gap"></span>${refresh}</div>`;
   if (v === undefined || v === 'loading') return `${head('')}<div class="group" role="status" aria-label="${t('issue.loading')}">${skel(3, 'mini')}</div>`;
   // The error itself, not only in a tooltip, with a way to ask again (L17).
@@ -158,7 +158,7 @@ export function repoAddHtml() {
     <textarea class="inp" id="repo-add-desc" data-keep="repo-add-desc" placeholder="${esc(t('repo.addDescPh'))}"${off}></textarea>
     ${progress ? `<div class="repo-add-progress" role="status">${esc(progress)}</div>` : ''}
     ${!ui.repoAdding && ui.repoAddError ? `<div class="repo-add-error" role="alert">${esc(ui.repoAddError)}</div>` : ''}
-    <div class="ins-act"><button class="btn" data-action="repo-add-cancel">${t('cancel')}</button><button class="btn def" data-action="repo-add"${off}>${t(ui.repoAdding ? 'repo.adding' : 'repo.addGo')}</button></div>`;
+    <div class="ins-act"><button class="btn" data-action="repo-add-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="repo-add"${off}>${t(ui.repoAdding ? 'repo.adding' : 'repo.addGo')}</button></div>`;
 }
 
 export async function addRepo() {

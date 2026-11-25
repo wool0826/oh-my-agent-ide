@@ -19,7 +19,7 @@ import { act } from '../app';
 import { applyWidths } from './resize';
 import { ageHtml, away, tickDecisions } from './chat';
 import { pop } from './controls';
-import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, oneLine, pct, prNum, queuedLabel, ring, S, store, sym, t, task, ui, when, worker } from './core';
+import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, queuedLabel, ring, S, store, sym, t, task, ui, when, worker } from './core';
 import { setTip } from './tip';
 import { segc } from './settings';
 import { screen } from './history';
@@ -217,7 +217,7 @@ export function workerActs(w: Worker) {
 /** The × on a queued task's row: asks before cancelling it. */
 export function cancelX(x: Task) {
   const label = esc(`${t('cancel.task')}: ${x.title}`);
-  return `<button class="clear-x" data-action="task-cancel" data-id="${esc(x.id)}" data-tip="${t('cancel.task')}" aria-label="${label}"><svg><use href="#s-x"/></svg></button>`;
+  return `<button class="btn btn-icon btn-sm clear-x" data-action="task-cancel" data-id="${esc(x.id)}" data-tip="${t('cancel.task')}" aria-label="${label}"><svg><use href="#s-x"/></svg></button>`;
 }
 
 /** "5h", "7d", "30d": how long a usage window is. */
@@ -297,7 +297,7 @@ export function usageCard(a: AccountView) {
     // A window without a figure looks unknown (a hatched track), never like 0%.
     const none = w.utilization === null;
     const note = none ? (a.usageUpdatedAt ? t('usage.noFigure') : '') : left ? t('usage.resetsIn', { t: left }) : '';
-    return `<div class="uw"><span class="wl">${label}</span><span class="cap${none ? ' none' : ''}"><i class="${lv(w.utilization)}" style="width:${Math.min(100, w.utilization ?? 0)}%"></i></span><b>${pct(w.utilization)}</b><small>${esc(note)}</small></div>`;
+    return `<div class="uw"><span class="wl">${label}</span><span class="meter${none ? ' none' : ''}"${meterLevel(w.utilization)}><i style="width:${Math.min(100, w.utilization ?? 0)}%"></i></span><b>${pct(w.utilization)}</b><small>${esc(note)}</small></div>`;
   }).join('');
   // A failed account keeps its last figures, dimmed, with the time they are from.
   const old = !!a.lastError && !!a.usageUpdatedAt;
@@ -305,7 +305,7 @@ export function usageCard(a: AccountView) {
     ? a.kind === 'login' && a.provider === 'claude' ? t('usage.fromSessions', { t: when(a.usageUpdatedAt) }) : t('usage.asOf', { t: when(a.usageUpdatedAt) })
     : '';
   const state = a.limited
-    ? `<span class="pill red">${esc(limitText(a))}</span>`
+    ? `<span class="pill" data-tone="danger">${esc(limitText(a))}</span>`
     : old ? `<time class="old">${esc(t('usage.figuresAt', { t: clock(a.usageUpdatedAt!) }))}</time>`
     : `<time>${esc(fresh)}</time>`;
   const note = a.lastError ? `<p class="err">${esc(a.lastError)}</p>` : !a.usageUpdatedAt ? `<p>${t('usage.unknown')}</p>` : '';
@@ -447,7 +447,7 @@ function toolbarAccount(a: AccountView) {
   const failed = !!a.lastError;
   const out = usedUp(a);
   const left = out && leftText(out.at);
-  const side = out ? `<span class="pill red ulim">${esc(left ? t('usage.resetsIn', { t: left }) : t('usage.limited'))}</span>` : '';
+  const side = out ? `<span class="pill ulim" data-tone="danger">${esc(left ? t('usage.resetsIn', { t: left }) : t('usage.limited'))}</span>` : '';
   return `<span class="uacct${out ? ' limited' : ''}${failed ? ' failed' : ''}" data-id="${esc(a.id)}"><span class="ur">${ringsSvg(a)}</span>${side}</span>`;
 }
 
@@ -465,9 +465,9 @@ export function applyPanels() {
   const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
   $('#fake-badge').hidden = !S?.fake;
   // A failed check comes before a newer release: the gear's dot is red for it.
-  document.querySelector('.foot-btn[data-action="open-settings"]')?.classList.toggle('has-issue', !!S?.preflightFailed);
+  document.querySelector('.side-foot [data-action="open-settings"]')?.classList.toggle('has-issue', !!S?.preflightFailed);
   // The gear carries a dot while a newer release waits.
-  document.querySelector('.foot-btn[data-action="open-settings"]')?.classList.toggle('has-update', !!S?.update);
+  document.querySelector('.side-foot [data-action="open-settings"]')?.classList.toggle('has-update', !!S?.update);
   const find = $('#cmdk-btn');
   setTip(find, t('cmdk.tip'), isMac ? '⌘K' : 'Ctrl+K');
   find.setAttribute('aria-label', t('cmdk.tip'));

@@ -78,6 +78,7 @@
   --fs-headline: calc(15 * var(--px));
   --fs-title: calc(17 * var(--px));
   --fs-display: calc(24 * var(--px));
+  --fs-glyph: calc(20 * var(--px));
   --fs-code: calc(12 * var(--px));
   --lh-title: 1.25;
   --lh-ui: 1.4;
@@ -137,7 +138,9 @@
   --blur-panel: blur(28px) saturate(180%);
   --blur-overlay: blur(32px) saturate(190%);
   --blur-scrim: blur(3px);
+  --z-raised: 1;
   --z-composer: 2;
+  --z-resize: 3;
   --z-menu-catch: 30;
   --z-menu: 31;
   --z-settings: 40;
@@ -183,6 +186,8 @@
   --text-link: var(--ref-blue-300);
   --text-on-accent: var(--ref-gray-0);
   --text-on-solid: var(--ref-gray-0);
+  --surface-on-accent: rgba(255, 255, 255, .2);
+  --surface-on-accent-sunken: rgba(0, 0, 0, .2);
   --border-subtle: rgba(255, 255, 255, .09);
   --border-default: rgba(255, 255, 255, .14);
   --border-strong: rgba(255, 255, 255, .4);
@@ -253,6 +258,8 @@
   --accent-rim: inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 10px -2px var(--accent-glow);
   --danger-fill: linear-gradient(180deg, var(--danger-fill-top), var(--danger-fill-bottom));
   --danger-rim: inset 0 1px 0 rgba(255, 255, 255, .26), 0 2px 10px -2px var(--danger-glow);
+  --rim-on-accent: inset 0 1px 0 rgba(255, 255, 255, .22);
+  --knob-edge: 0 0 0 .5px rgba(0, 0, 0, .3);
   --focus-outline: 2px solid var(--focus-ring);
   --focus-offset: 2px;
 }
@@ -291,6 +298,8 @@
   --text-link: var(--ref-blue-700);
   --text-on-accent: var(--ref-gray-0);
   --text-on-solid: var(--ref-gray-0);
+  --surface-on-accent: rgba(255, 255, 255, .2);
+  --surface-on-accent-sunken: rgba(0, 0, 0, .2);
   --border-subtle: rgba(0, 0, 0, .08);
   --border-default: rgba(0, 0, 0, .12);
   --border-strong: rgba(0, 0, 0, .45);
@@ -361,6 +370,8 @@
   --accent-rim: inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 10px -2px var(--accent-glow);
   --danger-fill: linear-gradient(180deg, var(--danger-fill-top), var(--danger-fill-bottom));
   --danger-rim: inset 0 1px 0 rgba(255, 255, 255, .26), 0 2px 10px -2px var(--danger-glow);
+  --rim-on-accent: inset 0 1px 0 rgba(255, 255, 255, .22);
+  --knob-edge: 0 0 0 .5px rgba(0, 0, 0, .3);
   --focus-outline: 2px solid var(--focus-ring);
   --focus-offset: 2px;
 }
@@ -398,6 +409,8 @@
     --text-link: var(--ref-blue-700);
     --text-on-accent: var(--ref-gray-0);
     --text-on-solid: var(--ref-gray-0);
+    --surface-on-accent: rgba(255, 255, 255, .2);
+    --surface-on-accent-sunken: rgba(0, 0, 0, .2);
     --border-subtle: rgba(0, 0, 0, .08);
     --border-default: rgba(0, 0, 0, .12);
     --border-strong: rgba(0, 0, 0, .45);
@@ -468,6 +481,8 @@
     --accent-rim: inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 10px -2px var(--accent-glow);
     --danger-fill: linear-gradient(180deg, var(--danger-fill-top), var(--danger-fill-bottom));
     --danger-rim: inset 0 1px 0 rgba(255, 255, 255, .26), 0 2px 10px -2px var(--danger-glow);
+    --rim-on-accent: inset 0 1px 0 rgba(255, 255, 255, .22);
+    --knob-edge: 0 0 0 .5px rgba(0, 0, 0, .3);
     --focus-outline: 2px solid var(--focus-ring);
     --focus-offset: 2px;
   }

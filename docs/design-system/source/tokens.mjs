@@ -44,6 +44,7 @@ export const scale = {
     headline: 'calc(15 * var(--px))', // empty states, dialog titles, settings title bar
     title: 'calc(17 * var(--px))', // view headers (Worker, Repositories, Memory)
     display: 'calc(24 * var(--px))', // settings pane titles
+    glyph: 'calc(20 * var(--px))', // the glyph of a result or failure card in the chat
     code: 'calc(12 * var(--px))', // code blocks, diffs, mono inputs
   },
   lh: { title: '1.25', ui: '1.4', body: '1.5', code: '1.5' },
@@ -65,7 +66,7 @@ export const scale = {
     stretch: 'cubic-bezier(.3, .8, .4, 1)', // tab pill squash and stretch
   },
   blur: { panel: 'blur(28px) saturate(180%)', overlay: 'blur(32px) saturate(190%)', scrim: 'blur(3px)' },
-  z: { composer: '2', 'menu-catch': '30', menu: '31', settings: '40', scrim: '50', dialog: '51', toast: '60', popover: '80', ctxmenu: '90', tooltip: '100' },
+  z: { raised: '1', composer: '2', resize: '3', 'menu-catch': '30', menu: '31', settings: '40', scrim: '50', dialog: '51', toast: '60', popover: '80', ctxmenu: '90', tooltip: '100' },
 };
 
 // Semantic roles. Keys are the CSS variable names without "--".
@@ -73,6 +74,9 @@ export const scale = {
 const common = {
   'text-on-accent': '{ref.gray.0}',
   'text-on-solid': '{ref.gray.0}',
+  // on an accent fill (a sent message, a highlighted row): a chip or key cap, and a well
+  'surface-on-accent': 'rgba(255, 255, 255, .2)',
+  'surface-on-accent-sunken': 'rgba(0, 0, 0, .2)',
 };
 
 export const themes = {

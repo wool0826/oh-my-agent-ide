@@ -40,7 +40,7 @@ import { canStop } from '../shared/canStop';
 /** Shows a view tab. Navigation goes through go(), which calls this. */
 export function setView(v: View) {
   ui.view = v;
-  document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+  document.querySelectorAll<HTMLButtonElement>('#views button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
   document.querySelectorAll<HTMLElement>('.view').forEach((el) => { el.hidden = el.dataset.view !== v; });
   if (v === 'memory') void loadMemory();
   renderAll(true);
@@ -238,8 +238,8 @@ export async function act(el: HTMLElement, e: Event) {
       menu.dataset.for = 'ctx';
       const spent = hasSpend(S!.dispatcher.spend) ? `<div class="note">${t('spend.dispatcher')}<br>${spendHtml(S!.dispatcher.spend)}</div>` : '';
       // With no context there is nothing to compact or to start again: only what was spent is left to show.
-      const items = S!.dispatcher.contextTokens ? `<button role="menuitem" data-action="ctx-compact">${t('ctx.compact')}</button><button role="menuitem" data-action="ctx-clear">${t('ctx.clear')}…</button>` : '';
-      menu.innerHTML = `${spent}${spent && items ? '<hr>' : ''}${items}`;
+      const items = S!.dispatcher.contextTokens ? `<button class="menu-item" role="menuitem" data-action="ctx-compact">${t('ctx.compact')}</button><button class="menu-item" role="menuitem" data-action="ctx-clear">${t('ctx.clear')}…</button>` : '';
+      menu.innerHTML = `${spent}${spent && items ? '<div class="menu-sep"></div>' : ''}${items}`;
       // Above the meter, its right edge on the meter's.
       const r = el.getBoundingClientRect();
       openCtxMenu((w) => r.right - w, (h) => r.top - h - 6, el);
@@ -512,7 +512,7 @@ export async function act(el: HTMLElement, e: Event) {
       const inp = document.querySelector<HTMLInputElement>(`[data-keep="aa-${id}"]`);
       const v = inp?.value.trim();
       if (!v) { inp?.focus(); return; }
-      const scope = (document.querySelector<HTMLInputElement>(`input[name="scope-${id}"]:checked`)?.value ?? 'once') as 'once' | 'preference';
+      const scope = ((document.getElementById(`scope-${id}`) as HTMLInputElement | null)?.value ?? 'once') as 'once' | 'preference';
       ui.aaEdit = null;
       await call('auto:correct', id, v, scope);
       break;
@@ -862,7 +862,7 @@ export function init() {
     if (el.id === 'set-q') { ui.setQ = el.value; filterPanes(); return; }
     if (el.closest('#sheet') && el.id !== 'set-home') saveSoon(el.matches('.step-v, .slider') ? 300 : 600);
   });
-  document.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => go({ view: b.dataset.v as View })));
+  document.querySelectorAll<HTMLButtonElement>('#views button').forEach((b) => b.addEventListener('click', () => go({ view: b.dataset.v as View })));
   // Mouse side buttons step through the screen history. Their default (the page's own history) is blocked.
   const sideButton = (e: MouseEvent) => e.button === 3 || e.button === 4;
   document.addEventListener('mousedown', (e) => { if (sideButton(e)) e.preventDefault(); });
@@ -1079,17 +1079,17 @@ export function init() {
       const w = worker(id);
       const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
       menu.dataset.for = 'worker';
-      menu.innerHTML = `<button role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && canStop(w, cur) ? `<button role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
+      menu.innerHTML = `<button class="menu-item" role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && canStop(w, cur) ? `<button class="menu-item" role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
       openCtxMenu(x, y);
       return;
     }
     menu.dataset.for = 'aa';
-    menu.innerHTML = `<button role="menuitem" data-action="aa-edit" data-id="${id}">${t('aa.correct')}…</button><button role="menuitem" data-action="view" data-v="memory">${t('aa.viewMemory')}</button>`;
+    menu.innerHTML = `<button class="menu-item" role="menuitem" data-action="aa-edit" data-id="${id}">${t('aa.correct')}…</button><button class="menu-item" role="menuitem" data-action="view" data-v="memory">${t('aa.viewMemory')}</button>`;
     openCtxMenu(x, y);
   });
   // The menu keeps the keyboard: arrows move between its items, Tab closes it (L14).
   $('#ctxmenu').addEventListener('keydown', (e) => {
-    const items = [...$('#ctxmenu').querySelectorAll<HTMLElement>('button')];
+    const items = [...$('#ctxmenu').querySelectorAll<HTMLElement>('.menu-item')];
     const at = items.indexOf(document.activeElement as HTMLElement);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); }
     else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeCtxMenu(true); }

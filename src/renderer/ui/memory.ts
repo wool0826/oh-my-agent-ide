@@ -3,7 +3,7 @@ import type { MemoryFile, MemoryHits } from '../../shared/types';
 import { type Key } from '../../shared/i18n';
 import { PAGE } from '../../shared/paging';
 import { act } from '../app';
-import { $, ago, call, esc, hhmm, ic, moreBtn, S, scrollQuietly, sym, t, tone, ui } from './core';
+import { $, ago, call, esc, hhmm, ic, moreBtn, pillTone, S, scrollQuietly, sym, t, tone, ui } from './core';
 
 /** What the last sync with the remote did: "Synced, 2m, 3 in · 1 out", or the failure and the commits that wait. */
 export function memSyncDetail() {
@@ -19,9 +19,9 @@ export function renderMemSync() {
   const detail = memSyncDetail();
   const pill = $('#mem-sync');
   if (pill) {
-    const tone = m.state === 'ok' ? ' green' : m.state === 'error' ? ' orange' : m.state === 'syncing' ? ' blue' : '';
+    const tn = m.state === 'ok' ? 'success' : m.state === 'error' ? 'warning' : m.state === 'syncing' ? 'accent' : '';
     const label = !m.remote ? t('mem.sync.off') : m.state === 'off' ? '' : t(`mem.sync.${m.state}` as Key);
-    pill.innerHTML = label ? `<span class="pill${tone}"${m.error ? ` data-tip="${esc(m.error)}"` : ''}>${esc(detail ? `${label} · ${detail}` : label)}</span>` : '';
+    pill.innerHTML = label ? `<span class="pill"${pillTone(tn)}${m.error ? ` data-tip="${esc(m.error)}"` : ''}>${esc(detail ? `${label} · ${detail}` : label)}</span>` : '';
   }
   const row = document.getElementById('set-msync');
   if (!row) return;
@@ -74,5 +74,5 @@ export function renderMemory() {
   }
   ins.innerHTML = `<div class="ins-h"><b role="heading" aria-level="2">${esc(ui.memSel)}</b></div>
     <textarea class="inp memedit" id="mem-edit" aria-label="${esc(ui.memSel)}" spellcheck="false">${esc(ui.memText)}</textarea>
-    <div class="ins-act">${ui.memSel.startsWith('repos/') ? `<button class="btn" data-action="mem-promote" data-id="${esc(ui.memSel.slice(6, -3))}" data-tip="${t('mem.promoteHint')}">${t('mem.promote')}</button>` : ''}<button class="btn def" data-action="mem-save">${t('save')}</button></div>`;
+    <div class="ins-act">${ui.memSel.startsWith('repos/') ? `<button class="btn" data-action="mem-promote" data-id="${esc(ui.memSel.slice(6, -3))}" data-tip="${t('mem.promoteHint')}">${t('mem.promote')}</button>` : ''}<button class="btn btn-primary" data-action="mem-save">${t('save')}</button></div>`;
 }

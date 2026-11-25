@@ -219,11 +219,11 @@ export function bindTerm() {
 
 function headHtml(r: TermRun) {
   const where = r.repo || t('shell.home');
-  const pill = r.running ? `<span class="pill blue"><i class="sh-spin" aria-hidden="true"></i>${t('shell.running')}</span>`
-    : r.stopped ? `<span class="pill gray">${t('shell.stopped')}</span>`
-    : `<span class="pill ${r.code === 0 ? 'green' : 'red'}">${t('shell.exit', { n: r.code ?? '?' })}</span>`;
+  const pill = r.running ? `<span class="pill" data-tone="accent"><i class="sh-spin" aria-hidden="true"></i>${t('shell.running')}</span>`
+    : r.stopped ? `<span class="pill">${t('shell.stopped')}</span>`
+    : `<span class="pill" data-tone="${r.code === 0 ? 'success' : 'danger'}">${t('shell.exit', { n: r.code ?? '?' })}</span>`;
   const time = r.running ? `<time data-start="${esc(r.startedAt)}">${shellClock(Date.now() - Date.parse(r.startedAt))}</time>` : `<time>${shellTook(r.ms)}</time>`;
-  const stop = r.running ? `<button type="button" class="btn tm-stop" data-action="tm-stop" data-id="${esc(r.id)}" aria-label="${esc(t('shell.stopAria', { cmd: r.cmd }))}">${t('shell.stop')}</button>` : '';
+  const stop = r.running ? `<button type="button" class="btn btn-sm tm-stop" data-action="tm-stop" data-id="${esc(r.id)}" aria-label="${esc(t('shell.stopAria', { cmd: r.cmd }))}">${t('shell.stop')}</button>` : '';
   return `<span class="tm-ps" aria-hidden="true">$</span><code>${esc(r.cmd)}</code><span class="tm-in">${esc(where)}</span>${pill}${time}${stop}`;
 }
 

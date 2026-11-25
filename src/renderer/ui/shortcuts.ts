@@ -48,7 +48,7 @@ export function openShortcuts() {
   root.innerHTML = `<div class="dlg-back" data-action="keys-close"></div>
   <div class="dlg keys" role="dialog" aria-modal="true" aria-labelledby="keys-t">
     <h2 id="keys-t">${t('keys.title')}</h2>${shortcutsHtml()}
-    <div class="dlg-btns"><button class="btn def" data-action="keys-close">${t('close')}</button></div>
+    <div class="dlg-btns"><button class="btn btn-lg btn-primary" data-action="keys-close">${t('close')}</button></div>
   </div>`;
   root.classList.add('opening');
   root.hidden = false;

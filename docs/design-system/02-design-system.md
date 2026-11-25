@@ -175,6 +175,7 @@ Stack unchanged (system fonts, Hangul fallbacks included). Mono gains Menlo and 
 | `--fs-caption` | 12 | 1.4 / 1.5 | 400–500 | Secondary lines, buttons, chips, fields in panels, event lines |
 | `--fs-caption2` | 11 | 1.4 | 400; 600 for headers, badges | Pills, badges, timestamps, meter labels, section headers |
 | `--fs-code` | 12 | `--lh-code` 1.5 | 400 | Code blocks, diffs, mono fields |
+| `--fs-glyph` | 20 | 1 | 400 | The glyph of an attachment tile (`.attach .tile`); a drawing size that follows the text size, not a text style |
 
 Mapping from today: 10 and 10.5 → 11; 11.5 → 12; 12.5 → 13 (titles) or 12 (meta); 14 → 15; 20 (result glyph) becomes an icon size. Nothing is smaller than 11px.
 
@@ -229,7 +230,7 @@ Targets smaller than 24px visually (chip remove 20, clear 24) get a transparent 
 
 Light theme uses the same geometry at about a third of the opacity.
 
-Rims: `--rim-subtle` (hairline), `--rim` (cards, controls, panels), `--rim-strong` (floating glass, thumbs). In light theme a rim is a white top-left highlight plus a dark 0.5px hairline, so white cards stay visible on the light canvas.
+Rims: `--rim-subtle` (hairline), `--rim` (cards, controls, panels), `--rim-strong` (floating glass, thumbs), `--rim-on-accent` (the top highlight of the user's own bubble), `--knob-edge` (the 0.5px edge of switch and slider knobs). In light theme a rim is a white top-left highlight plus a dark 0.5px hairline, so white cards stay visible on the light canvas.
 
 Blur: `--blur-panel` 28px/180% (panels, toolbar capsules, result card), `--blur-overlay` 32px/190% (composer, menus, dialog, toast), `--blur-scrim` 3px.
 
@@ -241,6 +242,7 @@ Blur: `--blur-panel` 28px/180% (panels, toolbar capsules, result card), `--blur-
 | Composer | `--surface-composer` | `--rim-strong` | 3 | overlay |
 | Menu / popover / toast | `--surface-overlay` | `--rim-strong` | 4 (toast 3) | overlay |
 | Dialog | `--surface-overlay` on `--surface-scrim` | `--rim-strong` | 5 | overlay / scrim |
+| Chip or key on an accent fill | `--surface-on-accent` (lighter) / `--surface-on-accent-sunken` (the quote in the user's bubble) | — | — | — |
 
 ## 2.7 Motion
 
@@ -273,16 +275,16 @@ The tab pill keeps its exact current motion and script. With reduce motion every
 All states below are shown in `design-system.html` (forced with `.is-hover` / `.is-active` / `disabled`). Reference CSS: `tokens/components.css`.
 
 ### Buttons — `.btn`
-- Sizes: `.btn-sm` 24 · default 28 · `.btn-lg` 32 (Settings, dialogs). Font 12/500 (lg 13). Capsule. `.btn-icon` makes it square.
+- Sizes: `.btn-sm` 24 · default 28 · `.btn-lg` 32 (Settings, dialogs). These are minimum heights, so a label that wraps or a larger text size grows the button. Font 12/500 (lg 13). Capsule. `.btn-icon` makes it square.
 - Intents: default (`--surface-raised` + `--rim`), `.btn-primary` (`--accent-fill` + `--accent-rim`, white), `.btn-danger` (`--danger-text`), `.btn-danger-fill` (`--danger-fill`, white 600), `.btn-ghost` (transparent, `--text-secondary`).
 - States: hover adds `--surface-hover` over the fill (primary/danger-fill darken to 94% instead, so white text never drops below 4.5:1); pressed adds `--surface-pressed` and scales to .98 (primary 86%); focus = `--focus-outline` with 2px offset; disabled = 45% opacity, no pointer.
-- Replaces `.btn.def`, `.btn.danger`, `.btn.danger-fill`, `.btn.icon`, `.settings-win .btn`, `.foot-btn`, `.back`, `.segico`, `.hov`, `.clear-x`.
+- Replaced `.btn.def`, `.btn.danger`, `.btn.danger-fill`, `.btn.icon`, `.settings-win .btn`, `.foot-btn`, `.back`, `.segico` (round 1, group 6). `.hov` and `.clear-x` stay as behaviour classes on a `.btn.btn-icon.btn-sm`: they place the button and show it on hover, and carry no look of their own.
 
 ### Segmented control / tab pill — `.seg`
 - Track `--surface-track` + `--rim`, padding 2, items 24 tall (`.seg-lg` 28 for the toolbar and Worker tabs). `.seg-glass` adds panel glass + blur + `--shadow-2` (toolbar). `.seg-fill` stretches items equally (correction scope).
 - Selected: glide pill (`::before`) with `--surface-thumb` + `--rim-strong` + `--shadow-1`; text `--text-primary` 600. Each item reserves its semibold width (`::after` with `data-label`), so selecting never shifts the layout.
 - Unselected: `--text-secondary` 500; hover `--text-primary`. Disabled 45%.
-- Works for `aria-pressed` (toolbar), `aria-checked` (radio groups) and `aria-selected` (tabs). The glide script from `app.ts` is unchanged; it now also runs on the former `.radios`.
+- Works for `aria-pressed` (toolbar), `aria-checked` (radio groups) and `aria-selected` (tabs); the selected item is read from those attributes, there is no `.on` class. The glide script runs on every `.seg`, the former `.segc` and `.radios` included. The toolbar's tab pill keeps weight 500 when selected.
 
 ### Sidebar — `.row`, `.side-h`
 - Row: glyph box 18, gap 8, padding 6/8, radius 10. Title 13/500 `--text-primary`, meta 11 `--text-secondary`, badge 11/600 tabular.
@@ -290,7 +292,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - Section header 11/600 `--text-tertiary`; "Needs your decision" uses `--danger-text` and pulses 3× when a decision arrives.
 
 ### Pills, badges, tags — `.pill[data-tone]`, `.count`, `.diff-tag`
-- Pill 18 tall, 11/600, padding 0/8, tones: neutral, accent, danger, review, warning, success.
+- Pill 18 tall, 11/600, padding 0/8, tones (`data-tone`): neutral (none), `accent`, `danger`, `review`, `warning`, `success`, and the two app tones `pr-open` (an open PR) and `ask` (waits for the user, a solid fill).
 - Count badge: `--danger-solid` + white, min 18.
 - Diff file status A/M/D/R: 16×16 tag, radius 4, success/warning/danger/review tones.
 - Plan badge (Team/Enterprise) = accent/review pill.
@@ -342,7 +344,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - `.menu-item` 28, radius 8, padding 0/12/0/6, tick column 14 (radio items), optional mono hint on the right. Highlight `--accent-solid` + white (4.95:1). Danger items `--danger-text`, highlighted with `--danger-solid`. Disabled `--text-disabled`. Separator 0.5px; group header 11/600 tertiary.
 - `.dialog` 320 wide, radius 24, padding 24/20/20, title 15/600, body 12/1.5 secondary, two large buttons; scrim `--surface-scrim` + 3px blur.
 - `.toast` capsule, 12, overlay glass; `.is-error` in `--danger-text`.
-- z-index: composer 2, menu-catch 30, menu 31, settings 40, scrim 50, dialog 51, toast 60, popover 80, context menu 90, tooltip 100 (resolves the 50/50 clash).
+- z-index: raised 1 (resize edges and grips), composer 2, resize 3 (the panel resize handles), menu-catch 30, menu 31, settings 40, scrim 50, dialog 51, toast 60, popover 80, context menu 90, tooltip 100 (resolves the 50/50 clash).
 
 ### Tooltip — `.tip`
 One tooltip for the whole app, in place of the native `title` (which the OS draws in its own font, after its own delay, at the pointer, and never on keyboard focus). One element, `<div id="tip" class="tip" role="tooltip">`, and one delegated listener (`src/renderer/ui/tip.ts`).
@@ -384,7 +386,7 @@ One tooltip for the whole app, in place of the native `title` (which the OS draw
 
 1. Add `tokens.css` above `styles.css`; alias the old variables to the new ones (`--label: var(--text-primary)` …) so nothing changes visually except the contrast fixes.
 2. Replace literals rule by rule using the migration tables in `design-system.html` (#migration): colors → roles, `calc(N * var(--px))` → `--fs-*`, radii, shadows, blurs, durations, z-index.
-3. Merge components: `.segc`/`.radios` → `.seg`, menus → `.menu`, button variants → `.btn` modifiers, pill/badge/diff colors → tones, meters → `.meter[data-level]`.
+3. Merge components: `.segc`/`.radios` → `.seg`, menus → `.menu`, button variants → `.btn` modifiers, pill/badge/diff colors → tones, meters → `.meter[data-level]`. Done in round 1, group 6 (T-0069), with the literal values that had no token and the spacing that was off the scale.
 4. Fix the duplicate `s-back` symbol and normalize strokes.
 5. Add `word-break: keep-all` for Korean and the line-height split (1.4 UI / 1.5 body).
 6. Add a Display → Appearance setting (Dark / Light / System) that sets `data-theme` and `nativeTheme.themeSource`.

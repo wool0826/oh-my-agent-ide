@@ -20,7 +20,7 @@ import { act } from '../app';
 import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
-import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go, show } from './history';
 import { grantsHtml } from './repos';
 import { ms, workerIcon } from './sidebar';
@@ -33,14 +33,14 @@ const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.len
  */
 export function statusPill(w: Worker) {
   const x = lastTask(w);
-  const pill = (cls: string, label: string, age = '') => `<span class="pill${cls ? ` ${cls}` : ''}">${esc(age ? `${label} · ${age}` : label)}</span>`;
+  const pill = (tn: string, label: string, age = '') => `<span class="pill"${pillTone(tn)}>${esc(age ? `${label} · ${age}` : label)}</span>`;
   switch (workerState(w, x)) {
-    case 'run': return pill('blue', t(w.status === 'starting' ? 'st.starting' : 'st.running'), x ? ago(x.updatedAt) : '');
+    case 'run': return pill('accent', t(w.status === 'starting' ? 'st.starting' : 'st.running'), x ? ago(x.updatedAt) : '');
     case 'ask': return pill('ask', t('st.waitingMe'), x ? ago(x.waitingSince ?? x.updatedAt) : '');
-    case 'stalled': return pill('orange', t('st.stalled'), ago(w.lastActiveAt));
-    case 'failed': return pill('red', t('st.failed'), agoText(x?.updatedAt ?? w.lastActiveAt));
-    case 'asked': return pill('orange', t('st.awaitDispatcher'), w.request ? ago(w.request.at) : '');
-    case 'queued': return pill('orange', t(x?.status === 'blocked' ? 'st.afterMerge' : 'st.queued'));
+    case 'stalled': return pill('warning', t('st.stalled'), ago(w.lastActiveAt));
+    case 'failed': return pill('danger', t('st.failed'), agoText(x?.updatedAt ?? w.lastActiveAt));
+    case 'asked': return pill('warning', t('st.awaitDispatcher'), w.request ? ago(w.request.at) : '');
+    case 'queued': return pill('warning', t(x?.status === 'blocked' ? 'st.afterMerge' : 'st.queued'));
     case 'pr': return pill('pr-open', t('st.prOpen'), x?.finishedAt ? agoText(x.finishedAt) : '');
     case 'done': return pill('', t('task.done'), agoText(x?.finishedAt ?? w.lastActiveAt));
     case 'stopped': return pill('', t('task.stopped'), agoText(x?.updatedAt ?? w.lastActiveAt));
@@ -176,7 +176,7 @@ export function renderSession(force = false, older = false) {
   const tabs = w.repo ? (['chat', 'changes', 'summary'] as const) : (['chat', 'summary'] as const);
   if (!w.repo && ui.wTab === 'changes') ui.wTab = 'chat';
   $('#ws-tabs').hidden = false;
-  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" id="ws-tab-${v}" aria-controls="${v === 'chat' ? 'ws-thread' : v === 'changes' ? 'ws-diff' : 'ws-sum'}" aria-selected="${ui.wTab === v}" tabindex="${ui.wTab === v ? 0 : -1}" class="${ui.wTab === v ? 'on' : ''}" data-action="ws-tab" data-v="${v}">${t(v === 'chat' ? 'ws.tabChat' : v === 'changes' ? 'ws.tabChanges' : 'ws.tabSummary')}</button>`).join('');
+  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" id="ws-tab-${v}" aria-controls="${v === 'chat' ? 'ws-thread' : v === 'changes' ? 'ws-diff' : 'ws-sum'}" aria-selected="${ui.wTab === v}" tabindex="${ui.wTab === v ? 0 : -1}" data-action="ws-tab" data-v="${v}">${t(v === 'chat' ? 'ws.tabChat' : v === 'changes' ? 'ws.tabChanges' : 'ws.tabSummary')}</button>`).join('');
   $('#ws-thread').hidden = ui.wTab !== 'chat';
   $('#ws-diff').hidden = ui.wTab !== 'changes';
   $('#ws-sum').hidden = ui.wTab !== 'summary';
@@ -221,8 +221,8 @@ export function diffLines(wid: string, path: string, patch: string) {
     const line = l.kind === 'h'
       ? `<span class="dl h">${esc(l.text) || ' '}</span>`
       : `<span class="dl ${c} can" role="button" tabindex="0" data-action="diff-note" data-id="${key}" data-i="${i}" data-tip="${t('diff.note')}">${esc(l.text) || ' '}</span>`;
-    const said = notes.filter((n) => n.at === i).map((n) => `<div class="dnote"><p>${esc(n.text)}</p><button class="clear-x" data-action="diff-note-del" data-id="${key}" data-i="${i}" data-tip="${t('diff.noteDel')}" aria-label="${t('diff.noteDel')}"><svg><use href="#s-x"/></svg></button></div>`).join('');
-    const box = draft === i ? `<div class="dnote edit"><textarea class="inp" id="dnote-in" data-keep="dnote-${key}-${i}" data-enter="diff-note-add" placeholder="${t('diff.note')}" aria-label="${t('diff.note')}"></textarea><div class="btns"><button class="btn" data-action="diff-note-cancel">${t('cancel')}</button><button class="btn def" data-action="diff-note-add">${t('diff.noteAdd')}</button></div></div>` : '';
+    const said = notes.filter((n) => n.at === i).map((n) => `<div class="dnote"><p>${esc(n.text)}</p><button class="btn btn-icon btn-sm clear-x" data-action="diff-note-del" data-id="${key}" data-i="${i}" data-tip="${t('diff.noteDel')}" aria-label="${t('diff.noteDel')}"><svg><use href="#s-x"/></svg></button></div>`).join('');
+    const box = draft === i ? `<div class="dnote edit"><textarea class="inp" id="dnote-in" data-keep="dnote-${key}-${i}" data-enter="diff-note-add" placeholder="${t('diff.note')}" aria-label="${t('diff.note')}"></textarea><div class="btns"><button class="btn" data-action="diff-note-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="diff-note-add">${t('diff.noteAdd')}</button></div></div>` : '';
     return line + said + box;
   }).join('');
 }
@@ -256,9 +256,9 @@ export function renderSummary(w: Worker) {
     const sv = stepView(x);
     const meta = [x.finishedAt ? hhmm(x.finishedAt) : x.startedAt ? hhmm(x.startedAt) : '', mins !== null ? t('sum.took', { t: tookText(mins) }) : '', sv ? t('sum.steps', { done: sv.done, total: sv.total }) : ''].filter(Boolean).join(' · ');
     const links = resultLinks(x);
-    const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.status === 'pr_open' ? ' pr-open' : x.status === 'done' ? ' green' : '';
+    const tn = x.status === 'failed' && !x.stopped ? 'danger' : x.status === 'running' ? 'accent' : x.status === 'pr_open' ? 'pr-open' : x.status === 'done' ? 'success' : '';
     return `<article class="sum-task">
-      <header><b>${esc(x.id)} ${esc(x.title)}</b><span class="pill${cls}">${taskLabel(x)}</span></header>
+      <header><b>${esc(x.id)} ${esc(x.title)}</b><span class="pill"${pillTone(tn)}>${taskLabel(x)}</span></header>
       ${meta ? `<small class="sum-meta">${esc(meta)}</small>` : ''}
       <details class="sum-ask"><summary><svg aria-hidden="true"><use href="#s-chev"/></svg>${t('sum.asked')}</summary><div class="sum-prompt">${esc(x.prompt.trim())}</div></details>
       ${x.summary ? `<div class="sum-report">${md(x.summary)}</div>` : ''}
@@ -277,7 +277,7 @@ export function renderSummary(w: Worker) {
 export function ckptAskHtml(w: Worker) {
   const a = ui.ckptAsk;
   if (!a || a.wid !== w.id) return '';
-  return `<div class="ckpt-ask" role="alertdialog" aria-label="${t('ckpt.title')}"><span><b>${esc(t('ckpt.ask', { t: hhmm(a.at) }))}</b><small>${esc(a.label)}</small></span><button class="btn" data-action="ckpt-cancel">${t('cancel')}</button><button class="btn danger-fill" data-action="ckpt-restore">${t('ckpt.restore')}</button></div>`;
+  return `<div class="ckpt-ask" role="alertdialog" aria-label="${t('ckpt.title')}"><span><b>${esc(t('ckpt.ask', { t: hhmm(a.at) }))}</b><small>${esc(a.label)}</small></span><button class="btn" data-action="ckpt-cancel">${t('cancel')}</button><button class="btn btn-danger-fill" data-action="ckpt-restore">${t('ckpt.restore')}</button></div>`;
 }
 
 /** The Worker's checkpoints as a list under the button: picking one asks before anything changes. */
@@ -317,7 +317,7 @@ export function renderDiff(w: Worker) {
   if (v.error) { root.innerHTML = `<div class="empty-view" role="alert"><span>${esc(t('diff.failed', { msg: v.error }))}</span><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('retry')}</button></div>`; return; }
   const add = v.files.reduce((n, f) => n + f.added, 0), del = v.files.reduce((n, f) => n + f.removed, 0);
   const nNotes = ui.diffNotes.get(w.id)?.length ?? 0;
-  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span>${nNotes ? `<button class="btn def" data-action="diff-notes-send">${t('diff.noteSend', { n: nNotes })}</button>` : ''}<button class="btn" data-action="ckpt-menu" data-id="${w.id}" aria-haspopup="listbox">${t('ckpt.title')}</button><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
+  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span>${nNotes ? `<button class="btn btn-primary" data-action="diff-notes-send">${t('diff.noteSend', { n: nNotes })}</button>` : ''}<button class="btn" data-action="ckpt-menu" data-id="${w.id}" aria-haspopup="listbox">${t('ckpt.title')}</button><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
   if (!v.files.length) { root.innerHTML = `${head}${ckptAskHtml(w)}<div class="empty-view"><span>${t('diff.none', { base: v.base })}</span></div>`; return; }
   const files = v.files.map((f) => {
     const key = `${w.id}:${f.path}`;
@@ -395,7 +395,7 @@ export function waitingCardsHtml(w: Worker) {
       `<button class="danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>`,
     ].join('');
     const follow = followers.map((f) => `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(f.workerId ?? '')}"${f.workerId ? '' : ' disabled'}>${esc(f.id)} ${esc(oneLine(f.title, 60))}</button>`).join('<br>');
-    return `<div class="ins-h"><b role="heading" aria-level="2">${t('q.title')}</b><span class="pill orange">${x.status === 'blocked' ? t('st.afterMerge') : queuedLabel(x)}</span></div>
+    return `<div class="ins-h"><b role="heading" aria-level="2">${t('q.title')}</b><span class="pill" data-tone="warning">${x.status === 'blocked' ? t('st.afterMerge') : queuedLabel(x)}</span></div>
     <div class="group qcard">
       <div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${esc([x.repo ?? t('general'), x.planFirst && !x.planApproved ? t('plan.badge') : ''].filter(Boolean).join(' · '))} · <time datetime="${esc(since)}" data-tip="${esc(hhmm(since))}">${t('q.since', { t: Date.now() - Date.parse(since) < 60_000 ? t('time.now') : t('time.ago', { d: ago(since) }) })}</time></span></div>
       <dl class="plan-sum q-sum"><dt>${t('q.why')}</dt><dd>${esc(q.why)}</dd><dt>${t('q.starts')}</dt><dd${q.cancelled ? ' class="warn"' : ''}>${esc(q.starts)}</dd>${q.again ? `<dt></dt><dd>${esc(q.again)}</dd>` : ''}</dl>
@@ -411,7 +411,7 @@ export function runHtml(w: Worker) {
   const repo = w.repo ? S!.repos.find((r) => r.name === w.repo) : null;
   if (!repo?.run?.trim() || w.status === 'archived') return '';
   const r = S!.runs.find((x) => x.workerId === w.id);
-  const state = !r ? '' : r.running ? `<span class="pill blue">${t('run.running')}</span>` : r.stopped ? `<span class="pill">${t('run.stopped')}</span>` : `<span class="pill${r.code ? ' red' : ''}">${t('run.exited', { code: r.code ?? '' })}</span>`;
+  const state = !r ? '' : r.running ? `<span class="pill" data-tone="accent">${t('run.running')}</span>` : r.stopped ? `<span class="pill">${t('run.stopped')}</span>` : `<span class="pill"${pillTone(r.code ? 'danger' : '')}>${t('run.exited', { code: r.code ?? '' })}</span>`;
   const btns = r?.running
     ? `<button class="btn" data-action="run-stop" data-id="${w.id}">${t('run.stop')}</button>`
     : `${r ? `<button class="btn" data-action="run-clear" data-id="${w.id}">${t('run.clear')}</button>` : ''}<button class="btn" data-action="run-start" data-id="${w.id}">${t(r ? 'run.again' : 'run.start')}</button>`;
@@ -519,7 +519,7 @@ export function renderWorkerInspector() {
       ${canStop(w, cur) ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${failed ? `<button class="btn" data-action="worker-continue" data-id="${w.id}">${t('wk.continue')}</button>` : ''}
       ${w.status === 'archived' ? `<button class="btn" data-action="worker-unarchive" data-id="${w.id}">${t('wk.restore')}</button>` : workerBusy(w, tasks) ? '' : `<button class="btn" data-action="worker-archive" data-id="${w.id}">${t('wk.archive')}</button>`}
-      <button class="btn def" data-action="worker-msg" data-id="${w.id}">${t('wk.message')}</button>
+      <button class="btn btn-primary" data-action="worker-msg" data-id="${w.id}">${t('wk.message')}</button>
     </div>`; });
   tickDecisions(root);
 }
@@ -581,7 +581,7 @@ export function renderConfirmDialog() {
   root.innerHTML = `<div class="dlg-back" data-action="confirm-dismiss"></div>
   <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="xdlg-t">
     <h2 id="xdlg-t">${esc(ask.title)}</h2>${ask.body}
-    <div class="dlg-btns"><button class="btn${ask.ok ? '' : ' def'}" data-action="confirm-dismiss">${t(ask.ok ? 'cancel' : 'close')}</button>${ask.ok ? `<button class="btn danger-fill" data-action="confirm-ok">${esc(ask.ok)}</button>` : ''}</div>
+    <div class="dlg-btns"><button class="btn btn-lg${ask.ok ? '' : ' btn-primary'}" data-action="confirm-dismiss">${t(ask.ok ? 'cancel' : 'close')}</button>${ask.ok ? `<button class="btn btn-lg btn-danger-fill" data-action="confirm-ok">${esc(ask.ok)}</button>` : ''}</div>
   </div>`;
   root.classList.toggle('opening', opening);
   root.hidden = false;
@@ -643,7 +643,7 @@ export function renderCancelDialog() {
   root.innerHTML = `<div class="dlg-back" data-action="cancel-dismiss"></div>
   <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="cdlg-t">
     <h2 id="cdlg-t">${esc(title)}</h2>${body}
-    <div class="dlg-btns"><button class="btn" data-action="cancel-dismiss">${t('cancel.keep')}</button><button class="btn danger-fill" data-action="cancel-ok">${esc(ok)}</button></div>
+    <div class="dlg-btns"><button class="btn btn-lg" data-action="cancel-dismiss">${t('cancel.keep')}</button><button class="btn btn-lg btn-danger-fill" data-action="cancel-ok">${esc(ok)}</button></div>
   </div>`;
   root.classList.toggle('opening', root.hidden === true);
   root.hidden = false;

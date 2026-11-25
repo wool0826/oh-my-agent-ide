@@ -35,9 +35,9 @@ export function placePop(el: HTMLElement, anchor: HTMLElement, minWidth: number)
 export function openPop(owner: HTMLElement, items: Opt[], selected: string, onPick: (v: string) => void, minWidth = 160, focusList = true) {
   closePop();
   const el = document.createElement('div');
-  el.className = 'pop';
+  el.className = 'menu pop';
   el.setAttribute('role', 'listbox');
-  el.innerHTML = items.map((o) => `<button type="button" role="option" class="pop-i${o.value === selected ? ' on' : ''}" aria-selected="${o.value === selected}" data-v="${esc(o.value)}"${o.font ? ` style="font-family:&quot;${esc(o.font)}&quot;, var(--font)"` : ''}>${sym('s-tick', 'pop-tick')}<span>${esc(o.label)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</button>`).join('');
+  el.innerHTML = items.map((o) => `<button type="button" role="option" class="menu-item" aria-selected="${o.value === selected}" data-v="${esc(o.value)}"${o.font ? ` style="font-family:&quot;${esc(o.font)}&quot;, var(--font)"` : ''}>${sym('s-tick', 'tick')}<span>${esc(o.label)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</button>`).join('');
   document.body.appendChild(el);
   placePop(el, owner, minWidth);
   pop.el = el;
@@ -45,12 +45,12 @@ export function openPop(owner: HTMLElement, items: Opt[], selected: string, onPi
   owner.setAttribute('aria-expanded', 'true');
   el.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in a combobox input
   el.addEventListener('click', (e) => {
-    const it = (e.target as HTMLElement).closest<HTMLElement>('.pop-i');
+    const it = (e.target as HTMLElement).closest<HTMLElement>('.menu-item');
     if (!it) return;
     onPick(it.dataset.v!);
     closePop(owner.classList.contains('dd-btn'));
   });
-  const on = el.querySelector<HTMLElement>('.pop-i.on') ?? el.querySelector<HTMLElement>('.pop-i');
+  const on = el.querySelector<HTMLElement>('.menu-item[aria-selected="true"]') ?? el.querySelector<HTMLElement>('.menu-item');
   on?.scrollIntoView({ block: 'nearest' });
   if (focusList) on?.focus();
 }
@@ -94,7 +94,7 @@ export function markFont(input: HTMLInputElement) {
 /** Arrow keys, Enter and Escape inside an open popover. Returns true when handled. */
 export function popKeys(e: KeyboardEvent) {
   if (!pop.el) return false;
-  const items = [...pop.el.querySelectorAll<HTMLElement>('.pop-i')];
+  const items = [...pop.el.querySelectorAll<HTMLElement>('.menu-item')];
   const i = items.indexOf(document.activeElement as HTMLElement);
   if (e.key === 'Escape') { e.preventDefault(); closePop(true); return true; }
   if (e.key === 'Tab') { closePop(); return false; }

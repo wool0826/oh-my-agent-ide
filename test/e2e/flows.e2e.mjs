@@ -418,9 +418,9 @@ flow('while the Dispatcher works, the composer has a status line with Stop and t
   await app.until("!document.querySelector('#chat-dstat').hidden", 'the status line');
   assert.match(await app.evaluate("document.querySelector('#chat-dstat').innerText"), /Dispatcher/);
   assert.equal(await app.evaluate("!!document.querySelector('#chat-dstat [data-action=\"chat-stop\"]')"), true);
-  assert.equal(await app.evaluate("!!document.querySelector('.seg button[data-v=\"chat\"].busy')"), true);
+  assert.equal(await app.evaluate("!!document.querySelector('#views button[data-v=\"chat\"].busy')"), true);
   await app.click('#chat-dstat [data-action="chat-stop"]');
-  await app.until("document.querySelector('#chat-dstat').hidden && !document.querySelector('.seg button[data-v=\"chat\"].busy')", 'the status line gone after Stop');
+  await app.until("document.querySelector('#chat-dstat').hidden && !document.querySelector('#views button[data-v=\"chat\"].busy')", 'the status line gone after Stop');
 });
 
 flow('a code task opens a PR, which is merged from the app', { repos: ['demo'] }, async (app) => {
@@ -645,7 +645,7 @@ flow('Settings shows what is missing on this computer and the command that fixes
   gh: { signedOut: ['github.company.com'] },
 }, async (app) => {
   // The launch check puts a dot on the gear without Settings being opened.
-  await app.until("document.querySelector('.foot-btn[data-action=\"open-settings\"]').classList.contains('has-issue')", 'the dot on the gear');
+  await app.until("document.querySelector('.side-foot [data-action=\"open-settings\"]').classList.contains('has-issue')", 'the dot on the gear');
   await app.click('[data-action="open-settings"]');
   await app.click('[data-action="pane"][data-id="general"]');
   await app.until("document.querySelectorAll('#pre-rows .pill').length >= 4", 'the status rows');
@@ -845,7 +845,7 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
     assert.match(await app.evaluate("document.querySelector('#usage-pop .uft').textContent"), /^Updated .* · 1 of 3 failed$/);
     assert.equal(await app.evaluate("document.querySelector('#usage-pop [data-segc=\"usage-every\"][aria-checked=\"true\"]').dataset.v"), '15');
     // The failed account keeps its figures, dimmed, and the week it has no figure for says so.
-    assert.deepEqual(await app.evaluate("const c = document.querySelector('#usage-pop .ua[data-id=\"c\"]'); return [c.classList.contains('old'), !!c.querySelector('time.old'), !!c.querySelector('.cap.none'), c.querySelector('.uw:last-of-type small').textContent];"),
+    assert.deepEqual(await app.evaluate("const c = document.querySelector('#usage-pop .ua[data-id=\"c\"]'); return [c.classList.contains('old'), !!c.querySelector('time.old'), !!c.querySelector('.meter.none'), c.querySelector('.uw:last-of-type small').textContent];"),
       [true, true, true, 'no figure yet']);
     // Only by hand: saved, and no next round.
     await app.click('#usage-pop [data-segc="usage-every"][data-v="0"]');
@@ -954,9 +954,9 @@ flow('a Korean syllable being composed in a sidebar field is not split when the 
 
 flow('the sidebar tab pill follows the sidebar width while it changes', {}, async (app) => {
   await app.click('#chat-ins [data-action="ins-tab"][data-v="auto"]');
-  await app.until("document.querySelector('#chat-ins .ins-tabs button.on')?.dataset.v === 'auto'", 'the Automations tab');
+  await app.until("document.querySelector('#chat-ins .ins-tabs button[aria-selected=\"true\"]')?.dataset.v === 'auto'", 'the Automations tab');
   // The pill (the control's ::before, placed by --gx/--gw) against the chosen tab, and how many rows the tabs take.
-  const where = `const c = document.querySelector('#chat-ins .ins-tabs'); const on = c.querySelector('button.on');
+  const where = `const c = document.querySelector('#chat-ins .ins-tabs'); const on = c.querySelector('button[aria-selected="true"]');
     return [parseFloat(c.style.getPropertyValue('--gx')) - on.offsetLeft, parseFloat(c.style.getPropertyValue('--gw')) - on.offsetWidth, new Set([...c.children].map((b) => b.offsetTop)).size];`;
   const frames = 'for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r)); return 1;';
   // A drag marks the window once as it starts...
@@ -1029,7 +1029,7 @@ flow('starting a new conversation asks first, and the context menu opens only wi
   await app.until("!!document.querySelector('#dlg .dlg')", 'the question');
   assert.equal(await app.evaluate("document.querySelector('#ctxmenu').hidden"), true);
   assert.match(await app.evaluate("document.querySelector('#dlg .dlg').innerText"), /forgets this conversation[\s\S]*running tasks go on/);
-  assert.equal(await app.evaluate("document.querySelector('#dlg .btn.danger-fill').dataset.action"), 'confirm-ok');
+  assert.equal(await app.evaluate("document.querySelector('#dlg .btn-danger-fill').dataset.action"), 'confirm-ok');
   await app.click('#dlg .dlg-btns [data-action="confirm-dismiss"]');
   await app.until("document.querySelector('#dlg').hidden", 'the question closed');
   assert.equal((await app.state()).dispatcher.contextTokens, 60000);

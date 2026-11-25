@@ -14,7 +14,7 @@ import { fitAll } from './fit';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, clampFontSize, fontStack, normalizeFontFamily } from '../../shared/font';
 import { away } from './chat';
 import { closePop, installedFonts, markFont, openPop, Opt, pop, stepNum } from './controls';
-import { $, applyStaticText, call, cap1, esc, holdWhileComposing, ic, isMac, k, lang, lv, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
+import { $, applyStaticText, call, cap1, esc, holdWhileComposing, ic, isMac, k, lang, meterLevel, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
 import { nav, show } from './history';
 import { renderMemSync } from './memory';
 import { jira, loadPreflight, preflight, preflightRows } from './repos';
@@ -125,9 +125,9 @@ export function syncModelRows() {
 }
 
 /** Segmented control backed by a hidden input, so the form reads it like any field. */
-export function segc(id: string, value: string, opts: Opt[], label: string, extra = '') {
+export function segc(id: string, value: string, opts: Opt[], label: string, extra = '', cls = '') {
   const cur = opts.some((o) => o.value === value) ? value : opts[0].value;
-  return `<span class="segc" role="radiogroup" aria-label="${esc(label)}"><input type="hidden" id="${id}" value="${esc(cur)}" ${extra}>${opts.map((o) => `<button type="button" role="radio" data-segc="${id}" data-v="${esc(o.value)}" aria-checked="${o.value === cur}" tabindex="${o.value === cur ? 0 : -1}"${o.value === cur ? ' class="on"' : ''}>${esc(o.label)}</button>`).join('')}</span>`;
+  return `<span class="seg${cls && ` ${cls}`}" role="radiogroup" aria-label="${esc(label)}"><input type="hidden" id="${id}" value="${esc(cur)}" ${extra}>${opts.map((o) => `<button type="button" role="radio" data-segc="${id}" data-v="${esc(o.value)}" aria-checked="${o.value === cur}" tabindex="${o.value === cur ? 0 : -1}">${esc(o.label)}</button>`).join('')}</span>`;
 }
 
 export function pickSeg(btn: HTMLButtonElement) {
@@ -142,7 +142,6 @@ export function pickSeg(btn: HTMLButtonElement) {
 export function syncSegs(root: ParentNode = document) {
   root.querySelectorAll<HTMLButtonElement>('[data-segc]').forEach((b) => {
     const on = (document.getElementById(b.dataset.segc!) as HTMLInputElement | null)?.value === b.dataset.v;
-    b.classList.toggle('on', on);
     b.setAttribute('aria-checked', String(on));
     // The group is one Tab stop, on its choice; the arrows reach the others.
     b.tabIndex = on ? 0 : -1;
@@ -157,7 +156,7 @@ export function syncSegs(root: ParentNode = document) {
 
 export function glideAll(animate: boolean) {
   fitAll();
-  document.querySelectorAll<HTMLElement>('.seg, .segc').forEach((c) => glide(c, animate));
+  document.querySelectorAll<HTMLElement>('.seg').forEach((c) => glide(c, animate));
 }
 
 /**
@@ -187,7 +186,7 @@ const pillName = (c: HTMLElement) => c.id || c.querySelector<HTMLElement>(':scop
   || `${c.closest('[id]')?.id ?? ''}/${c.getAttribute('aria-label') ?? ''}`;
 
 export function glide(c: HTMLElement, animate: boolean) {
-  const on = c.querySelector<HTMLElement>(':scope > button[aria-pressed="true"], :scope > button.on');
+  const on = c.querySelector<HTMLElement>(':scope > button:is([aria-pressed="true"], [aria-checked="true"], [aria-selected="true"])');
   if (!on || !c.offsetParent) {
     // Only a control that still shows a pill: rewriting the class of a hidden one is itself a mutation,
     // which woke the observer every frame and kept a requestAnimationFrame loop running.
@@ -253,7 +252,7 @@ export function slider(id: string, value: number, label: string) {
 
 export function meter(label: string, v: number | null) {
   const w = v ?? 0;
-  return `<span>${label}</span><span class="cap"><i class="${lv(v)}" style="width:${Math.min(100, w)}%"></i></span><span class="mv${w > 80 ? ' hot' : ''}">${pct(v)}</span>`;
+  return `<span>${label}</span><span class="meter"${meterLevel(v)}><i style="width:${Math.min(100, w)}%"></i></span><span class="mv${w > 80 ? ' hot' : ''}">${pct(v)}</span>`;
 }
 
 export function initials(label: string) {
@@ -269,21 +268,21 @@ export function accountCard(a: AccountView, i: number) {
   const plan = gpt ? (a.planLabel || 'ChatGPT') : a.plan === 'enterprise' ? 'Enterprise' : 'Team';
   const renaming = ui.accRename === a.id;
   const name = renaming
-    ? `<span class="acc-edit"><input class="inp" id="acc-rename" value="${esc(a.label)}" aria-label="${t('acc.name')}" data-id="${a.id}"><button class="btn def" data-action="acc-rename-save" data-id="${a.id}">${t('save')}</button><button class="btn" data-action="acc-rename-cancel">${t('cancel')}</button></span>`
+    ? `<span class="acc-edit"><input class="inp" id="acc-rename" value="${esc(a.label)}" aria-label="${t('acc.name')}" data-id="${a.id}"><button class="btn btn-lg btn-primary" data-action="acc-rename-save" data-id="${a.id}">${t('save')}</button><button class="btn btn-lg" data-action="acc-rename-cancel">${t('cancel')}</button></span>`
     : `<span class="acc-name"><b>${esc(a.label)}</b><span class="plan-badge ${gpt ? 'chatgpt' : a.plan}">${esc(plan)}</span></span>`;
-  const menu = ui.accMenu === a.id ? `<div class="amenu" role="menu" aria-label="${t('acc.options')}">
-      <button role="menuitem" data-action="acc-rename" data-id="${a.id}">${t('acc.rename')}</button>
-      <button role="menuitem" data-action="acc-refresh">${t('acc.refresh')}</button>
-      ${gpt ? '' : `<div class="amenu-sep"></div><span class="amenu-h">${t('acc.plan')}</span>
-      ${PLAN_OPTS.map((o) => `<button role="menuitemradio" aria-checked="${a.plan === o.value}" data-action="acc-plan" data-id="${a.id}" data-v="${o.value}">${sym('s-tick', 'amenu-tick')}${o.label}</button>`).join('')}`}
-      <div class="amenu-sep"></div>
-      <button role="menuitem" class="danger" data-action="acc-remove" data-id="${a.id}">${t('acc.removeMenu')}</button>
+  const menu = ui.accMenu === a.id ? `<div class="menu" role="menu" aria-label="${t('acc.options')}">
+      <button class="menu-item" role="menuitem" data-action="acc-rename" data-id="${a.id}">${sym('s-tick', 'tick')}${t('acc.rename')}</button>
+      <button class="menu-item" role="menuitem" data-action="acc-refresh">${sym('s-tick', 'tick')}${t('acc.refresh')}</button>
+      ${gpt ? '' : `<div class="menu-sep"></div><span class="menu-h">${t('acc.plan')}</span>
+      ${PLAN_OPTS.map((o) => `<button class="menu-item" role="menuitemradio" aria-checked="${a.plan === o.value}" data-action="acc-plan" data-id="${a.id}" data-v="${o.value}">${sym('s-tick', 'tick')}${o.label}</button>`).join('')}`}
+      <div class="menu-sep"></div>
+      <button class="menu-item is-danger" role="menuitem" data-action="acc-remove" data-id="${a.id}">${sym('s-tick', 'tick')}${t('acc.removeMenu')}</button>
     </div>` : '';
   return `<div class="acc-card${renaming ? ' editing' : ''}">
     <span class="avatar" style="background:${AVATAR[i % AVATAR.length]}">${esc(initials(a.label))}</span>
     <span class="acc-main">${name}<span class="acc-kind">${kind}</span>${a.lastError ? `<span class="warn">${esc(a.lastError)}</span>` : ''}</span>
     <span class="acc-meters">${usageWindows(a).map((w) => meter(w.label, w.v)).join('')}</span>
-    <span class="acc-more"><button class="btn icon" data-action="acc-menu" data-id="${a.id}" aria-haspopup="menu" aria-expanded="${ui.accMenu === a.id}" aria-label="${t('acc.options')}">${sym('s-more')}</button>${menu}</span>
+    <span class="acc-more"><button class="btn btn-icon btn-lg" data-action="acc-menu" data-id="${a.id}" aria-haspopup="menu" aria-expanded="${ui.accMenu === a.id}" aria-label="${t('acc.options')}">${sym('s-more')}</button>${menu}</span>
   </div>`;
 }
 
@@ -296,7 +295,7 @@ export function removeDialog() {
     <span class="avatar big" style="background:${AVATAR[i % AVATAR.length]}">${esc(initials(a.label))}</span>
     <h2 id="dlg-t">${esc(t('acc.removeTitle', { name: a.label }))}</h2>
     <p>${a.provider === 'chatgpt' ? t('acc.removeChatgpt') : a.kind === 'login' ? t('acc.removeLogin') : t('acc.removeToken')}</p>
-    <div class="dlg-btns"><button class="btn" data-action="acc-remove-cancel">${t('cancel')}</button><button class="btn danger-fill" data-action="acc-remove-ok" data-id="${a.id}">${t('remove')}</button></div>
+    <div class="dlg-btns"><button class="btn btn-lg" data-action="acc-remove-cancel">${t('cancel')}</button><button class="btn btn-lg btn-danger-fill" data-action="acc-remove-ok" data-id="${a.id}">${t('remove')}</button></div>
   </div>`;
 }
 
@@ -319,42 +318,42 @@ export function settingsHtml() {
       ${row(t('acc.name'), 'acc-label', `<input class="inp w" id="acc-label" placeholder="${t('acc.namePh')}">`)}
       ${row(t('acc.plan'), 'acc-plan', segc('acc-plan', 'team', PLAN_OPTS, t('acc.plan')), 'acc-plan-row')}
       ${row(t('acc.token'), 'acc-token', `<input class="inp w" id="acc-token" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">`, 'acc-token-row')}
-      <div class="srow end"><button class="btn def" data-action="acc-add" id="acc-add-btn">${t('acc.addToken')}</button><button class="btn def" data-action="acc-add-login" id="acc-login-btn">${t('acc.addLogin')}</button><button class="btn def" data-action="acc-add-chatgpt" id="acc-chatgpt-btn">${t('acc.addChatgpt')}</button></div>`, t('acc.add'))}`;
+      <div class="srow end"><button class="btn btn-lg btn-primary" data-action="acc-add" id="acc-add-btn">${t('acc.addToken')}</button><button class="btn btn-lg btn-primary" data-action="acc-add-login" id="acc-login-btn">${t('acc.addLogin')}</button><button class="btn btn-lg btn-primary" data-action="acc-add-chatgpt" id="acc-chatgpt-btn">${t('acc.addChatgpt')}</button></div>`, t('acc.add'))}`;
 
-  const general = `${grp(`<div id="pre-rows">${preflightRows()}</div>`, `${t('pre.title')}<button class="clear-x always" data-action="preflight-run" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`)}${grp(`
+  const general = `${grp(`<div id="pre-rows">${preflightRows()}</div>`, `${t('pre.title')}<button class="btn btn-icon btn-sm clear-x always" data-action="preflight-run" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`)}${grp(`
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
-      ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn" data-action="pick-home">${t('choose')}</button>`)}
+      ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn btn-lg" data-action="pick-home">${t('choose')}</button>`)}
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
       ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 0, 90, t('set.archive'), 'set.unitDays'))}
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
       ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
       ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
-      ${row(t('set.diag'), 'set-diag', `<button class="btn" id="set-diag" data-action="diag-export">${t('set.diagExport')}</button>`)}
+      ${row(t('set.diag'), 'set-diag', `<button class="btn btn-lg" id="set-diag" data-action="diag-export">${t('set.diagExport')}</button>`)}
       ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}`)}${grp(
       `${row(t('set.jiraUrl'), 'set-jurl', `<input class="inp w" id="set-jurl" value="${esc(st.jiraUrl)}" placeholder="https://company.atlassian.net" spellcheck="false" autocomplete="off">`)}
       ${row(t('set.jiraEmail'), 'set-jmail', `<input class="inp w" id="set-jmail" value="${esc(st.jiraEmail)}" placeholder="${t('set.jiraEmailPh')}" spellcheck="false" autocomplete="off">`)}
-      ${row(t('set.jiraToken'), 'set-jtok', `<input class="inp w" id="set-jtok" type="password" placeholder="${st.jiraTokenSet ? t('set.jiraTokenSet') : ''}" autocomplete="off" spellcheck="false">${st.jiraTokenSet ? `<button class="btn" data-action="jira-token-clear">${t('set.jiraTokenClear')}</button>` : ''}`)}`, 'Jira')}${grp(
+      ${row(t('set.jiraToken'), 'set-jtok', `<input class="inp w" id="set-jtok" type="password" placeholder="${st.jiraTokenSet ? t('set.jiraTokenSet') : ''}" autocomplete="off" spellcheck="false">${st.jiraTokenSet ? `<button class="btn btn-lg" data-action="jira-token-clear">${t('set.jiraTokenClear')}</button>` : ''}`)}`, 'Jira')}${grp(
       ASK_RULES.map((r) => row(cap1(t(r)), `ask-${r}`, `<input class="switch ask-rule" id="ask-${r}" data-rule="${r}" type="checkbox" ${st.askOff.includes(r) ? '' : 'checked'}>`)).join(''), t('set.alwaysAsk'))}`;
 
   const display = `${grp(`
       ${row(t('set.theme'), 'set-theme', segc('set-theme', st.theme, THEMES.map((v) => ({ value: v, label: t(`theme.${v}` as Key) })), t('set.theme')))}
       ${row(t('set.font'), 'set-font', `<span class="combo"><input class="inp" id="set-font" value="${esc(st.fontFamily)}" placeholder="${t('set.fontSystem')}" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"><button type="button" class="combo-btn" data-combo="set-font" tabindex="-1" aria-label="${t('set.font')}">${sym('s-updown')}</button></span>`)}
-      ${row(t('set.fontSize'), 'set-fsize', `<button class="btn" data-action="font-reset">${t('set.fontReset')}</button>${stepper('set-fsize', st.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, t('set.fontSize'))}`)}`)}
+      ${row(t('set.fontSize'), 'set-fsize', `<button class="btn btn-lg" data-action="font-reset">${t('set.fontReset')}</button>${stepper('set-fsize', st.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, t('set.fontSize'))}`)}`)}
     <div class="fprev" aria-hidden="true"><span class="me">${t('set.preview1')}</span><span class="ai">${t('set.preview2')}</span></div>`;
 
   const alerts = grp(`
       ${row(t('set.osNoti'), 'set-noti', `<input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}>`)}
       ${row(t('set.notiResults'), 'set-nres', `<input class="switch" id="set-nres" type="checkbox" ${st.notifyDone ? 'checked' : ''}>`)}
       ${row(t('set.quiet'), 'set-qfrom', `<input class="inp time" id="set-qfrom" value="${esc(st.quietFrom)}" placeholder="--:--" inputmode="numeric" aria-label="${t('set.quietFrom')}"><span class="dash" aria-hidden="true">–</span><input class="inp time" id="set-qto" value="${esc(st.quietTo)}" placeholder="--:--" inputmode="numeric" aria-label="${t('set.quietTo')}">`)}
-      ${row(t('set.sound'), 'set-sound', `<button class="segico" data-action="sound-test" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, DECISION_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
-      ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
-      ${row(t('set.doneSound'), 'set-dsound', `<button class="segico" data-action="sound-test" data-v="done" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-dsound', st.doneSound, DONE_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.doneSound'))}`, 'wrap dsound-row')}
+      ${row(t('set.sound'), 'set-sound', `<button class="btn btn-icon" data-action="sound-test" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, DECISION_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
+      ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn btn-lg" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
+      ${row(t('set.doneSound'), 'set-dsound', `<button class="btn btn-icon" data-action="sound-test" data-v="done" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-dsound', st.doneSound, DONE_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.doneSound'))}`, 'wrap dsound-row')}
       ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`);
 
   const ci = ui.claude;
   const rulesText = !ci ? '…' : ci.rules.length ? ci.rules.join(', ') : t('set.claudeNoRules');
   const memory = `${grp(`
-      ${row(t('set.memFolder'), 'set-memdir', `<span class="sval" id="set-memdir" data-tip="${esc(st.home)}">${esc(shortPath(`${st.home}/memory`))}</span><button class="btn" data-action="reveal-memory">${t('set.open')}</button>`)}
+      ${row(t('set.memFolder'), 'set-memdir', `<span class="sval" id="set-memdir" data-tip="${esc(st.home)}">${esc(shortPath(`${st.home}/memory`))}</span><button class="btn btn-lg" data-action="reveal-memory">${t('set.open')}</button>`)}
       ${row(t('set.memRemote'), 'set-mem', `<input class="inp w" id="set-mem" value="${esc(st.memoryRemote)}" placeholder="https://github.com/me/agent-memory.git">`)}
       <div id="set-msync" hidden></div>
       ${row(t('set.memSuggest'), 'set-msug', `<input class="switch" id="set-msug" type="checkbox" ${st.memorySuggest ? 'checked' : ''}>`)}`, t('set.ideMemory'))}
@@ -362,10 +361,10 @@ export function settingsHtml() {
       ${row(t('set.claudeRules'), 'set-crules', `<span class="sval${ci && !ci.rules.length ? ' muted' : ''}" data-tip="${esc(ci ? ci.home : '')}">${esc(rulesText)}</span><input class="switch" id="set-crules" type="checkbox" ${st.claudeRules ? 'checked' : ''}>`)}
       ${row(t('set.claudeMemory'), 'set-cmem', `<input class="switch" id="set-cmem" type="checkbox" ${st.claudeMemory ? 'checked' : ''}>`)}
       ${row(t('set.claudeConnectors'), 'set-cconn', `<input class="switch" id="set-cconn" type="checkbox" ${st.claudeConnectors ? 'checked' : ''}>`)}
-      ${row(t('set.claudeFolder'), 'set-cdir', `<span class="sval" id="set-cdir" data-tip="${esc(ci ? ci.home : '')}">${esc(ci ? shortPath(ci.home, 2) : '…')}</span><button class="btn" data-action="reveal-claude">${t('set.open')}</button>`)}`, 'Claude Code')}`;
+      ${row(t('set.claudeFolder'), 'set-cdir', `<span class="sval" id="set-cdir" data-tip="${esc(ci ? ci.home : '')}">${esc(ci ? shortPath(ci.home, 2) : '…')}</span><button class="btn btn-lg" data-action="reveal-claude">${t('set.open')}</button>`)}`, 'Claude Code')}`;
 
   const models = `${grp(`
-      ${row(t('set.modelList'), 'set-mlist', `<span class="sval${ui.models.error ? ' bad' : ''}" id="set-mlist">${modelsStatusHtml()}</span><button class="btn" data-action="models-refresh">${t('diff.refresh')}</button>`)}`)}
+      ${row(t('set.modelList'), 'set-mlist', `<span class="sval${ui.models.error ? ' bad' : ''}" id="set-mlist">${modelsStatusHtml()}</span><button class="btn btn-lg" data-action="models-refresh">${t('diff.refresh')}</button>`)}`)}
     ${grp(`
       ${row(t('set.model'), 'set-dm', modelPicker('set-dm', st.dispatcherModel, 'Dispatcher'))}
       ${row(t('set.effort'), 'set-de', segc('set-de', st.dispatcherEffort, effortOpts(), t('set.effort')), 'wrap')}`, 'Dispatcher')}
@@ -379,7 +378,7 @@ export function settingsHtml() {
       ${row(t('set.waitSlot'), 'set-wslot', stepper('set-wslot', st.waitSlotMinutes, 0, WAIT_SLOT_MAX, t('set.waitSlot'), 'set.unitMin'))}`, t('set.workers'))}`;
 
   return `<header class="stopbar drag">
-      <button class="btn sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
+      <button class="btn btn-lg sback" data-action="close-settings">${sym('s-back')}${t('set.back')}</button>
       <h1>${t('set.title')}</h1>
     </header>
     <div class="sbody">
@@ -403,7 +402,7 @@ export function restartDialog() {
   <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t">
     <h2 id="dlg-t">${t('set.restartTitle')}</h2>
     <p>${t('set.restartBody')}</p>
-    <div class="dlg-btns"><button class="btn" data-action="restart-later">${t('set.restartLater')}</button><button class="btn def" data-action="restart-now">${t('set.restartNow')}</button></div>
+    <div class="dlg-btns"><button class="btn btn-lg" data-action="restart-later">${t('set.restartLater')}</button><button class="btn btn-lg btn-primary" data-action="restart-now">${t('set.restartNow')}</button></div>
   </div>`;
 }
 

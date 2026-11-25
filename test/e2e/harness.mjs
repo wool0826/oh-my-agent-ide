@@ -148,7 +148,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {} } 
   // The first state has arrived and the window is drawn. If it never is, the app must not be left running:
   // a child still alive keeps the test process from ending.
   try {
-    await until("!!document.querySelector('#chat-ins .segc')", 'the main window');
+    await until("!!document.querySelector('#chat-ins .seg')", 'the main window');
   } catch (e) {
     const page = await evaluate("document.readyState + ' | ' + location.href + ' | ide=' + typeof window.ide + ' | body=' + document.body.innerText.slice(0, 300)").catch((x) => String(x));
     try { ws.close(); } catch { /* closed */ }

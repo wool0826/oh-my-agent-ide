@@ -65,6 +65,8 @@ const derived = [
   ['accent-rim', 'inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 10px -2px var(--accent-glow)'],
   ['danger-fill', 'linear-gradient(180deg, var(--danger-fill-top), var(--danger-fill-bottom))'],
   ['danger-rim', 'inset 0 1px 0 rgba(255, 255, 255, .26), 0 2px 10px -2px var(--danger-glow)'],
+  ['rim-on-accent', 'inset 0 1px 0 rgba(255, 255, 255, .22)'],
+  ['knob-edge', '0 0 0 .5px rgba(0, 0, 0, .3)'],
   ['focus-outline', '2px solid var(--focus-ring)'],
   ['focus-offset', '2px'],
 ];

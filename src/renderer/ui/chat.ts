@@ -26,7 +26,7 @@ import { decisionKeys, decisionKind, decisionLate, keepCard, nextCard, slotClock
 import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
-import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { setTip } from './tip';
 import { go } from './history';
 import { segc, syncSegs } from './settings';
@@ -126,7 +126,7 @@ function failureHtml(c: ChatItem) {
   const why = still ? plainStatus(x.summary) : c.text;
   const last = w.taskIds[w.taskIds.length - 1] === x.id;
   const go = still && last && lastFailed(w, x) ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
-  return `<div class="attach fail" data-task="${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill red">${t('st.failed')}</span></b><span class="sm">${esc([at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why)}</span></span></div>`;
+  return `<div class="attach fail" data-task="${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill" data-tone="danger">${t('st.failed')}</span></b><span class="sm">${esc([at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why)}</span></span></div>`;
 }
 
 /** "Reply" on a report card: the composer's reply chip quotes the report, and the message is filed under the card. */
@@ -137,7 +137,7 @@ function replyLink(x: Task, text: string) {
 /** The hand-out runs of the thread drawn last, by their first line (shared/handouts.ts). */
 let runs = new Map<string, ChatItem[]>();
 
-const HAND_PILL: Record<HandoutState, [string, Key]> = { ask: ['ask', 'st.waitingMe'], run: ['blue', 'st.running'], failed: ['red', 'st.failed'], queued: ['orange', 'st.queued'], done: ['green', 'task.done'], stopped: ['', 'task.stopped'] };
+const HAND_PILL: Record<HandoutState, [string, Key]> = { ask: ['ask', 'st.waitingMe'], run: ['accent', 'st.running'], failed: ['danger', 'st.failed'], queued: ['warning', 'st.queued'], done: ['success', 'task.done'], stopped: ['', 'task.stopped'] };
 const HAND_ICON: Record<HandoutState, [string, string]> = { ask: ['ask', 'ask'], run: ['run', 'run'], failed: ['err', 'err'], queued: ['wait', 'wait'], done: ['done', 'done'], stopped: ['idle', 'idle'] };
 
 /** Each task of a run with where it stands now; tasks no longer in the state are left out. */
@@ -175,9 +175,9 @@ function handoutHtml(c: ChatItem) {
       : st === 'failed' && v && !v.allDone ? t('wk.stoppedAt', { n: v.at + 1, total: v.total })
       : st === 'queued' ? taskLabel(x)
       : st === 'done' && x.prUrl ? `PR #${prNum(x.prUrl)}` : '';
-    const [cls, label] = st === 'queued' && x.status === 'blocked' ? ['orange', 'st.afterMerge' as Key] : st === 'done' && x.prUrl && x.prState === 'OPEN' ? ['pr-open', 'st.prOpen' as Key] : HAND_PILL[st];
+    const [cls, label] = st === 'queued' && x.status === 'blocked' ? ['warning', 'st.afterMerge' as Key] : st === 'done' && x.prUrl && x.prState === 'OPEN' ? ['pr-open', 'st.prOpen' as Key] : HAND_PILL[st];
     const sub = [x.workerId, w?.repo ?? t('general'), detail].filter(Boolean).join(' · ');
-    const body = `${ic(...HAND_ICON[st])}<span class="t"><b>${esc(x.title)}</b><small>${esc(sub)}</small></span><span class="pill${cls ? ` ${cls}` : ''}">${t(label)}</span>`;
+    const body = `${ic(...HAND_ICON[st])}<span class="t"><b>${esc(x.title)}</b><small>${esc(sub)}</small></span><span class="pill"${pillTone(cls)}>${t(label)}</span>`;
     return w ? `<button type="button" class="hrow" data-action="open-worker" data-id="${esc(w.id)}">${body}</button>` : `<div class="hrow">${body}</div>`;
   };
   const head = `<button type="button" class="hand-h" data-action="hand-fold" data-id="${esc(key)}" aria-expanded="${open}">${sym('s-cpu', 'c-blue')}<b>${t(rows.length === 1 ? 'ho.titleOne' : 'ho.title', { n: rows.length })}</b><span>${esc(sum)}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
@@ -311,7 +311,7 @@ function renderCtxMeter() {
   const ctx = S!.dispatcher.contextTokens;
   const btn = $<HTMLButtonElement>('#chat-ctx');
   const hot = ctx >= COMPACT_AT, quiet = ctx < CONTEXT_WINDOW / 2;
-  btn.innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${quiet ? '' : `${k(ctx)} / ${k(CONTEXT_WINDOW)}`}${hot ? `<span class="pill orange">${t('chat.compactChip')}</span>` : ''}`;
+  btn.innerHTML = `${ring(ctx / CONTEXT_WINDOW).replace('class="ring"', '')}${quiet ? '' : `${k(ctx)} / ${k(CONTEXT_WINDOW)}`}${hot ? `<span class="pill" data-tone="warning">${t('chat.compactChip')}</span>` : ''}`;
   btn.classList.toggle('hot', hot);
   const label = t('chat.ctxLabel', { a: k(ctx), b: k(CONTEXT_WINDOW) });
   btn.setAttribute('aria-label', label);
@@ -336,7 +336,7 @@ let dstatKey = '';
 export function renderDispatcherStatus() {
   const d = S!.dispatcher;
   const busy = !!d.busy;
-  document.querySelector('.seg button[data-v="chat"]')?.classList.toggle('busy', busy);
+  document.querySelector('#views button[data-v="chat"]')?.classList.toggle('busy', busy);
   const input = $<HTMLTextAreaElement>('#chat-input');
   const ph = t(busy ? 'chat.phBusy' : 'chat.ph');
   if (input.placeholder !== ph) input.placeholder = ph;
@@ -530,11 +530,11 @@ export function decisionHtml(d: Decision, inWorker = false) {
   const kbd = (val: string) => !inWorker && keys.has(val) ? `<kbd aria-hidden="true">${esc(keys.get(val)!)}</kbd>` : '';
   let buttons: string;
   if (d.source === 'plan') {
-    buttons = `<div class="btns"><button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}${kbd(ALLOW)}</button></div>`;
+    buttons = `<div class="btns"><button class="btn btn-primary" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}${kbd(ALLOW)}</button></div>`;
   } else if (d.source === 'permission') {
     // "Allow for this task" is there when the action's kind can be named; the line under the buttons says what that yes covers.
     const scope = d.options.find((o) => o.label === ALLOW_TASK);
-    buttons = `<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn def" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>${scope?.description ? `<div class="scope"><span>${t('allowTask')}</span><code>${esc(scope.description)}</code></div>` : ''}`;
+    buttons = `<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn btn-primary" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>${scope?.description ? `<div class="scope"><span>${t('allowTask')}</span><code>${esc(scope.description)}</code></div>` : ''}`;
   } else {
     const col = d.options.length > 2 || d.options.some((o) => o.description);
     buttons = `<div class="btns${col ? ' col' : ''}"${col ? '' : ' data-fit="stack"'}>${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
@@ -583,11 +583,8 @@ export function aaHtml(a: AutoAnswer) {
   const q = `${esc(oneLine(a.question, 140))} → <em>${esc(a.answer)}</em>${a.corrected ? ` <ins>${esc(a.corrected.answer)}</ins>` : ''}`;
   const fix = editing ? `<div class="fix">
       <input class="inp" data-keep="aa-${a.id}" data-enter="aa-send" data-id="${a.id}" placeholder="${t('aa.placeholder')}">
-      <div class="radios" role="radiogroup" aria-label="${t('aa.scope')}">
-        <label><input type="radio" name="scope-${a.id}" value="once" checked>${t('aa.once')}</label>
-        <label><input type="radio" name="scope-${a.id}" value="preference">${t('aa.pref')}</label>
-      </div>
-      <div class="btns"><button class="btn" data-action="aa-cancel">${t('cancel')}</button><button class="btn def" data-action="aa-send" data-id="${a.id}">${t('aa.send')}</button></div>
+      ${segc(`scope-${a.id}`, 'once', [{ value: 'once', label: t('aa.once') }, { value: 'preference', label: t('aa.pref') }], t('aa.scope'), `data-keep="aa-scope-${a.id}"`, 'seg-fill')}
+      <div class="btns"><button class="btn" data-action="aa-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="aa-send" data-id="${a.id}">${t('aa.send')}</button></div>
     </div>` : '';
   return `<div class="aa${sel}${editing ? ' editing' : ''}${corrected}" id="aa-${a.id}" data-ctx="aa" data-id="${a.id}">
     <div class="src">${sym('s-check', 'c-green')}<span>${esc(a.workerId)}, ${hhmm(a.createdAt)}</span></div>
@@ -595,7 +592,7 @@ export function aaHtml(a: AutoAnswer) {
     <div class="why">${esc(a.basis)}</div>
     ${a.corrected ? `<div class="fixed">${a.corrected.scope === 'preference' ? t('aa.fixedPref') : t('aa.fixedOnce')}</div>` : ''}
     ${fix}
-    <button class="hov" data-action="aa-edit" data-id="${a.id}" data-tip="${t('aa.correct')}" aria-label="${t('aa.correct')}"><svg><use href="#s-pencil"/></svg></button>
+    <button class="btn btn-icon btn-sm hov" data-action="aa-edit" data-id="${a.id}" data-tip="${t('aa.correct')}" aria-label="${t('aa.correct')}"><svg><use href="#s-pencil"/></svg></button>
   </div>`;
 }
 
@@ -607,7 +604,7 @@ export function sugHtml(sg: MemorySuggestion) {
   const body = editing
     ? `<input class="inp" data-keep="sug-${sg.id}" data-enter="sug-save" data-id="${sg.id}" value="${esc(sg.text)}" placeholder="${t('sug.placeholder')}" aria-label="${t('sug.placeholder')}">`
     : `<div class="q">${esc(sg.text)}</div>`;
-  const save = `<button class="btn def" data-action="sug-save" data-id="${sg.id}">${t('save')}</button>`;
+  const save = `<button class="btn btn-primary" data-action="sug-save" data-id="${sg.id}">${t('save')}</button>`;
   const btns = editing
     ? `<button class="btn" data-action="sug-cancel">${t('cancel')}</button>${save}`
     : `<button class="btn" data-action="sug-dismiss" data-id="${sg.id}">${t('sug.dismiss')}</button><button class="btn" data-action="sug-edit" data-id="${sg.id}">${t('sug.edit')}</button>${save}`;
@@ -667,15 +664,15 @@ export function awayHtml() {
   const d = away;
   const span = d.minutes >= 60 * 24 ? t('away.since', { t: when(d.since) }) : tookText(d.minutes);
   // The counts are pills in the board's colours: red is a failure only, and "waiting for you" has the ask colour.
-  const counts = ([['red', d.failed.length, 'away.failed'], ['green', d.finished.length, 'away.finished'], ['purple', d.merged.length, 'away.merged'], ['ask', d.waiting, 'away.waiting']] as const)
-    .filter(([, n]) => n).map(([c, n, key]) => `<i class="pill ${c}">${t(key, { n })}</i>`).join('');
+  const counts = ([['danger', d.failed.length, 'away.failed'], ['success', d.finished.length, 'away.finished'], ['review', d.merged.length, 'away.merged'], ['ask', d.waiting, 'away.waiting']] as const)
+    .filter(([, n]) => n).map(([c, n, key]) => `<i class="pill" data-tone="${c}">${t(key, { n })}</i>`).join('');
   const arrive = awayArrive ? ' arrive' : '';
   awayArrive = false;
   const rows = awayRows(d);
   const total = new Set([...d.failed, ...d.merged, ...d.finished].map((x) => x.id)).size;
-  const pill = { failed: ['red', taskStatus('failed')], merged: ['purple', t('pr.merged')], finished: ['green', taskStatus('done')] } as const;
-  return `<div class="sect${arrive}" id="sec-away"><div class="ins-h"><b role="heading" aria-level="2">${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="clear-x always" data-action="away-dismiss" data-tip="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
-    <div class="group"><div class="mini away-counts">${counts}</div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" data-focus="away:${esc(x.id)}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill ${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
+  const pill = { failed: ['danger', taskStatus('failed')], merged: ['review', t('pr.merged')], finished: ['success', taskStatus('done')] } as const;
+  return `<div class="sect${arrive}" id="sec-away"><div class="ins-h"><b role="heading" aria-level="2">${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="btn btn-icon btn-sm clear-x always" data-action="away-dismiss" data-tip="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
+    <div class="group"><div class="mini away-counts">${counts}</div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" data-focus="away:${esc(x.id)}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill" data-tone="${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
 }
 
 export function renderChatInspector() {
@@ -687,9 +684,9 @@ export function renderChatInspector() {
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
     // Each tab has an icon for a narrow sidebar: when the labels do not fit, the tabs not chosen show only that (data-fit).
-    const tab = (v: 'inbox' | 'memo' | 'auto' | 'script', label: string, icon: string, n = 0) => `<button type="button" role="tab" id="ins-tab-${v}" aria-controls="ins-panel" data-action="ins-tab" data-v="${v}" data-tip="${label}" data-tip-clip aria-selected="${ui.insTab === v}" tabindex="${ui.insTab === v ? 0 : -1}"${ui.insTab === v ? ' class="on"' : ''}>${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
+    const tab = (v: 'inbox' | 'memo' | 'auto' | 'script', label: string, icon: string, n = 0) => `<button type="button" role="tab" id="ins-tab-${v}" aria-controls="ins-panel" data-action="ins-tab" data-v="${v}" data-tip="${label}" data-tip-clip aria-selected="${ui.insTab === v}" tabindex="${ui.insTab === v ? 0 : -1}">${sym(icon, 'ti')}<span class="tl">${label}</span>${n ? `<span class="count"${v === 'inbox' ? ' id="tab-count"' : ''}>${n}</span>` : ''}</button>`;
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
-    const tabs = `<div class="segc ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}${tab('script', t('ins.tabScript'), 's-term')}</div>`;
+    const tabs = `<div class="seg ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}${tab('script', t('ins.tabScript'), 's-term')}</div>`;
     // The selected card is placed inside the draw, so the typed text and the focus go back to where it ends up.
     const draw = (list: string) => { root.innerHTML = tabs + colsHtml(list, ` role="tabpanel" id="ins-panel" aria-labelledby="ins-tab-${ui.insTab}"`); placeDetail(root); };
     if (ui.insTab === 'memo') return draw(memosHtml());
@@ -707,13 +704,13 @@ export function renderChatInspector() {
     html += bundlesHtml();
     if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" data-tip="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.items.length) {
-      html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.results')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="result" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
+      html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.results')}</b><span class="gap"></span><button class="btn btn-icon btn-sm clear-x" data-action="clear" data-kind="result" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
         const lk = resultLinks(x);
         return `<div class="res" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span></div>`;
       }).join('')}${results.more}</div></div>`;
     }
-    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.auto')}</b><span class="gap"></span><button class="clear-x" data-action="clear" data-kind="auto" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
+    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.auto')}</b><span class="gap"></span><button class="btn btn-icon btn-sm clear-x" data-action="clear" data-kind="auto" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
     if (!html) {
       const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
       html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
@@ -740,7 +737,7 @@ function memoSlot(m: Memo) {
 export function memoHtml(m: Memo, sel = true) {
   if (ui.memoEdit === m.id) {
     return `<div class="memo${sel ? ' sel' : ''}"><textarea class="inp" data-keep="memo-${m.id}" data-enter="memo-save" data-id="${m.id}" aria-label="${t('memo.edit')}">${esc(m.text)}</textarea>
-      <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn def" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
+      <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
   }
   if (!sel) {
     return `<div class="memo" data-memo="${m.id}" data-action="pick" data-tab="memo" data-id="${m.id}" data-focus="card-memo-${m.id}" tabindex="0"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" data-tip="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time></span></div>`;
@@ -763,10 +760,10 @@ export function comparisonsHtml() {
   if (!groups.length) return '';
   const cards = groups.map((g) => `<div class="cmp">${g.tasks.map((x) => {
     const w = worker(x.workerId);
-    const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.status === 'done' ? ' green' : '';
-    return `<div class="cmp-side"><div class="cmp-h"><b>${esc(x.workerId ?? '')}</b><small>${esc(w ? modelLabel(w.model) : '')}</small><span class="pill${cls}">${taskLabel(x)}</span></div>
+    const tn = x.status === 'failed' && !x.stopped ? 'danger' : x.status === 'running' ? 'accent' : x.status === 'done' ? 'success' : '';
+    return `<div class="cmp-side"><div class="cmp-h"><b>${esc(x.workerId ?? '')}</b><small>${esc(w ? modelLabel(w.model) : '')}</small><span class="pill"${pillTone(tn)}>${taskLabel(x)}</span></div>
       ${x.summary ? `<p>${inline(oneLine(x.summary, 220))}</p>` : ''}${spendHtml(x.spend, true)}
-      <div class="cmp-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="cmp-changes" data-id="${esc(x.workerId)}">${t('cmp.changes')}</button>` : ''}<span class="gap"></span><button class="btn def" data-action="cmp-pick" data-id="${esc(x.id)}"${canPick(x) ? '' : ' disabled'}>${t('cmp.pick')}</button></div></div>`;
+      <div class="cmp-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="cmp-changes" data-id="${esc(x.workerId)}">${t('cmp.changes')}</button>` : ''}<span class="gap"></span><button class="btn btn-primary" data-action="cmp-pick" data-id="${esc(x.id)}"${canPick(x) ? '' : ' disabled'}>${t('cmp.pick')}</button></div></div>`;
   }).join('')}</div>`).join('');
   const title = (g: (typeof groups)[number]) => esc(g.tasks[0].title.replace(/ \([^()]*\)$/, ''));
   return `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('cmp.title')}</b><small>${groups.length === 1 ? title(groups[0]) : groups.length}</small></div><div class="group">${cards}</div></div>`;
@@ -785,12 +782,12 @@ export function bundlesHtml() {
     const busy = ui.merging.has(key), sure = ui.mergeAsk === key;
     const n = bundleMergeOrder(b).length;
     const rows = b.tasks.map((x, i) => {
-      const cls = x.status === 'failed' && !x.stopped ? ' red' : x.status === 'running' ? ' blue' : x.prState === 'MERGED' ? ' purple' : x.status === 'pr_open' ? ' pr-open' : x.status === 'done' ? ' green' : '';
+      const tn = x.status === 'failed' && !x.stopped ? 'danger' : x.status === 'running' ? 'accent' : x.prState === 'MERGED' ? 'review' : x.status === 'pr_open' ? 'pr-open' : x.status === 'done' ? 'success' : '';
       const label = x.prState === 'MERGED' ? t('pr.merged') : taskLabel(x);
       return `<div class="mini bnd"><b><span class="bnd-n">${i + 1}</span>${esc(x.repo ?? t('general'))}</b><span>${esc(x.title)}</span>
-        <span class="bnd-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(x.workerId)}">${esc(x.workerId)}</button>` : ''}${x.prUrl ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}<span class="gap"></span><i class="pill${cls}">${label}</i></span></div>`;
+        <span class="bnd-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(x.workerId)}">${esc(x.workerId)}</button>` : ''}${x.prUrl ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}<span class="gap"></span><i class="pill"${pillTone(tn)}>${label}</i></span></div>`;
     }).join('');
-    const btn = b.ready || busy ? `<div class="mini bnd-act"><button class="btn def" data-action="bundle-merge" data-id="${esc(b.name)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'bundle.mergeSure' : 'bundle.merge', { n })}</button></div>` : '';
+    const btn = b.ready || busy ? `<div class="mini bnd-act"><button class="btn btn-primary" data-action="bundle-merge" data-id="${esc(b.name)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'bundle.mergeSure' : 'bundle.merge', { n })}</button></div>` : '';
     return `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('bundle.title')}</b><small>${esc(b.name)}</small></div><div class="group">${rows}${btn}</div></div>`;
   }).join('');
 }
@@ -837,7 +834,7 @@ export function autosHtml() {
   // moves nothing and is done in place, without drawing the tab again (app.ts, "auto-kind").
   const add = `<div class="auto-add${ui.autoKind === 'merged' ? ' merged' : ''}"><textarea class="inp" id="auto-prompt" data-keep="auto-prompt" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}"></textarea>
     <div class="auto-when">${segc('auto-kind', ui.autoKind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}<input class="inp auto-daily" id="auto-time" data-keep="auto-time" value="09:00" inputmode="numeric" aria-label="${t('auto.time')}"></div>
-    <div class="auto-when"><label class="auto-wk auto-daily">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label><span class="gap"></span><button class="btn def" data-action="auto-add">${t('auto.add')}</button></div></div>${formErrHtml('auto')}`;
+    <div class="auto-when"><label class="auto-wk auto-daily">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label><span class="gap"></span><button class="btn btn-primary" data-action="auto-add">${t('auto.add')}</button></div></div>${formErrHtml('auto')}`;
   const list = S!.automations;
   if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
   ui.autoSel = keepPick(list.map((a) => a.id), ui.autoSel, 'new');
@@ -866,7 +863,7 @@ export async function addAuto() {
 /** Why the last add failed, under its field, until it is added or dismissed. */
 export function formErrHtml(key: 'memo' | 'auto') {
   const msg = ui.formErr[key];
-  return msg ? `<div class="ferr" role="alert"><span>${esc(t('err.notSent', { msg }))}</span><button type="button" class="clear-x always" data-action="form-err-x" data-id="${key}" data-tip="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg><use href="#s-x"/></svg></button></div>` : '';
+  return msg ? `<div class="ferr" role="alert"><span>${esc(t('err.notSent', { msg }))}</span><button type="button" class="btn btn-icon btn-sm clear-x always" data-action="form-err-x" data-id="${key}" data-tip="${t('err.dismiss')}" aria-label="${t('err.dismiss')}"><svg><use href="#s-x"/></svg></button></div>` : '';
 }
 
 /** The Memos tab: a field to add one, then the memos shared with agents and the user's own; one of them is selected. */
@@ -875,7 +872,7 @@ export function memosHtml() {
   const ids = [...shared, ...mine].map((m) => m.id);
   ui.memoSel = keepPick(ids, ui.memoSel, ui.memoEdit ?? ids[0] ?? null);
   const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoSlot).join('')}</div></div>` : '';
-  const add = `<div class="memo-add"><textarea class="inp" id="memo-new" rows="1" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"></textarea><button class="btn" data-action="memo-add" data-tip="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
+  const add = `<div class="memo-add"><textarea class="inp" id="memo-new" rows="1" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"></textarea><button class="btn btn-icon" data-action="memo-add" data-tip="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
   const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);
   return add + formErrHtml('memo') + (body || `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-doc"/></svg><b>${t('memo.empty')}</b></div>`);
 }

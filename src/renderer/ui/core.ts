@@ -273,6 +273,9 @@ export function skel(n: number, kind: 'mini' | 'file') {
 /** A label that starts a row starts with a capital. */
 export const cap1 = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** A pill's tone as the attribute the stylesheet reads; none for the neutral pill. */
+export const pillTone = (v: string) => (v ? ` data-tone="${v}"` : '');
+
 export function sym(id: string, cls = '') {
   return `<svg class="sym ${cls}" aria-hidden="true"><use href="#${id}"/></svg>`;
 }
@@ -314,6 +317,12 @@ export function k(n: number) { return `${Math.round(n / 1000)}K`; }
 export function ring(frac: number) {
   const v = Math.max(0, Math.min(100, frac * 100)).toFixed(1);
   return `<svg class="ring" viewBox="0 0 20 20" aria-hidden="true"><circle class="trk" cx="10" cy="10" r="7.5"/><circle class="val" cx="10" cy="10" r="7.5" pathLength="100" stroke-dasharray="${v} 100" transform="rotate(-90 10 10)"/></svg>`;
+}
+
+/** A bar meter's `data-level` attribute: the same four steps as the rings; none while it is in the first one. */
+export function meterLevel(v: number | null) {
+  const l = v === null || v <= 30 ? '' : v <= 50 ? 'caution' : v <= 80 ? 'warn' : 'critical';
+  return l ? ` data-level="${l}"` : '';
 }
 
 export function lv(v: number | null) {

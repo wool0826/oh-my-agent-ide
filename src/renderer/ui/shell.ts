@@ -111,11 +111,11 @@ export function shellBlockHtml(c: ChatItem) {
   const where = r.repo || t('shell.home');
   // A saved script can be several lines: its name, then its first line here, all of it in the tooltip.
   const lines = r.cmd.split('\n');
-  const pill = r.running ? `<span class="pill blue"><i class="sh-spin" aria-hidden="true"></i>${t('shell.running')}</span>`
-    : r.stopped ? `<span class="pill gray">${t('shell.stopped')}</span>`
-    : `<span class="pill ${r.code === 0 ? 'green' : 'red'}">${t('shell.exit', { n: r.code ?? '?' })}</span>`;
+  const pill = r.running ? `<span class="pill" data-tone="accent"><i class="sh-spin" aria-hidden="true"></i>${t('shell.running')}</span>`
+    : r.stopped ? `<span class="pill">${t('shell.stopped')}</span>`
+    : `<span class="pill" data-tone="${r.code === 0 ? 'success' : 'danger'}">${t('shell.exit', { n: r.code ?? '?' })}</span>`;
   const time = r.running ? `<time data-start="${esc(r.startedAt)}">${shellClock(Date.now() - Date.parse(r.startedAt))}</time>` : `<time>${shellTook(r.ms)}</time>`;
-  const stop = r.running ? `<button type="button" class="btn" data-action="shell-stop" data-id="${esc(c.id)}" aria-label="${esc(t('shell.stopAria', { cmd: r.cmd }))}">${t('shell.stop')}</button>` : '';
+  const stop = r.running ? `<button type="button" class="btn btn-sm" data-action="shell-stop" data-id="${esc(c.id)}" aria-label="${esc(t('shell.stopAria', { cmd: r.cmd }))}">${t('shell.stop')}</button>` : '';
   const fold = (more ? `<button type="button" class="sh-fold" data-action="shell-fold" data-id="${esc(c.id)}" aria-expanded="${open}">${open ? t('shell.fewer') : t('shell.earlier', { n: above })}</button>` : '')
     + ((open || !more) && above > 0 ? `<span class="sh-cut">${t('shell.cut', { n: above })}</span>` : '');
   const dlv = r.sent === 'sent' ? `<span class="sh-dlv ok">${sym('s-check')}${t('shell.sent')}</span>`
