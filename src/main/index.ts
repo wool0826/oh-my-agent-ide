@@ -176,7 +176,8 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1320,
     height: 860,
-    minWidth: 1040,
+    // Narrower than 1100 the right sidebar becomes a drawer, narrower than 960 the left one a rail (I1).
+    minWidth: 760,
     minHeight: 640,
     title: 'Oh My Agent IDE',
     // Without it Windows has no icon for the taskbar button (a blank page under `electron .`).

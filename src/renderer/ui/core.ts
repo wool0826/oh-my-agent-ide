@@ -169,6 +169,10 @@ export const ui = {
   /** The left sidebar is a rail of glyphs, and the right one is hidden (kept across launches). */
   sideMin: stored('oma.sideMin'),
   insMin: stored('oma.insMin'),
+  /** A narrow window (I1, shared/panelWidth narrowLayout): the right sidebar is a drawer over the chat, the left one a
+   *  rail. While so, sideMin and insMin are not kept: the stored choice comes back once the window is wide again. */
+  drawer: false,
+  rail: false,
   /** "Done today" in the sidebar shows its latest tasks (kept across launches). */
   doneOpen: stored('oma.doneOpen'),
   /** The chat view's right sidebar shows the inbox or the memos; the memo being edited, and the one asked about before deleting. */

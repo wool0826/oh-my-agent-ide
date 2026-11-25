@@ -3,6 +3,7 @@
 import { clampWidth, fitWidths, keyWidth, maxWidth, PANELS, parseWidth, type Layout, type Panel, type Widths } from '../../shared/panelWidth';
 import { $, t } from './core';
 import { glideAll } from './settings';
+import { applyNarrow } from './sidebar';
 
 const KEY: Record<Panel, string> = { side: 'oma.sideW', ins: 'oma.insW' };
 const VAR: Record<Panel, string> = { side: '--sidebar-w', ins: '--inspector-w' };
@@ -21,7 +22,7 @@ const want: Widths = { side: read('side'), ins: read('ins') };
 
 function layout(): Layout {
   const win = $('#win');
-  return { winW: win.clientWidth || window.innerWidth, sideMin: win.classList.contains('side-min'), insMin: win.classList.contains('ins-min') };
+  return { winW: win.clientWidth || window.innerWidth, sideMin: win.classList.contains('side-min'), insMin: win.classList.contains('ins-min') || win.classList.contains('ins-over') };
 }
 
 const shownWidth = (p: Panel) => fitWidths(want, layout())[p];
@@ -101,6 +102,7 @@ export function initResize() {
       save(p);
     });
   }
-  window.addEventListener('resize', () => { still(); applyWidths(); });
+  window.addEventListener('resize', () => { still(); if (!applyNarrow()) applyWidths(); });
+  applyNarrow();
   applyWidths();
 }
