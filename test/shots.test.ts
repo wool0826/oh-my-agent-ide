@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isImagePath, reportShots, shotOf, shotPath, shotUrl } from '../src/shared/shots';
+import { isImagePath, isLocalPath, reportShots, shotOf, shotPath, shotUrl } from '../src/shared/shots';
 
 test('shots: image files are told apart from the rest by their extension', () => {
   for (const p of ['a.png', 'B.PNG', 'c.jpg', 'd.jpeg', 'e.gif', 'f.webp', ' g.png ']) assert.equal(isImagePath(p), true, p);
@@ -35,6 +35,19 @@ test('shots: images without a role keep the report\'s order, and a path named tw
   assert.deepEqual(shots.map((s) => [s.path, s.role]), [['/r/b.png', null], ['/r/a.png', null], ['/r/a-before.png', 'before']]);
   assert.deepEqual(rest, []);
 });
+
+test('shots: only a local path from the root is shown; a relative or network one stays a file link', () => {
+  for (const p of ['C:\\a\\b-after.png', 'd:/a/b.png', '/home/me/a.png']) assert.equal(rejected(p), false, p);
+  for (const p of ['shots/a-before.png', '.\\a.png', '\\\\host\\share\\a.png', '//host/share/a.png', 'C:a.png', '/tmp/../etc/a.png', 'C:\\x\\..\\a.png']) assert.equal(rejected(p), true, p);
+  assert.equal(shotPath(shotUrl('\\\\host\\share\\a.png')), null);
+  assert.equal(shotPath(shotUrl('/tmp/../a.png')), null);
+});
+
+function rejected(p: string) {
+  const { shots, rest } = reportShots([p]);
+  assert.equal(isLocalPath(p), shots.length === 1, p);
+  return rest.length === 1;
+}
 
 test('shots: the window address of an image file reads back to the same path', () => {
   for (const p of ['C:\\Users\\me\\AppData\\Local\\Temp\\chat before #1.png', '/home/me/shots/ä-after.png']) {

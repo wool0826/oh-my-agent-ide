@@ -29,15 +29,15 @@ flow('a report\'s screenshots show as before/after thumbnails that open at full 
   const gone = path.join(dir, 'inbox-after.png');
 
   // The report names the after shot first; the card still puts the before one ahead of it.
-  await app.say(['@fake task - Polish the card', '@@fake result Polished the card.', `@@fake file ${after}`, `@@fake file ${note}`, `@@fake file ${before}`, `@@fake file ${gone}`].join('\n'));
+  await app.say(['@fake task - Polish the card', '@@fake result Polished the card.', `@@fake file ${after}`, `@@fake file ${note}`, `@@fake file ${before}`, `@@fake file ${gone}`, '@@fake file shots/rel-after.png'].join('\n'));
   await app.until("window.ide.call('state').then((s) => s.tasks.some((t) => t.status === 'done'))", 'the task done');
   await app.click('button[data-v="worker"]');
   await app.until("!!document.querySelector('#wk-list .wrow [data-action=\"select-worker\"]')", 'the Worker in the list');
   await app.click('#wk-list .wrow [data-action="select-worker"]');
   await app.until(`document.querySelectorAll('${SHOT}').length === 3`, 'three thumbnails on the result card');
   assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${SHOT}')].map((b) => b.innerText.trim())`), ['Before · card', 'After · card', 'After · inbox']);
-  // Images are thumbnails, not file links; the note still is one.
-  assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#ws-thread .bub.wk .rep-l a')].map((a) => a.innerText.trim())"), ['notes.md']);
+  // Images are thumbnails, not file links; the note still is one, and so is an image named by a relative path.
+  assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#ws-thread .bub.wk .rep-l a')].map((a) => a.innerText.trim())"), ['notes.md', 'rel-after.png']);
   await app.until(`[...document.querySelectorAll('${SHOT}:not(.broken) img')].filter((i) => i.complete && i.naturalWidth > 0).length === 2`, 'both pictures loaded from disk');
   // A file that is not there keeps its label, without a broken picture.
   await app.until(`document.querySelectorAll('${SHOT}.broken').length === 1 && document.querySelector('${SHOT}.broken').innerText.includes('inbox')`, 'the missing file marked');

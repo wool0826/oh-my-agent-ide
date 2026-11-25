@@ -14,15 +14,24 @@ export function shotsOf(files: string[]) {
   return { html: shots.length ? `<div class="shots">${shots.map(thumb).join('')}</div>` : '', rest };
 }
 
+/** Files that failed to load, so a redrawn card does not try them again. */
+const broken = new Set<string>();
+
 function thumb(s: Shot) {
   const l = label(s);
+  if (broken.has(s.path)) return `<span class="shot broken" data-tip="${esc(s.path)}"><img alt=""><span class="shot-l">${esc(l)}</span></span>`;
   return `<button type="button" class="shot" data-action="shot-open" data-path="${esc(s.path)}" data-label="${esc(l)}" data-tip="${esc(s.path)}" aria-label="${esc(`${l}, ${base(s.path)}`)}"><img src="${esc(shotUrl(s.path))}" alt="" loading="lazy" draggable="false"><span class="shot-l">${esc(l)}</span></button>`;
 }
 
 /** A thumbnail whose file is gone keeps its place and its label, without a broken image. */
 export function markBrokenShot(e: Event) {
   const img = e.target;
-  if (img instanceof HTMLImageElement) img.closest('.shot')?.classList.add('broken');
+  const el = img instanceof HTMLImageElement ? img.closest<HTMLElement>('.shot') : null;
+  if (!el?.dataset.path) return;
+  broken.add(el.dataset.path);
+  el.classList.add('broken');
+  el.removeAttribute('data-action');
+  el.setAttribute('aria-disabled', 'true');
 }
 
 let items: Item[] = [];
@@ -37,7 +46,7 @@ export function shotOpen() {
 export function openShot(el: HTMLElement) {
   const root = $('#dlg');
   if (!root.hidden && !shotOpen()) return;
-  const all = [...(el.closest('.shots')?.querySelectorAll<HTMLElement>('.shot') ?? [el])];
+  const all = [...(el.closest('.shots')?.querySelectorAll<HTMLElement>('.shot[data-action="shot-open"]') ?? [el])];
   items = all.map((x) => ({ path: x.dataset.path ?? '', label: x.dataset.label ?? '' }));
   at = Math.max(0, all.indexOf(el));
   if (!shotOpen()) layerOpen('shot');
