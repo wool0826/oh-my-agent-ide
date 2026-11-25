@@ -1,17 +1,9 @@
 // End-to-end flow for a report's screenshots (T-0102): the images a Worker names on FILE: lines show as before/after
 // thumbnails on its result card and open at full size over the window. Run with `npm run e2e`.
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { launch } from './harness.mjs';
-
-function flow(name, opts, fn) {
-  test(name, { timeout: 120_000 }, async () => {
-    const app = await launch(opts);
-    try { await fn(app); } finally { await app.stop(); }
-  });
-}
+import { flow } from './harness.mjs';
 
 const SHOT = '#ws-thread .bub.wk .shots .shot';
 const DLG = '#dlg:not([hidden]) .shot-view';

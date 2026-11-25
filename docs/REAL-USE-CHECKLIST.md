@@ -81,7 +81,7 @@ The hands-on rows in run order. About four and a half hours of hands-on time; th
 
 ## All rows
 
-The original 45 rows with their tag, and where each one is run: a pass order above, or the end-to-end flow that already covers it (in `test/e2e/flows.e2e.mjs`; "F2" means not covered yet).
+The original 45 rows with their tag, and where each one is run: a pass order above, or the end-to-end flow that already covers it (in `test/e2e/*.e2e.mjs`; "F2" means not covered yet).
 
 ### 1. A real task from start to finish
 

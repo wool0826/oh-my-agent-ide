@@ -1,15 +1,7 @@
 // End-to-end flow for the look back in a Worker's Summary tab (T-0112, option A of T-0108): each task's time line and
 // permission decisions on its card, and the last seven days of every Worker behind the switch. Run with `npm run e2e`.
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './harness.mjs';
-
-function flow(name, opts, fn) {
-  test(name, { timeout: 120_000 }, async () => {
-    const app = await launch(opts);
-    try { await fn(app); } finally { await app.stop(); }
-  });
-}
+import { flow } from './harness.mjs';
 
 const DEC = '#chat-ins .dec';
 const answer = (val) => `${DEC} [data-action="answer"][data-val="${val}"]`;

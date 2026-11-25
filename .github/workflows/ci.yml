@@ -14,10 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Types, unit tests, the bundle and packaging, once per system.
   check:
-    name: ${{ matrix.os }}
+    name: check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -32,21 +33,40 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # The app itself, with fake agents and a stand-in for gh: no account, no network.
+      # Packages the app without making an installer or signing it: proves the bundle can be put together here.
+      - name: Package (unpacked)
+        run: npx electron-builder --dir
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+  # The app itself, with fake agents and a stand-in for gh: no account, no network. test/e2e/shard.mjs deals the
+  # test/e2e/*.e2e.mjs files out to the shards by their number of flows, so a new file joins one without a change here.
+  e2e:
+    name: e2e (${{ matrix.os }}, ${{ matrix.shard }}/3)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
       - name: End-to-end flows
-        run: npm run e2e
+        run: node test/e2e/shard.mjs ${{ matrix.shard }}/3
         timeout-minutes: 8
       # A failed flow leaves a picture of the window, its page and the app's logs (test/e2e/harness.mjs).
       - name: Keep what failed end-to-end flows showed
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-failures-${{ matrix.os }}
+          name: e2e-failures-${{ matrix.os }}-${{ matrix.shard }}
           path: test-results/e2e/
           if-no-files-found: ignore
           retention-days: 14
-      # Packages the app without making an installer or signing it: proves the bundle can be put together here.
-      - name: Package (unpacked)
-        run: npx electron-builder --dir
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
