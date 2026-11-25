@@ -67,6 +67,7 @@ const RISK: Partial<Record<Key, Key>> = {
   'ask.repoDelete': 'risk.repoDelete',
   'ask.apiDelete': 'risk.apiDelete',
   'ask.rmHome': 'risk.rmHome',
+  'ask.unread': 'risk.unread',
 };
 
 /**

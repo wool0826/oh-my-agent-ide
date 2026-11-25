@@ -146,8 +146,13 @@ function rmHome(c: ShellCmd): boolean {
   // cmd's own removers take /s and /q; to rm and Remove-Item a word like /s is a path.
   const cmd = c.prog !== 'rm' && c.prog !== 'remove-item' && c.prog !== 'ri';
   const flag = (a: string) => /^--?[A-Za-z-]+$/.test(a) || (cmd && /^\/[A-Za-z]$/.test(a));
-  const recursive = c.args.some((a) => /^-[A-Za-z]*r[A-Za-z]*$/i.test(a) || a === '--recursive' || (cmd && /^\/s$/i.test(a)));
-  return recursive && c.args.some((a) => !flag(a) && ROOT_OR_HOME.test(a));
+  // PowerShell also takes a parameter's value after a colon: -Path:C:\, -Recurse:$true. A switch set to $false is not given.
+  const args = c.args.flatMap((a) => {
+    const m = /^(-[A-Za-z]+):(.*)$/.exec(a);
+    return !m ? [a] : /^\$false$/i.test(m[2]) ? [] : [m[1], m[2]];
+  });
+  const recursive = args.some((a) => /^-[A-Za-z]*r[A-Za-z]*$/i.test(a) || a === '--recursive' || (cmd && /^\/s$/i.test(a)));
+  return recursive && args.some((a) => !flag(a) && ROOT_OR_HOME.test(a));
 }
 
 /**
@@ -155,8 +160,9 @@ function rmHome(c: ShellCmd): boolean {
  * The PreToolUse hook returns 'ask', canUseTool is called, and it posts a decision.
  * `cmd` looks at one command of the line as src/shared/shellWords.ts reads it, so a rule holds in Bash and in
  * PowerShell alike and however the command is wrapped. `text` looks at the whole line: SQL is asked about wherever it stands.
+ * `unread` is a line nested too deep to read to its end: nothing can be said for what it runs.
  */
-const RULES: { why: AskRule; cmd?: (c: ShellCmd) => boolean; text?: RegExp }[] = [
+const RULES: { why: AskRule; cmd?: (c: ShellCmd) => boolean; text?: RegExp; unread?: true }[] = [
   { why: 'ask.forcePush', cmd: (c) => forcePush(c) || apiForce(c) },
   { why: 'ask.pushMain', cmd: (c) => pushMain(c) || apiMain(c) },
   { why: 'ask.drop', text: /\b(drop|truncate)\s+(table|database|schema)\b/i },
@@ -170,6 +176,8 @@ const RULES: { why: AskRule; cmd?: (c: ShellCmd) => boolean; text?: RegExp }[] =
   { why: 'ask.repoDelete', cmd: repoDelete },
   { why: 'ask.apiDelete', cmd: apiDelete },
   { why: 'ask.rmHome', cmd: rmHome },
+  // Last, so that a rule found in the part that was read names the reason.
+  { why: 'ask.unread', unread: true },
 ];
 
 /** Prefix of the hook's reason; the permission handler strips it. */
@@ -190,8 +198,8 @@ export function alwaysAskRule(tool: string, input: any, off: readonly string[] =
   const shell = shellOf(tool);
   if (!shell) return null;
   const text = String(input?.command ?? '');
-  const cmds = readShell(text, shell).cmds;
-  for (const r of RULES) if (!off.includes(r.why) && (r.text?.test(text) || (r.cmd && cmds.some(r.cmd)))) return r.why;
+  const line = readShell(text, shell);
+  for (const r of RULES) if (!off.includes(r.why) && (r.text?.test(text) || (r.cmd && line.cmds.some(r.cmd)) || (r.unread && line.unread))) return r.why;
   return null;
 }
 

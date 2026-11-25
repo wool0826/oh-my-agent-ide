@@ -75,4 +75,20 @@ test('shell words: a line is one command only when nothing else can run in it', 
     assert.equal(single(line, 'bash'), null, line);
   for (const line of ['a; b', 'a | b', 'a > f', 'a "$(b)"', 'a (b)', 'a { b }', '& { a }', 'iex a', 'Start-Process a', 'powershell -Command a', 'cmd /c a', 'a `\n; b'])
     assert.equal(single(line, 'powershell'), null, line);
+  assert.equal(single('git -c alias.status=!sh status', 'bash'), null);
+});
+
+test('shell words: a line nested past what is read says so, and one within it does not', () => {
+  const unread = (line: string, shell: Shell) => readShell(line, shell).unread;
+  assert.equal(unread('echo "$(basename "$(dirname "$(pwd)")")"', 'bash'), false);
+  assert.equal(unread(`echo ${'$('.repeat(30)}date${')'.repeat(30)}`, 'bash'), false);
+  assert.equal(unread(`echo ${'$('.repeat(40)}date${')'.repeat(40)}`, 'bash'), true);
+  assert.equal(unread('(' .repeat(50000), 'bash'), true);
+  assert.equal(unread('{ '.repeat(50000), 'powershell'), true);
+  assert.equal(unread(`${'nohup '.repeat(12)}make`, 'bash'), false);
+  assert.equal(unread(`${'nohup '.repeat(30)}make`, 'bash'), true);
+  assert.deepEqual(cmds(`${'nohup '.repeat(12)}make`, 'bash'), ['make']);
+  // Nothing after the last wrapper is nothing left unread.
+  assert.equal(unread('bash -c ""', 'bash'), false);
+  assert.equal(unread('', 'bash'), false);
 });

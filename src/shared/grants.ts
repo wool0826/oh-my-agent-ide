@@ -6,7 +6,7 @@ import { readShell, shellOf } from './shellWords';
 /** The always-ask rules, by their label key. Each can be switched off in Settings; order is the order shown. */
 export const ASK_RULES = [
   'ask.forcePush', 'ask.pushMain', 'ask.merge', 'ask.drop', 'ask.delete', 'ask.prodDb',
-  'ask.k8s', 'ask.infra', 'ask.deploy', 'ask.repoDelete', 'ask.apiDelete', 'ask.rmHome',
+  'ask.k8s', 'ask.infra', 'ask.deploy', 'ask.repoDelete', 'ask.apiDelete', 'ask.rmHome', 'ask.unread',
 ] as const;
 export type AskRule = (typeof ASK_RULES)[number];
 

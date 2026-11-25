@@ -19,7 +19,7 @@ test('a line that chains, pipes, redirects or substitutes is asked about every t
 
 test('a quoted separator is part of an argument, and what is put before a command is not its kind', () => {
   assert.equal(key('Bash', { command: 'git commit -m "fix; done | really"' }), 'bash:git commit');
-  assert.equal(key('Bash', { command: 'git -C ../other -c core.editor=true status' }), 'bash:git status');
+  assert.equal(key('Bash', { command: 'git -C ../other --no-pager status' }), 'bash:git status');
   assert.equal(key('Bash', { command: 'timeout 30 npm test' }), 'bash:npm test');
   assert.equal(key('Bash', { command: 'env CI=1 npm test' }), 'bash:npm test');
 });
@@ -27,6 +27,12 @@ test('a quoted separator is part of an argument, and what is put before a comman
 test('a command handed to something else as text is asked about every time', () => {
   for (const command of ['sudo rm x', 'bash -c "npm test"', 'xargs rm', 'eval npm test', 'cmd //c dir', 'pwsh -c "npm test"'])
     assert.equal(grantScope('Bash', { command }), null, command);
+});
+
+test('git told by an option to run something else is not the kind its subcommand names', () => {
+  // A yes to `git status` must not cover a line whose config makes git start another program.
+  for (const command of ['git -c alias.status=!sh status', 'git -c core.fsmonitor=./x status', 'git -C repo -c core.pager=./x log', 'git --config-env=core.pager=X log', 'git --config-env core.pager=X log', 'git --exec-path=/tmp/x status'])
+    for (const tool of ['Bash', 'PowerShell']) assert.equal(grantScope(tool, { command }), null, `${tool}: ${command}`);
 });
 
 test('a PowerShell command is the same kind as others of its program and subcommand, not as every PowerShell command', () => {

@@ -34,14 +34,21 @@ export interface ShellLine {
    * wrapper that takes its command as text (`bash -c`, `sudo`, `iex`, `Start-Process`). Null otherwise.
    */
   single: ShellCmd | null;
+  /** True when part of the line was left unread: it nests deeper than anything is written by hand. What it runs is then not known. */
+  unread: boolean;
 }
 
 /** A command as it stands in the line: its words, the here-documents fed to it, and the command piped into it. */
 interface Raw { words: string[]; docs: string[]; from: Raw | null }
 
-interface Scan { src: string; i: number; shell: Shell; out: Raw[]; ops: number; depth: number }
+/** How far the reading went: `nest` groups deep now, and whether anything was given up on. */
+interface Limits { nest: number; unread: boolean }
 
+interface Scan { src: string; i: number; shell: Shell; out: Raw[]; ops: number; depth: number; lim: Limits }
+
+/** Texts read as command lines inside one another (`bash -c "bash -c …"`), and groups inside one another (`$(… $(…))`). */
 const MAX_DEPTH = 8;
+const MAX_NEST = 32;
 
 /** Reads commands from `st.i` to the end, or to `close` (a `)` or `}` that ends the group being read). */
 function scan(st: Scan, close: string): void {
@@ -68,11 +75,19 @@ function scan(st: Scan, close: string): void {
     cur = { words: [], docs: [], from: piped ? last : null };
   };
   /** Commands inside a substitution or a group, read in place. */
-  const group = (end: string) => { st.ops++; scan(st, end); };
+  const group = (end: string) => {
+    st.ops++;
+    // Deeper than this is not read, and the rest of the text with it.
+    if (st.lim.nest >= MAX_NEST) { st.lim.unread = true; st.i = src.length; return; }
+    st.lim.nest++;
+    scan(st, end);
+    st.lim.nest--;
+  };
   /** Commands in a text of their own: what stood between backticks. */
   const inner = (text: string) => {
     st.ops++;
-    if (st.depth < MAX_DEPTH) scan({ src: text, i: 0, shell: st.shell, out: st.out, ops: 0, depth: st.depth + 1 }, '');
+    if (st.depth < MAX_DEPTH) scan({ src: text, i: 0, shell: st.shell, out: st.out, ops: 0, depth: st.depth + 1, lim: st.lim }, '');
+    else if (text.trim()) st.lim.unread = true;
   };
   /** A backtick substitution, from the opening backtick at `st.i`. */
   const backticks = () => {
@@ -245,8 +260,8 @@ function scan(st: Scan, close: string): void {
   endCmd();
 }
 
-function scanAll(text: string, shell: Shell, depth: number): { raws: Raw[]; ops: number } {
-  const st: Scan = { src: text, i: 0, shell, out: [], ops: 0, depth };
+function scanAll(text: string, shell: Shell, depth: number, lim: Limits): { raws: Raw[]; ops: number } {
+  const st: Scan = { src: text, i: 0, shell, out: [], ops: 0, depth, lim };
   // A stray closing bracket ends a group that was never opened; keep reading after it.
   while (st.i < st.src.length) scan(st, '');
   return { raws: st.out, ops: st.ops };
@@ -269,7 +284,9 @@ const OPAQUE_PREFIX: Record<string, string[]> = {
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'ash', 'fish']);
 const POWERSHELLS = new Set(['powershell', 'pwsh']);
 /** git's options before the subcommand that take a value as the next word. */
-const GIT_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source', '--exec-path']);
+const GIT_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source']);
+/** Global options that can make git run another program (an alias, a hook, a helper), so the command is more than its subcommand. */
+const GIT_RUNS = /^(?:-c|--config-env(?:=.*)?|--exec-path=.*)$/;
 const START_VALUE = ['workingdirectory', 'verb', 'windowstyle', 'credential', 'redirectstandardoutput', 'redirectstandarderror', 'redirectstandardinput'];
 const START_SWITCH = ['wait', 'nonewwindow', 'passthru', 'usenewenvironment', 'loaduserprofile'];
 
@@ -329,7 +346,7 @@ function powershellScript(args: string[]): string | null {
   return null;
 }
 
-interface Found { cmds: ShellCmd[]; opaque: boolean }
+interface Found { cmds: ShellCmd[]; opaque: boolean; lim: Limits }
 
 /** A command as it stood in the line, turned into the command or commands that run. */
 function resolve(raw: Raw, shell: Shell, depth: number, out: Found): void {
@@ -337,8 +354,9 @@ function resolve(raw: Raw, shell: Shell, depth: number, out: Found): void {
   /** A text that is itself a command line: read it and add what it runs. */
   const reread = (text: string, as: Shell) => {
     out.opaque = true;
-    if (depth >= MAX_DEPTH || !text.trim()) return;
-    for (const r of scanAll(text, as, depth + 1).raws) resolve(r, as, depth + 1, out);
+    if (!text.trim()) return;
+    if (depth >= MAX_DEPTH) { out.lim.unread = true; return; }
+    for (const r of scanAll(text, as, depth + 1, out.lim).raws) resolve(r, as, depth + 1, out);
   };
   /** What a shell with no script of its own reads: its here-documents, and what is piped into it. */
   const fed = (as: Shell) => {
@@ -373,7 +391,7 @@ function resolve(raw: Raw, shell: Shell, depth: number, out: Found): void {
     if (prog === 'start-process' || prog === 'saps' || prog === 'start') { out.opaque = true; words = started(words); continue; }
     if (prog === 'git') {
       let k = 0;
-      while (k < args.length && args[k].startsWith('-')) k += GIT_VALUE.has(args[k]) ? 2 : 1;
+      for (; k < args.length && args[k].startsWith('-'); k += GIT_VALUE.has(args[k]) ? 2 : 1) if (GIT_RUNS.test(args[k])) out.opaque = true;
       out.cmds.push({ prog, name, args: args.slice(k) });
       return;
     }
@@ -407,13 +425,20 @@ function resolve(raw: Raw, shell: Shell, depth: number, out: Found): void {
     }
     return;
   }
+  // More wrappers than were taken off: what they run was not reached.
+  out.lim.unread = true;
 }
 
 /** The commands a line runs, read as `shell` reads it. */
 export function readShell(command: string, shell: Shell): ShellLine {
-  const { raws, ops } = scanAll(String(command ?? '').trim(), shell, 0);
-  const found: Found = { cmds: [], opaque: false };
-  for (const r of raws) resolve(r, shell, 0, found);
-  const plain = ops === 0 && raws.length === 1 && !found.opaque && found.cmds.length === 1;
-  return { cmds: found.cmds, single: plain ? found.cmds[0] : null };
+  const found: Found = { cmds: [], opaque: false, lim: { nest: 0, unread: false } };
+  try {
+    const { raws, ops } = scanAll(String(command ?? '').trim(), shell, 0, found.lim);
+    for (const r of raws) resolve(r, shell, 0, found);
+    const plain = ops === 0 && raws.length === 1 && !found.opaque && !found.lim.unread && found.cmds.length === 1;
+    return { cmds: found.cmds, single: plain ? found.cmds[0] : null, unread: found.lim.unread };
+  } catch {
+    // A line this reader fails on is one it cannot vouch for.
+    return { cmds: found.cmds, single: null, unread: true };
+  }
 }

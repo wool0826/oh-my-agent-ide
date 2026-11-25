@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { alwaysAskRule } from '../src/main/agents/permissions';
-import { ASK_RULES, type AskRule } from '../src/shared/grants';
+import { ASK_RULES, grantScope, type AskRule } from '../src/shared/grants';
 
 // The always-ask rules as a table: the tool, the command, and the rule it must ask under (null: it must not ask).
 // A way round a rule that is found later goes here as a row.
@@ -9,6 +9,8 @@ import { ASK_RULES, type AskRule } from '../src/shared/grants';
 const raw = String.raw;
 /** What `powershell -EncodedCommand` takes: base64 of UTF-16LE. */
 const enc = (s: string) => Buffer.from(s, 'utf16le').toString('base64');
+/** `inner` wrapped `n` times over. */
+const nested = (n: number, inner: string, wrap: (s: string, i: number) => string) => { let s = inner; for (let i = 0; i < n; i++) s = wrap(s, i); return s; };
 
 type Row = [tool: string, command: string, rule: AskRule | null];
 
@@ -188,6 +190,20 @@ const ASKS: Row[] = [
   [P, 'rmdir -Recurse ~', 'ask.rmHome'],
   [P, raw`cmd /c rd /s /q C:\ `, 'ask.rmHome'],
   [P, raw`cmd /c "del /s /q %USERPROFILE%\*"`, 'ask.rmHome'],
+  [P, raw`Remove-Item -Path:C:\ -Recurse`, 'ask.rmHome'],
+  [P, raw`Remove-Item -Recurse:$true -Force C:\ `, 'ask.rmHome'],
+
+  // Wrapped or nested deeper than the reader goes: what it runs is not known, so it asks.
+  [B, nested(10, 'git push -f', (s, i) => `bash <<'E${i}'\n${s}\nE${i}`), 'ask.unread'],
+  [B, `echo ${'$('.repeat(20000)}git push -f`, 'ask.unread'],
+  [B, `${'('.repeat(20000)}gh pr merge 5`, 'ask.unread'],
+  [B, `${'env '.repeat(20)}git push -f`, 'ask.unread'],
+  [B, nested(14, 'echo hi', (s) => `bash -c ${JSON.stringify(s)}`), 'ask.unread'],
+  [P, `${'& { '.repeat(20000)}git push -f`, 'ask.unread'],
+  [P, `Write-Host ${'$('.repeat(20000)}gh pr merge 5`, 'ask.unread'],
+  [P, nested(10, 'git push -f', (s) => `iex @'\n${s}\n'@`), 'ask.unread'],
+  // A rule met in the part that was read names the reason.
+  [B, `git push --force; echo ${'$('.repeat(100)}date`, 'ask.forcePush'],
 ];
 
 const DOES_NOT_ASK: Row[] = [
@@ -257,6 +273,13 @@ const DOES_NOT_ASK: Row[] = [
   [P, 'Start-Process notepad', null],
   [P, 'cmd /c dir', null],
   [P, 'iex "git status"', null],
+  [P, 'Remove-Item -Path:build -Recurse', null],
+  [P, raw`Remove-Item -Recurse:$false C:\ `, null],
+  // Nesting as deep as anyone writes is read.
+  [B, 'echo "$(basename "$(dirname "$(git rev-parse --show-toplevel)")")"', null],
+  [B, nested(6, 'git status', (s) => `( ${s} )`), null],
+  [B, 'env CI=1 nice timeout 60 nohup npm test', null],
+  [P, 'if ($a) { foreach ($x in $y) { if ($x) { try { npm test } catch { Write-Host (Get-Date) } } } }', null],
   // Not a shell tool: the rules say nothing.
   ['Edit', 'git push --force', null],
   ['mcp__ci__run', 'gh pr merge 5', null],
@@ -289,6 +312,9 @@ test('always-ask rules: a line that cannot be read does not throw', () => {
   let deep = 'git push --force';
   for (let i = 0; i < 4; i++) deep = `bash -c ${JSON.stringify(deep)}`;
   assert.equal(alwaysAskRule(B, { command: deep }), 'ask.forcePush');
+  // Past that the line is not vouched for: it asks, has no kind to allow for the task, and asks under its own switch.
   for (let i = 0; i < 10; i++) deep = `bash -c ${JSON.stringify(deep)}`;
-  assert.doesNotThrow(() => alwaysAskRule(B, { command: deep }));
+  assert.equal(alwaysAskRule(B, { command: deep }), 'ask.unread');
+  assert.equal(alwaysAskRule(B, { command: deep }, ['ask.unread']), null);
+  for (const [tool, command] of ASKS.filter((r) => r[2] === 'ask.unread')) assert.equal(grantScope(tool, { command }), null, command.slice(0, 40));
 });
