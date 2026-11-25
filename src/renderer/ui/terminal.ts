@@ -198,6 +198,7 @@ function edgeKeys(e: KeyboardEvent, edge: 'w' | 'h') {
   const next = keyTermSize(edge, e.key, e.shiftKey, size, room());
   if (!next) return;
   e.preventDefault();
+  e.stopPropagation();
   size = next;
   applySize();
   saveSize();
@@ -209,7 +210,7 @@ export function bindTerm() {
   const input = $<HTMLTextAreaElement>('#tm-input');
   input.addEventListener('input', () => { fitInput(input); term.at = term.history.length; });
   bindEdges();
-  window.addEventListener('resize', () => { if (term.open) applySize(); });
+  window.addEventListener('resize', () => { if (term.open) { applySize(); ariaSize(); } });
   $('#tm-thread').addEventListener('scroll', () => {
     const th = $('#tm-thread');
     stick = th.scrollHeight - th.scrollTop - th.clientHeight < 24;
