@@ -12,7 +12,7 @@ import { loadSettings } from '../src/main/settings';
 import { paths } from '../src/main/paths';
 import { answer } from '../src/main/decisions';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
-import { ALLOW, type Task, type Worker } from '../src/shared/types';
+import { ALLOW, ALLOW_TASK, DENY, type Task, type Worker } from '../src/shared/types';
 import { workerDecisions } from '../src/shared/inbox';
 import { holdsSlot, slotsUsed } from '../src/shared/slots';
 
@@ -1027,6 +1027,40 @@ test('a Worker waiting on a permission goes on once that decision is answered wi
   assert.deepEqual(await result, { behavior: 'deny', message: 'The user denied this and said: Use npm run clean instead' });
   assert.deepEqual([w.status, x.status], ['running', 'running']);
   assert.deepEqual(workerDecisions(store.data.decisions, w.id), []);
+});
+
+test('a PowerShell command is asked about like a Bash one: a rule asks every time, and a yes for the task covers that command only', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  s.ev.onStatus!('busy', '');
+  const run = (command: string, id: string) => s.cfg.canUseTool!('PowerShell', { command }, { signal: new AbortController().signal, suggestions: [], toolUseID: id } as unknown as Parameters<CanUseTool>[2]);
+  const open = () => workerDecisions(store.data.decisions, w.id);
+  // A force push, however it is written, is under a rule: the card names the command and the rule, and offers no yes for the task.
+  const push = run('git -C . push --force origin feature', 'p1');
+  await tick();
+  assert.deepEqual([open()[0].title, open()[0].code, open()[0].options.map((o) => o.label)], ['Run this command?', '$ git -C . push --force origin feature', [ALLOW, DENY]]);
+  assert.match(open()[0].reason!.what, /wants to run `git -C \. push --force origin feature`/);
+  assert.match(open()[0].reason!.why, /force push/);
+  answer(open()[0].id, DENY);
+  assert.equal((await push)?.behavior, 'deny');
+  // An ordinary command can be allowed for the task, by its leading words.
+  const status = run('git status', 'p2');
+  await tick();
+  assert.deepEqual(open()[0].options.at(-1), { label: ALLOW_TASK, description: 'git status' });
+  answer(open()[0].id, ALLOW_TASK);
+  assert.equal((await status)?.behavior, 'allow');
+  assert.deepEqual(x.grants, [{ key: 'powershell:git status', label: 'git status' }]);
+  // The same command goes ahead; another PowerShell command is asked about, and so is the allowed one with more chained on.
+  assert.equal((await run('git status --short', 'p3'))?.behavior, 'allow');
+  assert.equal(open().length, 0);
+  for (const [command, id] of [['Remove-Item build -Recurse', 'p4'], ['git status; Remove-Item build -Recurse', 'p5']]) {
+    const other = run(command, id);
+    await tick();
+    assert.equal(open().length, 1, command);
+    answer(open()[0].id, ALLOW);
+    await other;
+  }
 });
 
 test('a Worker the user stops is idle, not in error, and its task shows as stopped by user instead of failed', async () => {

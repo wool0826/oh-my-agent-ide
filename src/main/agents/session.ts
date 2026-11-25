@@ -636,7 +636,7 @@ export function liveShells(tasks: BgTask[]) {
 export function summarizeTool(name: string, input: any, max = 140): string {
   try {
     switch (name) {
-      case 'Bash': return `$ ${String(input.command ?? '').slice(0, max)}`;
+      case 'Bash': case 'PowerShell': return `$ ${String(input.command ?? '').slice(0, max)}`;
       case 'Read': case 'Write': case 'Edit': case 'NotebookEdit': return `${name} ${input.file_path ?? input.notebook_path ?? ''}`;
       case 'Grep': return `Grep ${input.pattern ?? ''}`;
       case 'Glob': return `Glob ${input.pattern ?? ''}`;

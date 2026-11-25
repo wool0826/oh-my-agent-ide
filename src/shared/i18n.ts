@@ -881,6 +881,7 @@ const en = {
   'ask.deploy': 'deployment change',
   'ask.merge': 'merges a PR',
   'ask.repoDelete': 'deletes a repository or release',
+  'ask.apiDelete': 'deletes through the GitHub API',
   'ask.rmHome': 'deletes the root or home folder',
   // why a decision needs the user (src/shared/askWhy.ts)
   'why.act.bash': 'run `{cmd}`',
@@ -910,6 +911,7 @@ const en = {
   'risk.deploy': 'It changes what is deployed.',
   'risk.merge': 'The PR is merged into its base branch without your review.',
   'risk.repoDelete': 'The repository or release is deleted for everyone.',
+  'risk.apiDelete': 'What it deletes on GitHub, such as a branch or a comment, is gone for everyone.',
   'risk.rmHome': 'Everything under the root or home folder is deleted.',
   'why.planWhat': '{who} finished the plan for {task}.',
   'why.planWhatNoTask': '{who} finished a plan.',
@@ -1931,6 +1933,7 @@ const ko: Record<Key, string> = {
   'ask.deploy': '배포 변경',
   'ask.merge': 'PR 머지',
   'ask.repoDelete': '저장소나 릴리스 삭제',
+  'ask.apiDelete': 'GitHub API로 삭제',
   'ask.rmHome': '루트나 홈 폴더 삭제',
   // why a decision needs the user (src/shared/askWhy.ts)
   'why.act.bash': '`{cmd}` 실행',
@@ -1960,6 +1963,7 @@ const ko: Record<Key, string> = {
   'risk.deploy': '배포된 내용이 바뀌어요.',
   'risk.merge': '직접 검토하지 않은 PR이 기준 브랜치에 머지돼요.',
   'risk.repoDelete': '저장소나 릴리스가 모두에게서 지워져요.',
+  'risk.apiDelete': '브랜치나 댓글처럼 GitHub에서 지운 것은 모두에게서 사라져요.',
   'risk.rmHome': '루트나 홈 폴더 아래가 모두 지워져요.',
   'why.planWhat': '{who}가 {task} 계획을 마쳤어요.',
   'why.planWhatNoTask': '{who}가 계획을 마쳤어요.',

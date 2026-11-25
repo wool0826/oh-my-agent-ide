@@ -1,10 +1,12 @@
 // "Allow for this task": one yes covers the same kind of action until the task ends (decision 119).
 // What counts as the same kind is decided here, narrowly, so a yes to one thing is never a yes to another.
 
+import { readShell, shellOf } from './shellWords';
+
 /** The always-ask rules, by their label key. Each can be switched off in Settings; order is the order shown. */
 export const ASK_RULES = [
   'ask.forcePush', 'ask.pushMain', 'ask.merge', 'ask.drop', 'ask.delete', 'ask.prodDb',
-  'ask.k8s', 'ask.infra', 'ask.deploy', 'ask.repoDelete', 'ask.rmHome',
+  'ask.k8s', 'ask.infra', 'ask.deploy', 'ask.repoDelete', 'ask.apiDelete', 'ask.rmHome',
 ] as const;
 export type AskRule = (typeof ASK_RULES)[number];
 
@@ -28,20 +30,21 @@ const dirOf = (p: string) => p.replace(/[\\/]+$/, '').replace(/[\\/][^\\/]*$/, '
 
 /**
  * The kind of a tool call, or null when it cannot be named safely and so is asked about every time:
- * a shell line that chains commands, substitutes one, or redirects, where the first word says little about what runs.
+ * a shell line that chains commands, substitutes one, redirects, or hands its command to something else as text
+ * (`bash -c`, `sudo`, `iex`, `Start-Process`), where the first word says little about what runs.
+ * A shell command's kind is its program and subcommand as shellWords.ts reads them, in Bash and PowerShell alike:
+ * `git -C repo status` and `& git.exe status` are both `git status`.
  */
 export function grantScope(tool: string, input: unknown): GrantScope | null {
   const v = (input ?? {}) as Record<string, unknown>;
-  if (tool === 'Bash') {
-    const cmd = String(v.command ?? '').trim();
-    if (!cmd || /[;&|<>`\n]|\$\(/.test(cmd)) return null;
-    const words = cmd.split(/\s+/);
-    while (words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) words.shift();
-    const prog = (words[0] ?? '').replace(/^.*[\\/]/, '').replace(/\.(exe|cmd|bat)$/i, '');
-    if (!/^[\w.+-]+$/.test(prog)) return null;
-    const sub = SUBCOMMANDS.has(prog.toLowerCase()) && /^[a-z][\w:-]*$/i.test(words[1] ?? '') ? ` ${words[1]}` : '';
-    const name = `${prog}${sub}`;
-    return { key: `bash:${name.toLowerCase()}`, label: name };
+  // Every shell tool the same way: the command's leading words, never the whole tool.
+  const shell = shellOf(tool);
+  if (shell) {
+    const c = readShell(String(v.command ?? ''), shell).single;
+    if (!c || !/^[\w.+-]*[a-z][\w.+-]*$/i.test(c.name)) return null;
+    const sub = SUBCOMMANDS.has(c.prog) && /^[a-z][\w:-]*$/i.test(c.args[0] ?? '') ? ` ${c.args[0]}` : '';
+    const name = `${c.name}${sub}`;
+    return { key: `${shell}:${name.toLowerCase()}`, label: name };
   }
   if (FILE_TOOLS.has(tool)) {
     const file = String(v.file_path ?? v.notebook_path ?? '');

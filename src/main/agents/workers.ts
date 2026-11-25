@@ -39,6 +39,7 @@ import { doneNotice } from '../../shared/notifyRules';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
 import { isStalled } from '../../shared/stall';
 import { grantScope, hasGrant, withGrant, withoutGrant, type GrantScope } from '../../shared/grants';
+import { shellOf } from '../../shared/shellWords';
 import { FakeSession } from './fakeSession';
 import { fakeMode } from '../fake';
 import type { Key } from '../../shared/i18n';
@@ -363,7 +364,8 @@ class WorkerManager {
     return async (req: CodexApproval, signal?: AbortSignal): Promise<CodexDecision> => {
       const task = this.currentTask(w);
       const prev = this.awaitDecision(w, task);
-      const tool = req.kind === 'command' ? 'Bash' : 'Edit';
+      // Codex names the shell it starts; a PowerShell line is read as PowerShell reads it.
+      const tool = req.kind === 'command' ? (req.shell === 'powershell' ? 'PowerShell' : 'Bash') : 'Edit';
       const input = req.kind === 'command' ? { command: req.command } : { file_path: req.files.join(', ') };
       const code = (req.kind === 'command' ? `$ ${req.command}` : req.files.join('\n')).slice(0, 1200);
       // One file names a folder; several files are asked about each time.
@@ -435,7 +437,7 @@ class WorkerManager {
         const cc = opts.decisionReason?.startsWith(ALWAYS_ASK_PREFIX) ? null : opts.decisionReason;
         const ans = await ask({
           source: 'permission', workerId: w.id, taskId: task?.id ?? null,
-          title: toolName === 'Bash' ? t('perm.bash') : t('perm.tool', { tool: connectorToolLabel(toolName) ?? toolName.replace(/^mcp__\w+__/, '') }),
+          title: shellOf(toolName) ? t('perm.bash') : t('perm.tool', { tool: connectorToolLabel(toolName) ?? toolName.replace(/^mcp__\w+__/, '') }),
           detail: '',
           code: summarizeTool(toolName, input, 1200),
           options: this.permOptions(scope),
