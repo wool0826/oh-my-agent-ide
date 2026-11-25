@@ -134,7 +134,8 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => Pro
   const glide = (dur: string, set: () => void, then: () => void) => {
     const from = [row, under].map((el) => { if (!el) return null; const cs = getComputedStyle(el); return { el, t: el.style.transform, w: cs.width, h: cs.height, pt: cs.paddingTop, pb: cs.paddingBottom }; });
     set();
-    if (still()) return then();
+    // A window no one sees draws no frames and slows its timers: the animation would hold the row for nothing.
+    if (still() || document.hidden) return then();
     const ms = parseFloat(getComputedStyle(row).getPropertyValue(dur)) || 180;
     const ease = getComputedStyle(row).getPropertyValue('--ease-out').trim() || 'ease-out';
     const runs = from.flatMap((f) => {

@@ -1471,7 +1471,10 @@ flow('a Notifications row swiped sideways is cleared with Undo; a short swipe, a
   const w = await app.evaluate("document.querySelector('#chat-ins .res').offsetWidth");
   const row = (nav) => `#chat-ins .res[data-nav="${nav}"]`;
   const look = (nav) => app.evaluate(`const r = document.querySelector('${row(nav)}'); const u = document.querySelector('#chat-ins .swipe-under'); return { x: r ? new DOMMatrix(getComputedStyle(r).transform).m41 : null, under: u ? (u.classList.contains('armed') ? 'armed' : 'shown') : 'none', side: u?.classList.contains('right') ? 'right' : 'left' };`);
-  const settled = (n) => app.until(`document.querySelectorAll('#chat-ins .res').length === ${n} && !document.querySelector('#chat-ins .swiping, #chat-ins .swipe-under')`, `${n} results at rest`);
+  const settled = (n) => app.until(`document.querySelectorAll('#chat-ins .res').length === ${n} && !document.querySelector('#chat-ins .swiping, #chat-ins .swipe-under')`, `${n} results at rest`).catch(async (err) => {
+    throw new Error(`${err.message}
+Page: ${await app.evaluate("return document.visibilityState + ', ' + document.querySelectorAll('#chat-ins .res').length + ' results, ' + (document.querySelector('#chat-ins .swiping')?.className ?? 'none swiping') + ', under ' + !!document.querySelector('#chat-ins .swipe-under');")}`);
+  });
   // A short drag: the row follows and shows the red side it leaves, not yet armed; let go, it slides back.
   // Each drag waits until the page has drawn where it ends: the moves can reach a window off screen late.
   const at_ = (nav, x) => `Math.abs(new DOMMatrix(getComputedStyle(document.querySelector('${row(nav)}')).transform).m41 - (${x})) <= 1`;
