@@ -29,3 +29,24 @@ export function swipeClears(dx: number, v: number, width: number): boolean {
   if (Math.abs(dx) >= width * SWIPE_SHARE) return true;
   return Math.abs(dx) >= SWIPE_FLICK_MIN && Math.abs(v) >= SWIPE_FLICK_SPEED && Math.sign(v) === Math.sign(dx);
 }
+
+/** A two-finger swipe on a touchpad ends when no wheel event (its own or its momentum) has come for this long (ms). */
+export const WHEEL_IDLE = 120;
+
+/**
+ * A touchpad swipe told by its wheel events: the row follows the fingers (`dx`, against the content's scroll, so it
+ * goes the way the fingers go with natural scrolling and the way the drag goes), or it is a scroll and left alone.
+ */
+export interface WheelSwipe { mode: 'wait' | 'swipe' | 'scroll'; dx: number; dy: number }
+
+export const wheelStart = (): WheelSwipe => ({ mode: 'wait', dx: 0, dy: 0 });
+
+/** Adds one wheel event (`deltaMode` 1 is lines, 2 pages) to the gesture; once a scroll, it stays one. */
+export function wheelStep(s: WheelSwipe, deltaX: number, deltaY: number, deltaMode = 0, width = 0): WheelSwipe {
+  const k = deltaMode === 1 ? 16 : deltaMode === 2 ? (width || 400) : 1;
+  let dx = s.dx - deltaX * k;
+  const dy = s.dy - deltaY * k;
+  if (width) dx = Math.max(-width, Math.min(width, dx));
+  const mode = s.mode === 'wait' ? swipeIntent(dx, dy) : s.mode;
+  return { mode, dx, dy };
+}
