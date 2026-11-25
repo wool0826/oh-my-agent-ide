@@ -210,7 +210,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
       const hit = await evaluate(`const at = document.elementFromPoint(${x0}, ${y0}); return !!at && !!at.closest(${JSON.stringify(selector)});`);
       if (!hit) throw new Error(`The press for ${selector} would land on another element`);
       // What the page saw of the drag, for the message when it never gets there.
-      if (ready) await evaluate(`if (!window.__drag) { window.__drag = []; for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'dragstart', 'mousedown', 'mousemove']) window.addEventListener(t, (e) => { window.__drag.push([t, Math.round(e.clientX), e.button, e.buttons, e.pointerType ?? '', e.isPrimary ?? '', e.ctrlKey, String(e.target?.className ?? '').slice(0, 24), e.defaultPrevented].join(' ')); if (window.__drag.length > 30) window.__drag.shift(); }, true); } window.__drag.length = 0; return 1;`);
+      if (ready) await evaluate(`if (!window.__drag) { window.__drag = []; for (const t of ['pointerdown', 'scroll', 'click', 'focusin', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'dragstart', 'mousedown', 'mousemove']) window.addEventListener(t, (e) => { window.__drag.push([t, Math.round(e.clientX), e.button, e.buttons, e.pointerType ?? '', e.isPrimary ?? '', e.ctrlKey, String(e.target?.className ?? '').slice(0, 24), Math.round(e.clientY), e.defaultPrevented].join(' ')); }, true); } window.__drag.length = 0; return 1;`);
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
       await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: y0, button: 'left', buttons: 1, clickCount: 1 });
       for (let i = 1; i <= steps; i++) {
@@ -222,7 +222,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
       // runners draw none for a while): while `ready` is not true yet, move again, ending where the drag ends.
       if (ready) {
         for (const end = Date.now() + 8000; !(await evaluate(`return !!(${ready});`)); ) {
-          if (Date.now() > end) throw new Error(`The drag on ${selector} never reached: ${ready} | ${await evaluate('return (window.__drag ?? []).join(" / ") + " / row: " + (document.querySelector(".swiping")?.className ?? "no .swiping");')}`);
+          if (Date.now() > end) throw new Error(`The drag on ${selector} never reached: ${ready} | ${await evaluate('return (window.__drag ?? []).filter((x, i, all) => i < 12 || i >= all.length - 4).join(" / ") + " / scroll " + document.querySelector("#chat-ins .ins-list")?.scrollTop + " sel " + (document.querySelector("#chat-ins .sel, #chat-ins [aria-current=true]")?.className ?? "-") + " rowTop " + Math.round(document.querySelector("#chat-ins .res")?.getBoundingClientRect().top) + " / row: " + (document.querySelector(".swiping")?.className ?? "no .swiping");')}`);
           await sleep(100);
           await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x + (dx < 0 ? 1 : -1), y: at.y, button: 'left', buttons: 1 });
           await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at, button: 'left', buttons: 1 });
