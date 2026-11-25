@@ -2,8 +2,11 @@
 
 /** A run of URL characters in HTML-escaped text: up to whitespace or a tag. */
 const CANDIDATE = /https?:\/\/[^\s<>]+/g;
-/** Escaped quotes and angle brackets end a URL, as the raw characters would. */
-const ENDS_URL = /&(?:quot|#39|lt|gt);/;
+/**
+ * Escaped quotes and angle brackets end a URL, as the raw characters would. So does full-width punctuation
+ * ("（https://…）", "…/abc、다음"): a URL holds it only percent-encoded.
+ */
+const ENDS_URL = /&(?:quot|#39|lt|gt);|[\u3001\u3002\u3008-\u3011\uff01\uff08\uff09\uff0c\uff1a\uff1b\uff1f]/;
 const HANGUL_TAIL = /[ㄱ-ㆎ가-힣]+$/;
 /** An entity at the very end (`&amp;`), whose `;` is not sentence punctuation. */
 const ENTITY_TAIL = /&(?:[a-z]+|#\d+);$/i;
@@ -77,6 +80,24 @@ export function reportLinks(text: string | null | undefined, skip: (string | nul
     else out.push({ url, kind: 'link', name: title ?? hostOf(url) });
   }
   return out;
+}
+
+/** Report lines whose URLs are all results, whatever they point at. */
+const LINK_LINE = /^(?:LINK|FILE):/i;
+
+/**
+ * The links a Worker's final report names, to keep with its result (T-0089): every URL on a LINK: or FILE: line, and
+ * the artifacts and pull requests named anywhere in it ("아티팩트: https://claude.ai/artifact/…" under RESULT:).
+ * Each is the URL, or "[title](url)" when the report gave it a Markdown title, so reportLinks reads the name back.
+ * The task's own PR (`skip`) is left out.
+ */
+export function resultLinkList(text: string, skip: (string | null | undefined)[] = []): string[] {
+  const own = new Set(String(text ?? '').split('\n').filter((l) => LINK_LINE.test(l.trim())).flatMap((l) => reportLinks(l).map((x) => x.url)));
+  const named = new Map<string, string>();
+  for (const m of String(text ?? '').matchAll(MD_LINK)) named.set(m[2].slice(0, urlEnd(m[2])), m[1].trim());
+  return reportLinks(text, skip)
+    .filter((l) => l.kind !== 'link' || own.has(l.url))
+    .map((l) => (named.has(l.url) ? `[${named.get(l.url)!.replace(/[[\]]/g, '')}](${l.url})` : l.url));
 }
 
 function hostOf(url: string) {

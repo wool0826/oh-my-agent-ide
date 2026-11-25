@@ -17,8 +17,8 @@ import { askLine, plainStatus, stateCounts, workerLine, workerState, type Worker
 import { PAGE, threadStart } from '../../shared/paging';
 import { type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
-import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
-import { linkify, shortUrls } from '../../shared/linkify';
+import { decisionHint, decisionHtml, olderChat, prBadges, reportLinkHtml, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
+import { linkify, reportLinks, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
 import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
@@ -95,7 +95,9 @@ export function renderWorkerList() {
     // starts it, or what it reported. A state with no news shows the repository and model.
     const line = workerLine(t, w, x, { ask: dec ? oneLine(askLine(dec), 140) : null, queue: st === 'queued' && x ? queueLine(t, x, qctx)?.text : null, about });
     // "W-id · repository · state", as the sidebar and the chat write it.
-    const text = line.text === about ? `${w.id} · ${about}` : [w.id, w.repo ?? t('general'), line.text].filter(Boolean).join(' · ');
+    // A finished result names the links its report gave, by their short names: the row is a button and holds no links.
+    const said = (st === 'pr' || st === 'done') && x?.links?.length ? `${line.text} · ${x.links.join(' ')}` : line.text;
+    const text = said === about ? `${w.id} · ${about}` : [w.id, w.repo ?? t('general'), said].filter(Boolean).join(' · ');
     // The context is shown once it matters: from half the window, and in orange from where it is compacted.
     const ctx = st !== 'archived' && w.contextTokens >= CONTEXT_WINDOW / 2
       ? `<span class="ctxm${w.contextTokens >= COMPACT_AT ? ' warn' : ''}" data-tip="${esc(`${t('kv.context')} ${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}`)}">${ring(w.contextTokens / CONTEXT_WINDOW)}${k(w.contextTokens)}</span>` : '';
@@ -140,14 +142,17 @@ export function workerReport(text: string) {
   const lines = text.split('\n');
   const head: string[] = [];
   let i = 0;
-  while (i < lines.length && (/^(RESULT|PR|FILE):/i.test(lines[i].trim()) || (head.length && !lines[i].trim()))) { if (lines[i].trim()) head.push(lines[i].trim()); i++; }
+  while (i < lines.length && (/^(RESULT|PR|FILE|LINK):/i.test(lines[i].trim()) || (head.length && !lines[i].trim()))) { if (lines[i].trim()) head.push(lines[i].trim()); i++; }
   if (!head.some((l) => /^RESULT:/i.test(l))) return md(text);
   const val = (l: string) => l.slice(l.indexOf(':') + 1).trim().replace(/^`|`$/g, '');
   const summary = val(head.find((l) => /^RESULT:/i.test(l))!);
   const pr = head.filter((l) => /^PR:/i.test(l)).map(val).map((v) => v.match(/https?:\/\/\S+\/pull\/\d+/)?.[0]).find(Boolean);
-  const files = head.filter((l) => /^FILE:/i.test(l)).map(val).filter(Boolean);
+  const files = head.filter((l) => /^FILE:/i.test(l)).map(val).filter((v) => v && !/^https?:\/\//i.test(v));
+  // LINK: lines, and a URL a FILE: line gave instead of a path, open in the browser.
+  const urls = reportLinks(head.filter((l) => /^(LINK|FILE):/i.test(l)).join('\n'), [pr]);
   const links = [
     pr ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(pr)}">${sym('s-pr')}PR #${prNum(pr)}</a>` : '',
+    ...urls.map(reportLinkHtml),
     ...files.map((f) => `<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" data-tip="${esc(f)}">${sym('s-doc')}${esc(base(f))}</a>`),
   ].filter(Boolean).join('');
   const rest = lines.slice(i).join('\n').trim();
@@ -520,7 +525,7 @@ export function renderWorkerInspector() {
     </div>
     ${runHtml(w)}
     <div class="ins-h"><b role="heading" aria-level="2">${t('wk.tasks')}</b><small>${tasks.length}</small></div>
-    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}${grantsHtml(x)}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
+    <div class="group">${tasks.map((x) => `<div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${taskLabel(x)}${isQueued(x) ? ` · <button type="button" class="linkbtn danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>` : ''}${x.planFirst && !x.planApproved ? ` · ${t('plan.badge')}` : ''}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${x.prState === 'MERGED' ? ` ${t('pr.merged')}` : ''}</a> ${prBadges(x)}` : ''}${reportLinks((x.links ?? []).join('\n'), [x.prUrl]).map((l) => ` · ${reportLinkHtml(l)}`).join('')}${x.files.map((f) => ` · <a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>${x.summary ? `<span>${esc(oneLine(x.summary, 160))}</span>` : ''}${grantsHtml(x)}</div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}</div>
     <div class="ins-act">
       ${canStop(w, cur) ? `<button class="btn" data-action="worker-stop" data-id="${w.id}">${t('wk.stop')}</button>` : ''}
       ${failed ? `<button class="btn" data-action="worker-continue" data-id="${w.id}">${t('wk.continue')}</button>` : ''}

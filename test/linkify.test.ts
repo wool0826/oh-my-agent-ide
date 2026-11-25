@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkify, reportLinks, shortUrls, urlEnd } from '../src/shared/linkify';
+import { linkify, reportLinks, resultLinkList, shortUrls, urlEnd } from '../src/shared/linkify';
 
 const PR = 'https://github.com/wool0826/oh-my-agent-ide/pull/27';
 const a = (url: string) => `<a tabindex="0" role="link" data-action="open-url" data-href="${url}">${url}</a>`;
@@ -75,4 +75,32 @@ test('a line that cannot hold links reads the short names', () => {
 test('emphasis around a URL and a trailing slash do not change which link it is', () => {
   assert.deepEqual(reportLinks('See **https://example.com/a** and [Docs](https://example.com/d/) at https://example.com/d'),
     [{ url: 'https://example.com/a', kind: 'link', name: 'example.com' }, { url: 'https://example.com/d/', kind: 'link', name: 'Docs' }]);
+});
+
+test('full-width punctuation after a URL is not part of it', () => {
+  const art = 'https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7';
+  assert.equal(linkify(`보고서（${art}）를 보세요`), `보고서（${a(art)}）를 보세요`);
+  assert.deepEqual(reportLinks(`${art}、다음 ${art}。`).map((l) => l.url), [art]);
+  assert.equal(shortUrls(`게시함（${art}）`, 'Artifact'), '게시함（Artifact）');
+});
+
+test('a report keeps the artifacts and PRs it names, and every URL on its LINK and FILE lines', () => {
+  const text = [
+    'RESULT: Wrote the audit',
+    `PR: ${PR}`,
+    'LINK: https://example.com/notes',
+    'FILE: https://claude.ai/code/artifact/0b7c9e1a-1f2d-4c3b-9a8e-123456789abc',
+    '',
+    '아티팩트: [UI audit](https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7)',
+    'Also https://github.com/o/r/pull/9, see https://docs.example.com/guide for background.',
+  ].join('\n');
+  assert.deepEqual(resultLinkList(text, [PR]), [
+    'https://example.com/notes',
+    'https://claude.ai/code/artifact/0b7c9e1a-1f2d-4c3b-9a8e-123456789abc',
+    '[UI audit](https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7)',
+    'https://github.com/o/r/pull/9',
+  ]);
+  // A kept title reads back as the link's name.
+  assert.equal(reportLinks(resultLinkList(text, [PR]).join('\n'))[2].name, 'UI audit');
+  assert.deepEqual(resultLinkList('RESULT: Done'), []);
 });

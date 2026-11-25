@@ -69,7 +69,7 @@ export function prBadges(x: Task) {
 }
 
 /** A link a report names, by its short name with ↗: "PR #158 ↗", an artifact's title, a page's host. */
-function reportLinkHtml(l: ReportLink) {
+export function reportLinkHtml(l: ReportLink) {
   const name = l.kind === 'pr' ? `PR #${l.name}` : l.name || t('link.artifact');
   return `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(l.url)}" data-tip="${esc(l.url)}">${esc(name)} ↗</a>`;
 }
@@ -79,10 +79,10 @@ export const reportText = (s: string) => mdInline(s);
 
 /**
  * The link row of a result: the URLs its report names (artifacts, other PRs) first, then the task's PR and files.
- * `text` is the report as the card shows it; the task's own summary is read too.
+ * `text` is the report as the card shows it; the task's own summary and the links its report named are read too.
  */
 export function resultLinks(x: Task | null, text?: string | null) {
-  const links = reportLinks([text, x?.summary].filter(Boolean).join('\n'), [x?.prUrl]).map(reportLinkHtml);
+  const links = reportLinks([text, x?.summary, ...(x?.links ?? [])].filter(Boolean).join('\n'), [x?.prUrl]).map(reportLinkHtml);
   if (x?.prUrl) {
     const st = x.prState === 'MERGED' ? ` · ${t('pr.merged')}` : x.prState === 'CLOSED' ? ` · ${t('pr.closed')}` : '';
     links.push(`<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${st} ↗</a>`);

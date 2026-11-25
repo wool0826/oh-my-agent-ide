@@ -28,6 +28,9 @@ export type FakeStep =
   | { do: 'result'; text: string }
   | { do: 'pr'; url: string }
   | { do: 'file'; path: string }
+  | { do: 'link'; url: string }
+  /** A line of the explanation under the report's protocol lines, after a blank line. */
+  | { do: 'body'; text: string }
   | { do: 'blocked'; why: string }
   /** The turn ends in an error. */
   | { do: 'fail'; message: string };
@@ -83,6 +86,8 @@ export function parseFakeScript(text: string): FakeStep[] {
       case 'result': out.push({ do: 'result', text: arg || 'Done.' }); break;
       case 'pr': if (arg) out.push({ do: 'pr', url: arg }); break;
       case 'file': if (arg) out.push({ do: 'file', path: arg }); break;
+      case 'link': if (arg) out.push({ do: 'link', url: arg }); break;
+      case 'body': if (arg) out.push({ do: 'body', text: arg }); break;
       case 'blocked': out.push({ do: 'blocked', why: arg || 'Blocked.' }); break;
       case 'fail': out.push({ do: 'fail', message: arg || 'Failed.' }); break;
       default: break;
@@ -98,9 +103,11 @@ export function fakeReport(steps: readonly FakeStep[]): string {
     if (s.do === 'result') lines.push(`RESULT: ${s.text}`);
     else if (s.do === 'pr') lines.push(`PR: ${s.url}`);
     else if (s.do === 'file') lines.push(`FILE: ${s.path}`);
+    else if (s.do === 'link') lines.push(`LINK: ${s.url}`);
     else if (s.do === 'blocked') lines.push(`BLOCKED: ${s.why}`);
   }
-  return lines.join('\n');
+  const body = steps.flatMap((s) => (s.do === 'body' ? [s.text] : []));
+  return lines.length && body.length ? `${lines.join('\n')}\n\n${body.join('\n')}` : lines.join('\n');
 }
 
 /** A message with no script still ends its turn with a report, so follow-ups (a pick, an answer) settle. */

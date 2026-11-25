@@ -11,6 +11,7 @@ import { store } from '../store';
 import { type Task, type Worker } from '../../shared/types';
 import { question } from './workerText';
 import { connectorPrompt } from './connectors';
+import { resultLinkList } from '../../shared/linkify';
 
 /** `codex`: the Worker runs on Codex, which has no AskUserQuestion, no subagents and no Claude Code memory. */
 export function workerPrompt(w: Worker, codex = false) {
@@ -78,6 +79,7 @@ export function workerPrompt(w: Worker, codex = false) {
     'RESULT: one-line summary',
     'PR: PR URL (if any)',
     'FILE: absolute path of a result file (one line per file)',
+    'LINK: URL of an artifact or page you published (one line per link)',
     'Then a short explanation below.',
     codex
       ? 'If you cannot finish without something only the Dispatcher or the user can give, start the final message with "BLOCKED: what you need" instead of the RESULT line. The task stays open and goes on when the answer comes.'
@@ -103,7 +105,9 @@ export function parseResult(text: string, cwd: string) {
     .map((f) => f.replace(/^`|`$/g, ''))
     .map((f) => (path.isAbsolute(f) ? f : path.join(cwd, f)))
     .filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
-  return { summary, prUrl, files, reported, blocked };
+  // URLs the report names (LINK: lines, artifacts and other PRs in its words), kept with the result (T-0089).
+  const links = resultLinkList(text, [prUrl]);
+  return { summary, prUrl, files, links, reported, blocked };
 }
 
 export function needsPlan(task: Task | null) {

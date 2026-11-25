@@ -46,3 +46,8 @@ test('a Worker script can declare its plan and mark steps done', () => {
     { do: 'step', n: 1 },
   ]);
 });
+
+test('a report body comes after the protocol lines and a blank line, as a real Worker writes it', () => {
+  assert.equal(fakeReport(parseFakeScript('@fake result Published\n@fake link https://example.com/a\n@fake body 아티팩트: https://claude.ai/artifact/abc')),
+    'RESULT: Published\nLINK: https://example.com/a\n\n아티팩트: https://claude.ai/artifact/abc');
+});

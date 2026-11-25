@@ -54,6 +54,23 @@ flow('a URL in a result is a short link on the card and a link in its words', {}
   assert.equal(await app.evaluate("document.querySelectorAll('#chat-thread .attach .sm a[data-action=\"open-url\"]').length"), 2);
   await app.until("!!document.querySelector('#chat-ins .res .lk a[data-href=\"https://claude.ai/artifact/abc123\"]')", 'the artifact link on the inbox row');
 });
+flow('an artifact a report names below its RESULT line reaches the card, the inbox and the Worker', {}, async (app) => {
+  const art = 'https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7';
+  await app.say(`@fake task - Audit the UI\n@@fake result Wrote the UI audit.\n@@fake link https://example.com/notes\n@@fake body 아티팩트: ${art}`);
+  await app.until(`!!document.querySelector('#chat-thread .attach .links a[data-href="${art}"]')`, 'the artifact link on the result card');
+  assert.match(await app.evaluate("[...document.querySelectorAll('#chat-thread .attach .links a')].map((a) => a.innerText).join('|')"), /^example\.com ↗\|Artifact ↗\|Open W-\d+ conversation\|Reply$/);
+  await app.until(`!!document.querySelector('#chat-ins .res .lk a[data-href="${art}"]')`, 'the artifact link on the inbox row');
+  const t = task(await app.state(), 'Audit the UI');
+  assert.equal(t.summary, 'Wrote the UI audit.');
+  assert.deepEqual(t.links, ['https://example.com/notes', art]);
+  // The Worker list names them, its side panel links them, and its conversation shows the LINK line as a link.
+  await app.click('button[data-v="worker"]');
+  assert.match(await app.evaluate("document.querySelector('#wk-list .wrow').innerText"), /Wrote the UI audit\. · example\.com Artifact/);
+  await app.click('#wk-list .wrow [data-action="select-worker"]');
+  await app.until(`!!document.querySelector('.mini a[data-href="${art}"]')`, 'the artifact link under its tasks');
+  await app.until("!!document.querySelector('.bub.wk .rep-l a[data-href=\"https://example.com/notes\"]')", 'the LINK line as a link in the conversation');
+});
+
 
 flow('an always-ask rule offers no "Allow for this task", and a denial reaches the Worker', {}, async (app) => {
   await app.say('@fake task - Push it\n@@fake steps Rebase on main | Push the branch\n@@fake step 1\n@@fake say Pushing the rebased branch so the PR shows the fix.\n@@fake permission git push --force origin feature\n@@fake result Left the branch alone.');

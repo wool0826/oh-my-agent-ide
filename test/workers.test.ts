@@ -1354,3 +1354,17 @@ test('Worker sessions get the claude.ai artifacts and connectors, unless they ar
     loadSettings().claudeConnectors = true;
   }
 });
+
+test('the artifact a report names under its RESULT line is kept with the result and told to the Dispatcher', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  const text = 'RESULT: Wrote the audit\nFILE: C:/nowhere/audit.html\n\n아티팩트: https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7';
+  feed(s, said(text), turnEnd(text));
+  assert.equal(x.summary, 'Wrote the audit');
+  assert.deepEqual(x.links, ['https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7']);
+  assert.match(store.data.pendingUpdates.at(-1)!, /Wrote the audit\. Links: https:\/\/claude\.ai\/artifact\/2hL4515n1HmJCSDrwV96T7$/);
+  // A follow-up that names no link keeps the ones the task already had.
+  feed(s, said('RESULT: Fixed a typo'), turnEnd('RESULT: Fixed a typo'));
+  assert.deepEqual(x.links, ['https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7']);
+});
