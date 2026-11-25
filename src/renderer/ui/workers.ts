@@ -21,6 +21,7 @@ import { decisionHint, decisionHtml, olderChat, prBadges, reportLinkHtml, result
 import { linkUrl, linkify, reportLinks, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
+import { shotsOf } from './shotview';
 import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { go, show } from './history';
 import { grantsHtml } from './repos';
@@ -148,7 +149,9 @@ export function workerReport(text: string) {
   const val = (l: string) => l.slice(l.indexOf(':') + 1).trim().replace(/^`|`$/g, '');
   const summary = val(head.find((l) => /^RESULT:/i.test(l))!);
   const pr = head.filter((l) => /^PR:/i.test(l)).map(val).map((v) => v.match(/https?:\/\/\S+\/pull\/\d+/)?.[0]).find(Boolean);
-  const files = head.filter((l) => /^FILE:/i.test(l)).map(val).filter((v) => v && !/^https?:\/\//i.test(v));
+  // Image files show as before/after thumbnails under the header; the rest stay file links.
+  const shots = shotsOf(head.filter((l) => /^FILE:/i.test(l)).map(val).filter((v) => v && !/^https?:\/\//i.test(v)));
+  const files = shots.rest;
   // LINK: lines, and a URL a FILE: line gave instead of a path, open in the browser.
   const urls = reportLinks(head.filter((l) => /^(LINK|FILE):/i.test(l)).join('\n'), [pr]);
   const links = [
@@ -158,7 +161,7 @@ export function workerReport(text: string) {
   ].filter(Boolean).join('');
   const rest = lines.slice(i).join('\n').trim();
   const title = inline(summary);
-  return `<div class="rep-h"><b>${title}</b>${links ? `<span class="rep-l">${links}</span>` : ''}</div>${rest ? md(rest) : ''}`;
+  return `<div class="rep-h"><b>${title}</b>${links ? `<span class="rep-l">${links}</span>` : ''}${shots.html}</div>${rest ? md(rest) : ''}`;
 }
 
 export function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem | null) {

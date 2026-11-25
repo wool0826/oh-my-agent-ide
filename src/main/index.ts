@@ -1,7 +1,7 @@
-import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme } from 'electron';
+import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme, net, protocol } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadSettings, updateSettings, settingsView, saveSettings } from './settings';
 import { ensureHome, paths } from './paths';
 import { store } from './store';
@@ -52,6 +52,7 @@ import { failedCount } from '../shared/preflight';
 import { diagnostics, exportDiagnostics } from './diagnostics';
 import { beginRun, installCrashHandlers, noticeLastRun, watchWindow } from './crash';
 import { effectiveTheme, windowColors } from '../shared/theme';
+import { SHOT_SCHEME, shotPath } from '../shared/shots';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -568,7 +569,17 @@ async function boot() {
   setTimeout(() => workers.autoArchive(), 60_000).unref();
 }
 
+/** Screenshots a Worker reported, for the result card's thumbnails (T-0102): image files by absolute path, nothing else. */
+function serveShots() {
+  protocol.handle(SHOT_SCHEME, async (req) => {
+    const p = shotPath(req.url);
+    if (!p || !path.isAbsolute(p)) return new Response(null, { status: 404 });
+    try { return await net.fetch(pathToFileURL(p).toString()); } catch { return new Response(null, { status: 404 }); }
+  });
+}
+
 installCrashHandlers();
+protocol.registerSchemesAsPrivileged([{ scheme: SHOT_SCHEME, privileges: { standard: true, secure: true } }]);
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
 else {
@@ -576,6 +587,7 @@ else {
   app.on('second-instance', (_e, argv) => { if (argv.includes(QUICK_ARG)) openQuick(here); else showWindow(win); });
   app.whenReady().then(async () => {
     registerIpc();
+    serveShots();
     beginRun();
     try {
       await boot();

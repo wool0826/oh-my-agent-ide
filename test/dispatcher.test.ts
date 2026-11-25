@@ -357,6 +357,15 @@ test('a reply held by a usage limit: the answer, when it goes, is filed under th
   assert.deepEqual(replies(), [['Hi.', null], ['T-1 is fine.', 'T-1']]);
 });
 
+test('dispatcher: a new screen or a change to its structure goes through a mock-up and the user\'s pick first', () => {
+  for (const p of [systemPrompt(), systemPrompt(true)]) {
+    assert.match(p, /first create a mock-up task: kind other/);
+    assert.match(p, /put the choice in the decision inbox/);
+    assert.match(p, /Only after the answer create the code task, with the chosen option's link/);
+    assert.match(p, /Skip the mock-up for small fixes/);
+  }
+});
+
 test('the Claude Dispatcher is told about claude.ai artifacts and has the Artifact tool; a Codex one is not told', () => {
   assert.match(systemPrompt(), /claude\.ai artifacts and connectors:/);
   assert.doesNotMatch(systemPrompt(true), /claude\.ai artifacts/);
