@@ -27,6 +27,8 @@ flow('a permission is asked once, allowed for the task, and the result card has 
   const scope = await app.evaluate(`const sc = document.querySelector('${DEC} .scope'); return { next: sc?.nextElementSibling?.matches('.btns.perm'), text: sc?.textContent };`);
   assert.equal(scope.next, true);
   assert.match(scope.text, /npm install/);
+  // Nothing says what this install is for (no plan step, no words before it): no purpose line, and no gap for one.
+  assert.equal(await app.evaluate(`!!document.querySelector('${DEC} .purpose')`), false);
   await app.until(`!document.querySelector('${DEC} .dhold').hidden`, 'the slot clock', 5000);
   await app.click(answer('allow-task'));
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
@@ -54,15 +56,20 @@ flow('a URL in a result is a short link on the card and a link in its words', {}
 });
 
 flow('an always-ask rule offers no "Allow for this task", and a denial reaches the Worker', {}, async (app) => {
-  await app.say('@fake task - Push it\n@@fake permission git push --force origin feature\n@@fake result Left the branch alone.');
+  await app.say('@fake task - Push it\n@@fake steps Rebase on main | Push the branch\n@@fake step 1\n@@fake say Pushing the rebased branch so the PR shows the fix.\n@@fake permission git push --force origin feature\n@@fake result Left the branch alone.');
   await app.until(`!!document.querySelector('${DEC}')`, 'the permission card');
   assert.equal(await app.evaluate(`!!document.querySelector('${answer('allow-task')}')`), false);
   assert.match(await app.evaluate(`document.querySelector('${DEC}').innerText`), /force push/i);
+  // What the push is for: the current plan step and the Worker's words just before it asked, just above the command.
+  const purpose = await app.evaluate(`const p = document.querySelector('${DEC} .purpose'); return { text: p?.textContent, next: p?.nextElementSibling?.tagName };`);
+  assert.equal(purpose.text, 'Needed for step 2 of 2 of this task, “Push the branch”. Pushing the rebased branch so the PR shows the fix.');
+  assert.equal(purpose.next, 'CODE');
   // The Worker's conversation names the command on the line above its composer, and Deny there answers.
   const wid = (await app.state()).workers[0].id;
   await app.click(`#side [data-action="open-worker"][data-id="${wid}"]`);
   await app.until("!!document.querySelector('#ws-dec:not([hidden]) code')", 'the decision line with the command');
   assert.equal(await app.evaluate("document.querySelector('#ws-dec code').textContent"), '$ git push --force origin feature');
+  assert.equal(await app.evaluate("document.querySelector('#ws-dec .cs-why').textContent"), purpose.text);
   await app.click('#ws-dec [data-val="deny"]');
   await app.until("window.ide.call('state').then((s) => s.tasks.some((t) => t.status === 'done'))", 'the task done');
   const t = task(await app.state(), 'Push it');

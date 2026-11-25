@@ -659,6 +659,7 @@ export function decisionHtml(d: Decision, inWorker = false) {
     <div class="q">${esc(d.title)}</div>
     ${d.reason ? `<div class="reason"><span>${esc(d.reason.what)}</span> ${esc(d.reason.why)}</div>` : ''}
     ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
+    ${d.source === 'permission' && d.purpose ? `<div class="purpose">${esc(oneLine(d.purpose, 240))}</div>` : ''}
     ${sum ? planSummaryHtml(d, sum, inWorker) : d.code ? (d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
     ${d.taskId ? `<div class="dhold" data-task="${esc(d.taskId)}" hidden><i><b></b></i><span></span></div>` : ''}
     ${buttons}${custom}

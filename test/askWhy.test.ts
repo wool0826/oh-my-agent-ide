@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { tr, type Key } from '../src/shared/i18n';
-import { ciReason, dispatcherReason, notifyText, permissionReason, planReason, questionReason, reasonText, taskRef, toolAction, type Say } from '../src/shared/askWhy';
+import { ciReason, dispatcherReason, firstSentence, notifyText, permissionPurpose, permissionReason, planReason, questionReason, reasonText, taskRef, toolAction, type Say } from '../src/shared/askWhy';
 import { alwaysAskRule } from '../src/main/agents/permissions';
 
 const en: Say = (k, v) => tr('en', k, v);
@@ -133,4 +133,28 @@ test('askWhy: Korean reasons fill every placeholder', () => {
   ];
   for (const r of all) assert.doesNotMatch(reasonText(r), /\{\w+\}/, reasonText(r));
   assert.equal(all[0].what, 'W-01가 T-0031 "Explain why a request needs the user"에서 `gh pr merge 1` 실행(PR 머지) 허용을 요청했어요.');
+});
+
+test('askWhy: a permission purpose is the current plan step and the Worker\'s words, never the command again', () => {
+  const steps = [{ title: 'Read the code', doneAt: '2026-11-25T00:00:00Z' }, { title: 'Run the tests', doneAt: null }, { title: 'Open the PR', doneAt: null }];
+  const said = 'Running the unit tests to check the fix.\n\nThen I will open the PR.';
+  assert.equal(permissionPurpose(en, { steps, said }), 'Needed for step 2 of 3 of this task, “Run the tests”. Running the unit tests to check the fix.');
+  assert.equal(permissionPurpose(ko, { steps }), '이 작업의 2/3단계 “Run the tests”에 필요해요.');
+  assert.equal(permissionPurpose(en, { said }), 'Why it is needed: Running the unit tests to check the fix.');
+  // Nothing known: no line at all. Every step done, or a plan with no open step, says nothing either.
+  assert.equal(permissionPurpose(en, {}), null);
+  assert.equal(permissionPurpose(en, { steps: steps.map((s) => ({ ...s, doneAt: 'x' })) }), null);
+  // The Bash call's own description says what the command does, which the reason shows already.
+  assert.equal(permissionPurpose(en, { said: 'Run the unit tests.', input: { command: 'npm test', description: 'Run the unit tests' } }), null);
+  assert.equal(permissionPurpose(en, { steps, said: 'Run the tests.' }), 'Needed for step 2 of 3 of this task, “Run the tests”.');
+});
+
+test('askWhy: the Worker\'s first sentence drops Markdown, questions and scraps, and is clipped', () => {
+  assert.equal(firstSentence('**Now** checking `npm run build` on [main](https://x). More text.'), 'Now checking npm run build on main.');
+  assert.equal(firstSentence('Should I push now?'), null);
+  assert.equal(firstSentence('OK.'), null);
+  assert.equal(firstSentence(null), null);
+  assert.equal(firstSentence('- a list item first\n- another'), 'a list item first');
+  assert.equal(firstSentence('x'.repeat(300))!.length, 160);
+  assert.equal(firstSentence('빌드가 깨져서 lockfile을 다시 만듭니다. 그다음 테스트.'), '빌드가 깨져서 lockfile을 다시 만듭니다.');
 });

@@ -1658,6 +1658,11 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 /* What "Allow for this task" would cover: one line of text just above the buttons, read before one is pressed. */
 .dec .scope { font-size: var(--fs-caption2); line-height: var(--lh-ui); color: var(--text-secondary); overflow-wrap: anywhere; word-break: keep-all; }
 .dec .scope > code { display: inline; padding: 0 var(--space-4); margin: 0 var(--space-2); word-break: break-all; color: var(--text-primary); }
+/* What the action is for (T-0085): just above the command, at most two lines; the tooltip shows the rest. With no
+   purpose known there is no line, so no empty gap. The Worker's decision line carries it as a second line. */
+.dec .purpose { font-size: var(--fs-caption); line-height: var(--lh-ui); color: var(--text-primary); overflow-wrap: anywhere; word-break: keep-all; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.cstrip:has(> .cs-why) { flex-wrap: wrap; row-gap: var(--space-2); }
+.cstrip > .cs-why { flex: 1 1 100%; order: 1; padding-left: calc(var(--icon-sm) + var(--space-8)); color: var(--text-secondary); }
 
 /* The thread panel (T-0076): in the right sidebar's place while a thread is open, so the side question and the
    terminal, which float over the chat, never sit under it. */
