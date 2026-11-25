@@ -555,6 +555,11 @@ flow('an error from the main process is said in the language of the window', { s
   assert.equal(await fails("await window.ide.call('auto:add', '  ', { kind: 'merged' })"), '자동화가 할 일을 적어 주세요.');
   assert.equal(await fails("await window.ide.call('auto:add', 'x', { kind: 'daily', time: '99' })"), '시각은 09:00처럼 써 주세요.');
   assert.equal(await fails("await window.ide.call('auto:update', 'gone', 'x', { kind: 'merged' })"), '없는 항목이에요.');
+  // Changing one to nothing is refused the same way, and it stays as it was.
+  await app.evaluate("await window.ide.call('auto:add', 'Stays', { kind: 'merged' }); return 1;");
+  const id = (await app.evaluate("return (await window.ide.call('state')).automations[0]")).id;
+  assert.equal(await fails(`await window.ide.call('auto:update', '${id}', ' ', { kind: 'merged' })`), '자동화가 할 일을 적어 주세요.');
+  assert.equal((await app.evaluate("return (await window.ide.call('state')).automations[0]")).prompt, 'Stays');
 });
 
 flow("a reply to a Worker's report becomes a row of its card, folds to a count, and a quote goes back to its message", {}, async (app) => {

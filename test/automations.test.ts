@@ -61,6 +61,9 @@ test('an edited automation keeps its switch and its last run, and its name follo
   assert.deepEqual([e.id, e.enabled, e.lastRunAt, e.lastRunChatId, e.createdAt], [base.id, false, base.lastRunAt, 'c1', base.createdAt]);
   // The same time: the run already worked out stays, so saving does not skip or repeat one.
   assert.equal(e.nextRunAt, base.nextRunAt);
+  // An older one stored without the weekdays switch is the same as one with it off.
+  const old = { ...base, trigger: { kind: 'daily', time: '09:00' } } as unknown as Automation;
+  assert.equal(editedAutomation(old, base.prompt, { kind: 'daily', time: '09:00', weekdays: false }, now).nextRunAt, base.nextRunAt);
 });
 
 test('a name given by hand stays when the text changes', () => {
