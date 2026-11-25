@@ -9,7 +9,7 @@ import { dispatcher } from '../src/main/agents/dispatcher';
 import { accounts } from '../src/main/accounts';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
-import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW, WORKER_IDLE_COMPACT } from '../src/shared/context';
+import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW, WORKER_TASK_COMPACT, shouldCompact } from '../src/shared/context';
 import type { Task, Worker } from '../src/shared/types';
 import { DISPATCHER_COMPACT, WORKER_COMPACT, compactCommand } from '../src/shared/compactInstructions';
 
@@ -206,42 +206,93 @@ test("a Worker's compaction is shown in its conversation, and a limit that stops
   workers.closeAll();
 });
 
-test('a Worker is compacted from 60K once its task is finished; while the task is open it waits for 80% of the window', () => {
+test('a Worker is not compacted when its task finishes, only before its next task', async () => {
   workers.closeAll();
   const { w, x } = worker();
   const s = workers.ensureSession(w)!;
   s.send('Task');
   // The turn ends with the task still open: it waits for the Dispatcher.
-  feed(s, assistant(WORKER_IDLE_COMPACT + 5_000, 'BLOCKED: I need the bucket name.'));
+  feed(s, assistant(WORKER_TASK_COMPACT + 5_000, 'BLOCKED: I need the bucket name.'));
   feed(s, result({ result: 'BLOCKED: I need the bucket name.' }));
   assert.equal(x.status, 'waiting');
-  assert.deepEqual(sent(), ['Task']);
-
   s.send('[Dispatcher] It is stage-eu.');
-  feed(s, assistant(WORKER_IDLE_COMPACT + 6_000, 'RESULT: Done'));
+  feed(s, assistant(WORKER_TASK_COMPACT + 26_000, 'RESULT: Done'));
   feed(s, result({ result: 'RESULT: Done' }));
   assert.equal(x.status, 'done');
-  assert.deepEqual(sent(), ['Task', '[Dispatcher] It is stage-eu.', compactCommand(WORKER_COMPACT)]);
-  feed(s, boundary(WORKER_IDLE_COMPACT + 6_000, 9_000));
-  feed(s, result());
-
-  // Below it, a finished Worker is left alone.
+  // Finished above the threshold: nothing is compacted, so a question about the task still has all of it.
   s.send('[Dispatcher question] Which file?');
-  feed(s, assistant(WORKER_IDLE_COMPACT - 1, 'src/parse.ts'));
+  feed(s, assistant(WORKER_TASK_COMPACT + 27_000, 'src/parse.ts'));
   feed(s, result({ result: 'src/parse.ts' }));
-  assert.equal(sent().length, 4);
+  assert.deepEqual(sent(), ['Task', '[Dispatcher] It is stage-eu.', '[Dispatcher question] Which file?']);
 
-  // Above it again, but hardly grown since the compaction (which left it at 60K - 1): not compacted after every turn.
-  s.send('[Dispatcher question] And the line?');
-  feed(s, assistant(WORKER_IDLE_COMPACT + COMPACT_MIN_GROWTH - 2, 'Line 12'));
-  feed(s, result({ result: 'Line 12' }));
+  // A new task: compacted first, and the task message waits for that.
+  const next: Task = { ...x, id: 'T-2', title: 'Next', prompt: 'Do the next thing.', status: 'running', startedAt: undefined };
+  store.data.tasks.push(next);
+  w.taskIds.push(next.id);
+  (workers as unknown as { startTask(w: Worker, s: unknown, t: Task): void }).startTask(w, s, next);
+  await tick();
+  assert.deepEqual(sent().slice(3), [compactCommand(WORKER_COMPACT)]);
+  feed(s, boundary(WORKER_TASK_COMPACT + 27_000, 30_000));
+  feed(s, result());
   assert.equal(sent().length, 5);
-  // Grown by a real piece of work: compacted again.
-  s.send('[Dispatcher] Rename it.');
-  feed(s, assistant(WORKER_IDLE_COMPACT + COMPACT_MIN_GROWTH - 1, 'Renamed.'));
-  feed(s, result({ result: 'Renamed.' }));
-  assert.deepEqual(sent().slice(5), ['[Dispatcher] Rename it.', compactCommand(WORKER_COMPACT)]);
+  assert.match(sent()[4], /^\[Task T-2\] Next/);
   workers.closeAll();
+});
+
+test('a new task under the threshold, or hardly grown since the last compaction, starts without one', async () => {
+  workers.closeAll();
+  const { w, x } = worker();
+  let s = workers.ensureSession(w) as AgentSession;
+  const start = async (id: string) => {
+    const t: Task = { ...x, id, title: id, status: 'running', startedAt: undefined };
+    store.data.tasks.push(t);
+    (workers as unknown as { startTask(w: Worker, s: unknown, t: Task): void }).startTask(w, s, t);
+    await tick();
+  };
+  s.contextTokens = WORKER_TASK_COMPACT - 1;
+  await start('T-2');
+  assert.deepEqual(sent().map((m) => m.slice(0, 10)), ['[Task T-2]']);
+  feed(s, result({ result: 'RESULT: Done' }));
+  // A session reopened since (it read no size yet) goes by the size the Worker last showed.
+  workers.closeAll();
+  s = workers.ensureSession(w) as AgentSession;
+  w.contextTokens = WORKER_TASK_COMPACT + COMPACT_MIN_GROWTH;
+  await start('T-3');
+  assert.deepEqual(sent(), [compactCommand(WORKER_COMPACT)]);
+  assert.equal(s.contextTokens, WORKER_TASK_COMPACT + COMPACT_MIN_GROWTH);
+  assert.equal(shouldCompact(WORKER_TASK_COMPACT + COMPACT_MIN_GROWTH - 1, WORKER_TASK_COMPACT, WORKER_TASK_COMPACT), false);
+  assert.equal(shouldCompact(WORKER_TASK_COMPACT + COMPACT_MIN_GROWTH, WORKER_TASK_COMPACT, WORKER_TASK_COMPACT), true);
+  workers.closeAll();
+});
+
+test('a task message that waited for a compaction a limit stopped goes on another account, or back to the owner', () => {
+  const held: string[][] = [];
+  const s = new AgentSession({ label: 'S', model: 'claude-opus-5-5', cwd: tmp, systemAppend: '', accountId: 'a1', resume: 'sid' }, {
+    onLimited: (h) => { held.push(h ?? []); },
+  });
+  assert.equal(s.compactFirst(WORKER_TASK_COMPACT, WORKER_TASK_COMPACT + 30_000), true);
+  s.send('[Task T-2] Next');
+  assert.deepEqual(sent(), [compactCommand(undefined)]);
+  // The other account takes over and compacts; then the task goes out there.
+  feed(s, compactError(LIMIT_TEXT));
+  feed(s, result());
+  assert.equal(starts.length, 2);
+  assert.deepEqual(sent(), [compactCommand(undefined)]);
+  feed(s, boundary(WORKER_TASK_COMPACT + 30_000, 20_000));
+  feed(s, result());
+  assert.deepEqual(sent(), [compactCommand(undefined), '[Task T-2] Next']);
+
+  // Every account limited: the message goes back to the owner instead of being lost.
+  feed(s, assistant(21_000));
+  feed(s, assistant(WORKER_TASK_COMPACT + 45_000, 'Done'));
+  feed(s, result({ result: 'Done' }));
+  assert.equal(s.compactFirst(WORKER_TASK_COMPACT), true);
+  s.send('[Task T-3] Later');
+  limit('a1', true);
+  feed(s, compactError(LIMIT_TEXT));
+  feed(s, result());
+  assert.deepEqual(held, [['[Task T-3] Later']]);
+  s.close();
 });
 
 test('a Worker runs with a 5-minute prompt cache and without the bundled skills; the Dispatcher keeps its own', () => {

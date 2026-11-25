@@ -4,7 +4,7 @@ import { claudeExecutable, pluginPath } from '../runtime';
 import { log } from '../log';
 import { PushQueue } from '../util';
 import { SpendMeter, spendOf, type SessionSpend, type Spend } from '../../shared/spend';
-import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW } from '../../shared/context';
+import { COMPACT_AT, CONTEXT_WINDOW, shouldCompact } from '../../shared/context';
 import { compactCommand } from '../../shared/compactInstructions';
 import { artifactEnv, CONNECTOR_CHECK_MS, connectorChanges, connectorSettings, toReconnect } from './connectors';
 import { t } from '../i18n';
@@ -43,7 +43,7 @@ export interface SessionConfig {
   agents?: Options['agents'];
   /** Spend already counted for the resumed session (from onSpend), so the resumed totals are not counted twice. */
   spent?: SessionSpend | null;
-  /** Context size from which the idle session is compacted after a turn, read when the turn ends. Default COMPACT_AT. */
+  /** Context size from which the idle session is compacted after a turn, read when the turn ends (Infinity: never). Default COMPACT_AT. */
   compactAt?: () => number;
   /** What the app's /compact asks the summary to keep (see shared/compactInstructions). */
   compactInstructions?: string;
@@ -73,7 +73,8 @@ export interface SessionEvents {
   onStatus?(status: 'busy' | 'idle' | 'error', text: string): void;
   /** The number of background subagents/workflows (n) or shells/monitors (shells) still running changed (between turns too). */
   onBackground?(n: number, shells: number): void;
-  onLimited?(): void;
+  /** Every account is held by a limit. `held`: messages that waited for a compaction and were not sent. */
+  onLimited?(held?: string[]): void;
   /** Sent after Stop, while the stopped turn was ending: the input queue was dropped, so the owner sends them again. */
   onResend?(texts: string[]): void;
   /** Compaction started or ended. A failed one never fails the turn: the conversation stays as it was. */
@@ -215,6 +216,8 @@ export class AgentSession {
 
   send(text: string) {
     if (this.closed) throw new Error(t('err.sessionClosed'));
+    // Held until the compaction compactFirst asked for has ended (a limit there resumes on another account).
+    if (this.heldForCompact) { this.heldForCompact.push(text); return; }
     if (!this.q) this.start();
     // A Stop that came after its turn had ended stops nothing later.
     if (!this.busy) this.interrupted = false;
@@ -235,6 +238,30 @@ export class AgentSession {
     if (this.closed) return;
     if (!this.q) this.start();
     this.requestCompact();
+  }
+
+  /**
+   * Compact before what is sent next, when the idle session's context is at or above `at`. What is sent meanwhile
+   * goes out once the compaction has ended, whether it worked or not. Returns whether it compacts.
+   * `known`: the context size the owner saw last, for a session reopened since (it reads none before its first turn).
+   */
+  compactFirst(at: number, known = 0) {
+    if (!this.contextTokens) this.contextTokens = known;
+    if (this.closed || this.busy || this.heldForCompact || !this.sessionId || !shouldCompact(this.contextTokens, this.compactFloor, at)) return false;
+    if (!this.q) this.start();
+    log.info(`[${this.cfg.label}] context ${this.contextTokens} >= ${at}, compacting before the next task`);
+    this.heldForCompact = [];
+    this.requestCompact();
+    return true;
+  }
+
+  private heldForCompact: string[] | null = null;
+
+  /** What compactFirst held, now that its compaction is over. */
+  private takeHeld() {
+    const h = this.heldForCompact ?? [];
+    this.heldForCompact = null;
+    return h;
   }
 
   private requestCompact() {
@@ -293,6 +320,7 @@ export class AgentSession {
 
   close() {
     this.closed = true;
+    this.heldForCompact = null;
     this.input?.close();
     try { this.q?.close(); } catch { /* ignore */ }
     this.q = null;
@@ -458,6 +486,15 @@ export class AgentSession {
         const resend = this.afterStop;
         this.afterStop = [];
         if (queued && userStop) { this.dropQueued(); queued = false; }
+        // The compaction compactFirst asked for is over: what waited for it goes out now (as new work after a Stop).
+        if (internal && this.heldForCompact) {
+          const held = this.takeHeld();
+          if (userStop) resend.push(...held);
+          else if (held.length) {
+            held.forEach((x) => this.input!.push(userMsg(x)));
+            queued = true;
+          }
+        }
         this.busy = queued;
         this.ev.onTurnEnd?.({ text: finalText || text, isError, internal, queued, background: this.background + this.shells > 0 });
         // What was sent once Stop was pressed is new work, not part of the stopped turn: it goes out after the
@@ -477,8 +514,7 @@ export class AgentSession {
         // After onTurnEnd, so the owner's threshold sees what the turn settled (a finished task).
         const compactAt = this.cfg.compactAt?.() ?? COMPACT_AT;
         // Not again right after a compaction that left the context above the threshold.
-        const grown = this.contextTokens - this.compactFloor >= COMPACT_MIN_GROWTH;
-        if (!internal && !isError && this.contextTokens >= compactAt && grown && !this.busy) {
+        if (!internal && !isError && shouldCompact(this.contextTokens, this.compactFloor, compactAt) && !this.busy) {
           log.info(`[${this.cfg.label}] context ${this.contextTokens} >= ${compactAt}, compacting`);
           this.requestCompact();
         }
@@ -563,7 +599,9 @@ export class AgentSession {
         this.busy = false;
         this.ev.onStatus?.('idle', '');
         // A failed compaction cut nothing off: it is tried again after a later turn, or by Claude Code mid-turn.
-        if (!compact) this.ev.onLimited?.();
+        // What waited for it goes back to the owner, which holds it until the limit resets.
+        const held = this.takeHeld();
+        if (!compact || held.length) this.ev.onLimited?.(held);
         return;
       }
       log.info(`[${this.cfg.label}] failover ${old} -> ${next.id}`);

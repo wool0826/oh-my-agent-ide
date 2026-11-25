@@ -123,7 +123,7 @@ Build output goes to `dist/`, installers to `release/`.
 
 | Path | What it does |
 |---|---|
-| `src/main/agents/session.ts` | One Claude Code session: account failover, compaction (80% of a 250K window, and by Claude Code mid-turn), usage reading |
+| `src/main/agents/session.ts` | One Claude Code session: account failover, compaction (80% of a 250K window, before a Worker's next task from 60K, and by Claude Code mid-turn), usage reading |
 | `src/main/agents/dispatcher.ts` | The Dispatcher session, its task-board MCP tools, and the turns Worker news starts |
 | `src/main/agents/workers.ts` | Creating and assigning Workers, questions and permissions, talking to the Dispatcher, results, tasks that wait for a merge |
 | `src/main/agents/workerText.ts`, `workerPrompt.ts`, `workerTools.ts` | What Workers are told in fixed words, their standing instructions and report format, and the app's own tools they can call |

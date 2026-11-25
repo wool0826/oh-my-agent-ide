@@ -35,7 +35,7 @@ import { kTokens } from '../../shared/context';
 import { DISPATCHER_COMPACT } from '../../shared/compactInstructions';
 import { recapChat } from '../../shared/recap';
 import { dispatcherReason } from '../../shared/askWhy';
-import { describePick, pickWorker, reuseBlock } from '../../shared/routing';
+import { describePick, newWorkLine, pickWorker } from '../../shared/routing';
 import { stepView } from '../../shared/steps';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
@@ -89,7 +89,7 @@ function workerLine(id: string) {
     `${last?.links?.length ? `\n  Links: ${last.links.join(' ')}` : ''}` +
     `${w.ask ? `\n  Has not answered your question yet (asked ${clock(w.ask.at)}): ${oneLine(w.ask.text, 200)}` : ''}` +
     `${w.request ? `\n  Waits for your answer (since ${clock(w.request.at)}): ${oneLine(w.request.text, 300)}` : ''}` +
-    `\n  New work: ${reuseBlock(w, store.data.tasks) ?? 'can take it'}`;
+    `\n  New work: ${newWorkLine(w, store.data.tasks)}`;
 }
 
 /**
