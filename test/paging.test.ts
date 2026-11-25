@@ -76,28 +76,28 @@ test('paging: "Show more" lists show whole pages, enough to reach an item', () =
   assert.equal(pagesFor(74, 30, 30), 90);
 });
 
-test('store: a 1000-line Worker log reads a page at a time, and a torn line is skipped', () => {
+test('store: a 1000-line Worker log reads a page at a time, and a torn line is skipped', async () => {
   ensureHome();
   const file = path.join(paths().workerLogs, 'W-99.jsonl');
   const lines = Array.from({ length: 1000 }, (_, i) => JSON.stringify({ ts: new Date(i * 1000).toISOString(), from: 'event', text: `line ${i}` }));
   lines[500] = '{"ts": "torn';
   fs.writeFileSync(file, lines.join('\n') + '\n');
-  const last = store.readLog('W-99');
+  const last = await store.readLog('W-99');
   assert.equal(last.start, 800);
   assert.equal(last.total, 1000);
   assert.equal(last.items.length, 200);
   assert.equal(last.items[0].text, 'line 800');
   assert.equal(last.items[199].text, 'line 999');
-  const before = store.readLog('W-99', last.start, 300);
+  const before = await store.readLog('W-99', last.start, 300);
   assert.equal(before.start, 500);
   assert.equal(before.items.length, 299);
   assert.equal(before.items[0].text, 'line 501');
-  const first = store.readLog('W-99', 100);
+  const first = await store.readLog('W-99', 100);
   assert.deepEqual([first.start, first.items.length, first.items[0].text], [0, 100, 'line 0']);
   // A line written after the read continues where the page ended.
   store.log('W-99', 'event', 'line 1000');
-  assert.deepEqual(store.readLog('W-99', undefined, 1).items.map((x) => x.text), ['line 1000']);
-  assert.deepEqual(store.readLog('W-00'), { items: [], start: 0, total: 0 });
+  assert.deepEqual((await store.readLog('W-99', undefined, 1)).items.map((x) => x.text), ['line 1000']);
+  assert.deepEqual(await store.readLog('W-00'), { items: [], start: 0, total: 0 });
 });
 
 test('store: chat pages go back from an id', () => {

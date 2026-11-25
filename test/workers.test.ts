@@ -12,7 +12,7 @@ import { loadSettings } from '../src/main/settings';
 import { paths } from '../src/main/paths';
 import { answer } from '../src/main/decisions';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
-import { ALLOW, type Task, type Worker } from '../src/shared/types';
+import { ALLOW, ALLOW_TASK, DENY, type Task, type Worker } from '../src/shared/types';
 import { workerDecisions } from '../src/shared/inbox';
 import { holdsSlot, slotsUsed } from '../src/shared/slots';
 
@@ -735,14 +735,14 @@ test('a question to an idle Worker reopens no task, and what its turn says reach
   assert.deepEqual(chatLines(), [`Dispatcher → ${w.id} question: Which file holds the parser?`, `${w.id} → Dispatcher: It is src/parse.ts.`]);
 });
 
-test('mid-task, tell_dispatcher answers the question and the task goes on to its own report', () => {
+test('mid-task, tell_dispatcher answers the question and the task goes on to its own report', async () => {
   const { w, x, s } = talking();
   workers.ask(w.id, 'How far along are you?');
   assert.match(workers.fromWorker(w, 'answer', 'Half way: the parser is done.'), /^Delivered/);
   assert.equal(w.ask, null);
   assert.equal(x.status, 'running');
   assert.equal(wakes, 1);
-  assert.deepEqual(store.readLog(w.id, undefined, 2).items.map((i) => [i.from, i.text]), [
+  assert.deepEqual((await store.readLog(w.id, undefined, 2)).items.map((i) => [i.from, i.text]), [
     ['dispatcher', 'Question: How far along are you?'],
     ['worker', 'To the Dispatcher: Half way: the parser is done.'],
   ]);
@@ -1029,6 +1029,40 @@ test('a Worker waiting on a permission goes on once that decision is answered wi
   assert.deepEqual(workerDecisions(store.data.decisions, w.id), []);
 });
 
+test('a PowerShell command is asked about like a Bash one: a rule asks every time, and a yes for the task covers that command only', async () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)! as AgentSession;
+  s.ev.onStatus!('busy', '');
+  const run = (command: string, id: string) => s.cfg.canUseTool!('PowerShell', { command }, { signal: new AbortController().signal, suggestions: [], toolUseID: id } as unknown as Parameters<CanUseTool>[2]);
+  const open = () => workerDecisions(store.data.decisions, w.id);
+  // A force push, however it is written, is under a rule: the card names the command and the rule, and offers no yes for the task.
+  const push = run('git -C . push --force origin feature', 'p1');
+  await tick();
+  assert.deepEqual([open()[0].title, open()[0].code, open()[0].options.map((o) => o.label)], ['Run this command?', '$ git -C . push --force origin feature', [ALLOW, DENY]]);
+  assert.match(open()[0].reason!.what, /wants to run `git -C \. push --force origin feature`/);
+  assert.match(open()[0].reason!.why, /force push/);
+  answer(open()[0].id, DENY);
+  assert.equal((await push)?.behavior, 'deny');
+  // An ordinary command can be allowed for the task, by its leading words.
+  const status = run('git status', 'p2');
+  await tick();
+  assert.deepEqual(open()[0].options.at(-1), { label: ALLOW_TASK, description: 'git status' });
+  answer(open()[0].id, ALLOW_TASK);
+  assert.equal((await status)?.behavior, 'allow');
+  assert.deepEqual(x.grants, [{ key: 'powershell:git status', label: 'git status' }]);
+  // The same command goes ahead; another PowerShell command is asked about, and so is the allowed one with more chained on.
+  assert.equal((await run('git status --short', 'p3'))?.behavior, 'allow');
+  assert.equal(open().length, 0);
+  for (const [command, id] of [['Remove-Item build -Recurse', 'p4'], ['git status; Remove-Item build -Recurse', 'p5']]) {
+    const other = run(command, id);
+    await tick();
+    assert.equal(open().length, 1, command);
+    answer(open()[0].id, ALLOW);
+    await other;
+  }
+});
+
 test('a Worker the user stops is idle, not in error, and its task shows as stopped by user instead of failed', async () => {
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w);
@@ -1292,6 +1326,16 @@ test('progress steps are required: the Worker prompt and every task message ask 
   assert.doesNotMatch(prompt, /Skip this for small tasks/);
   const msg = (workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x);
   assert.match(msg, /Progress: declare your expected steps with set_steps within your first few actions, even for a small task/);
+});
+
+test('worker prompt: a UI change is reported with before and after screenshots on FILE: lines (T-0102)', async () => {
+  const { workerPrompt } = await import('../src/main/agents/workerPrompt');
+  const w = addWorker({});
+  for (const p of [workerPrompt(w), workerPrompt(w, true)]) {
+    assert.match(p, /capture the changed screen before your change \(on the default branch\) and after it/);
+    assert.match(p, /`<screen>-before\.png` and `<screen>-after\.png`/);
+    assert.match(p, /Name both on FILE: lines in the report/);
+  }
 });
 
 test('local-only repository: the task message has no fetch, push or PR, and a finished task is done on its branch, not a PR (T-0027)', async () => {

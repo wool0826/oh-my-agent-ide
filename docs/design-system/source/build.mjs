@@ -87,7 +87,7 @@ const scaleEntries = [
   ['ui-font-size', scale['ui-font-size']], ['px', scale.px],
   ...flat('fs', scale.fs), ...flat('lh', scale.lh), ...flat('fw', scale.fw), ...flat('tracking', scale.tracking),
   ...flat('space', scale.space), ...flat('radius', scale.radius), ...Object.entries(scale.size),
-  ...flat('dur', scale.dur), ...flat('ease', scale.ease), ...flat('blur', scale.blur), ...flat('z', scale.z),
+  ...flat('dur', scale.dur), ...flat('ease', scale.ease), ...flat('blur', scale.blur), ...flat('mask', scale.mask), ...flat('z', scale.z),
 ];
 
 const css = `/* Oh My Agent IDE — Design System v1 "Graphite Glass" tokens.
@@ -161,6 +161,7 @@ const json = {
     dur: Object.fromEntries(Object.entries(scale.dur).map(([k, v]) => [k, { $type: 'duration', $value: v }])),
     ease: Object.fromEntries(Object.entries(scale.ease).map(([k, v]) => [k, { $type: 'cubicBezier', $value: v.match(/[\d.]+/g).map(Number) }])),
     blur: Object.fromEntries(Object.entries(scale.blur).map(([k, v]) => [k, { $value: v }])),
+    mask: Object.fromEntries(Object.entries(scale.mask).map(([k, v]) => [k, { $type: 'color', $value: v }])),
     z: Object.fromEntries(Object.entries(scale.z).map(([k, v]) => [k, { $type: 'number', $value: +v }])),
   },
   theme: Object.fromEntries(Object.keys(themes).map((t) => [t, {

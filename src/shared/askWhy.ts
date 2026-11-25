@@ -35,9 +35,9 @@ function host(url: string) {
 export function toolAction(say: Say, tool: string, input: any): string {
   const i = input ?? {};
   switch (tool) {
-    case 'Bash': {
+    case 'Bash': case 'PowerShell': {
       const cmd = clip(String(i.command ?? ''), 80);
-      // Claude Code's Bash tool takes the model's own one-line description of the command.
+      // Claude Code's shell tools take the model's own one-line description of the command.
       const desc = typeof i.description === 'string' ? clip(i.description, 80) : '';
       return desc ? say('why.act.bashDesc', { cmd, desc }) : say('why.act.bash', { cmd });
     }
@@ -65,7 +65,9 @@ const RISK: Partial<Record<Key, Key>> = {
   'ask.deploy': 'risk.deploy',
   'ask.merge': 'risk.merge',
   'ask.repoDelete': 'risk.repoDelete',
+  'ask.apiDelete': 'risk.apiDelete',
   'ask.rmHome': 'risk.rmHome',
+  'ask.unread': 'risk.unread',
 };
 
 /**

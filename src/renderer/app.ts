@@ -19,6 +19,7 @@ import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
 import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
+import { closeShot, markBrokenShot, openShot, shotOpen, showShot, stepShot } from './ui/shotview';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
@@ -637,6 +638,9 @@ export async function act(el: HTMLElement, e: Event) {
     case 'worker-archive': await archiveWorker(id); break;
     case 'confirm-dismiss': ui.confirmAsk = null; renderConfirmDialog(); break;
     case 'keys-close': closeShortcuts(); break;
+    case 'shot-open': openShot(el); break;
+    case 'shot-pick': showShot(Number(el.dataset.i)); break;
+    case 'shot-close': closeShot(); break;
     case 'confirm-ok': await confirmOk(); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
@@ -914,6 +918,8 @@ export function init() {
   initSwipe($('#chat-ins'), (nav) => clearOne(nav.startsWith('aa:') ? 'auto' : 'result', nav.slice(nav.indexOf(':') + 1)));
   initTip();
   watchPanes();
+  // An image that fails to load does not bubble its error: listen while it goes down.
+  document.addEventListener('error', markBrokenShot, true);
   document.addEventListener('click', (e) => {
     const tgt = e.target as HTMLElement;
     const segBtn = tgt.closest<HTMLButtonElement>('[data-segc]');
@@ -1049,6 +1055,8 @@ export function init() {
     // Ctrl/Cmd+F opens the same palette to find something said, with a short text selected on the page already in it.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyF') { e.preventDefault(); if (cmdk.open) $('#cmdk-q').focus(); else openPalette(findSeed()); return; }
     if (cmdk.open) { paletteKeys(e); return; }
+    // An open screenshot goes to the report's previous or next one with the arrow keys.
+    if (shotOpen() && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); stepShot(e.key === 'ArrowLeft' ? -1 : 1); return; }
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'Slash') { e.preventDefault(); if (shortcutsOpen()) closeShortcuts(); else if (!ui.settingsShown) openShortcuts(); return; }
     // Ctrl/Cmd+J: the side question, over the chat. Again from inside it, it goes back behind its button.
@@ -1156,6 +1164,7 @@ export function init() {
     if (e.key === 'Escape') {
       if (pop.el) { closePop(true); return; }
       if (shortcutsOpen()) { closeShortcuts(); return; }
+      if (shotOpen()) { closeShot(); return; }
       if (!$('#ctxmenu').hidden) { closeCtxMenu(true); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
       if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); return; }

@@ -1,7 +1,7 @@
-import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme } from 'electron';
+import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme, net, protocol } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadSettings, updateSettings, settingsView, saveSettings } from './settings';
 import { ensureHome, paths } from './paths';
 import { store } from './store';
@@ -52,6 +52,7 @@ import { failedCount } from '../shared/preflight';
 import { diagnostics, exportDiagnostics } from './diagnostics';
 import { beginRun, installCrashHandlers, noticeLastRun, watchWindow } from './crash';
 import { effectiveTheme, windowColors } from '../shared/theme';
+import { SHOT_SCHEME, shotPath } from '../shared/shots';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -508,6 +509,13 @@ async function boot() {
     log.error('state file unreadable; restored from', store.restoredFrom);
     store.chat('error', store.restoredFrom === 'none' ? t('backup.lost') : t('backup.restored', { day: store.restoredFrom }));
   }
+  // The state is not written this launch (shared/migrate.ts): the user hears why before anything is lost.
+  const ro = store.readOnly;
+  if (ro) {
+    log.error('state file opened read-only', JSON.stringify(ro));
+    store.chat('error', ro.why === 'newer' ? t('state.newer', { version: ro.version }) : t('state.migrateFailed', { error: ro.error }));
+  }
+  if (store.migrated) log.info('state file migrated from version', store.migrated.from, 'copy kept at', store.migrated.copy);
   store.backup();
   setInterval(() => store.backup(), 3600_000).unref();
   pruneDecisions();
@@ -561,7 +569,23 @@ async function boot() {
   setTimeout(() => workers.autoArchive(), 60_000).unref();
 }
 
+/**
+ * Screenshots a Worker reported, for the result card's thumbnails (T-0102): image files on this computer's own disks by
+ * absolute path, nothing else (no network paths). Never cached, so a shot taken again under the same name shows anew.
+ */
+function serveShots() {
+  protocol.handle(SHOT_SCHEME, async (req) => {
+    const p = shotPath(req.url);
+    if (!p || !path.isAbsolute(p)) return new Response(null, { status: 404 });
+    try {
+      const r = await net.fetch(pathToFileURL(p).toString());
+      return new Response(r.body, { status: r.status, headers: { 'content-type': r.headers.get('content-type') ?? 'application/octet-stream', 'cache-control': 'no-store' } });
+    } catch { return new Response(null, { status: 404 }); }
+  });
+}
+
 installCrashHandlers();
+protocol.registerSchemesAsPrivileged([{ scheme: SHOT_SCHEME, privileges: { standard: true, secure: true } }]);
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
 else {
@@ -569,6 +593,7 @@ else {
   app.on('second-instance', (_e, argv) => { if (argv.includes(QUICK_ARG)) openQuick(here); else showWindow(win); });
   app.whenReady().then(async () => {
     registerIpc();
+    serveShots();
     beginRun();
     try {
       await boot();

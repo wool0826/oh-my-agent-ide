@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { CodexSession, type CodexSessionConfig } from '../src/main/agents/codexSession';
 import type { CodexLink, ThreadSink } from '../src/main/codex/client';
-import { isUsageLimit, itemTool, limitWindows, plainCommand, usageSpend } from '../src/shared/codexEvents';
+import { commandShell, isUsageLimit, itemTool, limitWindows, plainCommand, usageSpend } from '../src/shared/codexEvents';
 
 // Marking an account as limited reads the settings file: keep it out of the real profile.
 process.env.OMA_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-codex-'));
@@ -163,7 +163,10 @@ test('a command and a file change are put to the owner, and declined when nobody
   codex.say('th-new', 'item/started', { item: { type: 'fileChange', id: 'f1', changes: [{ path: '/repo/a.ts' }] } });
   assert.deepEqual(await codex.ask('th-new', 'item/commandExecution/requestApproval', { command: 'git push', cwd: '/repo', reason: 'network' }), { decision: 'accept' });
   assert.deepEqual(await codex.ask('th-new', 'item/fileChange/requestApproval', { itemId: 'f1', reason: null }), { decision: 'decline' });
-  assert.deepEqual(asked, [{ kind: 'command', command: 'git push', cwd: '/repo', reason: 'network' }, { kind: 'files', files: ['/repo/a.ts'], reason: null }]);
+  assert.deepEqual(asked, [{ kind: 'command', command: 'git push', shell: 'bash', cwd: '/repo', reason: 'network' }, { kind: 'files', files: ['/repo/a.ts'], reason: null }]);
+  // The shell Codex wrapped the command in goes with it, so the rules read the line as that shell does.
+  await codex.ask('th-new', 'item/commandExecution/requestApproval', { command: String.raw`"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -Command 'git push --fo` + '`' + String.raw`rce'`, cwd: null, reason: null });
+  assert.deepEqual(asked[2], { kind: 'command', command: 'git push --fo`rce', shell: 'powershell', cwd: null, reason: null });
 
   const none = session();
   none.s.send('go');
@@ -241,5 +244,12 @@ test('a command is shown without the shell Codex wraps it in', () => {
   assert.equal(plainCommand('bash -lc "npm test -- --watch=false"'), 'npm test -- --watch=false');
   assert.equal(plainCommand("/bin/zsh -lc 'ls -la'"), 'ls -la');
   assert.equal(plainCommand('git status'), 'git status');
+  // The shell that wrapper starts is the one whose rules read the command.
+  assert.equal(commandShell(String.raw`"C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe" -Command 'git --version'`), 'powershell');
+  assert.equal(commandShell(String.raw`"C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -Command "git status"`), 'powershell');
+  assert.equal(commandShell('pwsh -c "git status"'), 'powershell');
+  assert.equal(commandShell('bash -lc "npm test"'), 'bash');
+  assert.equal(commandShell('git status'), 'bash');
+  assert.equal(commandShell('echo "run powershell -Command x"'), 'bash');
   assert.deepEqual(itemTool({ type: 'commandExecution', command: String.raw`"C:\x\powershell.exe" -Command 'git status'` }), { name: 'Bash', summary: '$ git status' });
 });

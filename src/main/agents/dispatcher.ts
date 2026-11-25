@@ -96,10 +96,10 @@ function workerLine(id: string) {
  * What read_worker shows: the Worker's line, then the latest messages of its conversation, long ones cut so a look
  * stays cheap. Null when there is no such Worker.
  */
-export function readWorker(id: string, last = 10) {
+export async function readWorker(id: string, last = 10) {
   const w = store.worker(id);
   if (!w) return null;
-  const { items, total } = store.readLog(w.id, undefined, last);
+  const { items, total } = await store.readLog(w.id, undefined, last);
   const cut = (s: string) => (s.length > 1500 ? `${s.slice(0, 1500)}… (${s.length - 1500} more characters cut)` : s);
   return `${workerLine(w.id)}\n\nConversation (latest ${items.length} of ${total} messages, oldest first)\n` +
     (items.map((i) => `[${clock(i.ts)} ${i.from}] ${cut(i.text.trim())}`).join('\n\n') || '(empty)');
@@ -223,7 +223,7 @@ function boardTools(d: Dispatcher) {
       tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context. With after_task_id the task waits until that task\'s PR is merged, then starts automatically; if that task finishes without a PR it starts then, and if it fails or its PR is closed unmerged the waiting task is cancelled and you are told.', {
         title: z.string().describe('Short task name'),
         prompt: z.string().describe('Instructions for the Worker: background, desired result, definition of done. Include any attached file paths.'),
-        kind: z.enum(['code', 'other']).describe('code: change a repository and open a PR. other: research, documents, reports'),
+        kind: z.enum(['code', 'other']).describe('code: change a repository and open a PR. other: research, documents, reports, UI mock-ups. A code task that adds a screen or changes a screen\'s structure comes only after a mock-up task (other) and the user\'s pick in the decision inbox, with the chosen option\'s link in its prompt; small fixes (wording, spacing, colours, a bug) go straight to code.'),
         repo: z.string().optional().describe('Repository name for code tasks'),
         worker_id: z.string().optional(),
         new_worker: z.boolean().optional().describe('Always start a new Worker, even if an idle one knows the code. Only when the user asks for a fresh Worker.'),
@@ -283,7 +283,7 @@ function boardTools(d: Dispatcher) {
         worker_id: z.string(),
         last: z.number().int().min(1).max(40).optional().describe('How many of the latest messages to show. Default 10.'),
       }, async (a) => {
-        const view = readWorker(a.worker_id, a.last);
+        const view = await readWorker(a.worker_id, a.last);
         return view ? ok(view) : fail(t('err.noWorker', { id: a.worker_id }));
       }),
       tool('stop_worker', 'Stop what a Worker is doing (the session stays, so it can continue later).', { worker_id: z.string() }, async (a) => {
@@ -404,6 +404,7 @@ export function systemPrompt(codex = false) {
     '12. Only a set number of Workers run at once (Settings). A task queued for a free Worker slot starts by itself, the longest waiting first, when a running one finishes; do not cancel or re-create it for that.',
     '13. To learn something from a Worker, look with read_worker first (its status and what it said last). If the answer is not there, ask with ask_worker: the Worker answers from its own context without stopping its work, and no task is opened for it. The answer does not come in the same turn, so say in one line that you asked and end your turn. Do not ask again while a question is unanswered, and do not create a task just to get an answer.',
     '14. A Worker may ask you for something or report that it is blocked; you see it in "[Worker updates]". A task that stopped for you stays open and keeps its Worker slot until that Worker hears from you, so always finish with send_to_worker: the answer, or what you did about it (the task you created with create_task, what the user decided). If only the user can decide, ask with request_decision first and write to the Worker when the answer comes; do not write to it just to say it should wait.',
+    '15. A screen\'s structure is settled on a mock-up before any code. When a request adds a screen, view, panel or dialog, or changes how a screen is laid out (what it shows where, how its parts are grouped, how one moves through it), first create a mock-up task: kind other, no code, two or three options in the app\'s real look, published as an artifact with its link on a LINK: line (an HTML file on a FILE: line when it cannot be published). When it is done, put the choice in the decision inbox with request_decision, one option per mock-up. Only after the answer create the code task, with the chosen option\'s link and name in its prompt. Skip the mock-up for small fixes, which go straight to a code task: wording, spacing, colours or alignment within the existing layout, a bug, or a change the user already showed exactly (their own mock-up, a screenshot, a precise description) or asked to build without one.',
     '',
     'A message prefixed with "[Worker updates]" lists what happened to Workers since your last turn. With a message from the user, use what is relevant to the request; no need to report the rest.',
     '"[Automatic turn]" means nobody wrote to you: Worker news started this turn. Judge it. If the user should know (an answer you asked for, a problem, a result that changes what happens next), tell them in one to three sentences what it means for them, not a copy of it; every finished task already shows a result card. Act where needed: answer the Worker, create the next task, or ask the user with request_decision. If there is nothing to say or do, reply with exactly NOOP and nothing else.',

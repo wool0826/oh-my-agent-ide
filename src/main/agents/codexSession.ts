@@ -2,8 +2,9 @@ import { accounts } from '../accounts';
 import { log } from '../log';
 import type { CodexLink, ThreadSink } from '../codex/client';
 import { SpendMeter, type SessionSpend } from '../../shared/spend';
-import { isUsageLimit, itemTool, plainCommand, usageSpend, type CodexItem, type CodexUsage } from '../../shared/codexEvents';
+import { commandShell, isUsageLimit, itemTool, plainCommand, usageSpend, type CodexItem, type CodexUsage } from '../../shared/codexEvents';
 import type { SessionEvents } from './session';
+import type { Shell } from '../../shared/shellWords';
 import { t } from '../i18n';
 
 /** A tool of the app that a Codex session can call (the Dispatcher's and the Workers' own tools). */
@@ -18,7 +19,7 @@ export interface CodexTool {
 
 /** Something Codex will not do without a yes: a command to run, or files to change. */
 export type CodexApproval =
-  | { kind: 'command'; command: string; cwd: string | null; reason: string | null }
+  | { kind: 'command'; command: string; shell: Shell; cwd: string | null; reason: string | null }
   | { kind: 'files'; files: string[]; reason: string | null };
 
 export type CodexDecision = 'accept' | 'acceptForSession' | 'decline';
@@ -302,7 +303,7 @@ export class CodexSession {
         }
       }
       case 'item/commandExecution/requestApproval':
-        return { decision: await this.ask({ kind: 'command', command: plainCommand(String(p?.command ?? '')), cwd: p?.cwd ?? null, reason: p?.reason ?? null }) };
+        return { decision: await this.ask({ kind: 'command', command: plainCommand(String(p?.command ?? '')), shell: commandShell(String(p?.command ?? '')), cwd: p?.cwd ?? null, reason: p?.reason ?? null }) };
       case 'item/fileChange/requestApproval':
         return { decision: await this.ask({ kind: 'files', files: this.files.get(p?.itemId) ?? [], reason: p?.reason ?? null }) };
       case 'item/tool/requestUserInput':

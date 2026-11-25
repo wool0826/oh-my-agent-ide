@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "counters": { "worker": 5, "task": 9 },
+  "repos": [],
+  "workers": [],
+  "tasks": [],
+  "decisions": [],
+  "autoAnswers": [],
+  "memorySuggestions": [],
+  "chatFile": "chat-0001.jsonl",
+  "dispatcher": { "sessionId": null, "date": null, "contextTokens": 0, "accountId": null },
+  "pendingUpdates": []
+}
