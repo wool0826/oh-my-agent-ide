@@ -96,10 +96,10 @@ function workerLine(id: string) {
  * What read_worker shows: the Worker's line, then the latest messages of its conversation, long ones cut so a look
  * stays cheap. Null when there is no such Worker.
  */
-export function readWorker(id: string, last = 10) {
+export async function readWorker(id: string, last = 10) {
   const w = store.worker(id);
   if (!w) return null;
-  const { items, total } = store.readLog(w.id, undefined, last);
+  const { items, total } = await store.readLog(w.id, undefined, last);
   const cut = (s: string) => (s.length > 1500 ? `${s.slice(0, 1500)}… (${s.length - 1500} more characters cut)` : s);
   return `${workerLine(w.id)}\n\nConversation (latest ${items.length} of ${total} messages, oldest first)\n` +
     (items.map((i) => `[${clock(i.ts)} ${i.from}] ${cut(i.text.trim())}`).join('\n\n') || '(empty)');
@@ -283,7 +283,7 @@ function boardTools(d: Dispatcher) {
         worker_id: z.string(),
         last: z.number().int().min(1).max(40).optional().describe('How many of the latest messages to show. Default 10.'),
       }, async (a) => {
-        const view = readWorker(a.worker_id, a.last);
+        const view = await readWorker(a.worker_id, a.last);
         return view ? ok(view) : fail(t('err.noWorker', { id: a.worker_id }));
       }),
       tool('stop_worker', 'Stop what a Worker is doing (the session stays, so it can continue later).', { worker_id: z.string() }, async (a) => {

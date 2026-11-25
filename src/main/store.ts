@@ -6,7 +6,9 @@ import { backupName, backupsNewestFirst, backupsToDrop, stateText } from '../sha
 import { SEARCH_MIN, searchItems, type TextHit } from '../shared/textSearch';
 import { paths } from './paths';
 import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
-import { PAGE, itemsBefore, pageBefore } from '../shared/paging';
+import { PAGE, itemsBefore } from '../shared/paging';
+import { CHAIN, STATE_VERSION, migrate, preMigrationName, type MigrationChain } from '../shared/migrate';
+import { readLogPage, searchLog } from './logFile';
 import { stampQueued } from '../shared/queue';
 import type { Memo, Automation, ShellScript } from '../shared/types';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
@@ -59,12 +61,20 @@ class Store extends EventEmitter {
   restoredFrom: string | null = null;
   /** load() has run. Before it `data` is the empty state, and saving that would replace the file on disk. */
   loaded = false;
+  /**
+   * Set by load() when the state must not be written this launch: the file was saved by a newer build (`newer`),
+   * or a step bringing it to this build's format failed and the copy kept before it was put back (`failed`).
+   */
+  readOnly: { why: 'newer'; version: number } | { why: 'failed'; from: number; error: string } | null = null;
+  /** Set by load() when the state was brought to this build's format: the version it had, and the copy kept of it. */
+  migrated: { from: number; copy: string } | null = null;
 
   /**
    * Reads the state. A file that holds something unreadable is set aside (never overwritten), and the newest
-   * backup that can be read takes its place; with none, the app starts empty and says so.
+   * backup that can be read takes its place; with none, the app starts empty and says so. A state saved in an
+   * older format is brought up to this one (shared/migrate.ts) after a copy of it is kept.
    */
-  load() {
+  load(chain: MigrationChain = CHAIN) {
     const file = paths().state;
     let text: string | null = null;
     try { text = fs.readFileSync(file, 'utf8'); } catch { /* a first run */ }
@@ -84,10 +94,43 @@ class Store extends EventEmitter {
         break;
       }
     }
-    const raw = stateText(text) === 'ok' ? (JSON.parse(text!.replace(/^\uFEFF/, '')) as Partial<Data>) : {};
+    this.readOnly = null;
+    this.migrated = null;
+    let raw = stateText(text) === 'ok' ? (JSON.parse(text!.replace(/^\uFEFF/, '')) as Record<string, unknown>) : {};
+    if (text !== null && stateText(text) === 'ok') raw = this.upgrade(raw, text, chain);
     this.data = { ...empty(), ...raw } as Data;
     this.loaded = true;
-    if (this.restoredFrom) this.flush();
+    if ((this.restoredFrom || this.migrated) && !this.readOnly) this.flush();
+  }
+
+  /**
+   * The state in this build's format. Before the first step a copy of the text read is kept in the data folder;
+   * when a step fails that copy is put back as the state file and the state is opened read-only as it was, and a
+   * state from a newer build is opened read-only, so neither is written over.
+   */
+  private upgrade(raw: Record<string, unknown>, text: string, chain: MigrationChain): Record<string, unknown> {
+    const file = paths().state;
+    const r = migrate(raw, chain);
+    if (r.kind === 'current') return raw;
+    if (r.kind === 'newer') {
+      this.readOnly = { why: 'newer', version: r.version };
+      return raw;
+    }
+    const from = r.from;
+    const copy = path.join(paths().data, preMigrationName(from, chain.version, Date.now()));
+    try {
+      fs.writeFileSync(copy, text);
+    } catch (e) {
+      this.readOnly = { why: 'failed', from, error: `the copy could not be kept: ${e instanceof Error ? e.message : String(e)}` };
+      return raw;
+    }
+    if (r.kind === 'migrated') {
+      this.migrated = { from, copy };
+      return r.state;
+    }
+    try { fs.copyFileSync(copy, file); } catch { /* the file was not written yet, so it still holds the same text */ }
+    this.readOnly = { why: 'failed', from, error: r.error };
+    return raw;
   }
 
   /**
@@ -108,7 +151,7 @@ class Store extends EventEmitter {
     } catch { /* a backup that fails must not stop the app */ }
   }
 
-  private persist = debounce(() => writeJsonAtomic(paths().state, this.data), 300);
+  private persist = debounce(() => this.flush(), 300);
 
   changed() {
     stampQueued(this.data.tasks);
@@ -116,7 +159,9 @@ class Store extends EventEmitter {
     this.emit('changed');
   }
 
+  /** Writes the state now. Nothing is written while it is read-only. */
   flush() {
+    if (this.readOnly) return;
     writeJsonAtomic(paths().state, this.data);
   }
 
@@ -157,46 +202,32 @@ class Store extends EventEmitter {
     this.emit('workerLog', workerId, item);
   }
 
-  /** A page of a Worker's log: the last `limit` lines before line `before` (the end when absent). Lines that don't parse are skipped. */
-  readLog(workerId: string, before?: number, limit: number = PAGE.log): LogPage {
-    let lines: string[];
-    try {
-      lines = fs.readFileSync(path.join(paths().workerLogs, `${workerId}.jsonl`), 'utf8').split('\n').filter(Boolean);
-    } catch {
-      return { items: [], start: 0, total: 0 };
-    }
-    const { start, end } = pageBefore(lines.length, before, limit);
-    const items: WorkerLogItem[] = [];
-    for (const l of lines.slice(start, end)) {
-      try { items.push(JSON.parse(l) as WorkerLogItem); } catch { /* a torn line */ }
-    }
-    return { items, start, total: lines.length };
+  /**
+   * A page of a Worker's log: the last `limit` lines before line `before` (the end when absent). Lines that don't
+   * parse are skipped. Only the page's lines are read (main/logFile.ts).
+   */
+  readLog(workerId: string, before?: number, limit: number = PAGE.log): Promise<LogPage> {
+    return readLogPage(path.join(paths().workerLogs, `${workerId}.jsonl`), before, limit);
   }
 
-  /** Up to `limit` chat items right before the one with id `before`, and whether there are more. */
   /**
    * What was said that matches a query: the chat with the Dispatcher (what the user and it said) and each Worker's
-   * conversation, newest first. Workers that are not archived are read first; a Worker gives a few lines at most.
+   * conversation, newest first. Workers that are not archived are read first; a Worker gives a few lines at most,
+   * read from the end of its log.
    */
-  searchText(query: string, limit = 24): TextHit[] {
+  async searchText(query: string, limit = 24): Promise<TextHit[]> {
     if (query.trim().length < SEARCH_MIN) return [];
     const said = this.data.chat.filter((c) => c.kind === 'user' || c.kind === 'dispatcher');
     const out = searchItems(said, query, Math.ceil(limit / 2), (c) => c.id, 'chat');
     const workers = [...this.data.workers].sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived') || b.lastActiveAt.localeCompare(a.lastActiveAt));
     for (const w of workers) {
       if (out.length >= limit) break;
-      let items: WorkerLogItem[] = [];
-      try {
-        items = fs.readFileSync(path.join(paths().workerLogs, `${w.id}.jsonl`), 'utf8').split('\n').filter(Boolean)
-          .map((l) => { try { return JSON.parse(l) as WorkerLogItem; } catch { return { ts: '', from: 'event' as const, text: '' }; } });
-      } catch { continue; }
-      // Events ("ran a tool") are not something said; the line number stays the log's own.
-      const lines = items.map((x) => (x.from === 'event' ? { ...x, text: '' } : x));
-      out.push(...searchItems(lines, query, Math.min(4, limit - out.length), (_x, i) => String(i), w.id));
+      out.push(...await searchLog(path.join(paths().workerLogs, `${w.id}.jsonl`), w.id, query, Math.min(4, limit - out.length)));
     }
     return out.slice(0, limit);
   }
 
+  /** Up to `limit` chat items right before the one with id `before`, and whether there are more. */
   chatPage(before: string, limit: number = PAGE.chat) {
     return itemsBefore(this.data.chat, before, limit);
   }
@@ -246,6 +277,6 @@ export const store = new Store();
  * before the state was read, and a write that fails is reported, not thrown.
  */
 export function flushNow(): boolean {
-  if (!store.loaded) return false;
+  if (!store.loaded || store.readOnly) return false;
   try { store.flush(); return true; } catch { return false; }
 }

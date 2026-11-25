@@ -198,7 +198,7 @@ test("a Worker's compaction is shown in its conversation, and a limit that stops
   assert.equal(w.statusText, '');
   assert.equal(x.status, 'running');
   assert.notEqual(w.status, 'error');
-  const log = store.readLog(w.id).items.filter((i) => i.from === 'event').map((i) => i.text);
+  const log = (await store.readLog(w.id)).items.filter((i) => i.from === 'event').map((i) => i.text);
   assert.deepEqual(log, [
     'Compacting the conversation (216K)…',
     "Could not compact the conversation (You've hit your 5-hour limit). The work goes on; it is compacted again later.",
