@@ -38,9 +38,17 @@ export function stampHistory(tasks: Pick<Task, 'status' | 'waitingOn' | 'history
   return changed;
 }
 
-/** The task's permission decisions with one more, the oldest going first past KEEP_MARKS. */
+/**
+ * The task's permission decisions with one more. Past KEEP_MARKS the oldest rule use goes first, so a rule used many
+ * times does not push out the user's own answers; then the oldest answer.
+ */
 export function withPermission(list: readonly PermissionMark[] | null | undefined, mark: PermissionMark): PermissionMark[] {
-  return keep([...(list ?? []), mark]);
+  const out = [...(list ?? []), mark];
+  while (out.length > KEEP_MARKS) {
+    const rule = out.findIndex((p) => p.answer === GRANT_USED);
+    out.splice(rule === -1 ? 0 : rule, 1);
+  }
+  return out;
 }
 
 /** Minutes a task spent in each state, not rounded: a task of seconds still has a time line. */

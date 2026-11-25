@@ -46,6 +46,13 @@ test('retro: a history and the permission list keep only their latest marks', ()
   assert.equal(list[0].code, 'b');
 });
 
+test('retro: rule uses go before the user\'s answers past the cap', () => {
+  let list = withPermission(null, { at: at('10:00'), answeredAt: at('10:01'), code: 'mine', answer: ALLOW_TASK });
+  for (let i = 0; i < KEEP_MARKS + 5; i++) list = withPermission(list, { at: at('10:02'), answeredAt: null, code: 'rule', answer: GRANT_USED });
+  assert.equal(list.length, KEEP_MARKS);
+  assert.equal(list[0].code, 'mine');
+});
+
 test('retro: time is split by state from the history, later queue waits included', () => {
   const x = task({
     status: 'done',
