@@ -72,15 +72,15 @@
     <div class="lights drag"></div>
     <h2 class="sr-only" data-i18n="aria.status">Status</h2>
     <div class="side-scroll" id="side"></div>
-    <div class="side-foot"><button class="foot-btn" data-action="open-settings" data-i18n-tip="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button><button class="foot-btn" id="side-toggle" data-action="side-toggle" aria-controls="side"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button></div>
+    <div class="side-foot"><button class="btn btn-ghost btn-icon btn-lg" data-action="open-settings" data-i18n-tip="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button><button class="btn btn-ghost btn-icon btn-lg" id="side-toggle" data-action="side-toggle" aria-controls="side"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button></div>
   </nav>
   <div class="rz nodrag" id="rz-side" role="separator" aria-label="Resize the sidebar" data-i18n-aria="aria.resize" aria-orientation="vertical" aria-controls="side" tabindex="0"></div>
 
   <header class="toolbar drag">
-    <span class="seg nodrag" role="group" aria-label="Views" data-i18n-aria="aria.views">
+    <span class="seg seg-lg seg-glass nodrag" id="views" role="group" aria-label="Views" data-i18n-aria="aria.views">
       <button data-v="chat" aria-pressed="true" data-i18n="nav.chat">Chat</button><button data-v="worker" aria-pressed="false">Worker</button><button data-v="repo" aria-pressed="false" data-i18n="nav.repo">Repositories</button><button data-v="memory" aria-pressed="false" data-i18n="nav.memory">Memory</button>
     </span>
-    <span class="pill orange" id="fake-badge" tabindex="0" data-tip="OMA_FAKE_AGENT=1" hidden>Fake agents</span>
+    <span class="pill" data-tone="warning" id="fake-badge" tabindex="0" data-tip="OMA_FAKE_AGENT=1" hidden>Fake agents</span>
     <button class="tbtn nodrag" id="cmdk-btn" data-action="cmdk-open" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#s-search"/></svg></button>
     <div class="usage nodrag" id="usage" tabindex="0" role="img" aria-label="Usage per account" aria-describedby="usage-pop"></div>
     <button class="tbtn nodrag" id="ins-toggle" data-action="ins-toggle"><svg aria-hidden="true"><use href="#s-side-r"/></svg><span class="n" id="ins-count" hidden></span></button>
@@ -123,9 +123,9 @@
     <div class="wk-list" id="wk-list"></div>
     <div class="wk-session" id="wk-session" hidden>
       <div class="shead">
-        <button class="back" data-action="close-session" data-i18n-tip="ws.back"><svg aria-hidden="true"><use href="#s-back"/></svg></button>
+        <button class="btn btn-icon btn-lg" data-action="close-session" data-i18n-tip="ws.back"><svg aria-hidden="true"><use href="#s-back"/></svg></button>
         <span class="st"><b id="ws-title" role="heading" aria-level="1"></b><small id="ws-sub"></small></span>
-        <div class="segc ws-tabs" id="ws-tabs" role="tablist"></div>
+        <div class="seg seg-lg ws-tabs" id="ws-tabs" role="tablist"></div>
       </div>
       <div class="thread" id="ws-thread" role="tabpanel" aria-labelledby="ws-tab-chat"></div>
       <div class="diffv" id="ws-diff" role="tabpanel" aria-labelledby="ws-tab-changes" hidden></div>
@@ -157,7 +157,7 @@
 </div>
 
 <div class="settings-win" id="sheet" role="dialog" aria-modal="true" hidden></div>
-<div class="ctxmenu" id="ctxmenu" role="menu" hidden></div>
+<div class="menu ctxmenu" id="ctxmenu" role="menu" hidden></div>
 <div class="upop" id="usage-pop" role="dialog" aria-label="Usage per account" data-i18n-aria="usage.dialog" hidden></div>
 <div id="dlg" hidden></div>
 <div id="cmdk" hidden></div>

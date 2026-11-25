@@ -269,7 +269,7 @@ export function renderSide() {
     : x.role === 'ai' ? `<div class="bub wk md">${md(x.text)}</div>`
       : `<div class="sq-err" role="alert">${sym('s-alert', 'c-red')}<span>${esc(x.text)}</span></div>`)).join('');
   const busy = v.busy ? `<div class="sq-busy" role="status"><span class="sq-spin" aria-hidden="true"></span>${esc(v.status || t('sq.thinking'))}</div>` : '';
-  const acts = !v.busy && lastAnswer(v.items) ? `<div class="sq-a"><button type="button" class="btn" data-action="sq-to-dispatcher">${t('sq.toDispatcher')}</button><button type="button" class="btn" data-action="sq-memo">${t('sq.toMemo')}</button></div>` : '';
+  const acts = !v.busy && lastAnswer(v.items) ? `<div class="sq-a"><button type="button" class="btn btn-sm" data-action="sq-to-dispatcher">${t('sq.toDispatcher')}</button><button type="button" class="btn btn-sm" data-action="sq-memo">${t('sq.toMemo')}</button></div>` : '';
   const thread = $('#sq-thread');
   const atEnd = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 24;
   thread.innerHTML = `${meta}${items}${busy}${acts}`;

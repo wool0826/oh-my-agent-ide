@@ -30,7 +30,7 @@ const sizes = new ResizeObserver((entries) => {
     const el = target as HTMLElement;
     if (el.dataset.fit) fit(el);
     // No spring while the width changes: the spring is for choosing another segment.
-    if (el.matches('.seg, .segc')) glide(el, false);
+    if (el.matches('.seg')) glide(el, false);
   }
 });
 
@@ -40,7 +40,7 @@ const sizes = new ResizeObserver((entries) => {
  * from glideAll.
  */
 export function fitAll() {
-  document.querySelectorAll<HTMLElement>('.seg, .segc, [data-fit]').forEach((el) => {
+  document.querySelectorAll<HTMLElement>('.seg, [data-fit]').forEach((el) => {
     if (el.dataset.fit) fit(el);
     if (watched.has(el)) return;
     watched.add(el);
