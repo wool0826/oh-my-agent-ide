@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dayWord, keepPick, LIST_W, paneMode, SPLIT_AT } from '../src/shared/insPanes';
+import { dayWord, focusAfter, keepPick, listStep, LIST_W, paneMode, SPLIT_AT } from '../src/shared/insPanes';
 import { PANELS } from '../src/shared/panelWidth';
 
 test('paneMode splits from 560 and only with something selected', () => {
@@ -19,6 +19,24 @@ test('keepPick keeps the selection while it exists', () => {
   assert.equal(keepPick(['a'], 'b', 'a'), 'a');
   assert.equal(keepPick([], 'b', null), null);
   assert.equal(keepPick(['a'], null, 'new'), 'new');
+});
+
+test('listStep: ↑/↓ stop at the ends, Home and End go to them, other keys do nothing', () => {
+  assert.equal(listStep(3, 0, 'ArrowDown'), 1);
+  assert.equal(listStep(3, 2, 'ArrowDown'), 2);
+  assert.equal(listStep(3, 0, 'ArrowUp'), 0);
+  assert.equal(listStep(3, -1, 'ArrowDown'), 0);
+  assert.equal(listStep(3, 1, 'Home'), 0);
+  assert.equal(listStep(3, 1, 'End'), 2);
+  assert.equal(listStep(3, 1, 'ArrowLeft'), null);
+  assert.equal(listStep(0, 0, 'ArrowDown'), null);
+});
+
+test('focusAfter: the next item once one is cleared, the one before it at the end, none when it was the only one', () => {
+  assert.equal(focusAfter(['a', 'b', 'c'], 'a'), 'b');
+  assert.equal(focusAfter(['a', 'b', 'c'], 'c'), 'b');
+  assert.equal(focusAfter(['a'], 'a'), null);
+  assert.equal(focusAfter(['a'], 'x'), null);
 });
 
 test('dayWord names the days around today in local time', () => {

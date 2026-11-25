@@ -45,14 +45,14 @@ function scriptSlot(s: ShellScript) {
   const row = rowHtml('script', s.id, sel, rowText(s.name, edit ? `${where} · ${t('memo.editing')}` : where));
   if (edit) return slotHtml(s.id, sel, row, `<div class="memo script open">${formHtml(s.id, s)}</div>`);
   if (!sel) {
-    const card = `<div class="memo script" data-action="pick" data-tab="script" data-id="${esc(s.id)}" data-focus="card-script-${esc(s.id)}" tabindex="0"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, false)}<span class="meta"><span class="script-where">${esc(where)}</span><span class="acts">${runBtn(s)}</span></span></div>`;
+    const card = `<div class="memo script" data-action="pick" data-tab="script" data-id="${esc(s.id)}" data-focus="card-script-${esc(s.id)}" data-nav="script:${esc(s.id)}" tabindex="-1"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, false)}<span class="meta"><span class="script-where">${esc(where)}</span><span class="acts">${runBtn(s)}</span></span></div>`;
     return slotHtml(s.id, false, row, card);
   }
   const sure = ui.memoDel === s.id;
   const act = (action: string, icon: string, label: string) => `<button class="mact" data-action="${action}" data-id="${esc(s.id)}" data-tip="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="script-remove" data-id="${esc(s.id)}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
   const facts = `<dl class="facts"><dt>${t('script.where')}</dt><dd>${esc(where)}</dd><dt>${t('auto.lastRun')}</dt><dd>${s.lastRunAt ? esc(when(s.lastRunAt)) : esc(t('auto.never'))}</dd></dl>`;
-  const card = `<div class="memo script open"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, true)}${facts}<span class="meta">${runBtn(s)}<span class="gap"></span><span class="acts">${act('script-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
+  const card = `<div class="memo script open" data-nav="script:${esc(s.id)}" tabindex="-1"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, true)}${facts}<span class="meta">${runBtn(s)}<span class="gap"></span><span class="acts">${act('script-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
   return slotHtml(s.id, true, row, card);
 }
 
@@ -60,8 +60,8 @@ function scriptSlot(s: ShellScript) {
 export function scriptsHtml() {
   const list = sortScripts(S!.scripts ?? []);
   const add = formHtml('new') + formErrHtml();
-  if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-term"/></svg><b>${t('script.empty')}</b></div>`;
-  ui.scriptSel = keepPick(list.map((s) => s.id), ui.scriptSel, 'new');
+  if (!list.length) { ui.scriptSel ??= 'new'; return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-term"/></svg><b>${t('script.empty')}</b></div>`; }
+  ui.scriptSel = keepPick(['new', ...list.map((s) => s.id)], ui.scriptSel, null);
   if (ui.scriptEdit && !list.some((s) => s.id === ui.scriptEdit)) ui.scriptEdit = null;
   const isNew = ui.scriptSel === 'new';
   const head = slotHtml('new', isNew, rowHtml('script', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('script.new')}</b></span>`), add, ' new');

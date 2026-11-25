@@ -95,12 +95,15 @@ export function nextCard(ids: string[], cur: string | null, step: number): strin
   return ids[Math.min(ids.length - 1, Math.max(0, at + step))];
 }
 
-/** The card to select: the one kept if it still waits, else the one after the answered one (or before it at the end). */
+/**
+ * The card to select: the one kept if it still waits, else the one after the answered one (or before it at the end).
+ * Nothing selected stays nothing: a card is selected only by the user (a click, Enter, ↑/↓, "Go there").
+ */
 export function keepCard(ids: string[], cur: string | null, before: string[]): string | null {
   if (cur && ids.includes(cur)) return cur;
-  if (!ids.length) return null;
-  const was = cur ? before.indexOf(cur) : -1;
-  if (was < 0) return ids[0];
+  if (!ids.length || !cur) return null;
+  const was = before.indexOf(cur);
+  if (was < 0) return null;
   // The first card after the gone one that still waits.
   for (const id of before.slice(was + 1)) if (ids.includes(id)) return id;
   return ids[ids.length - 1];

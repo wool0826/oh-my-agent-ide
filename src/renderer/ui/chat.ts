@@ -23,7 +23,7 @@ import { canStop } from '../../shared/canStop';
 import { canRoot, isReport, lateReplies, threadIndex } from '../../shared/thread';
 import { renderThreadPanel } from './threadPanel';
 import { parseReply, replyExcerpt } from '../../shared/reply';
-import { decisionKeys, decisionKind, decisionLate, keepCard, nextCard, slotClock, type DecisionKind } from '../../shared/decisionView';
+import { decisionKeys, decisionKind, decisionLate, keepCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
@@ -33,7 +33,7 @@ import { go } from './history';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
 import { tookText } from './workers';
-import { colsHtml, markPick, placeDetail, rowHtml, rowText, slotHtml } from './panes';
+import { colsHtml, markPick, navItems, placeDetail, rove, rowHtml, rowText, slotHtml } from './panes';
 
 export const CI_BADGE: Record<string, [string, Key]> = { passing: ['ok', 'pr.ciPassing'], failing: ['bad', 'pr.ciFailing'], pending: ['run', 'pr.ciPending'] };
 
@@ -557,12 +557,6 @@ export function markDecision(id: string | null) {
 /** The inbox card of a decision, if it is drawn. */
 export const decisionCard = (id: string | null) => id ? document.querySelector<HTMLElement>(`#chat-ins [data-dec="${CSS.escape(id)}"]`) : null;
 
-/** ↑/↓ on a card: select the one `step` away and give it the focus. */
-export function moveDecision(step: number) {
-  const ids = S!.decisions.filter((d) => d.status === 'pending').map((d) => d.id);
-  markDecision(nextCard(ids, ui.decSel, step));
-  decisionCard(ui.decSel)?.focus();
-}
 
 /**
  * Drawing the inbox again drops a focus inside a card. It goes back to the same card (and button); once the card the
@@ -632,7 +626,8 @@ export function decisionHtml(d: Decision, inWorker = false) {
   const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${decisionHint(d)}" aria-label="${decisionHint(d)}">`;
   const sum = d.source === 'plan' ? d.summary : null;
   const label = t('dec.card', { kind: t(`dec.kind.${decisionKind(d)}` as Key), who });
-  const card = inWorker ? '' : ` data-dec="${d.id}" role="group" aria-label="${esc(label)}" tabindex="${sel ? 0 : -1}"${sel ? ' aria-current="true"' : ''}`;
+  // A click on the card (not on one of its controls) selects it.
+  const card = inWorker ? '' : ` data-dec="${d.id}" data-nav="inbox:${esc(d.id)}" data-action="pick" data-tab="inbox" data-id="${d.id}" role="group" aria-label="${esc(label)}" tabindex="${sel ? 0 : -1}"${sel ? ' aria-current="true"' : ''}`;
   return `<div class="dec${sel ? ' sel' : ''}" id="${inWorker ? 'wdec' : 'dec'}-${d.id}"${card}>
     <div class="src">${kindChip(d)}<span class="who">${esc(src)}</span>${ageHtml(d)}</div>
     <div class="q">${esc(d.title)}</div>
@@ -676,14 +671,23 @@ export function aaHtml(a: AutoAnswer) {
       ${segc(`scope-${a.id}`, 'once', [{ value: 'once', label: t('aa.once') }, { value: 'preference', label: t('aa.pref') }], t('aa.scope'), `data-keep="aa-scope-${a.id}"`, 'seg-fill')}
       <div class="btns"><button class="btn" data-action="aa-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="aa-send" data-id="${a.id}">${t('aa.send')}</button></div>
     </div>` : '';
-  return `<div class="aa${sel}${editing ? ' editing' : ''}${corrected}" id="aa-${a.id}" data-ctx="aa" data-id="${a.id}">
+  return `<div class="aa${sel}${editing ? ' editing' : ''}${corrected}" id="aa-${a.id}" data-ctx="aa" data-id="${a.id}" data-nav="aa:${esc(a.id)}" tabindex="-1">
     <div class="src">${sym('s-check', 'c-green')}<span>${esc(a.workerId)}, ${hhmm(a.createdAt)}</span></div>
     <div class="q">${q}</div>
     <div class="why">${esc(a.basis)}</div>
     ${a.corrected ? `<div class="fixed">${a.corrected.scope === 'preference' ? t('aa.fixedPref') : t('aa.fixedOnce')}</div>` : ''}
     ${fix}
-    <button class="btn btn-icon btn-sm hov" data-action="aa-edit" data-id="${a.id}" data-tip="${t('aa.correct')}" aria-label="${t('aa.correct')}"><svg><use href="#s-pencil"/></svg></button>
+    <span class="row-acts"><button class="btn btn-icon btn-sm btn-ghost aa-pen" data-action="aa-edit" data-id="${a.id}" data-tip="${t('aa.correct')}" aria-label="${t('aa.correct')}"><svg><use href="#s-pencil"/></svg></button>${rowXHtml('auto', a.id)}</span>
   </div>`;
+}
+
+/** "Clear all" in a list's header: every item of the list, with Undo. */
+const clearAllHtml = (kind: 'result' | 'auto') => `<button type="button" class="btn btn-sm btn-ghost clear-all" data-action="clear" data-kind="${kind}">${t('ins.clearAll')}</button>`;
+
+/** The ✕ on one row: clears that item only (Delete on the focused row does the same), with Undo. */
+function rowXHtml(kind: 'result' | 'auto', id: string) {
+  const label = t('ins.clearOne');
+  return `<button type="button" class="btn btn-icon btn-sm btn-ghost row-x" data-action="clear-one" data-kind="${kind}" data-id="${esc(id)}" data-tip="${label}" data-tip-key="Delete" aria-label="${label}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>`;
 }
 
 /** A "Remember this?" card: save as is, edit then save, or dismiss. */
@@ -762,7 +766,7 @@ export function awayHtml() {
   const total = new Set([...d.failed, ...d.merged, ...d.finished].map((x) => x.id)).size;
   const pill = { failed: ['danger', taskStatus('failed')], merged: ['review', t('pr.merged')], finished: ['success', taskStatus('done')] } as const;
   return `<div class="sect${arrive}" id="sec-away"><div class="ins-h"><b role="heading" aria-level="2">${t('away.title')}</b><small>${esc(span)}</small><span class="gap"></span><button class="btn btn-icon btn-sm clear-x always" data-action="away-dismiss" data-tip="${t('away.dismiss')}" aria-label="${t('away.dismiss')}"><svg><use href="#s-x"/></svg></button></div>
-    <div class="group"><div class="mini away-counts">${counts}</div>${rows.map(({ task: x, kind }) => `<div tabindex="0" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" data-focus="away:${esc(x.id)}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill" data-tone="${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
+    <div class="group"><div class="mini away-counts">${counts}</div>${rows.map(({ task: x, kind }) => `<div tabindex="-1" role="button" class="mini away-row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}" data-focus="away:${esc(x.id)}" data-nav="away:${esc(x.id)}"><b>${esc(x.title)}</b><span class="away-m"><span>${esc(x.workerId ?? '')}${x.prUrl ? ` · PR #${prNum(x.prUrl)}` : ''}</span><i class="pill" data-tone="${pill[kind][0]}">${pill[kind][1]}</i></span></div>`).join('')}${total > rows.length ? `<div class="mini"><span>${t('away.more', { n: total - rows.length })}</span></div>` : ''}</div></div>`;
 }
 
 export function renderChatInspector() {
@@ -771,6 +775,8 @@ export function renderChatInspector() {
   const was = document.activeElement as HTMLElement | null;
   const card = was && root.contains(was) ? was.closest<HTMLElement>('[data-dec]') : null;
   const back = card ? { id: card.dataset.dec ?? '', val: was === card ? null : was?.dataset.val ?? null } : null;
+  // A focused list item (a result, an answer) is drawn again as a new element: the focus goes to the one with its key.
+  const nav = was && root.contains(was) && was.matches('[data-nav]') && !card ? was.dataset.nav ?? null : null;
   keepInputs(root, () => {
     const pending = s.decisions.filter((d) => d.status === 'pending');
     // Each tab has an icon for a narrow sidebar: when the labels do not fit, the tabs not chosen show only that (data-fit).
@@ -794,13 +800,13 @@ export function renderChatInspector() {
     html += bundlesHtml();
     if (s.memorySuggestions.length) html += `<div class="sect"><div class="ins-h" data-tip="${esc(t('sug.hint'))}"><b>${t('ins.remember')}</b></div><div class="group">${s.memorySuggestions.map(sugHtml).join('')}</div></div>`;
     if (results.items.length) {
-      html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.results')}</b><span class="gap"></span><button class="btn btn-icon btn-sm clear-x" data-action="clear" data-kind="result" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${results.items.map((c) => {
+      html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.results')}</b><span class="gap"></span>${clearAllHtml('result')}</div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
         const lk = resultLinks(x);
-        return `<div class="res" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span></div>`;
+        return `<div class="res" data-task="${esc(c.ref ?? '')}" data-nav="res:${esc(c.id)}" data-id="${esc(c.id)}" tabindex="-1"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span><span class="row-acts">${rowXHtml('result', c.id)}</span></div>`;
       }).join('')}${results.more}</div></div>`;
     }
-    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.auto')}</b><span class="gap"></span><button class="btn btn-icon btn-sm clear-x" data-action="clear" data-kind="auto" data-tip="${t('ins.clear')}" aria-label="${t('ins.clear')}"><svg><use href="#s-x"/></svg></button></div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
+    if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.auto')}</b><span class="gap"></span>${clearAllHtml('auto')}</div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;
     if (!html) {
       const busy = s.workers.filter((w) => w.status === 'running' || w.status === 'waiting').length;
       html = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-check"/></svg><b>${t('ins.clearTitle')}</b>${busy ? `<button class="goto" data-action="view" data-v="worker">${ic('run')}${t('ins.busy', { n: busy })}</button>` : ''}</div>`;
@@ -809,6 +815,8 @@ export function renderChatInspector() {
   });
   tickDecisions(root);
   restoreCardFocus(root, back);
+  if (nav && (!document.activeElement || document.activeElement === document.body)) navItems(root).find((x) => x.dataset.nav === nav)?.focus({ preventScroll: true });
+  rove(root);
   syncSegs(root);
 }
 
@@ -830,13 +838,13 @@ export function memoHtml(m: Memo, sel = true) {
       <div class="btns"><button class="btn" data-action="memo-edit-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="memo-save" data-id="${m.id}">${t('save')}</button></div></div>`;
   }
   if (!sel) {
-    return `<div class="memo" data-memo="${m.id}" data-action="pick" data-tab="memo" data-id="${m.id}" data-focus="card-memo-${m.id}" tabindex="0"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" data-tip="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time></span></div>`;
+    return `<div class="memo" data-memo="${m.id}" data-action="pick" data-tab="memo" data-id="${m.id}" data-focus="card-memo-${m.id}" data-nav="memo:${m.id}" tabindex="-1"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" data-tip="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time></span></div>`;
   }
   const act = (action: string, icon: string, label: string, cls = '') => `<button class="mact${cls}" data-action="${action}" data-id="${m.id}" data-tip="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
   // One button for both steps, so asking is a change of its width and colour, not a new element.
   const sure = ui.memoDel === m.id;
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="memo-remove" data-id="${m.id}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
-  return `<div class="memo" data-memo="${m.id}"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" data-tip="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
+  return `<div class="memo" data-memo="${m.id}" data-nav="memo:${m.id}" tabindex="-1"><p>${linkify(esc(m.text))}</p><span class="meta">${m.shared ? sym('s-pin') : ''}<time datetime="${esc(m.updatedAt)}" data-tip="${esc(hhmm(m.updatedAt))}">${when(m.updatedAt)}</time>
     <span class="acts">${act('memo-share', 's-pin', t(m.shared ? 'memo.unshare' : 'memo.share'), m.shared ? ' on' : '')}${act('memo-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
 }
 
@@ -909,7 +917,7 @@ function autoSlot(a: Automation) {
   // Being changed, its card is the form, filled in; it stays open with what was typed when another one is picked.
   if (edit) return slotHtml(a.id, sel, row, `<div class="memo auto open${off}">${autoFormHtml(a)}</div>`);
   if (!sel) {
-    const card = `<div class="memo auto${off}" data-action="pick" data-tab="auto" data-id="${a.id}" data-focus="card-auto-${a.id}" tabindex="0"><p>${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${next ? esc(` · ${t('auto.next', { t: next })}`) : ''}</span><span class="acts">${sw}</span></span></div>`;
+    const card = `<div class="memo auto${off}" data-action="pick" data-tab="auto" data-id="${a.id}" data-focus="card-auto-${a.id}" data-nav="auto:${a.id}" tabindex="-1"><p>${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${next ? esc(` · ${t('auto.next', { t: next })}`) : ''}</span><span class="acts">${sw}</span></span></div>`;
     return slotHtml(a.id, false, row, card);
   }
   const sure = ui.memoDel === a.id;
@@ -918,7 +926,7 @@ function autoSlot(a: Automation) {
   const facts = `<dl class="facts"><dt>${t('auto.when')}</dt><dd>${esc(triggerLabel(a))}</dd>${a.trigger.kind === 'daily' ? `<dt>${t('auto.nextRun')}</dt><dd>${esc(a.enabled && a.nextRunAt ? runWords(a.nextRunAt) : t('auto.off'))}</dd>` : ''}<dt>${t('auto.lastRun')}</dt><dd>${last}</dd></dl>`;
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
   const pen = `<button class="mact" data-action="auto-edit" data-id="${a.id}" data-tip="${t('memo.edit')}" aria-label="${t('memo.edit')}"><svg aria-hidden="true"><use href="#s-pencil"/></svg></button>`;
-  const card = `<div class="memo auto open${off}"><p>${esc(a.prompt)}</p>${facts}<span class="meta"><span class="gap"></span><span class="acts">${sw}${pen}${del}</span></span></div>`;
+  const card = `<div class="memo auto open${off}" data-nav="auto:${a.id}" tabindex="-1"><p>${esc(a.prompt)}</p>${facts}<span class="meta"><span class="gap"></span><span class="acts">${sw}${pen}${del}</span></span></div>`;
   return slotHtml(a.id, true, row, card);
 }
 
@@ -947,8 +955,9 @@ export function autosHtml() {
   const list = S!.automations;
   if (ui.autoEdit && !list.some((a) => a.id === ui.autoEdit!.id)) ui.autoEdit = null;
   const add = autoFormHtml() + formErrHtml('auto');
-  if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
-  ui.autoSel = keepPick(list.map((a) => a.id), ui.autoSel, 'new');
+  // With none set up the form is all there is, open; it stays open once the first one is added.
+  if (!list.length) { ui.autoSel ??= 'new'; return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`; }
+  ui.autoSel = keepPick(['new', ...list.map((a) => a.id)], ui.autoSel, null);
   const isNew = ui.autoSel === 'new';
   const head = slotHtml('new', isNew, rowHtml('auto', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('auto.new')}</b></span>`), add, ' new');
   return `${head}<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${list.map(autoSlot).join('')}</div></div>`;
@@ -1006,7 +1015,7 @@ export function formErrHtml(key: 'memo' | 'auto') {
 export function memosHtml() {
   const { shared, mine } = memoSections(S!.memos);
   const ids = [...shared, ...mine].map((m) => m.id);
-  ui.memoSel = keepPick(ids, ui.memoSel, ui.memoEdit ?? ids[0] ?? null);
+  ui.memoSel = keepPick(ids, ui.memoSel, ui.memoEdit ?? null);
   const sect = (title: string, list: Memo[]) => list.length ? `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${title}</b><small>${list.length}</small></div><div class="group">${list.map(memoSlot).join('')}</div></div>` : '';
   const add = `<div class="memo-add"><textarea class="inp" id="memo-new" rows="1" data-keep="memo-new" data-enter="memo-add" placeholder="${t('memo.add')}" aria-label="${t('memo.add')}"></textarea><button class="btn btn-icon" data-action="memo-add" data-tip="${t('memo.add')}" aria-label="${t('memo.add')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button></div>`;
   const body = sect(t('memo.shared'), shared) + sect(t('memo.mine'), mine);

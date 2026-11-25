@@ -9,6 +9,7 @@ import { bundleMergeOrder, openBundles } from '../shared/bundle';
 import { normalizeQuickKey } from '../shared/quickKey';
 import { cleanTime, typedTime } from '../shared/notifyRules';
 import { rovingIndex } from '../shared/roving';
+import { focusAfter, listStep } from '../shared/insPanes';
 import { threadKeys } from './ui/thread';
 import { focusSelector } from '../shared/focusKey';
 import { PAGE, pagesFor, slideOlder } from '../shared/paging';
@@ -16,7 +17,7 @@ import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { Drafts } from '../shared/drafts';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
-import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, moveDecision, tickDecisions } from './ui/chat';
+import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
@@ -34,7 +35,7 @@ import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript }
 import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
 import { bindThread, closeThread, openThread, revealQuoted } from './ui/threadPanel';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
-import { isPlacing, nextRow, watchPanes } from './ui/panes';
+import { navItem, navItems, noteNav, rove, watchPanes } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 import { canStop } from '../shared/canStop';
 
@@ -134,6 +135,58 @@ async function pick(el: HTMLElement, e: Event) {
   const slot = document.querySelector<HTMLElement>(`#chat-ins .pk[data-pick="${CSS.escape(id)}"]`);
   const card = document.querySelector<HTMLElement>(`#chat-ins .pk-c[data-from="${CSS.escape(id)}"]`) ?? slot?.querySelector<HTMLElement>('.pk-c');
   (row ? slot?.querySelector<HTMLElement>(':scope > .li') : card?.querySelector<HTMLElement>('textarea, input, button, a'))?.focus({ preventScroll: !row });
+}
+
+/** Focuses the list item with key `nav`, or in the detail pane its card when `detail`. */
+function focusNav(nav: string | null, detail = false) {
+  const el = detail ? document.querySelector<HTMLElement>('#chat-ins .ins-detail [data-nav]') : navItems().find((x) => x.dataset.nav === nav);
+  el?.focus();
+  el?.scrollIntoView({ block: 'nearest' });
+}
+
+/**
+ * Keys on an item of the right sidebar's list (the item itself, or its card in the detail pane): ↑/↓, Home and End go
+ * to another item, which is selected when it can be; on one that can be and is not selected yet, ↑/↓ select it
+ * first. Delete or Backspace clears a result or an auto-answer. True when the key was used.
+ */
+function listKeys(e: KeyboardEvent, el: HTMLElement): boolean {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return false;
+  const item = navItem(el);
+  if (!item) return false;
+  const detail = !!el.closest('.ins-detail');
+  if (el !== item && !(detail && el.matches('[data-nav]'))) return false;
+  const nav = item.dataset.nav ?? '';
+  if ((e.key === 'Delete' || e.key === 'Backspace') && /^(res|aa):/.test(nav) && !detail) {
+    e.preventDefault();
+    if (!e.repeat) void clearOne(nav.startsWith('aa:') ? 'auto' : 'result', nav.slice(nav.indexOf(':') + 1));
+    return true;
+  }
+  const items = navItems();
+  const at = items.indexOf(item);
+  let to = listStep(items.length, at, e.key);
+  if (to === null) return false;
+  e.preventDefault();
+  const can = (x: HTMLElement) => x.matches('[data-action="pick"], [data-dec]');
+  const chosen = (x: HTMLElement) => x.classList.contains('sel') || x.getAttribute('aria-current') === 'true' || !!x.closest('.pk.sel');
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && can(item) && !chosen(item) && !detail) to = at;
+  const next = items[to];
+  if (!can(next)) { if (next !== item) focusNav(next.dataset.nav ?? null); return true; }
+  if (!chosen(next)) {
+    if (next.matches('[data-dec]')) markDecision(next.dataset.dec ?? null);
+    else void act(next, e);
+  }
+  focusNav(next.dataset.nav ?? null, detail && !!document.querySelector('#chat-ins .ins-cols.split'));
+  return true;
+}
+
+/** Clears one result or auto-answer, with Undo; the focus on it goes to the next item (the one before it at the end). */
+async function clearOne(kind: 'result' | 'auto', id: string) {
+  const key = `${kind === 'auto' ? 'aa' : 'res'}:${id}`;
+  if (navItem(document.activeElement)?.dataset.nav === key) focusNav(focusAfter(navItems().map((x) => x.dataset.nav ?? ''), key));
+  const u = { kind, ids: [id] };
+  ui.undo.push(u);
+  await call('chat:clear', kind, [id]);
+  toast(t(kind === 'auto' ? 'toast.clearedOneAuto' : 'toast.clearedOneResult'), false, { label: t('toast.undo'), run: () => undoClear(u) });
 }
 
 /* ---------- actions ---------- */
@@ -506,6 +559,7 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'page-older': if (el.dataset.v === 'chat') void olderChat(); else if (ui.wSel) void olderLog(ui.wSel); break;
+    case 'clear-one': void clearOne(el.dataset.kind === 'auto' ? 'auto' : 'result', id); break;
     case 'clear': {
       const kind = el.dataset.kind as 'result' | 'auto';
       const ids = kind === 'auto' ? S!.autoAnswers.filter((x) => !x.cleared).map((x) => x.id) : S!.results.map((c) => c.id);
@@ -937,11 +991,12 @@ export function init() {
   window.addEventListener('resize', () => { closePop(); hideUsagePop(); });
   // Scroll events don't bubble; capturing on document sees every scrolling element.
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
-  // A card that gets the focus (a click, Tab, a button in it) becomes the selected one.
+  // The focus in the right sidebar's list selects nothing; it only makes that item the list's Tab stop.
   document.addEventListener('focusin', (e) => {
-    if (isPlacing()) return;
-    const card = (e.target as HTMLElement).closest?.<HTMLElement>('#chat-ins [data-dec]');
-    if (card && card.dataset.dec !== ui.decSel) markDecision(card.dataset.dec ?? null);
+    const item = navItem(e.target as HTMLElement);
+    if (!item || item.closest('.ins-detail')) return;
+    noteNav(item.dataset.nav ?? null);
+    if (item.tabIndex !== 0) rove();
   });
 
   // Enter in an input runs the action named in data-enter.
@@ -1001,19 +1056,18 @@ export function init() {
     }
     // A conversation is one Tab stop, and ↑/↓ move between its messages.
     if (threadKeys(e)) return;
-    // ↑/↓ in the right sidebar's list rows (two panes) select the next row.
-    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.altKey && !e.ctrlKey && !e.metaKey && el.matches?.('#chat-ins .pk > .li')) {
+    // The right sidebar's list: ↑/↓, Home and End move between its items at any width and select one that can be.
+    if (listKeys(e, el)) return;
+    // K1: the selected inbox card answers to keys while no text field has the focus. Enter on one of its buttons is
+    // left to that button. A card that is not selected is selected first, by Enter or Space.
+    const card = el.closest?.<HTMLElement>('#chat-ins [data-dec]');
+    if (card && card.dataset.dec !== ui.decSel && el === card && (e.key === 'Enter' || e.key === ' ') && !e.isComposing) {
       e.preventDefault();
-      const r = nextRow(el, e.key === 'ArrowDown' ? 1 : -1);
-      if (r && r !== el) void act(r, e);
+      if (!e.repeat) markDecision(card.dataset.dec ?? null);
       return;
     }
-    // K1: the focused inbox card answers to keys while no text field has the focus. Enter on one of its buttons is
-    // left to that button.
-    const card = el.closest?.<HTMLElement>('#chat-ins [data-dec]');
-    if (card && !el.matches('input, textarea, [contenteditable="true"]')) {
+    if (card && card.dataset.dec === ui.decSel && !el.matches('input, textarea, [contenteditable="true"]')) {
       const k = cardKey(e);
-      if (k && (k.act === 'next' || k.act === 'prev')) { e.preventDefault(); moveDecision(k.act === 'next' ? 1 : -1); return; }
       // A held key repeats: it must not go on to answer the card that takes the focus next.
       if (k && e.repeat) { e.preventDefault(); return; }
       const d = k && !(k.act === 'enter' && el !== card) ? S?.decisions.find((x) => x.id === card.dataset.dec) : null;

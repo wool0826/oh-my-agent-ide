@@ -665,7 +665,17 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .hov { position: absolute; top: var(--space-8); right: var(--space-8); opacity: 0; transition: opacity var(--dur-fast); }
 .btn.hov svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
 .aa:hover .hov, .aa.sel .hov, .hov:focus-visible { opacity: 1; }
-.aa.editing .hov, .aa.corrected .hov { display: none; }
+.aa.editing .aa-pen, .aa.corrected .aa-pen { display: none; }
+.btn.aa-pen svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+/* A result's or an auto-answer's own buttons (✕ clears it, the pencil corrects it), top right: shown while the pointer
+   is on the row, while it or a button in it has the focus, and while it is selected. */
+.res { position: relative; }
+.res .res-t { margin-right: calc(var(--control-sm) + var(--space-2)); }
+.aa .q { padding-right: calc(2 * var(--control-sm) + var(--space-4)); }
+.row-acts { position: absolute; top: var(--space-6); right: var(--space-6); display: flex; gap: var(--space-2); opacity: 0; transition: opacity var(--dur-fast); }
+:is(.res, .aa):is(:hover, :focus-within, .sel) > .row-acts { opacity: 1; }
+.btn.row-x svg { width: 10px; height: 10px; }
+:is(.res, .aa)[data-nav]:focus-visible { outline: var(--focus-outline); outline-offset: -2px; border-radius: var(--radius-lg); }
 .fix { display: flex; flex-direction: column; gap: var(--space-8); padding-top: var(--space-2); }
 .lab { font-size: var(--fs-caption2); color: var(--text-secondary); }
 .fixed { font-size: var(--fs-caption); color: var(--success-text); font-weight: 600; }
@@ -1437,8 +1447,9 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .ins-cols.split .pk > .li, .pk.new > .li { display: flex; }
 .ins-cols.split .ins-list .pk > .pk-c, .pk.new:not(.sel) > .pk-c { display: none; }
 .li { align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-10); min-height: 40px; min-width: 0; cursor: default; }
-.li:hover { background: var(--surface-hover); }
 .li:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+/* In the right sidebar a pointer over an item fills nothing: only its own buttons show. */
+#chat-ins .pk:not(.new) > .li:hover { background: none; }
 .li > .sym { flex: none; font-size: var(--fs-body); color: var(--text-secondary); }
 .li .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .li .t b { font-size: var(--fs-caption); font-weight: 600; line-height: var(--lh-ui); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
@@ -1451,8 +1462,9 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .pk.sel > .li, .ins-list .pk.sel > .pk-c > .memo { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; border-radius: var(--radius-lg); }
 .ins-detail .dec.sel { box-shadow: none; background: none; }
 .pk.sel .memo .acts, .ins-detail .memo .acts { opacity: 1; }
-.pk:not(.sel) > .pk-c > .memo[data-action]:hover { background: var(--surface-hover); }
-.pk-c > .memo[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.pk-c > .memo[data-nav]:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+/* Selected and focused: the focus ring goes 1px outside the selection ring, so both show. */
+#chat-ins .ins-list :is(.pk.sel > .li, .pk.sel > .pk-c > .memo, .dec.sel, .aa.sel, .res.sel)[data-nav]:focus-visible { outline-offset: 1px; }
 .pk:not(.sel) > .pk-c > .memo p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pk:not(.sel) > .pk-c > .memo.auto p { white-space: normal; }
 .ins-detail .memo textarea.inp { min-height: 160px; }
