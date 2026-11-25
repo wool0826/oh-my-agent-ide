@@ -1471,9 +1471,14 @@ flow('a Notifications row swiped sideways is cleared with Undo; a short swipe, a
   const w = await app.evaluate("document.querySelector('#chat-ins .res').offsetWidth");
   const row = (nav) => `#chat-ins .res[data-nav="${nav}"]`;
   const look = (nav) => app.evaluate(`const r = document.querySelector('${row(nav)}'); const u = document.querySelector('#chat-ins .swipe-under'); return { x: r ? new DOMMatrix(getComputedStyle(r).transform).m41 : null, under: u ? (u.classList.contains('armed') ? 'armed' : 'shown') : 'none', side: u?.classList.contains('right') ? 'right' : 'left' };`);
-  const settled = (n) => app.until(`document.querySelectorAll('#chat-ins .res').length === ${n} && !document.querySelector('#chat-ins .swiping, #chat-ins .swipe-under')`, `${n} results at rest`);
+  const settled = (n) => app.until(`document.querySelectorAll('#chat-ins .res').length === ${n} && !document.querySelector('#chat-ins .swiping, #chat-ins .swipe-under')`, `${n} results at rest`).catch(async (err) => {
+    throw new Error(`${err.message}
+Page: ${await app.evaluate("return document.visibilityState + ', ' + document.querySelectorAll('#chat-ins .res').length + ' results, ' + (document.querySelector('#chat-ins .swiping')?.className ?? 'none swiping') + ', under ' + !!document.querySelector('#chat-ins .swipe-under');")}`);
+  });
   // A short drag: the row follows and shows the red side it leaves, not yet armed; let go, it slides back.
-  let at = await app.drag(`${row(ids[0])} .tile`, Math.round(w * 0.2), { hold: true });
+  // Each drag waits until the page has drawn where it ends: the moves can reach a window off screen late.
+  const at_ = (nav, x) => `Math.abs(new DOMMatrix(getComputedStyle(document.querySelector('${row(nav)}')).transform).m41 - (${x})) <= 1`;
+  let at = await app.drag(`${row(ids[0])} .tile`, Math.round(w * 0.2), { hold: true, ready: at_(ids[0], Math.round(w * 0.2)) });
   let seen = await look(ids[0]);
   assert.ok(Math.abs(seen.x - Math.round(w * 0.2)) <= 1, JSON.stringify(seen));
   assert.equal(seen.under, 'shown');
@@ -1482,7 +1487,7 @@ flow('a Notifications row swiped sideways is cleared with Undo; a short swipe, a
   assert.equal((await look(ids[0])).x, 0);
   // Past 35%: armed, and letting go clears it with the same toast and Undo as its ✕.
   await steady();
-  at = await app.drag(`${row(ids[0])} .tile`, Math.round(w * 0.5), { hold: true });
+  at = await app.drag(`${row(ids[0])} .tile`, Math.round(w * 0.5), { hold: true, ready: at_(ids[0], Math.round(w * 0.5)) });
   assert.equal((await look(ids[0])).under, 'armed');
   await app.release(at);
   await settled(2);
@@ -1491,7 +1496,7 @@ flow('a Notifications row swiped sideways is cleared with Undo; a short swipe, a
   await settled(3);
   // To the left works the same; the red side is on the right then.
   await steady();
-  at = await app.drag(`${row(ids[1])} .tile`, -Math.round(w * 0.5), { hold: true });
+  at = await app.drag(`${row(ids[1])} .tile`, -Math.round(w * 0.5), { hold: true, ready: at_(ids[1], -Math.round(w * 0.5)) });
   assert.deepEqual(await look(ids[1]), { x: -Math.round(w * 0.5), under: 'armed', side: 'right' });
   await app.release(at);
   await settled(2);
@@ -1505,7 +1510,7 @@ flow('a Notifications row swiped sideways is cleared with Undo; a short swipe, a
   await app.release(at);
   // A decision cannot be cleared: it gives a little, with no red side, comes back, and the drag does not select it.
   await steady();
-  at = await app.drag('#chat-ins .dec[data-dec] .src', 200, { hold: true });
+  at = await app.drag('#chat-ins .dec[data-dec] .src', 200, { hold: true, ready: "new DOMMatrix(getComputedStyle(document.querySelector('#chat-ins .dec[data-dec]')).transform).m41 > 10" });
   const dx = await app.evaluate("new DOMMatrix(getComputedStyle(document.querySelector('#chat-ins .dec[data-dec]')).transform).m41");
   assert.ok(dx > 0 && dx <= 14, String(dx));
   assert.equal(await app.evaluate("document.querySelectorAll('#chat-ins .swipe-under').length"), 0);
