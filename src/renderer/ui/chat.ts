@@ -291,7 +291,10 @@ function lightBranch(th: HTMLElement, from: HTMLElement | null) {
   };
   if (el.matches('.br-r')) {
     el.classList.add('lit');
-    for (let p = el.previousElementSibling; p; p = p.previousElementSibling) p.classList.add(p.matches('.br-r') ? 'thru' : 'lit');
+    for (let p = el.previousElementSibling; p; p = p.previousElementSibling) {
+      if (p.matches('.br-r')) p.classList.add('thru');
+      else if (p.matches('.otag')) p.classList.add('lit');
+    }
   } else if (el.matches('.otag')) whole(el.parentElement!);
   else for (const br of th.querySelectorAll(`.br[data-k="${CSS.escape(k)}"]`)) whole(br);
 }
@@ -390,15 +393,15 @@ export function renderChat(force = false, older = false) {
     if (open && (!b || b.start)) { html += '</div>'; open = false; }
     // The "new" marker goes in before the message; a reply's goes inside its branch, which stays right under its root.
     const fresh = i === mark ? NEW_FROM : '';
-    if (!b) html += fresh;
+    if (!b || b.late && b.start) html += fresh;
     const ts = Date.parse(c.ts);
     // No time line inside a branch, or between a root and the branch right under it.
     if ((!b || b.late && b.start) && ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
     last = ts;
     if (b) {
       const r = items[b.root].c;
-      // A late branch starts after other messages, so the "new" marker goes before it; a near one keeps it inside, under its card.
-      if (b.start) html += `${b.late ? fresh : ''}<div class="br${b.late ? ' late' : ''}" data-k="${esc(r.id)}" role="group" aria-label="${esc(t('chat.repliesTo', { title: rootWhat(r, 60) }))}">${b.late ? branchTag(r) : fresh}`;
+      // A late branch had its "new" marker before its time line; a near one keeps it inside, under its card.
+      if (b.start) html += `<div class="br${b.late ? ' late' : ''}" data-k="${esc(r.id)}" role="group" aria-label="${esc(t('chat.repliesTo', { title: rootWhat(r, 60) }))}">${b.late ? branchTag(r) : fresh}`;
       else html += fresh;
       open = true;
       html += branchRow(c, r, threadOf(b.root));
