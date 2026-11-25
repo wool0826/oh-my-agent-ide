@@ -1328,6 +1328,16 @@ test('progress steps are required: the Worker prompt and every task message ask 
   assert.match(msg, /Progress: declare your expected steps with set_steps within your first few actions, even for a small task/);
 });
 
+test('worker prompt: a UI change is reported with before and after screenshots on FILE: lines (T-0102)', async () => {
+  const { workerPrompt } = await import('../src/main/agents/workerPrompt');
+  const w = addWorker({});
+  for (const p of [workerPrompt(w), workerPrompt(w, true)]) {
+    assert.match(p, /capture the changed screen before your change \(on the default branch\) and after it/);
+    assert.match(p, /`<screen>-before\.png` and `<screen>-after\.png`/);
+    assert.match(p, /Name both on FILE: lines in the report/);
+  }
+});
+
 test('local-only repository: the task message has no fetch, push or PR, and a finished task is done on its branch, not a PR (T-0027)', async () => {
   const { workerPrompt } = await import('../src/main/agents/workerPrompt');
   store.data.repos.push({ name: 'loc', url: tmp, path: tmp, description: '', defaultBranch: 'trunk', addedAt: now, local: true });
