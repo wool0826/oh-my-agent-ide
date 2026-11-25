@@ -21,14 +21,13 @@ import { scriptsHtml } from './scripts';
 import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
 import { canStop } from '../../shared/canStop';
-import { canRoot, isReport, lateReplies, threadIndex } from '../../shared/thread';
-import { renderThreadPanel } from './threadPanel';
+import { branchLayout, canRoot, isReport, threadIndex } from '../../shared/thread';
 import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
-import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, quoteHtml, replyable, replyBtn, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { setTip } from './tip';
 import { go } from './history';
 import { segc, syncSegs } from './settings';
@@ -211,7 +210,7 @@ function handoutHtml(c: ChatItem) {
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
     case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
-    case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.replyTo, c.id, threadBtn(c.id));
+    case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.id, c.id);
     case 'event': return isHandout(c) ? handoutHtml(c) : `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
     case 'error': return failureHtml(c) ?? `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
@@ -230,103 +229,103 @@ export function chatItemHtml(c: ChatItem) {
   }
 }
 
-/** Whose a thread row is, as its heading names it. */
-const rowWho = (c: ChatItem) => (c.kind === 'user' ? t('chat.you') : c.kind === 'dispatcher' ? 'Dispatcher' : '');
+/** Who wrote a message replies can answer, as a reply quotes it: the report's Worker, or the Dispatcher. */
+const rootWho = (c: ChatItem) => (isReport(c) ? task(c.ref)?.workerId ?? c.ref ?? '' : 'Dispatcher');
 
-/** A row's own words: a user's message without the quote on top. */
-const ownText = (c: ChatItem) => (c.kind === 'user' ? parseReply(c.text)?.body ?? c.text : c.text);
-
-/** A reply in one line, as the chat's chips show the newest one. */
-const replyLine = (c: ChatItem) => [rowWho(c), oneLine(ownText(c), 140)].filter(Boolean).join(': ');
-
-/** The time alone today, with the day before that. */
-const rowTime = (ts: string) => (new Date(ts).toDateString() === new Date().toDateString() ? when(ts) : hhmm(ts));
-
-/** Who wrote a thread's root, as a reply quotes it: the report's Worker, or the Dispatcher. */
-export const rootWho = (c: ChatItem) => (isReport(c) ? task(c.ref)?.workerId ?? c.ref ?? '' : 'Dispatcher');
-
-/** What a reply in the panel quotes of its root: as the report's own Reply link does, or the Dispatcher's words. */
-export const rootQuote = (c: ChatItem) => (isReport(c) ? `${task(c.ref)?.title ?? t('task')}: ${c.text}` : c.text);
-
-/** A thread by name: the report's task, or the Dispatcher. */
-export const rootName = (c: ChatItem) => (isReport(c) ? task(c.ref)?.title ?? c.ref ?? t('task') : 'Dispatcher');
-
-/** A thread's root on top of the panel: whose and when, a way back to it in the chat, then what it said. */
-export function rootHtml(c: ChatItem) {
-  const x = isReport(c) ? task(c.ref) : null;
-  const who = isReport(c) ? t('thr.report', { who: x?.workerId ?? c.ref ?? '' }) : 'Dispatcher';
-  const body = isReport(c) ? `<b class="thr-rt">${esc(rootName(c))}</b><div class="t-txt">${reportText(plainStatus(c.text))}</div>` : `<div class="t-txt">${md(c.text)}</div>`;
-  const back = `<button type="button" class="btn btn-icon btn-sm" data-action="thread-root" data-id="${esc(c.id)}" data-tip="${esc(t('thr.toRoot'))}" aria-label="${esc(t('thr.toRoot'))}"><svg aria-hidden="true"><use href="#s-open"/></svg></button>`;
-  return `<div class="thr-root"><span class="who"><b>${esc(who)}</b><time datetime="${esc(c.ts)}">${rowTime(c.ts)}</time><span class="gap"></span>${back}</span>${body}</div>`;
-}
-
-/** "Reply in thread" beside an agent's Reply button: the thread panel opens on that message. */
-function threadBtn(id: string) {
-  return `<button class="rbtn" data-action="thread-open" data-id="${esc(id)}" aria-controls="chat-thr" data-tip="${t('thr.replyIn')}" data-tip-key="T" aria-label="${t('thr.replyIn')}"><svg aria-hidden="true"><use href="#s-chat"/></svg></button>`;
-}
+/** What a message replies can answer is called: the report's task, or the Dispatcher's first words. */
+const rootWhat = (c: ChatItem, n = 80) => (isReport(c) ? task(c.ref)?.title ?? c.ref ?? t('task') : oneLine(c.text, n));
 
 /**
- * One reply as a row: who and when, then the message. A quote of the root, or of the row right above, would say again
- * what is in view, so only a quote of another message shows, as a line that goes back to it. `reply`: a Reply button
- * on the Dispatcher's rows (the chat's preview; the panel has a composer of its own).
+ * One reply on its branch (A-1 of T-0086): an elbow from the trunk, then the message, the user's own on the branch's
+ * end as the Dispatcher's is. A quote of the root, or of a message in the same thread, is what the line already says,
+ * so the bubble shows only the words. The strip the line runs in goes back to the root when clicked.
  */
-export function threadRow(c: ChatItem, prev: ChatItem | null, root: ChatItem, reply = true) {
-  const head = `<span class="who"><b>${esc(rowWho(c))}</b><time datetime="${esc(c.ts)}">${rowTime(c.ts)}</time></span>`;
+function branchRow(c: ChatItem, root: ChatItem, thread: ChatItem[]) {
+  let body = chatItemHtml(c);
   if (c.kind === 'user') {
     const r = parseReply(c.text);
-    const ofRoot = !!r && r.who === rootWho(root) && (isReport(root) || r.quote === replyExcerpt(root.text));
-    const inView = !r || ofRoot || (prev?.kind === 'dispatcher' && r.who === 'Dispatcher' && replyExcerpt(prev.text) === r.quote);
-    return `<div class="t-row me" data-id="${esc(c.id)}">${head}${inView ? '' : quoteHtml(r.who, r.quote, 't-q')}<div class="t-txt">${userText(r?.body ?? c.text)}</div></div>`;
+    const inView = !!r && ((r.who === rootWho(root) && (isReport(root) || r.quote === replyExcerpt(root.text)))
+      || (r.who === 'Dispatcher' && thread.some((x) => x.kind === 'dispatcher' && replyExcerpt(x.text) === r.quote)));
+    if (r && inView) body = `<div class="bub me">${userText(r.body)}</div>`;
   }
-  if (c.kind === 'dispatcher') return `<div class="t-row" data-id="${esc(c.id)}" data-src="${esc(c.id)}">${head}<div class="t-txt">${md(c.text)}</div>${reply ? replyBtn('chat', 'Dispatcher', c.text, root.id, c.id) : ''}</div>`;
-  return `<div class="t-row ev" data-id="${esc(c.id)}">${chatItemHtml(c)}</div>`;
+  const go = `<button type="button" class="br-go" data-action="reply-root" data-id="${esc(root.id)}" tabindex="-1" aria-label="${esc(t('reply.toRoot'))}"></button>`;
+  return `<div class="br-r ${c.kind === 'user' ? 'me' : 'ai'}" data-k="${esc(root.id)}" data-id="${esc(c.id)}"><i class="el" aria-hidden="true"></i>${go}${body}</div>`;
 }
 
-/**
- * The chat was drawn once: a thread first seen after that starts with none of its replies seen. Not a thread on a page
- * loaded above (`older`): its replies were there before.
- */
-let threadsPrimed = false;
-let drawingOlder = false;
-
-/**
- * Replies from someone else that came while the thread was not open in the panel, and that the chat does not show:
- * the newest is on the card or the chip already.
- */
-function unread(root: ChatItem, rows: ChatItem[]) {
-  if (ui.thread === root.id) { ui.threadSeen.set(root.id, rows.length); return 0; }
-  let seen = ui.threadSeen.get(root.id);
-  if (seen === undefined) ui.threadSeen.set(root.id, (seen = threadsPrimed && !drawingOlder ? 0 : rows.length));
-  return rows.slice(seen, -1).filter((c) => c.kind !== 'user').length;
+/** A branch that starts after other messages starts from a tag naming what it answers; the tag goes back to it. */
+function branchTag(root: ChatItem) {
+  const who = rootWho(root), what = rootWhat(root);
+  return `<button type="button" class="otag" data-action="reply-root" data-id="${esc(root.id)}" data-k="${esc(root.id)}" aria-label="${esc(t('reply.tagAria', { who, what }))}">${sym('s-reply')}<b>${esc(who)}</b><span class="q">${esc(what)}</span></button>`;
 }
 
-const openAttrs = (root: ChatItem) => `data-action="thread-open" data-id="${esc(root.id)}" aria-controls="chat-thr" aria-expanded="${ui.thread === root.id}"`;
-
-/**
- * A report with replies (T-0076, design C): the report, its newest reply, a line with the count and "Open thread",
- * and a field that opens the thread to write in. The whole talk is in the panel (ui/thread.ts).
- */
-function threadCard(card: string, root: ChatItem, rows: ChatItem[]) {
-  const n = rows.length;
-  const k = unread(root, rows);
-  const foot = `<div class="t-foot"><b>${t('chat.replies', { n })}</b>${n > 1 ? `<span>${t('thr.earlier', { n: n - 1 })}</span>` : ''}${k ? `<i class="t-new">${t('thr.new', { n: k })}</i>` : ''}<span class="gap"></span><button type="button" class="t-open" ${openAttrs(root)} data-tip-key="T">${t('thr.open')}</button></div>`;
-  const field = `<button type="button" class="t-field" ${openAttrs(root)}>${t('thr.placeholder')}</button>`;
-  return `<div class="tcard${ui.thread === root.id ? ' thr-on' : ''}" data-root="${esc(root.id)}" role="group" aria-label="${esc(t('chat.repliesTo', { title: rootName(root) }))}">${card}<div class="t-rows">${threadRow(rows[n - 1], rows[n - 2] ?? null, root)}</div>${foot}${field}</div>`;
-}
-
-/**
- * A thread as one line that opens it: under a Dispatcher message, the count and the newest reply; where a reply came
- * after other messages (`late`), also which thread it is.
- */
-function threadChip(root: ChatItem, rows: ChatItem[], late: boolean) {
-  const k = unread(root, rows);
-  const name = late ? `<b class="t-name">${esc(isReport(root) ? rootName(root) : oneLine(root.text, 60))}</b>` : '';
-  return `<button type="button" class="t-chip${late ? ' late' : ''}" ${openAttrs(root)}>${sym('s-reply')}${name}<b>${t('chat.replies', { n: rows.length })}</b><span>${esc(replyLine(rows[rows.length - 1]))}</span>${k ? `<i class="t-new">${t('thr.new', { n: k })}</i>` : ''}</button>`;
-}
-
-/** A message a thread can grow from carries its id, so T and the panel find it; the open thread's root is ringed. */
+/** A message replies can answer carries its id, so R, the branches and their tags find it. */
 function rootAttr(html: string, id: string) {
-  return html.replace(/^<(\w+) class="/, `<$1 data-root="${esc(id)}" class="${ui.thread === id ? 'thr-on ' : ''}`);
+  return html.replace(/^<(\w+) class="/, `<$1 data-root="${esc(id)}" class="`);
+}
+
+/** The element of a message replies answer, as it is ringed and flashed: a report card, or the Dispatcher's bubble. */
+export function rootEl(id: string): HTMLElement | null {
+  const el = document.querySelector<HTMLElement>(`#chat-thread [data-root="${CSS.escape(id)}"]`);
+  return el?.matches('.bline') ? el.querySelector<HTMLElement>(':scope > .bub') : el;
+}
+
+/** Takes the light off every branch and root (lightBranch). */
+function unlight(th: HTMLElement) {
+  for (const el of th.querySelectorAll('.lit, .thru, .reply-on')) el.classList.remove('lit', 'thru', 'reply-on');
+}
+
+/**
+ * Under the pointer or the keyboard, the way from a reply back to what it answers turns blue and the root gets its
+ * ring: from a reply, its elbow and the trunk above it (and the tag of a late branch); from a tag or a root, every
+ * branch of that root.
+ */
+function lightBranch(th: HTMLElement, from: HTMLElement | null) {
+  unlight(th);
+  const el = from?.closest<HTMLElement>('.br-r, .otag, [data-root]');
+  if (!el || !th.contains(el)) return;
+  const k = el.dataset.k ?? el.dataset.root!;
+  rootEl(k)?.classList.add('reply-on');
+  const whole = (br: Element) => {
+    for (const x of br.querySelectorAll(':scope > .otag')) x.classList.add('lit');
+    for (const x of br.querySelectorAll(':scope > .br-r')) x.classList.add('lit', 'thru');
+  };
+  if (el.matches('.br-r')) {
+    el.classList.add('lit');
+    for (let p = el.previousElementSibling; p; p = p.previousElementSibling) {
+      if (p.matches('.br-r')) p.classList.add('thru');
+      else if (p.matches('.otag')) p.classList.add('lit');
+    }
+  } else if (el.matches('.otag')) whole(el.parentElement!);
+  else for (const br of th.querySelectorAll(`.br[data-k="${CSS.escape(k)}"]`)) whole(br);
+}
+
+/** A redraw drops the light: it goes back on from what is under the pointer, or else what has the focus. */
+function relight(th: HTMLElement) {
+  const hovered = [...th.querySelectorAll<HTMLElement>(':hover')].pop();
+  const focused = th.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+  if (hovered || focused) lightBranch(th, hovered ?? focused);
+}
+
+/** The branches follow the pointer and the focus, and R on a message starts a reply to it (or to its branch's root). */
+export function bindBranches() {
+  const th = $('#chat-thread');
+  th.addEventListener('mouseover', (e) => lightBranch(th, e.target as HTMLElement));
+  th.addEventListener('mouseleave', () => unlight(th));
+  th.addEventListener('focusin', (e) => lightBranch(th, e.target as HTMLElement));
+  th.addEventListener('focusout', (e) => { if (!th.contains(e.relatedTarget as Node | null)) unlight(th); });
+  th.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyR' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return;
+    const el = e.target as HTMLElement;
+    if (el.matches('input, textarea, [contenteditable]')) return;
+    const msg = el.closest<HTMLElement>('.br-r, [data-root]');
+    if (!msg) return;
+    // A reply of the user's own has no Reply of its own: R answers what its branch answers.
+    const own = msg.querySelector<HTMLElement>('[data-action="reply"]');
+    const btn = own ?? (msg.dataset.k ? th.querySelector<HTMLElement>(`[data-root="${CSS.escape(msg.dataset.k)}"] [data-action="reply"]`) : null);
+    if (!btn) return;
+    e.preventDefault();
+    btn.click();
+  });
 }
 
 /** The chat items held: pages loaded with chat:page, then the state's snapshot. */
@@ -357,8 +356,7 @@ export function renderChat(force = false, older = false) {
   runs = handoutRuns(all.slice(from));
   const key = `${lang()}:${s.setupNeeded}:${s.preflightFailed}:${s.repos.length > 0}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${shellKey(all.slice(from))}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
   // The hand-out blocks follow their tasks: a step done or a decision answered draws them again.
-  const hands = `${handoutKey()}:${[...ui.handToggled].join()}:${ui.thread}`;
-  renderThreadPanel();
+  const hands = `${handoutKey()}:${[...ui.handToggled].join()}`;
   if (!force && !older && key === ui.lastChatKey && hands === ui.lastHandKey) return;
   ui.lastChatKey = key;
   ui.lastHandKey = hands;
@@ -382,33 +380,44 @@ export function renderChat(force = false, older = false) {
     const fresh = items.slice(seenAt + 1).map(({ c }) => c).filter((c) => c.kind !== 'user');
     if (fresh.length) announce(fresh[fresh.length - 1].text);
   }
-  // Replies are in their thread: the chat shows its root with the newest one, and a chip where a later one came.
+  // Replies hang off what they answer (A-1 of T-0086): a run of replies right under their root is one branch from it;
+  // a reply after other messages keeps its place in time, on a branch that starts from a tag naming the root.
   const ix = threadIndex(items.map(({ c }) => c));
-  const late = lateReplies(ix);
-  const rowsOf = (r: number) => ix.replies.get(r)!.map((j) => items[j].c);
-  let mark = seenAt >= 0 ? seenAt + 1 : -1;
-  drawingOlder = older;
+  const layout = branchLayout(ix);
+  const threadOf = (r: number) => (ix.replies.get(r) ?? []).map((j) => items[j].c);
+  const mark = seenAt >= 0 ? seenAt + 1 : -1;
+  let open = false;
   for (let i = 0; i < items.length; i++) {
     const { c, n } = items[i];
-    const lateOf = ix.rootOf[i] >= 0 ? late.get(i) : undefined;
-    // A reply drawn in its thread only: the "new" marker goes to what comes after it.
-    if (ix.rootOf[i] >= 0 && lateOf === undefined) { if (i === mark) mark++; continue; }
-    if (i === mark) html += NEW_FROM;
+    const b = layout[i];
+    if (open && (!b || b.start)) { html += '</div>'; open = false; }
+    // The "new" marker goes in before the message; a reply's goes inside its branch, which stays right under its root.
+    const fresh = i === mark ? NEW_FROM : '';
+    if (!b || b.late && b.start) html += fresh;
     const ts = Date.parse(c.ts);
-    if (ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
+    // No time line inside a branch, or between a root and the branch right under it.
+    if ((!b || b.late && b.start) && ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
     last = ts;
-    if (lateOf !== undefined) { html += threadChip(items[lateOf].c, rowsOf(lateOf), true); continue; }
+    if (b) {
+      const r = items[b.root].c;
+      // A late branch had its "new" marker before its time line; a near one keeps it inside, under its card.
+      if (b.start) html += `<div class="br${b.late ? ' late' : ''}" data-k="${esc(r.id)}" role="group" aria-label="${esc(t('chat.repliesTo', { title: rootWhat(r, 60) }))}">${b.late ? branchTag(r) : fresh}`;
+      else html += fresh;
+      open = true;
+      html += branchRow(c, r, threadOf(b.root));
+      continue;
+    }
     let one = n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
     if (canRoot(c)) one = rootAttr(one, c.id);
-    const reps = ix.replies.get(i);
-    html += !reps ? one : isReport(c) ? threadCard(one, c, rowsOf(i)) : one + threadChip(c, rowsOf(i), false);
+    html += one;
   }
-  threadsPrimed = true;
+  if (open) html += '</div>';
   // A first start: a few starts that fill the composer for the user to finish. Nothing is sent.
   // With no account nothing can be handed out yet: the steps that get there instead (A1).
   if (!all.length) html = s.setupNeeded ? setupHtml() : `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><div class="starts">${STARTS.map((key) => `<button type="button" class="btn" data-action="chat-start" data-text="${esc(t(key))}">${t(key)}</button>`).join('')}</div></div>`;
   ui.chatSeen = tail;
   setThread(th, html, nearBottom || force, older);
+  relight(th);
   markReplyTarget('chat');
   watchTop(th, () => void olderChat());
   renderCtxMeter();

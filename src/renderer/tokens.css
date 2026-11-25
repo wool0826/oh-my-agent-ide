@@ -214,6 +214,8 @@
   --border-subtle: rgba(255, 255, 255, .09);
   --border-default: rgba(255, 255, 255, .14);
   --border-strong: rgba(255, 255, 255, .4);
+  --reply-line: var(--ref-gray-600);
+  --reply-line-on: var(--ref-blue-400);
   --focus-ring: var(--ref-blue-300);
   --accent: var(--ref-blue-400);
   --accent-text: var(--ref-blue-300);
@@ -341,6 +343,8 @@
   --border-subtle: rgba(0, 0, 0, .08);
   --border-default: rgba(0, 0, 0, .12);
   --border-strong: rgba(0, 0, 0, .45);
+  --reply-line: var(--ref-gray-400);
+  --reply-line-on: var(--ref-blue-500);
   --focus-ring: var(--ref-blue-500);
   --accent: var(--ref-blue-500);
   --accent-text: var(--ref-blue-700);
@@ -467,6 +471,8 @@
     --border-subtle: rgba(0, 0, 0, .08);
     --border-default: rgba(0, 0, 0, .12);
     --border-strong: rgba(0, 0, 0, .45);
+    --reply-line: var(--ref-gray-400);
+    --reply-line-on: var(--ref-blue-500);
     --focus-ring: var(--ref-blue-500);
     --accent: var(--ref-blue-500);
     --accent-text: var(--ref-blue-700);

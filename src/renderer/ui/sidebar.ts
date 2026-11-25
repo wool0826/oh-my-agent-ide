@@ -505,10 +505,7 @@ export function applyPanels() {
 
 export let sideAnim: number | undefined;
 
-/** Set by the thread panel: it goes when the right sidebar is put away, since it stands in its place. */
-export const panelHooks: { insAway: (() => void) | null } = { insAway: null };
-
-/** `keep`: the choice is remembered for the next start; a thread bringing the sidebar out for a while is not. */
+/** `keep`: the choice is remembered for the next start; a drawer closing by itself is not. */
 export function togglePanel(which: 'side' | 'ins', keep = true) {
   if (which === 'side') {
     ui.sideMin = !ui.sideMin;
@@ -521,7 +518,6 @@ export function togglePanel(which: 'side' | 'ins', keep = true) {
   } else {
     ui.insMin = !ui.insMin;
     if (keep && !ui.drawer) store('oma.insMin', ui.insMin);
-    if (keep && ui.insMin) panelHooks.insAway?.();
   }
   applyPanels();
   if (S) renderSidebar();
@@ -537,10 +533,7 @@ export function applyNarrow(): boolean {
   let changed = false;
   if (n.drawer !== ui.drawer) {
     ui.drawer = n.drawer;
-    // A thread that opened the drawer did not open the sidebar the window now shows: closing it leaves that as it is.
-    ui.threadOpenedIns = false;
     const min = n.drawer || stored('oma.insMin');
-    if (min && !ui.insMin) panelHooks.insAway?.();
     ui.insMin = min;
     changed = true;
   }
