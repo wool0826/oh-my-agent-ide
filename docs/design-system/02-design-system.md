@@ -197,6 +197,7 @@ Weights by role: 400 body · 500 controls and row titles · 600 labels, inspecto
 - `:lang(ko) { word-break: keep-all; }` so Hangul words never split; `overflow-wrap: anywhere` still breaks long paths and URLs. `<html lang>` already follows the language setting.
 - Messages, cards and descriptions use `--lh-body` 1.5; single-line UI uses 1.4.
 - No letter-spacing on Hangul. Tight tracking only on titles ≥17px.
+- Malgun Gothic (Hangul on Windows) has only 400 and 700, so 500 falls to 400. In Korean on Windows the 500 titles (sidebar and history row titles, palette items, toolbar view tabs) take 600, which Malgun draws bold (`.platform-win32:lang(ko)`).
 - Product terms stay English inside Korean sentences (Worker, Dispatcher, PR, Claude Code), and particles attach directly ("W-02는", "Worker에게").
 - Numbers use `tabular-nums` (counts, %, times, token sizes).
 
@@ -364,7 +365,8 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - `.dd-btn`: 28 capsule, min 180, up/down glyph; open state = pressed fill.
 
 ### Settings
-- Window: title bar 52 (title 15/600), nav panel 240 (glass), pane max 680 centered, pane title 24/700, group caption 12/600.
+- Window: title bar 52 (title 15/600, centered over the panes, not the window; Back sits in the nav's column), nav panel 240 (glass), pane max 680 centered with a stable scrollbar gutter, pane title 24/700, group caption 12/600.
+- Status group: one row with every check's name and a success pill while all pass; the rows (failed first, with the fixing command) only when one fails. Folder paths are shortened in the middle (`C:\Users\…\oma\home`), full path in the tooltip.
 - Nav item 32, radius 10, icon 17; hover `--surface-hover`; current `--surface-selected` + rim + 600 + `--accent` icon; setup-needed dot `--danger`.
 - Group `.sgroup` radius 14 (same as inspector groups), rows min 44, padding 8/16, 0.5px separators.
 
