@@ -816,6 +816,7 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .kv > span:nth-child(odd) { color: var(--text-secondary); padding-right: 0; user-select: none; }
 .kv > span:nth-child(n+3) { border-top: .5px solid var(--border-subtle); }
 .kv > span.err { color: var(--danger-text); }
+.kv > span.warn { color: var(--warning-text); }
 .mini { padding: var(--space-8) var(--space-12); display: flex; flex-direction: column; gap: 1px; }
 .mini + .mini { border-top: .5px solid var(--border-subtle); }
 .mini b { font-weight: 600; font-size: var(--fs-body); overflow-wrap: anywhere; }

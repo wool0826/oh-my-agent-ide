@@ -20,7 +20,7 @@ import { loadSettings, claudeHelperModel } from '../settings';
 import { cachedModels } from '../models';
 import { modelLabel as labelFor } from '../../shared/models';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
-import { dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork';
+import { changedFiles, dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork';
 import { worktreeDiff } from '../gitdiff';
 import { listCheckpoints, restoreCheckpoint, saveCheckpoint } from '../checkpoints';
 import { checkpointLabel } from '../../shared/checkpoints';
@@ -296,6 +296,7 @@ class WorkerManager {
         if (st === 'idle') this.fillSlots();
       },
       onTurnEnd: (r) => {
+        void this.recordChanged(w);
         // With more input queued, the turn that follows settles the task.
         if (r.internal || r.queued) return;
         this.turnEnded(w, r.text, r.isError, !!r.background);
@@ -539,6 +540,22 @@ class WorkerManager {
     const repo = w?.repo ? store.repo(w.repo) : null;
     if (!w || !repo) return null;
     return worktreeDiff(repo.defaultBranch, w.cwd, isLocalRepo(repo));
+  }
+
+  /**
+   * Record on the task whose branch the Worker's worktree has checked out which files that branch changes, so a new
+   * task naming one of them is flagged (shared/overlap.ts). Read from git each time a turn ends. Detached (mid-rebase,
+   * or a Worker that never made its branch), the files are its task in progress's, taken before the turn settles it.
+   */
+  private async recordChanged(w: Worker) {
+    const repo = w.repo ? store.repo(w.repo) : null;
+    if (!repo) return;
+    const cur = this.currentTask(w);
+    const r = await changedFiles(w.cwd, repo.defaultBranch, isLocalRepo(repo)).catch(() => null);
+    const task = !r ? null : r.branch ? w.taskIds.map((id) => store.task(id)).find((x) => x?.kind === 'code' && x.branch === r.branch) : cur?.kind === 'code' ? cur : null;
+    if (!r || !task || task.changedFiles?.join('\0') === r.files.join('\0')) return;
+    task.changedFiles = r.files;
+    store.changed();
   }
 
   private async answerQuestions(w: Worker, input: Record<string, unknown>, signal: AbortSignal) {
