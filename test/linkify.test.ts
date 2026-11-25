@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkify, reportLinks, resultLinkList, shortUrls, urlEnd } from '../src/shared/linkify';
+import { linkUrl, linkify, reportLinks, resultLinkList, shortUrls, urlEnd } from '../src/shared/linkify';
 
 const PR = 'https://github.com/wool0826/oh-my-agent-ide/pull/27';
 const a = (url: string) => `<a tabindex="0" role="link" data-action="open-url" data-href="${url}">${url}</a>`;
@@ -103,4 +103,11 @@ test('a report keeps the artifacts and PRs it names, and every URL on its LINK a
   // A kept title reads back as the link's name.
   assert.equal(reportLinks(resultLinkList(text, [PR]).join('\n'))[2].name, 'UI audit');
   assert.deepEqual(resultLinkList('RESULT: Done'), []);
+});
+
+test('a kept link reads back its URL, titled or not', () => {
+  assert.equal(linkUrl('[UI audit](https://claude.ai/artifact/abc)'), 'https://claude.ai/artifact/abc');
+  assert.equal(linkUrl('https://claude.ai/artifact/abc'), 'https://claude.ai/artifact/abc');
+  // Percent-encoded full-width text in a URL stays in it.
+  assert.deepEqual(reportLinks('https://example.com/a%EF%BC%8Cb?q=%E3%80%81').map((l) => l.url), ['https://example.com/a%EF%BC%8Cb?q=%E3%80%81']);
 });

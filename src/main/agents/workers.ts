@@ -46,6 +46,7 @@ import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
 import { WORKER_COMPACT } from '../../shared/compactInstructions';
 import { needsPlan, parseResult, taskStarted, workerPrompt } from './workerPrompt';
+import { linkUrl } from '../../shared/linkify';
 import { clip, GO_ON_MSG, LIMIT_RESET_MSG, MAX_REQUEST_WAKES, planApproved, planNudge, planSummaryRule, question, QUESTION_TAG, REPLY_NOTE, RESUME_MSG, SHELL_OUTPUT_CHARS, SLOT_FREE_MSG, stallMsg, TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
 import { workerCodexTools, workerMemoryDir, workerTools, type StepsOp } from './workerTools';
 import { markDone, mergeProgress, reopenSteps, setSteps, stepsLine, stepView } from '../../shared/steps';
@@ -761,7 +762,13 @@ class WorkerManager {
     task.summary = summary;
     task.prUrl = prUrl ?? task.prUrl;
     task.files = files.length ? files : task.files;
-    if (parsed.links.length) task.links = parsed.links;
+    // Links add up over the task's turns, once each and without its own PR ("[title](url)" is matched by its URL).
+    const own = prUrl ?? task.prUrl;
+    if (parsed.links.length) {
+      const byUrl = new Map<string, string>();
+      for (const l of [...(task.links ?? []), ...parsed.links]) if (linkUrl(l) !== own) byUrl.set(linkUrl(l), l);
+      task.links = [...byUrl.values()];
+    }
     setStatus(task, task.prUrl ? 'pr_open' : 'done');
     task.stopped = false;
     task.prState = task.prUrl ? (task.prState ?? 'OPEN') : null;

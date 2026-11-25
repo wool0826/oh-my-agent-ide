@@ -18,7 +18,7 @@ import { PAGE, threadStart } from '../../shared/paging';
 import { type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
 import { decisionHint, decisionHtml, olderChat, prBadges, reportLinkHtml, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
-import { linkify, reportLinks, shortUrls } from '../../shared/linkify';
+import { linkUrl, linkify, reportLinks, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
 import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
@@ -96,7 +96,8 @@ export function renderWorkerList() {
     const line = workerLine(t, w, x, { ask: dec ? oneLine(askLine(dec), 140) : null, queue: st === 'queued' && x ? queueLine(t, x, qctx)?.text : null, about });
     // "W-id · repository · state", as the sidebar and the chat write it.
     // A finished result names the links its report gave, by their short names: the row is a button and holds no links.
-    const said = (st === 'pr' || st === 'done') && x?.links?.length ? `${line.text} · ${x.links.join(' ')}` : line.text;
+    const extra = (st === 'pr' || st === 'done') ? (x?.links ?? []).filter((l) => !line.text.includes(linkUrl(l))) : [];
+    const said = extra.length ? `${line.text} · ${extra.join(' ')}` : line.text;
     const text = said === about ? `${w.id} · ${about}` : [w.id, w.repo ?? t('general'), said].filter(Boolean).join(' · ');
     // The context is shown once it matters: from half the window, and in orange from where it is compacted.
     const ctx = st !== 'archived' && w.contextTokens >= CONTEXT_WINDOW / 2

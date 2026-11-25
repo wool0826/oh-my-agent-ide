@@ -1365,6 +1365,12 @@ test('the artifact a report names under its RESULT line is kept with the result 
   assert.deepEqual(x.links, ['https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7']);
   assert.match(store.data.pendingUpdates.at(-1)!, /Wrote the audit\. Links: https:\/\/claude\.ai\/artifact\/2hL4515n1HmJCSDrwV96T7$/);
   // A follow-up that names no link keeps the ones the task already had.
+  x.status = 'running';
   feed(s, said('RESULT: Fixed a typo'), turnEnd('RESULT: Fixed a typo'));
   assert.deepEqual(x.links, ['https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7']);
+  // One that names another adds it; the task's own PR is not listed again.
+  Object.assign(x, { status: 'running', prUrl: 'https://github.com/o/r/pull/3' });
+  const more = 'RESULT: Added a page\n\nSee https://github.com/o/r/pull/3 and https://claude.ai/artifact/second';
+  feed(s, said(more), turnEnd(more));
+  assert.deepEqual(x.links, ['https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7', 'https://claude.ai/artifact/second']);
 });

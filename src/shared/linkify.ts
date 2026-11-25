@@ -82,6 +82,9 @@ export function reportLinks(text: string | null | undefined, skip: (string | nul
   return out;
 }
 
+/** The URL of a kept link: "[title](url)" or the bare URL. */
+export const linkUrl = (l: string) => /^\[[^\]]*\]\((https?:\/\/[^)\s]+)\)$/.exec(l)?.[1] ?? l;
+
 /** Report lines whose URLs are all results, whatever they point at. */
 const LINK_LINE = /^(?:LINK|FILE):/i;
 
