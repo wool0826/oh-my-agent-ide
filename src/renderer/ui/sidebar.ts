@@ -500,7 +500,11 @@ export function applyPanels() {
 
 export let sideAnim: number | undefined;
 
-export function togglePanel(which: 'side' | 'ins') {
+/** Set by the thread panel: it goes when the right sidebar is put away, since it stands in its place. */
+export const panelHooks: { insAway: (() => void) | null } = { insAway: null };
+
+/** `keep`: the choice is remembered for the next start; a thread bringing the sidebar out for a while is not. */
+export function togglePanel(which: 'side' | 'ins', keep = true) {
   if (which === 'side') {
     ui.sideMin = !ui.sideMin;
     store('oma.sideMin', ui.sideMin);
@@ -511,7 +515,8 @@ export function togglePanel(which: 'side' | 'ins') {
     sideAnim = window.setTimeout(() => win.classList.remove('side-anim'), 400);
   } else {
     ui.insMin = !ui.insMin;
-    store('oma.insMin', ui.insMin);
+    if (keep) store('oma.insMin', ui.insMin);
+    if (keep && ui.insMin) panelHooks.insAway?.();
   }
   applyPanels();
   if (S) renderSidebar();

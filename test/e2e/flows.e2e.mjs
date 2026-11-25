@@ -562,65 +562,84 @@ flow('an error from the main process is said in the language of the window', { s
   assert.equal((await app.evaluate("return (await window.ide.call('state')).automations[0]")).prompt, 'Stays');
 });
 
-flow("a reply to a Worker's report becomes a row of its card, folds to a count, and a quote goes back to its message", {}, async (app) => {
+flow("replies to a report or a Dispatcher message are a thread: the chat shows the newest, the panel beside it the whole talk", {}, async (app) => {
   const send = (text) => app.evaluate(`const i = document.querySelector('#chat-input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#chat-form').requestSubmit(); return 1;`);
+  const inPanel = (text) => app.evaluate(`const i = document.querySelector('#thr-input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#thr-form').requestSubmit(); return 1;`);
+  const shown = (sel) => `!!document.querySelector(${JSON.stringify(sel)})?.getClientRects().length`;
   // The Worker reports after the Dispatcher's turn has ended, so nothing comes between the card and the reply.
   await app.say('@fake task - Write the notes\n@@fake wait 800\n@@fake result Wrote the notes.');
   const link = '#chat-thread .attach[data-task] [data-action="reply"]';
   await app.until(`!!document.querySelector(${JSON.stringify(link)})`, 'Reply on the result card');
   await app.click(link);
-  await app.until("!document.querySelector('#chat-reply').hidden", 'the quote card on the composer');
-  // While it is written: two lines in the composer, and the card it answers ringed.
-  const writing = await app.evaluate("const c = document.querySelector('#chat-reply'); return { who: c.querySelector('b').textContent, lines: !!c.querySelector(':scope > span'), ringed: document.querySelector('#chat-thread .attach[data-task=\"T-0001\"]').classList.contains('target') };");
-  assert.deepEqual(writing, { who: 'W-01', lines: true, ringed: true });
   await send('Why so short?\n@fake say The notes cover one change.');
-  await app.until("document.querySelector('#chat-thread .tcard')?.innerText.includes('The notes cover one change.')", "the Dispatcher's answer in the card");
-  // One card: the report on top, the heading with the count, then a row per reply, never deeper. The quote of the
-  // report is not said again, and the ring went with the reply.
-  const shape = await app.evaluate("const g = document.querySelector('#chat-thread .tcard'); return { top: g.firstElementChild.dataset.task, fold: [g.querySelector('.t-fold').getAttribute('aria-expanded'), g.querySelector('.t-fold b').textContent], rows: [...g.querySelectorAll('.t-rows > .t-row')].map((r) => r.classList.contains('me') ? 'me' : 'ai'), who: [...g.querySelectorAll('.t-row .who b')].map((b) => b.textContent), nested: !!g.querySelector('.tcard .tcard, .t-row .t-row'), quoted: g.querySelector('.t-row.me').innerText.includes('Wrote the notes'), ring: !!document.querySelector('#chat-thread .target') };");
-  assert.deepEqual(shape, { top: 'T-0001', fold: ['true', '2 replies'], rows: ['me', 'ai'], who: ['You', 'Dispatcher'], nested: false, quoted: false, ring: false });
-  const fit = await app.evaluate("const g = document.querySelector('#chat-thread .tcard'); const box = g.getBoundingClientRect(); const rows = [...g.querySelectorAll('.t-row')].map((r) => r.getBoundingClientRect()); return { inside: rows.every((r) => r.left >= box.left && r.right <= box.right + 0.5 && r.bottom <= box.bottom + 0.5), stacked: rows.every((r, i) => !i || r.top >= rows[i - 1].bottom - 0.5) };");
-  assert.deepEqual(fit, { inside: true, stacked: true });
-  // A reply to the plain answer that follows: a quote at the top of the user's bubble, which goes back to it.
+  await app.until("document.querySelector('#chat-thread .tcard')?.innerText.includes('The notes cover one change.')", "the Dispatcher's answer on the card");
+  // The card: the report, only the newest reply, then the count with the rest folded into "1 earlier". The question is
+  // not a bubble of its own in the chat.
+  const card = await app.evaluate("const g = document.querySelector('#chat-thread .tcard'); return { top: g.firstElementChild.dataset.task, rows: [...g.querySelectorAll('.t-row')].map((r) => r.querySelector('.who b').textContent), foot: g.querySelector('.t-foot').innerText.replace(/\\s+/g, ' ').trim(), loose: [...document.querySelectorAll('#chat-thread > .bub.me')].some((b) => b.innerText.includes('Why so short?')) };");
+  assert.deepEqual(card, { top: 'T-0001', rows: ['Dispatcher'], foot: '2 replies 1 earlier Open thread', loose: false });
+  // Open thread: the panel takes the right sidebar's place, with the root and every reply; its composer has the keys.
+  await app.click('#chat-thread .tcard .t-open');
+  await app.until(shown('#chat-thr'), 'the thread panel');
+  const panel = await app.evaluate("const b = document.querySelector('#thr-body'); return { ins: !!document.querySelector('#chat-ins').getClientRects().length, title: document.querySelector('#thr-title').textContent, root: b.querySelector('.thr-root').innerText.includes('Write the notes'), rows: [...b.querySelectorAll(':scope > .t-row')].map((r) => r.querySelector('.who b').textContent), focus: document.activeElement?.id, ringed: document.querySelector('#chat-thread .tcard').classList.contains('thr-on') };");
+  assert.deepEqual(panel, { ins: false, title: 'Thread · Write the notes', root: true, rows: ['You', 'Dispatcher'], focus: 'thr-input', ringed: true });
+  // A message written in the panel is a reply in that thread, and so is the Dispatcher's answer.
+  await inPanel('And the tests?\n@fake say They pass.');
+  await app.until("document.querySelector('#thr-body')?.innerText.includes('They pass.')", 'the answer in the panel');
+  await app.until("document.querySelector('#chat-thread .tcard .t-foot')?.innerText.includes('4 replies')", 'the count on the card');
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread .tcard .t-row').innerText.includes('They pass.')"), true, 'the newest reply on the card');
+  // The keys: ↑ from the empty composer to the newest reply, ↑ again to the one before; Esc closes the panel and the
+  // keyboard goes back to the thread in the chat.
+  await app.evaluate("document.querySelector('#thr-input').focus(); return 1;");
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  assert.equal(await app.evaluate("document.activeElement?.matches('#thr-body > .t-row.me') && document.activeElement.innerText.includes('And the tests?')"), true);
+  await app.key('Escape', 'Escape', 27);
+  await app.until(`!(${shown('#chat-thr')})`, 'the panel closed');
+  assert.deepEqual(await app.evaluate("return [!!document.querySelector('#chat-ins').getClientRects().length, document.activeElement?.matches('#chat-thread .tcard .t-open') ?? false];"), [true, true]);
+  const filed = (await app.state()).chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]);
+  assert.deepEqual(filed, [['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001']]);
+
+  // A thread on a Dispatcher message, from its "Reply in thread" button: the chat shows a chip under the bubble.
   await app.say('Something else\n@fake say Something else answered.');
-  await app.until("[...document.querySelectorAll('#chat-thread > .bline')].some((b) => b.innerText.includes('Something else answered.'))", 'the unrelated answer');
-  await app.evaluate("[...document.querySelectorAll('#chat-thread > .bline')].find((b) => b.innerText.includes('Something else answered.')).querySelector('.rbtn').click(); return 1;");
-  assert.equal(await app.evaluate("document.querySelector('#chat-thread > .bline.target')?.innerText.includes('Something else answered.') ?? false"), true, 'the answered bubble ringed');
-  await send('Thanks\n@fake say Any time.');
-  await app.until("!!document.querySelector('#chat-thread .bub.me .bq')", 'the quote in the bubble');
-  await app.click('#chat-thread .bub.me .bq');
-  await app.until("[...document.querySelectorAll('#chat-thread .bub.flash')].some((b) => b.innerText.includes('Something else answered.'))", 'the quoted bubble flashed');
-  // A reply after other messages: a card of its own whose top line goes back to the report. Being the newest, it is
-  // open; the first card folds to its count and its last line.
+  const bline = "[...document.querySelectorAll('#chat-thread > .bline')].find((b) => b.innerText.includes('Something else answered.'))";
+  await app.until(`!!${bline}`, 'the plain answer');
+  await app.evaluate(`${bline}.querySelector('[data-action="thread-open"]').click(); return 1;`);
+  await app.until("document.querySelector('#thr-title')?.textContent === 'Thread · Dispatcher'", 'the panel on the message');
+  await inPanel('Thanks\n@fake say Any time.');
+  await app.until(`${bline}?.nextElementSibling?.matches('.t-chip') && ${bline}.nextElementSibling.innerText.includes('Any time.')`, 'the chip under the bubble');
+  const root = (await app.state()).chat.find((c) => c.text === 'Something else answered.').id;
+  assert.deepEqual((await app.state()).chat.filter((c) => c.replyTo === root).map((c) => c.kind), ['user', 'dispatcher']);
+  await app.key('Escape', 'Escape', 27);
+
+  // A reply to the report after other messages: a chip where it came that names the report. Of the answers, the
+  // newest is on the chip; the one before it counts as new until the thread is opened.
   await app.click(link);
-  await send('And the tests?\n@fake say They pass.');
-  await app.until("document.querySelector('#chat-thread .tcard.late')?.innerText.includes('They pass.')", 'the later card');
-  const folded = await app.evaluate("const [a, b] = document.querySelectorAll('#chat-thread .tcard'); return { first: [a.querySelector('.t-fold').getAttribute('aria-expanded'), a.querySelector('.t-fold').innerText.replace(/\\s+/g, ' ').trim(), !!a.querySelector('.t-rows:not([hidden])')], late: [b.firstElementChild.matches('.t-head'), b.querySelector('.t-fold').getAttribute('aria-expanded')] };");
-  assert.deepEqual(folded, { first: ['false', '2 replies Dispatcher: The notes cover one change.', false], late: [true, 'true'] });
-  await app.click('#chat-thread .tcard.late .t-head');
-  await app.until("!!document.querySelector('#chat-thread .attach[data-task=\"T-0001\"].flash')", 'the card flashed');
-  // The heading folds from the keyboard, keeps the focus, and a redraw keeps what the user chose.
-  await app.evaluate("document.querySelector('#chat-thread .tcard:not(.late) .t-fold').focus(); return 1;");
-  // A key with its text, as a keyboard sends it: that is what makes a focused button act.
-  await app.cdp('Input.dispatchKeyEvent', { type: 'keyDown', code: 'Enter', key: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
-  await app.cdp('Input.dispatchKeyEvent', { type: 'keyUp', code: 'Enter', key: 'Enter', windowsVirtualKeyCode: 13 });
-  await app.until("document.querySelector('#chat-thread .tcard:not(.late) .t-fold')?.getAttribute('aria-expanded') === 'true'", 'the first card opened');
-  assert.equal(await app.evaluate("document.activeElement?.matches('.tcard:not(.late) .t-fold') ?? false"), true, 'the focus stays on the heading');
-  // A reply to a row that is not right above it: a one-line quote on its row, which goes back to the row.
-  const replyTo = (words) => app.evaluate(`[...document.querySelectorAll('#chat-thread .tcard.late .t-row:not(.me)')].find((r) => r.innerText.includes(${JSON.stringify(words)})).querySelector('.rbtn').click(); return 1;`);
-  await replyTo('They pass.');
-  await send('Which ones?\n@fake say All of them.');
-  await app.until("document.querySelector('#chat-thread .tcard.late')?.innerText.includes('All of them.')", 'the answer in the later card');
-  await replyTo('They pass.');
-  await send('Even the slow ones?\n@fake say Yes.');
-  await app.until("!!document.querySelector('#chat-thread .tcard.late .t-q')", 'the quote line on the row');
-  const rows = await app.evaluate("return [...document.querySelectorAll('#chat-thread .tcard.late .t-row.me')].map((r) => !!r.querySelector('.t-q'));");
-  assert.deepEqual(rows, [false, false, true], 'only the quote of a row further up shows');
-  await app.click('#chat-thread .tcard.late .t-q');
-  await app.until("document.querySelector('#chat-thread .t-row.flash')?.innerText.includes('They pass.') ?? false", 'the quoted row flashed');
-  assert.equal(await app.evaluate("document.querySelector('#chat-thread .tcard:not(.late) .t-fold').getAttribute('aria-expanded')"), 'true', 'still open after the redraws');
-  const chat = (await app.state()).chat;
-  assert.deepEqual(chat.filter((c) => c.replyTo).map((c) => [c.kind, c.replyTo]), [['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001'], ['user', 'T-0001'], ['dispatcher', 'T-0001']]);
+  await send('Any more?\n@fake say One more thing.\n@fake say Not now.');
+  await app.until("document.querySelector('#chat-thread > .t-chip.late')?.innerText.includes('Not now.')", 'the late chip');
+  const late = await app.evaluate("const c = document.querySelector('#chat-thread > .t-chip.late'); return { name: c.querySelector('.t-name').textContent, fresh: c.querySelector('.t-new')?.textContent ?? '', last: c === document.querySelector('#chat-thread').lastElementChild || !c.nextElementSibling?.matches('.bub, .bline, .tcard') };");
+  assert.deepEqual(late, { name: 'Write the notes', fresh: '1 new', last: true });
+  await app.click('#chat-thread > .t-chip.late');
+  await app.until("document.querySelector('#thr-title')?.textContent === 'Thread · Write the notes'", 'the panel on the report');
+  await app.until("!document.querySelector('#chat-thread .t-new')", 'nothing new once opened');
+
+  // T on a message in the chat opens its thread; the side question floats over the chat, clear of the panel.
+  await app.key('Escape', 'Escape', 27);
+  await app.evaluate(`const b = ${bline}; b.tabIndex = -1; b.focus(); return 1;`);
+  await app.key('KeyT', 't', 84);
+  await app.until("document.querySelector('#thr-title')?.textContent === 'Thread · Dispatcher'", 'T opened the thread');
+  await app.click('#chat-sq');
+  await app.until("!document.querySelector('#sq').hidden", 'the side question');
+  const apart = await app.evaluate("const a = document.querySelector('#sq').getBoundingClientRect(), b = document.querySelector('#chat-thr').getBoundingClientRect(); return a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;");
+  assert.equal(apart, true, 'the side question and the panel do not overlap');
+  await app.click('#sq [data-action="sq-close"]');
+  // With the right sidebar put away, a thread brings it out, and closing the thread puts it away again.
+  await app.click('[data-action="thread-close"]');
+  await app.click('#ins-toggle');
+  await app.until("document.querySelector('#win').classList.contains('ins-min')", 'the sidebar put away');
+  await app.click('#chat-thread > .t-chip.late');
+  await app.until(`!document.querySelector('#win').classList.contains('ins-min') && ${shown('#chat-thr')}`, 'the panel out');
+  await app.click('[data-action="thread-close"]');
+  await app.until("document.querySelector('#win').classList.contains('ins-min')", 'the sidebar away again');
 });
 
 flow('a line run with ! shows its output in the chat; with the reply chip off, the Dispatcher gets it with its next turn', {}, async (app) => {

@@ -32,6 +32,7 @@ import { initResize } from './ui/resize';
 import { initTip } from './ui/tip';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
 import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
+import { bindThread, closeThread, openThread, revealQuoted } from './ui/threadPanel';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { isPlacing, nextRow, watchPanes } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
@@ -155,7 +156,6 @@ export async function act(el: HTMLElement, e: Event) {
     }
     // The chip over a late reply: back to the report it answers.
     // A task can have several cards (a result, then a follow-up): the one the group answers is the last one above it.
-    case 'goto-report': flashCard([...document.querySelectorAll<HTMLElement>(`#chat-thread .attach[data-task="${CSS.escape(id)}"]`)].filter((c) => c.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop() ?? null); break;
     case 'shell-cwd': pickShellFolder(el); break;
     case 'shell-ask': toggleShellAsk(); break;
     case 'shell-stop': (el as HTMLButtonElement).disabled = true; void tryCall('shell:stop', id); break;
@@ -290,26 +290,23 @@ export async function act(el: HTMLElement, e: Event) {
       input.setSelectionRange(input.value.length, input.value.length);
       break;
     }
-    case 'reply-fold': {
-      ui.replyOpen.set(id, el.getAttribute('aria-expanded') !== 'true');
-      renderChat();
-      document.querySelector<HTMLElement>(`.t-fold[data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+    case 'thread-open': openThread(id); break;
+    case 'thread-close': closeThread(); break;
+    // The root on top of the panel: back to it in the chat.
+    case 'thread-root': {
+      const at = document.querySelector<HTMLElement>(`#chat-thread .attach[data-root="${CSS.escape(id)}"], #chat-thread .bline[data-root="${CSS.escape(id)}"] > .bub`);
+      if (at) flashCard(at); else toast(t('reply.gone'));
       break;
     }
-    // A quote at the top of a reply: back to the message it quotes, the nearest one above with those words.
-    // A quote in a folded thread opens it first.
+    // A quote at the top of a reply: back to the message it quotes, the nearest one above with those words. A
+    // message that is only in a thread opens the thread, and its row there is the one shown.
     case 'goto-quote': {
-      const th = el.closest('.thread');
+      // From the panel, the quoted message is in the chat.
+      const th = el.closest('#thr-body') ? $('#chat-thread') : el.closest('.thread');
       const src = [...(th?.querySelectorAll<HTMLElement>('[data-action="reply"]') ?? [])]
         .filter((b) => b.dataset.who === el.dataset.who && b.dataset.quote === el.dataset.quote && b.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
       let msg = src?.closest<HTMLElement>('.t-row, .attach') ?? src?.closest('.bline')?.querySelector<HTMLElement>('.bub') ?? null;
-      const fold = src?.closest('.t-rows[hidden]')?.parentElement?.querySelector<HTMLElement>(':scope > .t-fold');
-      if (fold?.dataset.id && msg?.dataset.id) {
-        const row = msg.dataset.id;
-        ui.replyOpen.set(fold.dataset.id, true);
-        renderChat();
-        msg = th?.querySelector<HTMLElement>(`.t-row[data-id="${CSS.escape(row)}"]`) ?? null;
-      }
+      if (!msg && !el.closest('#ws-thread')) msg = revealQuoted(el.dataset.who ?? '', el.dataset.quote ?? '');
       if (msg) flashCard(msg); else toast(t('reply.gone'));
       break;
     }
@@ -1079,6 +1076,8 @@ export function init() {
       if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }
       if (ui.aaEdit) { ui.aaEdit = null; renderChatInspector(); return; }
       if (ui.sugEdit) { ui.sugEdit = null; renderChatInspector(); return; }
+      // The thread panel goes last: whatever opened over it closes first. The keyboard goes back to its thread.
+      if (ui.thread) { closeThread(); return; }
     }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
@@ -1185,6 +1184,7 @@ export function init() {
     else if (ui.settingsShown && accChanged && !langChanged) openSettings();
   });
   bindSide();
+  bindThread();
   bindTerm();
   ide.onTermState(setTermView);
   void call('term:state').then((v) => { if (v) setTermView(v); });
