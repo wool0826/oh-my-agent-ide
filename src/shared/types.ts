@@ -160,6 +160,16 @@ export interface Task {
   compare?: { group: string; picked?: string | null };
   /** It failed because the user pressed Stop, not because of an error. Shown as stopped, not in red. */
   stopped?: boolean;
+  /** Files its branch changes against the base, from git in its worktree, refreshed when its Worker's turn ends (code tasks). */
+  changedFiles?: string[] | null;
+  /** Tasks in progress that already changed files its prompt names, found when it was created (shared/overlap.ts). */
+  overlaps?: TaskOverlap[] | null;
+}
+
+/** A task in progress whose branch already changes files a new task's prompt names. */
+export interface TaskOverlap {
+  taskId: string;
+  files: string[];
 }
 
 /** Is the open PR ready to merge: CI, conflicts and review. */
