@@ -112,8 +112,14 @@ export const ui = {
   undo: [] as { kind: 'result' | 'auto'; ids: string[] }[],
   /** Hand-out blocks the user opened or folded against their default (by their first line). */
   handToggled: new Set<string>(),
-  /** Reply threads in the chat the user opened or folded, by their first reply's id; the rest follow their default. */
-  replyOpen: new Map<string, boolean>(),
+  /** The thread open in the panel beside the chat: its root's chat id (ui/thread.ts). */
+  thread: null as string | null,
+  /** How many replies of each thread were in view (in the panel, or when the app started), by root id. */
+  threadSeen: new Map<string, number>(),
+  /** The panel's unsent text, by thread. */
+  threadDrafts: new Map<string, string>(),
+  /** The thread opened the right sidebar, which goes away again with it. */
+  threadOpenedIns: false,
   /** Inbox results whose summary is shown in full. */
   resOpen: new Set<string>(),
   lastChatKey: '',
@@ -221,9 +227,9 @@ export function replyBtn(box: 'chat' | 'ws', who: string, text: string, task?: s
 }
 
 /** An agent's bubble with the Reply button beside it (replyBtn). */
-export function replyable(bubble: string, box: 'chat' | 'ws', who: string, text: string, task?: string, src?: string) {
+export function replyable(bubble: string, box: 'chat' | 'ws', who: string, text: string, task?: string, src?: string, more = '') {
   const btn = replyBtn(box, who, text, task, src);
-  return btn ? `<div class="bline"${src ? ` data-src="${esc(src)}"` : ''}>${bubble}${btn}</div>` : bubble;
+  return btn ? `<div class="bline"${src ? ` data-src="${esc(src)}"` : ''}>${bubble}${btn}${more}</div>` : bubble;
 }
 
 /** Whose message a quote is from, as shown: a side question's answer reads as one. */

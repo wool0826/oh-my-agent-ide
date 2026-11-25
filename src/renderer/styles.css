@@ -267,25 +267,35 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .rbtn:hover { background: var(--accent-solid); color: var(--text-on-accent); }
 .bline:hover .rbtn, .rbtn:focus-visible { opacity: 1; }
 .rbtn:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
-/* A report and its replies are one card (T-0072, design B; shared/thread.ts): the report, a heading that counts the
-   replies and folds them, then a row per reply, never deeper. A thread that came later is a card of its own whose top
-   line goes back to the report. */
+/* A thread in the chat (T-0076, design C; shared/thread.ts): a report with replies is one card, the report, its newest
+   reply, a line with the count and "Open thread", and a field that opens the thread to write in. Under a Dispatcher
+   message, and where a reply came after other messages, a chip does the same. The whole thread is in the panel. */
 .tcard { align-self: flex-start; width: min(560px, 92%); display: flex; flex-direction: column; min-width: 0; background: var(--surface-card); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim); border-radius: var(--radius-xl); }
 .tcard > .attach { align-self: stretch; width: auto; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; box-shadow: inset 0 -.5px 0 var(--border-subtle); }
 .tcard > .attach.flash { animation-name: flash; }
-.t-head { display: flex; align-items: center; gap: var(--space-6); min-width: 0; margin: var(--space-6) var(--space-6) 0; padding: var(--space-4) var(--space-10); border: 0; border-radius: var(--radius-md); background: none; font: inherit; font-size: var(--fs-caption); color: var(--text-secondary); text-align: left; cursor: pointer; }
-.t-head .sym { flex: none; font-size: var(--icon-sm); color: var(--accent-text); }
-.t-head b { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-weight: 600; }
-.t-head > span { flex: none; }
-.t-fold { display: flex; align-items: center; gap: var(--space-8); min-width: 0; min-height: var(--control-sm); margin: var(--space-6); padding: var(--space-2) var(--space-10); border: 0; border-radius: var(--radius-md); background: none; font: inherit; font-size: var(--fs-caption); color: var(--text-secondary); text-align: left; cursor: pointer; }
-.t-head + .t-fold { margin-top: 0; }
-.tcard.open > .t-fold { margin-bottom: 0; }
-.t-fold b { flex: none; color: var(--text-primary); font-weight: 600; }
-.t-fold > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.t-fold .chev { flex: none; width: 7px; height: 11px; color: var(--text-tertiary); transition: rotate var(--dur-fast) var(--ease-standard); }
-.t-fold[aria-expanded="true"] .chev { rotate: 90deg; }
-:is(.t-head, .t-fold, button.t-q):hover { background: var(--surface-hover); color: var(--text-primary); }
-:is(.t-head, .t-fold):focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.tcard > .t-rows { padding-bottom: 0; }
+/* The newest reply as a preview: four lines at most; the panel has the rest. */
+.tcard .t-row .t-txt { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.t-foot { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) var(--space-8); min-width: 0; margin: 0 var(--space-6); padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10); font-size: var(--fs-caption); color: var(--text-secondary); }
+.t-foot b { flex: none; color: var(--text-primary); font-weight: 600; }
+.t-foot .gap { flex: 1; }
+.t-open { flex: none; min-height: var(--control-sm); padding: 0 var(--space-8); border: 0; border-radius: var(--radius-md); background: none; font: inherit; font-weight: 600; color: var(--accent-text); white-space: nowrap; cursor: pointer; }
+.t-field { display: flex; align-items: center; min-height: var(--control-md); margin: var(--space-4) var(--space-8) var(--space-8); padding: 0 var(--space-12); border: 0; border-radius: var(--radius-md); background: var(--surface-sunken); font: inherit; font-size: var(--fs-caption); color: var(--text-tertiary); text-align: left; cursor: text; }
+.t-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--space-6); min-width: 0; max-width: min(560px, 92%); margin-top: calc(-1 * var(--space-4)); padding: var(--space-2) var(--space-10) var(--space-2) var(--space-8); border: 0; border-radius: var(--radius-full); background: var(--accent-soft); font: inherit; font-size: var(--fs-caption); color: var(--text-secondary); text-align: left; cursor: pointer; }
+.t-chip.late { margin-top: 0; }
+.t-chip .sym { flex: none; font-size: var(--icon-sm); color: var(--accent-text); }
+.t-chip b { flex: none; font-weight: 600; color: var(--accent-text); }
+.t-chip .t-name { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-primary); }
+.t-chip > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.t-new { flex: none; padding: 0 var(--space-6); border-radius: var(--radius-full); background: var(--accent-fill); color: var(--text-on-accent); font-size: var(--fs-caption2); font-style: normal; font-weight: 600; line-height: 16px; white-space: nowrap; }
+:is(.t-open, .t-field):hover { background: var(--surface-hover); }
+.t-field:hover { color: var(--text-secondary); }
+.t-chip:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+:is(.t-open, .t-field, .t-chip):focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+/* The thread open in the panel: its root is ringed in the chat, as a selection (no fill). */
+.tcard.thr-on, .attach.thr-on, .bline.thr-on > .bub { box-shadow: inset 0 0 0 2px var(--accent); }
+.tcard > .attach.thr-on { box-shadow: inset 0 -.5px 0 var(--border-subtle); }
+.t-chip[aria-expanded="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
 .t-rows { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-6) var(--space-6); }
 .t-row { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding: var(--space-6) var(--space-10); border-radius: var(--radius-md); }
 .t-row:hover { background: var(--surface-hover); }
@@ -1628,3 +1638,20 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .dec .scope { display: flex; align-items: baseline; gap: var(--space-6); min-width: 0; font-size: var(--fs-caption2); color: var(--text-secondary); }
 .dec .scope > span { flex: none; }
 .dec .scope > code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The thread panel (T-0076): in the right sidebar's place while a thread is open, so the side question and the
+   terminal, which float over the chat, never sit under it. */
+.thr { display: none; overflow: hidden; padding-bottom: 0; }
+.win.thr-open #chat-ins { display: none; }
+.win.thr-open #chat-ins:not([hidden]) + .thr { display: flex; }
+.thr-h b { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.thread.thr-body { flex: 1 1 auto; min-height: 0; gap: var(--space-2); margin-inline: calc(-1 * var(--space-6)); padding: var(--space-2) var(--space-6) var(--space-8); }
+.thr-root { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; margin-bottom: var(--space-6); padding: var(--space-6) var(--space-6) var(--space-8) var(--space-10);border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); }
+.thr-root .who { display: flex; align-items: center; gap: var(--space-6); min-height: var(--control-sm); margin: 0; align-self: stretch; font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); }
+.thr-root .who b { color: var(--text-primary); }
+.thr-root .who time { font-weight: 400; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.thr-root .gap { flex: 1; }
+.thr-rt { font-size: var(--fs-body); font-weight: 600; overflow-wrap: anywhere; }
+.thr-root .t-txt { color: var(--text-secondary); }
+.thr .composer.thr-c { position: static; left: auto; right: auto; bottom: auto; flex: none; margin: 0 calc(-1 * var(--space-4)) var(--space-12); padding-left: var(--space-12); box-shadow: var(--rim); background: var(--surface-sunken); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.thr .composer.thr-c .send { width: var(--control-md); height: var(--control-md); }
