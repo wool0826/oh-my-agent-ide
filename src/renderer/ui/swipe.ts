@@ -12,11 +12,13 @@ const CLEARS = /^(res|aa):/;
 const OWN = 'button, a, input, textarea, select, label, [contenteditable], .fix';
 
 const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** Rows a drag or a touchpad swipe holds: the other one leaves them alone. */
+const held = new WeakSet<HTMLElement>();
 
 /** The row a pointer or wheel event at `at` would swipe, if any. */
 function rowAt(root: HTMLElement, at: Element | null, own: boolean): HTMLElement | null {
   const row = at?.closest<HTMLElement>(ROW);
-  if (!row || !root.contains(row) || row.closest('.ins-detail') || (own && at!.closest(OWN)) || row.matches('.editing, .swipe-out')) return null;
+  if (!row || !root.contains(row) || row.closest('.ins-detail') || (own && at!.closest(OWN)) || row.matches('.editing, .swipe-out') || held.has(row)) return null;
   return row;
 }
 
@@ -31,19 +33,24 @@ export function initSwipe(root: HTMLElement, clear: (nav: string) => Promise<unk
   // A two-finger swipe: wheel events mostly sideways move the row under the fingers; ones mostly down scroll the list.
   // The gesture (and its momentum) ends once the events stop for a moment.
   let wheel: { row: HTMLElement; s: WheelSwipe; ctl: Swipe | null; timer: number } | null = null;
+  // Wheel events before this time start nothing: the rest of a scroll, or the momentum of a swipe already let go.
+  let calm = 0;
   const done = () => {
     if (!wheel) return;
-    const { ctl } = wheel;
+    const { row, ctl } = wheel;
     wheel = null;
+    held.delete(row);
+    calm = performance.now() + WHEEL_IDLE;
     ctl?.end(false, 0);
   };
   root.addEventListener('wheel', (e) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     if (!wheel) {
       const row = rowAt(root, e.target as Element | null, false);
-      // A vertical scroll that starts over a row is the list's; a pointer drag in progress keeps the row.
-      if (!row || Math.abs(e.deltaX) <= Math.abs(e.deltaY) || row.classList.contains('swiping')) return;
+      // A vertical scroll is the list's to the end, even when its last events drift sideways.
+      if (!row || Math.abs(e.deltaX) <= Math.abs(e.deltaY) || e.timeStamp < calm) { calm = e.timeStamp + WHEEL_IDLE; return; }
       wheel = { row, s: wheelStart(), ctl: null, timer: 0 };
+      held.add(row);
     }
     const w = wheel;
     clearTimeout(w.timer);
@@ -165,6 +172,7 @@ function swipe(row: HTMLElement, clear: (nav: string) => Promise<unknown>): Swip
 }
 
 function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => Promise<unknown>) {
+  held.add(row);
   const x0 = down.clientX, y0 = down.clientY, id = down.pointerId;
   let mode: 'wait' | 'swipe' | 'scroll' = 'wait';
   let ctl: Swipe | null = null;
@@ -201,6 +209,7 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => Pro
     window.removeEventListener('pointercancel', up, true);
     window.removeEventListener('keydown', esc, true);
     document.body.classList.remove('swipe-drag');
+    held.delete(row);
   };
 
   // Escape puts a row being dragged back.

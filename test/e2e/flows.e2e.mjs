@@ -1552,16 +1552,20 @@ flow('a two-finger touchpad swipe over a Notifications row clears it like the dr
   const wheel = (nav, dx, dy = 0, n = 6) => app.evaluate(`const el = document.querySelector('${row(nav)} .tile'); let kept = 0; for (let i = 0; i < ${n}; i++) { if (!el.dispatchEvent(new WheelEvent('wheel', { deltaX: ${dx / n}, deltaY: ${dy / n}, bubbles: true, cancelable: true }))) kept++; } return kept;`);
   const x = (nav) => app.evaluate(`const r = document.querySelector('${row(nav)}'); return r ? Math.round(new DOMMatrix(getComputedStyle(r).transform).m41) : null;`);
   const rest = (n) => app.until(`document.querySelectorAll('#chat-ins .res').length === ${n} && !document.querySelector('#chat-ins .swiping, #chat-ins .swipe-under')`, `${n} results at rest`);
+  // Fingers lifted between two gestures: wheel events right after one (its momentum) start nothing.
+  const lift = () => app.evaluate('await new Promise((r) => setTimeout(r, 300)); return 1;');
   // A short swipe: the row follows the fingers (content scrolled right moves the row left), then comes back.
   assert.equal(await wheel(ids[0], Math.round(w * 0.2)), 6);
   assert.equal(await x(ids[0]), -Math.round(w * 0.2));
   await rest(2);
   assert.equal(await x(ids[0]), 0);
   // A scroll down over the row is the list's: nothing is held back and the row stays.
+  await lift();
   assert.equal(await wheel(ids[0], 2, 60), 0);
   assert.equal(await x(ids[0]), 0);
   await rest(2);
   // Past 35% to the right: armed, and once the gesture stops the row is cleared with the toast and Undo.
+  await lift();
   await wheel(ids[1], -Math.round(w * 0.5));
   assert.ok(await app.evaluate("document.querySelector('#chat-ins .swipe-under')?.classList.contains('armed')"));
   await rest(1);
