@@ -8,6 +8,7 @@ import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW } from '../../shared/con
 import { compactCommand } from '../../shared/compactInstructions';
 import { artifactEnv, CONNECTOR_CHECK_MS, connectorChanges, connectorSettings, toReconnect } from './connectors';
 import { t } from '../i18n';
+import { parseArtifactComment, userMessageText, writesComment, type ArtifactComment } from '../../shared/artifactComment';
 
 /** Compaction as the owner sees it: Claude Code's own (mid-turn) and the app's /compact alike. */
 export type CompactEvent =
@@ -77,6 +78,11 @@ export interface SessionEvents {
   onResend?(texts: string[]): void;
   /** Compaction started or ended. A failed one never fails the turn: the conversation stays as it was. */
   onCompact?(e: CompactEvent): void;
+  /**
+   * A turn Claude Code started for a comment sent to Claude on an artifact (shared/artifactComment.ts): `start` when
+   * the comment comes in, `end` when the turn ends, with whether a reply was posted in it.
+   */
+  onArtifactComment?(e: { phase: 'start' | 'end'; comment: ArtifactComment; replied: boolean }): void;
 }
 
 function userMsg(text: string): SDKUserMessage {
@@ -125,6 +131,10 @@ export class AgentSession {
   private turnText: string[] = [];
   /** This turn's assistant said a usage limit rejected it (the SDK's own error, not its text). */
   private limitHit = false;
+  /** The artifact comment the running turn answers, the reply calls it made, and whether one of them went through. */
+  private comment: ArtifactComment | null = null;
+  private commentCalls = new Set<string>();
+  private commentReplied = false;
   /** interrupt() was called during this turn: its error is the Stop, and input queued after it is dropped with it. */
   private interrupted = false;
   /** Sent after interrupt(), before the stopped turn ended: kept when the queue is dropped. */
@@ -304,6 +314,7 @@ export class AgentSession {
       if (q !== this.q || this.closed) return;
       const msg = (e as Error).message ?? String(e);
       log.error(`[${this.cfg.label}] session error`, msg);
+      this.endComment();
       this.q = null;
       this.busy = false;
       if (LIMIT_RE.test(msg)) {
@@ -312,6 +323,17 @@ export class AgentSession {
       }
       this.ev.onStatus?.('error', msg.slice(0, 300));
     }
+  }
+
+  /** The comment turn is over: say whether it was answered. */
+  private endComment() {
+    const c = this.comment;
+    if (!c) return;
+    this.comment = null;
+    this.commentCalls.clear();
+    const replied = this.commentReplied;
+    this.commentReplied = false;
+    this.ev.onArtifactComment?.({ phase: 'end', comment: c, replied });
   }
 
   private handle(m: SDKMessage) {
@@ -346,6 +368,23 @@ export class AgentSession {
           }
         }
         return;
+      case 'user': {
+        // Claude Code's own user-role messages: tool results, and the comment turns it starts (artifactComment.ts).
+        if (m.parent_tool_use_id || (m as { isReplay?: boolean }).isReplay) return;
+        const content = m.message.content;
+        if (Array.isArray(content)) {
+          for (const b of content as any[]) {
+            if (b?.type === 'tool_result' && this.commentCalls.has(b.tool_use_id) && !b.is_error) this.commentReplied = true;
+          }
+        }
+        const c = parseArtifactComment(userMessageText(content));
+        if (c) {
+          this.endComment();
+          this.comment = c;
+          this.ev.onArtifactComment?.({ phase: 'start', comment: c, replied: false });
+        }
+        return;
+      }
       case 'rate_limit_event':
         accounts.applyEvent(this.cfg.accountId, m.rate_limit_info as any);
         return;
@@ -378,6 +417,7 @@ export class AgentSession {
             this.turnText.push(b.text);
             if (!this.internalTurn) this.ev.onText?.(b.text);
           } else if (b.type === 'tool_use') {
+            if (this.comment && writesComment(b.name, b.input)) this.commentCalls.add(b.id);
             this.ev.onTool?.(b.name, summarizeTool(b.name, b.input));
           }
         }
@@ -392,6 +432,7 @@ export class AgentSession {
         const finalText = this.turnText.length ? this.turnText[this.turnText.length - 1] : text;
         this.turnText = [];
         this.countSpend(m);
+        this.endComment();
         // A /compact that ends without a boundary did not compact. Claude Code says why in its text ("Error during compaction: ...").
         if (internal && this.compacting) this.failCompact(finalText || text || 'compaction failed');
         const compactLimited = internal && this.compactFailure !== null && LIMIT_RE.test(this.compactFailure);

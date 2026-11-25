@@ -39,6 +39,15 @@ export function workerState(w: Pick<Worker, 'status' | 'request' | 'stalledAt'>,
   return 'idle';
 }
 
+/**
+ * How far a plan is, in the one wording every screen uses: "2/3 · Review" while it runs, "Stopped at 2/3 · Review"
+ * where it failed, and "All 3 steps done" at the end. The count is the step being worked on, not the steps done.
+ */
+export function stepText(say: Say, v: StepView, failed = false): string {
+  if (v.allDone) return say('side.stepsDone', { total: v.total });
+  return failed ? say('wk.stoppedAt', { n: v.at + 1, total: v.total, title: v.current }) : `${v.at + 1}/${v.total} · ${v.current}`;
+}
+
 const PROTOCOL = /^(RESULT|PR|FILE|BLOCKED):/;
 
 /**
@@ -81,14 +90,14 @@ export function workerLine(say: Say, w: W, last: T | null | undefined, o: { ask?
   switch (state) {
     case 'ask': return { text: o.ask || say('st.waitingMe'), steps: v };
     case 'run': {
-      if (v && !v.allDone) return { text: `${v.at + 1}/${v.total} · ${v.current}`, steps: v };
+      if (v && !v.allDone) return { text: stepText(say, v), steps: v };
       return { text: now || say('st.running'), steps: v };
     }
-    // Stalled part-way: the step it sits on, without the count a running Worker leads with.
-    case 'stalled': return { text: v && !v.allDone ? `${v.at + 1}/${v.total} · ${v.current}` : now || o.about || '', steps: v };
+    // Stalled part-way: the step it sits on.
+    case 'stalled': return { text: v && !v.allDone ? stepText(say, v) : now || o.about || '', steps: v };
     case 'failed': {
       const why = plainStatus(w.status === 'error' ? w.statusText || last?.summary : last?.summary);
-      const at = v && !v.allDone ? say('wk.stoppedAt', { n: v.at + 1, total: v.total }) : '';
+      const at = v && !v.allDone ? stepText(say, v, true) : '';
       return { text: [at, why].filter(Boolean).join(' · ') || say('st.failed'), steps: v && !v.allDone ? v : null };
     }
     case 'asked': return { text: plainStatus(w.request?.text) || say('st.awaitDispatcher'), steps: v };

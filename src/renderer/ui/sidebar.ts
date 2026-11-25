@@ -5,7 +5,7 @@ import { canStop } from '../../shared/canStop';
 import { doneMask, stepper, stepView } from '../../shared/steps';
 import { queueLine, queueWhy, queueWhyText } from '../../shared/queueWhy';
 import { slotsUsed } from '../../shared/slots';
-import { askLine, lastFailed, plainStatus, workerState } from '../../shared/workerState';
+import { askLine, lastFailed, plainStatus, stepText, workerState } from '../../shared/workerState';
 import { decisionKind } from '../../shared/decisionView';
 import { type Key } from '../../shared/i18n';
 import { prsInReview } from '../../shared/prs';
@@ -92,10 +92,11 @@ export function renderSidebar() {
     // stopped by an error keeps them, so the row says at which step.
     const failed = lastFailed(w, x);
     const v = x && (OPEN.has(x.status) || failed) ? stepView(x) : null;
-    const where = `${grouped ? '' : `${w.repo ?? t('general')} · `}${w.id}`;
-    const small = w.status === 'waiting' ? `${w.id} · ${t('st.waitingMe')}` : awaitsDispatcher(x) ? `${w.id} · ${t('st.awaitDispatcher')}` : stalled ? `${w.id} · ${t('st.stalled')}`
-      : v ? `${where} · ${t(v.allDone ? 'side.stepsDone' : failed ? 'side.stoppedAt' : 'side.stepsCount', { done: v.done, total: v.total })}`
-      : `${where} · ${ago(x?.updatedAt ?? w.lastActiveAt)}`;
+    // "W-id · repository · state" as on every screen; under a repository's heading the repository is left out.
+    const where = grouped ? w.id : `${w.id} · ${w.repo ?? t('general')}`;
+    const state = w.status === 'waiting' ? t('st.waitingMe') : awaitsDispatcher(x) ? t('st.awaitDispatcher') : stalled ? t('st.stalled')
+      : v ? stepText(t, v, failed) : ago(x?.updatedAt ?? w.lastActiveAt);
+    const small = `${where} · ${state}`;
     const tip = [failed ? plainStatus(w.status === 'error' ? w.statusText || x?.summary : x?.summary) : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
     return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` data-tip="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepperHtml(x!, failed ? 'err' : waits ? 'wait' : v.allDone ? 'all' : 'run') : ''}</span></button>${workerActs(w)}</div>`;

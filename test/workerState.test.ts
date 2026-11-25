@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tr } from '../src/shared/i18n';
 import type { Say } from '../src/shared/askWhy';
-import { askLine, lastFailed, plainStatus, stateCounts, workerLine, workerState } from '../src/shared/workerState';
+import { askLine, lastFailed, plainStatus, stateCounts, stepText, workerLine, workerState } from '../src/shared/workerState';
 import type { Task, TaskStep, Worker } from '../src/shared/types';
 
 const en: Say = (k, v) => tr('en', k, v);
@@ -66,7 +66,7 @@ test('a running Worker shows the step it is on, or what it is doing', () => {
 
 test('a failed Worker says where it stopped and why', () => {
   const line = workerLine(en, w('idle'), x('failed', { summary: 'npm test exited with 1', steps: plan(1) }), {});
-  assert.equal(line.text, 'stopped at step 2 of 3 · npm test exited with 1');
+  assert.equal(line.text, 'Stopped at 2/3 · Write tests · npm test exited with 1');
   assert.equal(line.steps?.at, 1);
   // Without a plan, the error alone; without either, the state's name.
   assert.deepEqual(workerLine(en, w('idle'), x('failed', { summary: 'Out of memory' }), {}), { text: 'Out of memory', steps: null });
@@ -110,4 +110,13 @@ test('a Worker flagged as stalled says so while it sits idle on its open task, w
   // Once it runs again the flag no longer shows.
   assert.equal(workerState(w('running', { stalledAt: '2026-11-22T12:00:00Z' }), x('running')), 'run');
   assert.equal(stateCounts(['stalled', 'run']).stalled, 1);
+});
+
+test('every screen writes a plan the same way: the step on, where it stopped, or all done', () => {
+  const ko: Say = (k, v) => tr('ko', k, v);
+  const v = { done: 1, total: 3, at: 1, current: 'Review', allDone: false };
+  assert.equal(stepText(en, v), '2/3 · Review');
+  assert.equal(stepText(en, v, true), 'Stopped at 2/3 · Review');
+  assert.equal(stepText(ko, v, true), '2/3 Review에서 멈춤');
+  assert.equal(stepText(en, { ...v, done: 3, at: 3, allDone: true }), 'All 3 steps done');
 });

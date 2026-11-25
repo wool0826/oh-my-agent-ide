@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkify, urlEnd } from '../src/shared/linkify';
+import { linkify, reportLinks, shortUrls, urlEnd } from '../src/shared/linkify';
 
 const PR = 'https://github.com/wool0826/oh-my-agent-ide/pull/27';
 const a = (url: string) => `<a tabindex="0" role="link" data-action="open-url" data-href="${url}">${url}</a>`;
@@ -53,4 +53,26 @@ test('several URLs in one text', () => {
 test('urlEnd gives the length of the URL in a run', () => {
   assert.equal(urlEnd(`${PR}.`), PR.length);
   assert.equal(urlEnd(PR), PR.length);
+});
+
+test('a report names its links once each, by a short name, without the task\'s own PR', () => {
+  const text = `RESULT: Published [Release notes 0.7](https://claude.ai/artifact/2hL45) and opened ${PR}.\nPR: ${PR}\nAlso https://claude.ai/code/artifact/ab-12, https://www.example.com/x and https://claude.ai/artifact/2hL45 again.`;
+  assert.deepEqual(reportLinks(text), [
+    { url: 'https://claude.ai/artifact/2hL45', kind: 'artifact', name: 'Release notes 0.7' },
+    { url: PR, kind: 'pr', name: '27' },
+    { url: 'https://claude.ai/code/artifact/ab-12', kind: 'artifact', name: '' },
+    { url: 'https://www.example.com/x', kind: 'link', name: 'example.com' },
+  ]);
+  assert.deepEqual(reportLinks(text, [PR]).map((l) => l.kind), ['artifact', 'artifact', 'link']);
+  assert.deepEqual(reportLinks('no links here'), []);
+});
+
+test('a line that cannot hold links reads the short names', () => {
+  assert.equal(shortUrls(`Published https://claude.ai/artifact/2hL45 and ${PR}.`, 'Artifact'), 'Published Artifact and PR #27.');
+  assert.equal(shortUrls('See [the notes](https://claude.ai/artifact/2hL45).', 'Artifact'), 'See the notes.');
+});
+
+test('emphasis around a URL and a trailing slash do not change which link it is', () => {
+  assert.deepEqual(reportLinks('See **https://example.com/a** and [Docs](https://example.com/d/) at https://example.com/d'),
+    [{ url: 'https://example.com/a', kind: 'link', name: 'example.com' }, { url: 'https://example.com/d/', kind: 'link', name: 'Docs' }]);
 });

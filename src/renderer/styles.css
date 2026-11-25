@@ -711,6 +711,8 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .li .r { display: flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lst-h { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); padding: var(--space-12) var(--space-10) var(--space-4); }
 .pill { font-size: var(--fs-caption2); font-weight: 600; display: inline-flex; align-items: center; gap: var(--space-4); min-height: 18px; padding: 0 var(--space-8); border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); white-space: nowrap; flex-shrink: 0; }
+.pstat { display: inline-flex; align-items: center; gap: var(--space-6); flex-shrink: 0; }
+.pstat .age { font-size: var(--fs-caption2); color: var(--text-tertiary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pill[data-tone="accent"] { background: var(--accent-soft); color: var(--accent-text); }
 .pill[data-tone="danger"] { background: var(--danger-soft); color: var(--danger-text); }
 .pill[data-tone="review"] { background: var(--review-soft); color: var(--review-text); }

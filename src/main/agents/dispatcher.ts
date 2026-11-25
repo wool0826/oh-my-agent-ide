@@ -22,6 +22,7 @@ import { attachmentBlock, registerAttachments } from '../attachments';
 import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today, uid } from '../util';
 import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
+import { artifactCommentLine } from '../../shared/artifactComment';
 import { hasSpend } from '../../shared/spend';
 import { threadTarget, turnReplyTo } from '../../shared/thread';
 import { sharedMemoDigest } from '../../shared/memos';
@@ -484,6 +485,7 @@ class Dispatcher {
         if (this.wakeDue) this.wake();
       },
       onTool: (_n, summary) => { this.statusText = summary; store.changed(); },
+      onArtifactComment: (e) => store.chat('event', artifactCommentLine(t, e)),
       onContext: (n) => { d.contextTokens = n; store.changed(); },
       onSpend: (turn, session) => {
         d.sessionSpend = session;

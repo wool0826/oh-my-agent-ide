@@ -309,6 +309,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 
 ### Pills, badges, tags — `.pill[data-tone]`, `.count`, `.diff-tag`
 - Pill 18 tall, 11/600, padding 0/8, tones (`data-tone`): neutral (none), `accent`, `danger`, `review`, `warning`, `success`, and the two app tones `pr-open` (an open PR) and `ask` (waits for the user, a solid fill).
+- A pill holds only the state; how long sits beside it, outside (`.pstat .age`: 11, `--text-tertiary`, tabular). Meta lines next to a Worker read `W-id · repository · state`, and a plan reads `n/N · current step` or `Stopped at n/N · step` on every screen (T-0084).
 - Count badge `.count`: `--state-ask` + `--text-on-ask` (the same solid fill as the `ask` pill and the decision glyph), 11/600 tabular, padding 0/6, min 18 wide. It counts decisions that wait; it pulses 3× when one arrives.
 - Diff file status A/M/D/R: 16×16 tag, radius 4, success/warning/danger/review tones.
 - Plan badge (Team/Enterprise) = accent/review pill.

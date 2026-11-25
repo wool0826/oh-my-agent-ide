@@ -18,6 +18,7 @@ import { PAGE, threadStart } from '../../shared/paging';
 import { type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
 import { decisionHint, decisionHtml, olderChat, prBadges, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
+import { linkify, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
 import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
@@ -28,12 +29,12 @@ import { ms, workerIcon } from './sidebar';
 const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
 
 /**
- * The pill of a Worker: its state in a word, then how long (shared/workerState.ts). The list and the inspector
- * header share it, so a queued Worker reads "Queued" in both and a failed one is never "Idle".
+ * The pill of a Worker: its state in a word, with how long beside it, outside the pill (shared/workerState.ts). The
+ * list and the inspector header share it, so a queued Worker reads "Queued" in both and a failed one is never "Idle".
  */
 export function statusPill(w: Worker) {
   const x = lastTask(w);
-  const pill = (tn: string, label: string, age = '') => `<span class="pill"${pillTone(tn)}>${esc(age ? `${label} · ${age}` : label)}</span>`;
+  const pill = (tn: string, label: string, age = '') => `<span class="pstat"><span class="pill"${pillTone(tn)}>${esc(label)}</span>${age ? `<span class="age">${esc(age)}</span>` : ''}</span>`;
   switch (workerState(w, x)) {
     case 'run': return pill('accent', t(w.status === 'starting' ? 'st.starting' : 'st.running'), x ? ago(x.updatedAt) : '');
     case 'ask': return pill('ask', t('st.waitingMe'), x ? ago(x.waitingSince ?? x.updatedAt) : '');
@@ -93,14 +94,15 @@ export function renderWorkerList() {
     // The second line is the most useful sentence for the state: what it asks, the step it is on, why it stopped, what
     // starts it, or what it reported. A state with no news shows the repository and model.
     const line = workerLine(t, w, x, { ask: dec ? oneLine(askLine(dec), 140) : null, queue: st === 'queued' && x ? queueLine(t, x, qctx)?.text : null, about });
-    const text = line.text === about || !w.repo ? line.text : `${w.repo} · ${line.text}`;
+    // "W-id · repository · state", as the sidebar and the chat write it.
+    const text = line.text === about ? `${w.id} · ${about}` : [w.id, w.repo ?? t('general'), line.text].filter(Boolean).join(' · ');
     // The context is shown once it matters: from half the window, and in orange from where it is compacted.
     const ctx = st !== 'archived' && w.contextTokens >= CONTEXT_WINDOW / 2
       ? `<span class="ctxm${w.contextTokens >= COMPACT_AT ? ' warn' : ''}" data-tip="${esc(`${t('kv.context')} ${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}`)}">${ring(w.contextTokens / CONTEXT_WINDOW)}${k(w.contextTokens)}</span>` : '';
     // The row's own button and Continue are side by side, not one inside the other (L14).
     const more = st === 'failed' ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
     return `<div class="li wrow${ui.wSel === w.id ? ' sel' : ''}${st === 'archived' ? ' dim' : ''}"><div tabindex="0" role="button" class="li-main" data-action="select-worker" data-id="${w.id}">${workerIcon(w)}
-      <span class="m"><b>${esc(w.id)} ${esc(x?.title ?? w.title)}</b><span class="l2${st === 'failed' ? ' err' : ''}">${line.steps ? pipsHtml(line.steps, st === 'failed' ? 'err' : st === 'run' ? '' : 'still') : ''}<span class="tx">${esc(oneLine(text, 200))}</span></span></span>
+      <span class="m"><b>${esc(w.id)} ${esc(x?.title ?? w.title)}</b><span class="l2${st === 'failed' ? ' err' : ''}">${line.steps ? pipsHtml(line.steps, st === 'failed' ? 'err' : st === 'run' ? '' : 'still') : ''}<span class="tx">${esc(oneLine(shortUrls(text, t('link.artifact')), 200))}</span></span></span>
       <span class="r">${ctx}${statusPill(w)}</span></div>${more}</div>`;
   };
   // The heading counts states, not Workers: how many need the user comes first.
@@ -159,7 +161,7 @@ export function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem 
     case 'worker': return `${prev?.from === 'worker' ? '' : `<span class="who">${esc(wid)}</span>`}${replyable(`<div class="bub wk">${workerReport(it.text)}</div>`, 'ws', wid, it.text, undefined, `log:${it.ts}`)}`;
     case 'user': return `<div class="bub me">${userText(it.text)}</div>`;
     case 'auto': return `<span class="event self">${sym('s-check', 'c-green')}<span>${esc(it.text)}</span></span>`;
-    default: return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${esc(it.text)}</span></span>`;
+    default: return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(it.text))}</span></span>`;
   }
 }
 
