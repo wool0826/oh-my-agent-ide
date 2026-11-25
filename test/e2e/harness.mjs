@@ -222,12 +222,12 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     if (await evaluate('window.innerWidth') < 1100) {
       const before = await evaluate('__e2e.resized');
       await send('Emulation.setDeviceMetricsOverride', { width: 1320, height: await evaluate('window.innerHeight'), deviceScaleFactor: 1, mobile: false });
-      await until("document.querySelector('#win').clientWidth === 1320 && !document.querySelector('#win').classList.contains('ins-over')", 'the default width');
-      // The page gets its resize event only with an input after the change, and that event closes a tooltip and
-      // cancels one about to show: moves over an empty corner of the window until the event has come, so it cannot
-      // land in the middle of the flow.
-      for (let i = 0; !(await evaluate(`__e2e.resized > ${before}`)); i++) {
-        if (i === 200) throw new Error('The page never got the resize event of the default width');
+      // A window off screen may lay the page out and send its resize event only with an input after the change, and
+      // that event closes a tooltip and cancels one about to show: moves over an empty corner of the window until the
+      // page is at that width and has had the event, so it cannot land in the middle of the flow.
+      const ready = `document.querySelector('#win').clientWidth === 1320 && !document.querySelector('#win').classList.contains('ins-over') && __e2e.resized > ${before}`;
+      for (let i = 0; !(await evaluate(ready)); i++) {
+        if (i === 400) throw new Error(`The page never reached the default width with its resize event: ${await evaluate("document.querySelector('#win').clientWidth + ' wide, ' + document.querySelector('#win').className + ', resize events: ' + __e2e.resized")}`);
         await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 3 + (i % 2) });
         await sleep(50);
       }
