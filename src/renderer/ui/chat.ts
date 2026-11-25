@@ -243,7 +243,8 @@ function threadCard(card: string | null, g: ReplyThread, items: { c: ChatItem }[
   const sum = open ? '' : `<span>${esc([rowWho(lastRow), oneLine(ownText(lastRow), 140)].filter(Boolean).join(': '))}</span>`;
   const fold = `<button type="button" class="t-fold" data-action="reply-fold" data-id="${esc(g.key)}" aria-expanded="${open}"><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg><b>${t('chat.replies', { n })}</b>${sum}</button>`;
   const head = card ?? `<button type="button" class="t-head" data-action="goto-report" data-id="${esc(g.root)}" data-tip="${esc(t('chat.toReport'))}">${sym('s-reply')}<b>${esc(title)}</b><span>${esc([x?.workerId, x?.prUrl ? `PR #${prNum(x.prUrl)}` : ''].filter(Boolean).join(' · '))}</span></button>`;
-  const rows = open ? `<div class="t-rows">${g.rows.map((j, k) => (j === mark ? NEW_FROM : '') + threadRow(items[j].c, k ? items[g.rows[k - 1]].c : null, g.root)).join('')}</div>` : '';
+  // A folded thread keeps its rows, hidden, so a quote of one of them can still find it and open it (goto-quote).
+  const rows = `<div class="t-rows"${open ? '' : ' hidden'}>${g.rows.map((j, k) => (open && j === mark ? NEW_FROM : '') + threadRow(items[j].c, k ? items[g.rows[k - 1]].c : null, g.root)).join('')}</div>`;
   const after = !open && g.rows.includes(mark) ? NEW_FROM : '';
   return `<div class="tcard${card ? '' : ' late'}${open ? ' open' : ''}" role="group" aria-label="${esc(t('chat.repliesTo', { title }))}">${head}${fold}${rows}</div>${after}`;
 }

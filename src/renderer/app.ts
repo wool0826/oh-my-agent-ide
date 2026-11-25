@@ -294,11 +294,19 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     // A quote at the top of a reply: back to the message it quotes, the nearest one above with those words.
+    // A quote in a folded thread opens it first.
     case 'goto-quote': {
       const th = el.closest('.thread');
       const src = [...(th?.querySelectorAll<HTMLElement>('[data-action="reply"]') ?? [])]
         .filter((b) => b.dataset.who === el.dataset.who && b.dataset.quote === el.dataset.quote && b.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-      const msg = src?.closest<HTMLElement>('.t-row, .attach') ?? src?.closest('.bline')?.querySelector<HTMLElement>('.bub') ?? null;
+      let msg = src?.closest<HTMLElement>('.t-row, .attach') ?? src?.closest('.bline')?.querySelector<HTMLElement>('.bub') ?? null;
+      const fold = src?.closest('.t-rows[hidden]')?.parentElement?.querySelector<HTMLElement>(':scope > .t-fold');
+      if (fold?.dataset.id && msg?.dataset.id) {
+        const row = msg.dataset.id;
+        ui.replyOpen.set(fold.dataset.id, true);
+        renderChat();
+        msg = th?.querySelector<HTMLElement>(`.t-row[data-id="${CSS.escape(row)}"]`) ?? null;
+      }
       if (msg) flashCard(msg); else toast(t('reply.gone'));
       break;
     }

@@ -247,7 +247,7 @@ export function markReplyTarget(box: 'chat' | 'ws') {
   if (!th) return;
   const src = ui.reply[box]?.src;
   for (const el of th.querySelectorAll('.target')) if (el.getAttribute('data-src') !== src) el.classList.remove('target');
-  if (src) for (const el of th.querySelectorAll(`[data-src="${CSS.escape(src)}"]:not(.rbtn)`)) el.classList.add('target');
+  if (src) for (const el of th.querySelectorAll(`[data-src="${CSS.escape(src)}"]:not([data-action="reply"])`)) el.classList.add('target');
 }
 
 /** The text to send from a composer, with the quote on top while a reply is open. The reply stays until the send succeeds. */

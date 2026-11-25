@@ -517,7 +517,7 @@ flow("a reply to a Worker's report becomes a row of its card, folds to a count, 
   await app.click(link);
   await send('And the tests?\n@fake say They pass.');
   await app.until("document.querySelector('#chat-thread .tcard.late')?.innerText.includes('They pass.')", 'the later card');
-  const folded = await app.evaluate("const [a, b] = document.querySelectorAll('#chat-thread .tcard'); return { first: [a.querySelector('.t-fold').getAttribute('aria-expanded'), a.querySelector('.t-fold').innerText.replace(/\\s+/g, ' ').trim(), !!a.querySelector('.t-rows')], late: [b.firstElementChild.matches('.t-head'), b.querySelector('.t-fold').getAttribute('aria-expanded')] };");
+  const folded = await app.evaluate("const [a, b] = document.querySelectorAll('#chat-thread .tcard'); return { first: [a.querySelector('.t-fold').getAttribute('aria-expanded'), a.querySelector('.t-fold').innerText.replace(/\\s+/g, ' ').trim(), !!a.querySelector('.t-rows:not([hidden])')], late: [b.firstElementChild.matches('.t-head'), b.querySelector('.t-fold').getAttribute('aria-expanded')] };");
   assert.deepEqual(folded, { first: ['false', '2 replies Dispatcher: The notes cover one change.', false], late: [true, 'true'] });
   await app.click('#chat-thread .tcard.late .t-head');
   await app.until("!!document.querySelector('#chat-thread .attach[data-task=\"T-0001\"].flash')", 'the card flashed');
