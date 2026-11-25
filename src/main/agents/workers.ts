@@ -34,7 +34,7 @@ import { ALLOW, ALLOW_TASK, DENY, type Task, type TaskStatus, type Worker, type 
 import { workerDecisions } from '../../shared/inbox';
 import { afterDependency, cancelSet, describeCancel, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
-import { permissionReason, planReason, questionReason } from '../../shared/askWhy';
+import { permissionPurpose, permissionReason, planReason, questionReason } from '../../shared/askWhy';
 import { doneNotice } from '../../shared/notifyRules';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../shared/slots';
 import { isStalled } from '../../shared/stall';
@@ -71,6 +71,8 @@ function setStatus(task: Task, status: TaskStatus) {
 
 class WorkerManager {
   sessions = new Map<string, WorkerSession>();
+  /** What each Worker said last in its current turn: a permission card's purpose line comes from it (askWhy.ts). */
+  private said = new Map<string, string>();
   /** Review fixes, CI fixes and follow-ups on finished tasks get different result-card wording. */
   private reviewing = new Set<string>();
   /** Workers whose files were put back to a checkpoint since their last message. */
@@ -242,6 +244,7 @@ class WorkerManager {
       onAccount: (id) => { w.accountId = id; store.changed(); },
       onText: (text) => {
         store.log(w.id, 'worker', text);
+        if (text.trim()) this.said.set(w.id, text);
         w.statusText = oneLine(text, 140);
         this.touch(w);
       },
@@ -258,6 +261,8 @@ class WorkerManager {
       onStatus: (st, text) => {
         // The turn the user stopped ends in an error: the Worker is idle, not in error.
         const stopped = st !== 'busy' && this.stopping.has(w.id);
+        // A turn starts or ends: what the Worker said before belongs to another turn.
+        this.said.delete(w.id);
         if (st === 'busy') {
           if (w.status !== 'waiting') w.status = 'running';
           w.stalledAt = null;
@@ -372,6 +377,7 @@ class WorkerManager {
           options: this.permOptions(scope),
           questionKey: null,
           reason: permissionReason(t, { who: w.id, task, tool, input, rule: alwaysAskRule(tool, input, loadSettings().askOff), decisionReason: req.reason }),
+          purpose: permissionPurpose(t, { steps: task?.steps, said: this.said.get(w.id), input }),
         }, signal);
         store.log(w.id, 'user', `${oneLine(code, 140)} → ${this.answerLabel(ans)}`);
         if (ans === ALLOW_TASK && task && scope) task.grants = withGrant(task.grants, scope);
@@ -430,6 +436,7 @@ class WorkerManager {
           options: this.permOptions(scope),
           questionKey: null,
           reason: permissionReason(t, { who: w.id, task, tool: toolName, input, rule: alwaysAskRule(toolName, input, loadSettings().askOff), blockedPath: opts.blockedPath, decisionReason: cc, impact: opts.description }),
+          purpose: permissionPurpose(t, { steps: task?.steps, said: this.said.get(w.id), input }),
         }, opts.signal);
         store.log(w.id, 'user', `${summarizeTool(toolName, input)} → ${this.answerLabel(ans)}`);
         if (ans === ALLOW_TASK && task && scope) task.grants = withGrant(task.grants, scope);
@@ -1212,6 +1219,7 @@ class WorkerManager {
     if (s && s.background + s.shells > 0) {
       s.close();
       this.sessions.delete(w.id);
+      this.said.delete(w.id);
     }
     // Idle first: failing the task frees the slot, and fillSlots may hand this Worker held feedback or queued work.
     w.status = 'idle';
@@ -1386,6 +1394,7 @@ class WorkerManager {
     this.checkArchive(w.id);
     this.sessions.get(w.id)?.close();
     this.sessions.delete(w.id);
+    this.said.delete(w.id);
     w.status = 'archived';
     w.statusText = '';
     let kept: 'task' | 'dirty' | null = w.taskIds.some((id) => holdsWorktree(store.task(id))) ? 'task' : null;

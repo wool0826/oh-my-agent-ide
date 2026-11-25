@@ -192,6 +192,11 @@ export interface Decision {
   summary?: PlanSummary | null;
   /** Why the user is asked (src/shared/askWhy.ts). The card, the sidebar row and the OS notification all show it. Unset on older decisions. */
   reason?: DecisionReason | null;
+  /**
+   * permission: what the action is for, in one line: the task's current plan step and the Worker's last words before
+   * asking (askWhy.ts permissionPurpose). Unset when neither is known, and the card then shows no line for it.
+   */
+  purpose?: string | null;
   /** ci: the PR monitor asks whether to keep fixing CI. It is kept over a restart and waited for again. */
   kind?: 'ci';
 }

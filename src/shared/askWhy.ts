@@ -89,6 +89,38 @@ export function permissionReason(say: Say, a: {
   return { what, why: impact ? `${why} ${impact}` : why };
 }
 
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+/** The first sentence of what the Worker said, without Markdown marks; null when it says nothing about a purpose. */
+export function firstSentence(text: string | null | undefined, max = 160): string | null {
+  const line = String(text ?? '').split(/\n\s*\n|\n(?=\s*(?:[-*#>]|\d+\.)\s)/)[0] ?? '';
+  const plain = line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '').replace(/^\s*(?:#+|>)\s*/, '').replace(/\*\*|__|`/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\s+/g, ' ').trim();
+  const m = plain.match(/^.+?[.!?。](?=\s|$)/u);
+  const s = (m ? m[0] : plain).trim();
+  // A question to the user, or a word or two, says nothing about why.
+  if (s.length < 8 || /[?？]$/.test(s)) return null;
+  return clip(s, max);
+}
+
+/**
+ * Why a Worker's action is needed, not what it does (the reason's `what` already says that): the task's current plan
+ * step and the Worker's own words just before it asked. Null when neither is known; the task's title alone is in the
+ * reason already. A sentence that only repeats the Bash call's description is dropped.
+ */
+export function permissionPurpose(say: Say, a: { steps?: { title: string; doneAt: string | null }[] | null; said?: string | null; input?: unknown }): string | null {
+  const steps = a.steps ?? [];
+  const at = steps.findIndex((s) => !s.doneAt);
+  const step = at >= 0 && steps[at].title.trim() ? { n: at + 1, total: steps.length, step: clip(steps[at].title, 60) } : null;
+  let note = firstSentence(a.said);
+  const desc = (a.input as any)?.description;
+  if (note && typeof desc === 'string' && norm(desc) && (norm(note) === norm(desc) || norm(desc).includes(norm(note)))) note = null;
+  if (note && step && norm(note) === norm(step.step)) note = null;
+  if (step && note) return say('why.purposeStepNote', { ...step, note });
+  if (step) return say('why.purposeStep', step);
+  if (note) return say('why.purposeNote', { note });
+  return null;
+}
+
 /** A plan-first task's plan, waiting for approval before anything changes. */
 export function planReason(say: Say, a: { who: string; task: TaskRef | null }): DecisionReason {
   const what = a.task ? say('why.planWhat', { who: a.who, task: taskRef(a.task) }) : say('why.planWhatNoTask', { who: a.who });

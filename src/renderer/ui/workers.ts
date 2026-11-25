@@ -458,7 +458,7 @@ export function renderComposerDecision() {
     // The command itself, on one line: the right sidebar with its card may be hidden or narrow.
     const what = perm.code ? oneLine(perm.code.split('\n')[0], 300) : '';
     const label = what ? `<span class="cs-lbl">${t('dec.permShort')}</span><code>${esc(what)}</code>` : `<span>${t('dec.permWaits', { q: q(perm) })}</span>`;
-    html = `${sym(perm.code?.startsWith('$ ') ? 's-term' : 's-edit', 'c-gray')}${label}<button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${DENY}">${t('deny')}</button><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${ALLOW}">${t('allow')}</button>`;
+    html = `${sym(perm.code?.startsWith('$ ') ? 's-term' : 's-edit', 'c-gray')}${label}<button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${DENY}">${t('deny')}</button><button type="button" class="linkbtn" data-action="answer" data-id="${esc(perm.id)}" data-val="${ALLOW}">${t('allow')}</button>${perm.purpose ? `<span class="cs-why">${esc(oneLine(perm.purpose, 240))}</span>` : ''}`;
   }
   if (el.innerHTML !== html) el.innerHTML = html;
   if (el.className !== cls) el.className = cls;
