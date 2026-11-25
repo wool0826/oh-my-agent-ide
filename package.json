@@ -13,7 +13,11 @@
     "dist:win": "node build.mjs && electron-builder --win",
     "dist:mac": "node build.mjs && electron-builder --mac",
     "release": "node scripts/release.mjs",
+<<<<<<< HEAD
     "e2e": "node build.mjs && node --test --test-concurrency=1 test/e2e/flows.e2e.mjs test/e2e/crash.e2e.mjs",
+=======
+    "e2e": "node build.mjs && node --test --test-concurrency=1 \"test/e2e/*.e2e.mjs\"",
+>>>>>>> 32ed6db (Wait for conditions in the flaky tests and keep what failed e2e flows showed)
     "icon": "node scripts/make-icon.mjs && electron scripts/render-icon.cjs"
   },
   "author": "",

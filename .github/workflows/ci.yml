@@ -36,6 +36,15 @@ jobs:
       - name: End-to-end flows
         run: npm run e2e
         timeout-minutes: 8
+      # A failed flow leaves a picture of the window, its page and the app's logs (test/e2e/harness.mjs).
+      - name: Keep what failed end-to-end flows showed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failures-${{ matrix.os }}
+          path: test-results/e2e/
+          if-no-files-found: ignore
+          retention-days: 14
       # Packages the app without making an installer or signing it: proves the bundle can be put together here.
       - name: Package (unpacked)
         run: npx electron-builder --dir
