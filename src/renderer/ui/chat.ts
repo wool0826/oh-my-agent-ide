@@ -639,9 +639,12 @@ export function decisionHtml(d: Decision, inWorker = false) {
   if (d.source === 'plan') {
     buttons = `<div class="btns"><button class="btn btn-primary" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}${kbd(ALLOW)}</button></div>`;
   } else if (d.source === 'permission') {
-    // "Allow for this task" is there when the action's kind can be named; the line under the buttons says what that yes covers.
+    // "Allow for this task" is there when the action's kind can be named; the line just above the buttons says what
+    // that yes covers, so it is read before the button is pressed.
     const scope = d.options.find((o) => o.label === ALLOW_TASK);
-    buttons = `<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn btn-primary" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>${scope?.description ? `<div class="scope"><span>${t('allowTask')}</span><code>${esc(scope.description)}</code></div>` : ''}`;
+    const [pre, post] = t('dec.scopeLine', { what: '\u0000' }).split('\u0000');
+    const scopeLine = scope?.description ? `<div class="scope"><span>${esc(pre)}</span><code>${esc(scope.description)}</code><span>${esc(post ?? '')}</span></div>` : '';
+    buttons = `${scopeLine}<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn btn-primary" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>`;
   } else {
     const col = d.options.length > 2 || d.options.some((o) => o.description);
     buttons = `<div class="btns${col ? ' col' : ''}"${col ? '' : ' data-fit="stack"'}>${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;

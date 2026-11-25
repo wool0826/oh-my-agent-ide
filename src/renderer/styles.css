@@ -612,7 +612,6 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .btns.col { flex-direction: column; align-items: stretch; }
 /* Answer buttons are one row or a stack, never a broken row: stacked at full width, the default (last in the row) first. */
 .btns[data-fitted] { flex-direction: column; align-items: stretch; }
-.btns.perm[data-fitted] { flex-direction: column-reverse; }
 .btns.col .btn { justify-content: flex-start; text-align: left; }
 /* Buttons: one component, three sizes, five intents (design system 2.9). The size is a least height, so a label that
    wraps, or a larger text size, makes the button taller instead of spilling out of it. */
@@ -1409,11 +1408,16 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 @media (forced-colors: active) { .row.sel, .li.sel { outline: 2px solid Highlight; outline-offset: -2px; } }
 :is(.dec, .aa, .res).sel { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; border-radius: var(--radius-lg); }
 :is(.dec, .aa, .res).sel, :is(.dec, .aa, .res).sel + :is(.dec, .aa, .res) { border-top-color: transparent; }
-.dec[data-dec]:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
-/* Key hints only on the selected card, so colour is not the only sign of which card the keys answer. */
-.dec .btn kbd { background: color-mix(in srgb, currentColor 16%, transparent); }
+/* Focus alone is not a selection (Enter selects, it does not answer): a dashed outline 3px off the card. The inbox's
+   group lets it show past its edges. */
+.dec[data-dec]:not(.sel):focus-visible { outline: 2px dashed var(--focus-ring); outline-offset: 3px; }
+.dec[data-dec].sel:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
+#sec-dec > .group { overflow: visible; }
+/* Key hints only on the selected card, so colour is not the only sign of which card the keys answer. They keep their
+   room on every card and only fade in, so selecting a card never moves or reorders its buttons. */
+.dec .btn kbd { background: color-mix(in srgb, currentColor 16%, transparent); transition: opacity var(--dur-fast) var(--ease-out); }
 .dec .btns.col .btn kbd { margin-right: var(--space-4); }
-.dec:not(.sel) .btn kbd { display: none; }
+.dec:not(.sel) .btn kbd { opacity: 0; }
 /* Sidebar decision rows name the command or question, on up to two lines, with their age. */
 .row.drow { align-items: flex-start; }
 .row.drow .t b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
@@ -1525,6 +1529,9 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .cstrip > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cstrip.answers { background: var(--accent-soft); }
 .cstrip .linkbtn { flex: none; font-size: var(--fs-caption); }
+/* A permission's command on the strip itself, so it is never allowed unseen (a hidden or narrow right sidebar). */
+.cstrip > .cs-lbl { flex: none; color: var(--text-secondary); }
+.cstrip > code { flex: 0 1 auto; min-width: 0; margin-right: auto; padding: 1px var(--space-6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cerr > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .cerr button { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
 .cerr button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
@@ -1648,10 +1655,9 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .tip > span { min-width: 0; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 14; overflow: hidden; }
 .tip > kbd { flex: none; padding: 0; background: none; font-size: var(--fs-caption2); font-weight: var(--fw-medium); color: var(--text-secondary); white-space: nowrap; }
 @media (forced-colors: active) { .tip { border: 1px solid CanvasText; } }
-/* What "Allow for this task" would cover, readable before it is pressed. */
-.dec .scope { display: flex; align-items: baseline; gap: var(--space-6); min-width: 0; font-size: var(--fs-caption2); color: var(--text-secondary); }
-.dec .scope > span { flex: none; }
-.dec .scope > code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* What "Allow for this task" would cover: one line of text just above the buttons, read before one is pressed. */
+.dec .scope { font-size: var(--fs-caption2); line-height: var(--lh-ui); color: var(--text-secondary); overflow-wrap: anywhere; word-break: keep-all; }
+.dec .scope > code { display: inline; padding: 0 var(--space-4); margin: 0 var(--space-2); word-break: break-all; color: var(--text-primary); }
 
 /* The thread panel (T-0076): in the right sidebar's place while a thread is open, so the side question and the
    terminal, which float over the chat, never sit under it. */

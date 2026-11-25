@@ -1169,7 +1169,8 @@ test('each wait for an answer is timed from its own start: a slot given back in 
   const t0 = Date.now();
   const first = askBash(s, 'rm -rf build', 'tu1');
   await tick();
-  workers.sweepWaiting(t0); // the half-minute sweep sees the wait and marks when it began
+  assert.ok(x.waitingSince && Date.parse(x.waitingSince) >= t0, 'the wait is timed from when it began, before any sweep');
+  x.waitingSince = new Date(t0).toISOString();
   workers.sweepWaiting(t0 + 10 * 60_000 + 1000);
   assert.equal(x.slotReleased, true);
   answer(workerDecisions(store.data.decisions, w.id)[0].id, ALLOW);
@@ -1180,6 +1181,8 @@ test('each wait for an answer is timed from its own start: a slot given back in 
   const second = askBash(s, 'rm -rf dist', 'tu2');
   await tick();
   assert.equal(x.status, 'waiting');
+  assert.equal(x.slotReleased, false);
+  x.waitingSince = new Date(t0 + 9.5 * 60_000).toISOString(); // the second wait began nine and a half minutes in
   workers.sweepWaiting(t0 + 10 * 60_000 + 1000);
   assert.equal(x.slotReleased, false, 'the new wait is timed from now, not from the first one');
   assert.equal(holdsSlot(x), true);
