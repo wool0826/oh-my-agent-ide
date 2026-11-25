@@ -848,7 +848,10 @@ function autoSlot(a: Automation) {
   const off = a.enabled ? '' : ' off';
   const next = a.enabled && a.nextRunAt ? runWords(a.nextRunAt, true) : '';
   const sw = `<input class="switch" type="checkbox" data-change="auto-toggle" data-id="${a.id}"${a.enabled ? ' checked' : ''} aria-label="${esc(`${t('auto.on')}: ${a.title}`)}">`;
-  const row = rowHtml('auto', a.id, sel, rowText(a.title, a.enabled ? triggerLabel(a) : `${triggerLabel(a)} · ${t('auto.off')}`));
+  const edit = ui.autoEdit?.id === a.id;
+  const row = rowHtml('auto', a.id, sel, rowText(a.title, edit ? `${triggerLabel(a)} · ${t('memo.editing')}` : a.enabled ? triggerLabel(a) : `${triggerLabel(a)} · ${t('auto.off')}`));
+  // Being changed, its card is the form, filled in; it stays open with what was typed when another one is picked.
+  if (edit) return slotHtml(a.id, sel, row, `<div class="memo auto open${off}">${autoFormHtml(a)}</div>`);
   if (!sel) {
     const card = `<div class="memo auto${off}" data-action="pick" data-tab="auto" data-id="${a.id}" data-focus="card-auto-${a.id}" tabindex="0"><p>${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${next ? esc(` · ${t('auto.next', { t: next })}`) : ''}</span><span class="acts">${sw}</span></span></div>`;
     return slotHtml(a.id, false, row, card);
@@ -858,18 +861,36 @@ function autoSlot(a: Automation) {
     : a.lastRunChatId ? `<a tabindex="0" role="link" data-action="open-chat" data-id="${esc(a.lastRunChatId)}">${esc(runWords(a.lastRunAt))}</a>` : esc(runWords(a.lastRunAt));
   const facts = `<dl class="facts"><dt>${t('auto.when')}</dt><dd>${esc(triggerLabel(a))}</dd>${a.trigger.kind === 'daily' ? `<dt>${t('auto.nextRun')}</dt><dd>${esc(a.enabled && a.nextRunAt ? runWords(a.nextRunAt) : t('auto.off'))}</dd>` : ''}<dt>${t('auto.lastRun')}</dt><dd>${last}</dd></dl>`;
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
-  const card = `<div class="memo auto open${off}"><p>${esc(a.prompt)}</p>${facts}<span class="meta"><span class="gap"></span><span class="acts">${sw}${del}</span></span></div>`;
+  const pen = `<button class="mact" data-action="auto-edit" data-id="${a.id}" data-tip="${t('memo.edit')}" aria-label="${t('memo.edit')}"><svg aria-hidden="true"><use href="#s-pencil"/></svg></button>`;
+  const card = `<div class="memo auto open${off}"><p>${esc(a.prompt)}</p>${facts}<span class="meta"><span class="gap"></span><span class="acts">${sw}${pen}${del}</span></span></div>`;
   return slotHtml(a.id, true, row, card);
+}
+
+/**
+ * The automation form: without `a` it adds one, with it it changes that one (filled in, Cancel and Save).
+ * The daily fields are always there and only fade out for "When a PR merges" (.merged), so switching
+ * moves nothing and is done in place, without drawing the tab again (app.ts, "auto-kind").
+ */
+function autoFormHtml(a?: Automation) {
+  const kind = a ? ui.autoEdit!.kind : ui.autoKind;
+  const wk = a ? ui.autoEdit!.wk : ui.autoWk;
+  // One form adds and one changes, so their fields have their own ids and kept values.
+  const id = (name: string) => (a ? `auto-${name}-e` : `auto-${name}`);
+  const keep = (name: string) => (a ? `auto-${name}-e-${a.id}` : `auto-${name}`);
+  const time = a?.trigger.kind === 'daily' ? a.trigger.time : '09:00';
+  const btns = a
+    ? `<button class="btn" data-action="auto-edit-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="auto-save" data-id="${a.id}">${t('save')}</button>`
+    : `<button class="btn btn-primary" data-action="auto-add">${t('auto.add')}</button>`;
+  return `<div class="auto-add${kind === 'merged' ? ' merged' : ''}"><textarea class="inp" id="${id('prompt')}" data-keep="${keep('prompt')}" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}">${a ? esc(a.prompt) : ''}</textarea>
+    <div class="auto-when">${segc(id('kind'), kind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}<input class="inp auto-time auto-daily" id="${id('time')}" data-keep="${keep('time')}" value="${esc(time)}" inputmode="numeric" aria-label="${t('auto.time')}"></div>
+    <div class="auto-when"><label class="auto-wk auto-daily">${t('auto.weekdays')}<input class="switch" type="checkbox" id="${id('wk')}"${wk ? ' checked' : ''}></label><span class="gap"></span>${btns}</div></div>`;
 }
 
 /** The Automations tab: "New automation" (the form, selected at first), then the ones set up. */
 export function autosHtml() {
-  // The daily fields are always there and only fade out for "When a PR merges" (.merged), so switching
-  // moves nothing and is done in place, without drawing the tab again (app.ts, "auto-kind").
-  const add = `<div class="auto-add${ui.autoKind === 'merged' ? ' merged' : ''}"><textarea class="inp" id="auto-prompt" data-keep="auto-prompt" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}"></textarea>
-    <div class="auto-when">${segc('auto-kind', ui.autoKind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}<input class="inp auto-daily" id="auto-time" data-keep="auto-time" value="09:00" inputmode="numeric" aria-label="${t('auto.time')}"></div>
-    <div class="auto-when"><label class="auto-wk auto-daily">${t('auto.weekdays')}<input class="switch" type="checkbox" id="auto-wk"${ui.autoWk ? ' checked' : ''}></label><span class="gap"></span><button class="btn btn-primary" data-action="auto-add">${t('auto.add')}</button></div></div>${formErrHtml('auto')}`;
   const list = S!.automations;
+  if (ui.autoEdit && !list.some((a) => a.id === ui.autoEdit!.id)) ui.autoEdit = null;
+  const add = autoFormHtml() + formErrHtml('auto');
   if (!list.length) return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
   ui.autoSel = keepPick(list.map((a) => a.id), ui.autoSel, 'new');
   const isNew = ui.autoSel === 'new';
@@ -877,20 +898,45 @@ export function autosHtml() {
   return `${head}<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${list.map(autoSlot).join('')}</div></div>`;
 }
 
-export async function addAuto() {
-  const inp = $<HTMLTextAreaElement>('#auto-prompt');
+/** What a form says, or null after pointing at the field that is empty or not a time. `e` is '-e' for the form that changes one. */
+function readAutoForm(e: '' | '-e', kind: 'daily' | 'merged', wk: boolean): { prompt: string; trigger: Automation['trigger'] } | null {
+  const inp = $<HTMLTextAreaElement>(`#auto-prompt${e}`);
   const prompt = inp?.value.trim();
-  if (!prompt) { inp?.focus(); return; }
-  let trigger: Automation['trigger'] = { kind: 'merged' };
-  if (ui.autoKind === 'daily') {
-    const time = parseTime($<HTMLInputElement>('#auto-time')?.value ?? '');
-    if (!time) { toast(t('auto.badTime'), true); $<HTMLInputElement>('#auto-time')?.focus(); return; }
-    trigger = { kind: 'daily', time, weekdays: ui.autoWk };
-  }
+  if (!prompt) { inp?.focus(); return null; }
+  if (kind === 'merged') return { prompt, trigger: { kind: 'merged' } };
+  const time = parseTime($<HTMLInputElement>(`#auto-time${e}`)?.value ?? '');
+  if (!time) { toast(t('auto.badTime'), true); $<HTMLInputElement>(`#auto-time${e}`)?.focus(); return null; }
+  return { prompt, trigger: { kind: 'daily', time, weekdays: wk } };
+}
+
+export async function addAuto() {
+  const f = readAutoForm('', ui.autoKind, ui.autoWk);
+  if (!f) return;
   // The text stays until it is saved; a failure is shown under it (L8).
-  const r = await tryCall('auto:add', prompt, trigger);
+  const r = await tryCall('auto:add', f.prompt, f.trigger);
   ui.formErr.auto = r.ok ? '' : r.error;
   if (r.ok) { const now = $<HTMLTextAreaElement>('#auto-prompt'); if (now) now.value = ''; }
+  renderChatInspector();
+}
+
+/** Opens an automation's card as the form, filled in with what it is now. */
+export function editAuto(id: string) {
+  const a = S!.automations.find((x) => x.id === id);
+  if (!a) return;
+  ui.autoEdit = { id, kind: a.trigger.kind, wk: a.trigger.kind === 'daily' && !!a.trigger.weekdays };
+  ui.autoSel = id;
+  ui.memoDel = null;
+}
+
+/** Saves the form of the automation being changed. What was typed stays when it is not saved; why is a toast. */
+export async function saveAuto() {
+  const e = ui.autoEdit;
+  if (!e) return;
+  const f = readAutoForm('-e', e.kind, e.wk);
+  if (!f) return;
+  const r = await tryCall('auto:update', e.id, f.prompt, f.trigger);
+  if (!r.ok) { toast(r.error, true); return; }
+  if (ui.autoEdit?.id === e.id) ui.autoEdit = null;
   renderChatInspector();
 }
 

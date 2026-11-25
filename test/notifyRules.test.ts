@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Burst, cleanTime, doneNotice, inQuietHours, notifyDoneFrom } from '../src/shared/notifyRules';
+import { Burst, cleanTime, doneNotice, inQuietHours, notifyDoneFrom, quietUntil } from '../src/shared/notifyRules';
 import { tr } from '../src/shared/i18n';
 import type { Say } from '../src/shared/askWhy';
 
@@ -66,4 +66,12 @@ test('a task-end notification says who, how it ended and its PR, over the title 
   const long = doneNotice(say, { who: 'W-02', title: 'T', summary: 'x'.repeat(300), ok: true }).body.split('\n')[1];
   assert.equal(long.length, 120);
   assert.ok(long.endsWith('…'));
+});
+
+test('while the quiet hours are on, their end is known; outside them there is none', () => {
+  const at = (h: number, m: number) => new Date(2026, 10, 25, h, m);
+  assert.equal(quietUntil('22:00', '7', at(23, 30)), '07:00');
+  assert.equal(quietUntil('22:00', '7', at(6, 59)), '07:00');
+  assert.equal(quietUntil('22:00', '7', at(7, 0)), null);
+  assert.equal(quietUntil('', '07:00', at(3, 0)), null);
 });

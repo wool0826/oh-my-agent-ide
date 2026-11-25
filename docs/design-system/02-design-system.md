@@ -305,6 +305,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - Section header 11/600 `--text-tertiary`. When a decision arrives, the "Needs your decision" header turns `--accent-text` and pulses 3× (`--dur-attention`); red is for errors only.
 - Decision row (`.drow`): the glyph is a solid `--state-ask` disc with the "!" in `--text-on-ask`; the title clamps to two lines; second line "Worker · kind"; the age sits at the right.
 - Worker row while it runs: its step list under the title (see "Worker steps and queue").
+- Foot (`.side-foot`): ghost icon buttons at `btn-lg` with 18 glyphs: the gear at the left, the sidebar toggle at the right. While the do-not-disturb hours are on, a moon (`#dnd-mark`, `#s-moon`) sits beside the gear in the same neutral colour; its tooltip and name say "Do not disturb until 07:00" and it opens Settings on the alerts. With the sidebar folded the three stack.
 
 ### Pills, badges, tags — `.pill[data-tone]`, `.count`, `.diff-tag`
 - Pill 18 tall, 11/600, padding 0/8, tones (`data-tone`): neutral (none), `accent`, `danger`, `review`, `warning`, `success`, and the two app tones `pr-open` (an open PR) and `ask` (waits for the user, a solid fill).
@@ -390,6 +391,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - A glass panel, 344 wide by default, resizable from 320 to 960 with the capsule handle on its left edge (`.rz`, 8 wide; capsule 4×36, `--accent` and 56 while dragged or focused).
 - Tabs `.seg.ins-tabs`: Inbox (with the count of waiting decisions), Memos, Automations, Scripts; full width, at most 360, centred. When the labels do not fit, the tabs that are not selected fold to their icon (`data-fitted`) and show their name in a tooltip.
 - One column up to 560 wide (content at most 440, centred). From 560, with something selected, two panes: the list at 248 and the selected card beside it (`.ins-cols.split`, gap 12). The card is moved, not copied; its pane is a card surface with rim, radius 14, and stays in view while the list scrolls. List rows (`.li`): at least 40 tall, padding 8/10, selected = the 2px `--accent` ring.
+- A card that can be changed (a script, an automation) has a pencil before its delete button (`.mact`). The card then becomes the form that adds one, filled in, with Cancel and a primary Save at the right of its last line, and its row says "editing". One card is changed at a time; an error on Save is a toast and the form keeps what was typed.
 
 ### Worker steps and queue — `.stp`, `.pips`, `.plan-steps`, `.q-row`
 - **Step list `.stp`** (left sidebar, under a Worker that runs): one line per step, 11 `--text-tertiary`, a 7px pip joined by a 1px line. Done = a tick, current = a filled pip with a halo, to do = a ring. The colour follows the Worker: `--state-run`, `--state-wait` while it waits for the user, `--state-error` after a failure, `--state-done` when all are done. Up to five steps are drawn whole; a longer plan shows a window of three and counts the hidden ones above and below (`.stp-more`). A step that just finished pops (`--ease-spring`), and the window rolls up by a line (`--dur-glide`).

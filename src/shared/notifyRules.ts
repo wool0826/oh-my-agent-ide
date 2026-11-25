@@ -20,6 +20,11 @@ export function inQuietHours(from: string, to: string, now: Date): boolean {
   return a < b ? n >= a && n < b : n >= a || n < b;
 }
 
+/** While the quiet hours are on, the time they end as "HH:MM"; else null. */
+export function quietUntil(from: string, to: string, now: Date): string | null {
+  return inQuietHours(from, to, now) ? parseTime(to) : null;
+}
+
 /** A stored time as "HH:MM", or '' when it is not one. */
 export function cleanTime(v: unknown): string {
   return typeof v === 'string' ? parseTime(v) ?? '' : '';

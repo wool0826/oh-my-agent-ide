@@ -1,7 +1,8 @@
 import { store } from './store';
 import { log } from './log';
 import { nowIso, uid } from './util';
-import { autoTitle, automationMessage, isDue, nextRun, parseTime } from '../shared/automations';
+import { t } from './i18n';
+import { autoTitle, automationMessage, editedAutomation, isDue, nextRun, parseTime } from '../shared/automations';
 import type { Automation, AutoTrigger, Task } from '../shared/types';
 
 /**
@@ -31,7 +32,7 @@ class Automations {
 
   add(input: { prompt: string; title?: string; trigger: AutoTrigger }): Automation {
     const prompt = input.prompt.trim();
-    if (!prompt) throw new Error('An automation needs something to ask for.');
+    if (!prompt) throw new Error(t('auto.err.empty'));
     const trigger = normalize(input.trigger);
     const a: Automation = {
       id: uid(), title: input.title?.trim() || autoTitle(prompt), prompt, trigger, enabled: true,
@@ -40,6 +41,17 @@ class Automations {
     this.list().push(a);
     store.changed();
     return a;
+  }
+
+  /** Change what an automation asks for or when it runs (shared/automations.ts, editedAutomation). */
+  update(id: string, input: { prompt: string; trigger: AutoTrigger }): Automation {
+    const list = this.list();
+    const i = list.findIndex((x) => x.id === id);
+    if (i < 0) throw new Error(t('err.noItem'));
+    if (!input.prompt?.trim()) throw new Error(t('auto.err.empty'));
+    Object.assign(list[i], editedAutomation(list[i], input.prompt, normalize(input.trigger), new Date()));
+    store.changed();
+    return list[i];
   }
 
   setEnabled(id: string, enabled: boolean) {
@@ -88,7 +100,7 @@ class Automations {
 function normalize(trigger: AutoTrigger): AutoTrigger {
   if (trigger.kind === 'merged') return { kind: 'merged' };
   const time = parseTime(trigger.time);
-  if (!time) throw new Error('The time must be a time of day, such as 09:00.');
+  if (!time) throw new Error(t('auto.badTime'));
   return { kind: 'daily', time, weekdays: !!trigger.weekdays };
 }
 

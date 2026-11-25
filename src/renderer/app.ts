@@ -16,7 +16,7 @@ import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { Drafts } from '../shared/drafts';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
-import { addAuto, addFiles, addMemo, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, moveDecision, tickDecisions } from './ui/chat';
+import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, moveDecision, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
@@ -143,7 +143,7 @@ export async function act(el: HTMLElement, e: Event) {
   switch (a) {
     case 'view': go({ view: el.dataset.v as View }); break;
     case 'worker-filter': go({ view: 'worker', wOpen: false, wFilter: (el.dataset.v || null) as WorkerFilter | null }); break;
-    case 'open-settings': openSettings(); break;
+    case 'open-settings': openSettings(el.dataset.v as Pane | undefined); break;
     case 'side-toggle': togglePanel('side'); break;
     case 'reply': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
@@ -200,6 +200,9 @@ export async function act(el: HTMLElement, e: Event) {
     case 'pick': await pick(el, e); break;
     case 'open-chat': if (id && !(await jumpToChat(id))) toast(t('auto.runGone')); break;
     case 'auto-add': await addAuto(); break;
+    case 'auto-edit': if (id) { editAuto(id); renderChatInspector(); $<HTMLTextAreaElement>('#auto-prompt-e')?.focus(); } break;
+    case 'auto-edit-cancel': ui.autoEdit = null; renderChatInspector(); break;
+    case 'auto-save': await saveAuto(); break;
     // Saved scripts (ui/scripts.ts). Run is the only way one starts.
     case 'script-save': await saveScript(id ?? 'new'); renderChatInspector(); break;
     case 'script-run': if (id) await runScript(id, el as HTMLButtonElement); break;
@@ -865,6 +868,9 @@ export function init() {
     if (el.dataset.change === 'auto-toggle') { void call('auto:toggle', el.dataset.id, (el as unknown as HTMLInputElement).checked); return; }
     if (el.id === 'auto-wk') { ui.autoWk = (el as unknown as HTMLInputElement).checked; return; }
     if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoKind === 'merged'); return; }
+    // The same two switches in the form that changes an automation.
+    if (el.id === 'auto-wk-e') { if (ui.autoEdit) ui.autoEdit.wk = (el as unknown as HTMLInputElement).checked; return; }
+    if (el.id === 'auto-kind-e') { if (ui.autoEdit) { ui.autoEdit.kind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoEdit.kind === 'merged'); } return; }
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
     if (el.id === 'usage-every') { void call('settings:save', { usageRefreshMins: Number(el.value) }); return; }
     if (el.id === 'set-gh') el.value = hostOnly(el.value);
