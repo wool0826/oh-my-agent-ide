@@ -1331,10 +1331,21 @@ test('Worker sessions get the claude.ai artifacts and connectors, unless they ar
   const on = workers.ensureSession(addWorker({ sessionId: 'sa' }))! as AgentSession;
   assert.equal(on.cfg.connectors, true);
   assert.match(on.cfg.systemAppend, /claude\.ai artifacts and connectors:/);
+  assert.deepEqual(on.cfg.allowedTools, ['ArtifactComments']);
+  assert.match(on.cfg.systemAppend, /Answer it with ArtifactComments/);
+  loadSettings().artifactAutoReply = false;
+  try {
+    const quiet = workers.ensureSession(addWorker({ sessionId: 'sq' }))! as AgentSession;
+    assert.equal(quiet.cfg.allowedTools, undefined);
+    assert.doesNotMatch(quiet.cfg.systemAppend, /ArtifactComments/);
+  } finally {
+    loadSettings().artifactAutoReply = true;
+  }
   loadSettings().claudeConnectors = false;
   try {
     const off = workers.ensureSession(addWorker({ sessionId: 'sb' }))! as AgentSession;
     assert.equal(off.cfg.connectors, false);
+    assert.equal(off.cfg.allowedTools, undefined);
     assert.doesNotMatch(off.cfg.systemAppend, /claude\.ai artifacts/);
   } finally {
     loadSettings().claudeConnectors = true;

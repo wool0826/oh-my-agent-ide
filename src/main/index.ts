@@ -425,6 +425,7 @@ function registerIpc() {
       || (patch.claudeRules !== undefined && patch.claudeRules !== before.claudeRules)
       || (patch.claudeMemory !== undefined && patch.claudeMemory !== before.claudeMemory)
       || (patch.claudeConnectors !== undefined && patch.claudeConnectors !== before.claudeConnectors)
+      || (patch.artifactAutoReply !== undefined && patch.artifactAutoReply !== before.artifactAutoReply)
       || (!!patch.dispatcherEffort && patch.dispatcherEffort !== before.dispatcherEffort)
       || (!!patch.dispatcherModel && patch.dispatcherModel !== before.dispatcherModel)
       || (patch.effortPerTask !== undefined && patch.effortPerTask !== before.effortPerTask);

@@ -81,6 +81,7 @@ export const DEFAULTS: SettingsView = {
   claudeRules: true,
   claudeMemory: true,
   claudeConnectors: true,
+  artifactAutoReply: true,
   memorySuggest: true,
   shellAsk: true,
   shellProfile: true,

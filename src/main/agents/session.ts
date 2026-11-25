@@ -26,6 +26,8 @@ export interface SessionConfig {
   mcpServers?: Record<string, McpServerConfig>;
   canUseTool?: CanUseTool;
   disallowedTools?: string[];
+  /** Tools used without asking, over the permission mode (connectorAllowedTools). */
+  allowedTools?: string[];
   /** Workers load project settings so the repo's CLAUDE.md applies. */
   settingSources?: Options['settingSources'];
   effort?: Options['effort'];
@@ -182,6 +184,7 @@ export class AgentSession {
       canUseTool: this.cfg.canUseTool,
       mcpServers: this.cfg.mcpServers,
       disallowedTools: this.cfg.disallowedTools,
+      allowedTools: this.cfg.allowedTools,
       settingSources: this.cfg.settingSources ?? [],
       plugins: pluginPath() ? [{ type: 'local', path: pluginPath()! }] : undefined,
       skills: 'all',
