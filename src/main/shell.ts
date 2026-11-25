@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { store } from './store';
 import { ghEnv } from './repos';
@@ -8,7 +9,8 @@ import { kill } from './runs';
 import { t } from './i18n';
 import { log } from './log';
 import { nowIso } from './util';
-import { addOutput, handOver, lineCount, tailLines } from '../shared/shell';
+import { loadSettings } from './settings';
+import { addOutput, dropRcNoise, handOver, lineCount, shellArgs, tailLines } from '../shared/shell';
 import type { ChatItem, ShellRun } from '../shared/types';
 
 /**
@@ -17,11 +19,16 @@ import type { ChatItem, ShellRun } from '../shared/types';
  * keeps the end of its output; when it ends, that end goes to the Dispatcher with its next turn (no turn of its own).
  * The side terminal (main/terminal.ts) runs its lines the same way, kept apart from the chat.
  */
-/**
- * The line as PowerShell runs it: output in UTF-8 rather than the console's code page, and a native command's own
- * exit code rather than the 1 PowerShell ends with for any failed line.
- */
-export const psLine = (line: string) => `[Console]::OutputEncoding = [Text.Encoding]::UTF8\n${line}\n$ok = $?; if ($ok) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }`;
+/** PowerShell 7 on Windows, when it is installed: on the PATH or in its usual folder. Looked up each time (cheap). */
+function findPwsh(): string | null {
+  const dirs = [...(process.env.PATH ?? '').split(';'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7')];
+  for (const d of dirs) {
+    if (!d.trim()) continue;
+    const f = path.join(d.trim(), 'pwsh.exe');
+    try { if (fs.statSync(f).isFile()) return f; } catch { /* not here */ }
+  }
+  return null;
+}
 
 /** Where a line runs: a registered repository's checkout, or the IDE home ('' or null). Throws when it can't. */
 export function shellCwd(repo: string | null): { cwd: string; repo: string } {
@@ -41,7 +48,9 @@ export interface Running { stop(): void }
  */
 export function startLine(run: ShellRun, cwd: string, output: () => void, ended: () => void): Running {
   const win = process.platform === 'win32';
-  const proc: ChildProcess = spawn(win ? 'powershell.exe' : (process.env.SHELL || '/bin/sh'), win ? ['-NoProfile', '-NonInteractive', '-Command', psLine(run.cmd)] : ['-lc', run.cmd], {
+  const profile = loadSettings().shellProfile !== false;
+  const how = shellArgs({ platform: process.platform, shell: process.env.SHELL || '/bin/sh', cmd: run.cmd, profile, pwsh: win && profile ? findPwsh() : null });
+  const proc: ChildProcess = spawn(how.file, how.args, {
     cwd, env: ghEnv(), windowsHide: true,
     // Its own process group, so Stop also stops what it started.
     detached: !win,
@@ -61,10 +70,18 @@ export function startLine(run: ShellRun, cwd: string, output: () => void, ended:
     output();
   };
   // One decoder for each stream, so a character split between chunks stays whole.
-  for (const stream of [proc.stdout, proc.stderr]) {
+  // A marked run's output starts with what the rc files print; it is dropped up to RC_DONE (stderr is on stdout then).
+  let rc: string | null = how.marked ? '' : null;
+  const fromShell = (text: string, last = false) => {
+    const r = dropRcNoise(rc, text, last);
+    rc = r.pending;
+    keep(r.show);
+  };
+  for (const [stream, shell] of [[proc.stdout, true], [proc.stderr, false]] as const) {
     const dec = new StringDecoder('utf8');
-    stream?.on('data', (d: Buffer) => keep(dec.write(d)));
-    stream?.on('end', () => keep(dec.end()));
+    const take = shell ? fromShell : keep;
+    stream?.on('data', (d: Buffer) => take(dec.write(d)));
+    stream?.on('end', () => (shell ? fromShell(dec.end(), true) : keep(dec.end())));
   }
   const started = Date.now();
   let done = false;
@@ -82,7 +99,7 @@ export function startLine(run: ShellRun, cwd: string, output: () => void, ended:
   };
   proc.on('error', (e) => end(1, e.message));
   proc.on('close', (code) => end(code));
-  log.info(`shell run in ${cwd}`, run.cmd);
+  log.info(`shell run in ${cwd} (${how.file}${profile ? ', profile' : ''})`, run.cmd);
   return {
     stop() {
       if (done) return;

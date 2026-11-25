@@ -83,6 +83,7 @@ export const DEFAULTS: SettingsView = {
   claudeConnectors: true,
   memorySuggest: true,
   shellAsk: true,
+  shellProfile: true,
   background: true,
   openAtLogin: false,
 };

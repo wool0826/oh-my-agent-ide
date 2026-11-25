@@ -14,6 +14,62 @@ export const HANDOVER_MAX = 8000;
 /** Lines shown while the block is folded. */
 export const SHELL_FOLDED = 12;
 
+/**
+ * The profile files PowerShell itself loads, dot-sourced with everything they print dropped, so their aliases and
+ * functions are there without their greeting or a blocked-script error (execution policy). An exit code they leave
+ * behind is not taken for the line's.
+ */
+const PS_PROFILE = 'foreach ($p in @($PROFILE.AllUsersAllHosts, $PROFILE.AllUsersCurrentHost, $PROFILE.CurrentUserAllHosts, $PROFILE.CurrentUserCurrentHost)) { if ($p -and (Test-Path -LiteralPath $p)) { try { . $p *> $null } catch {} } }\n$global:LASTEXITCODE = $null\n';
+
+/**
+ * The line as PowerShell runs it: output in UTF-8 rather than the console's code page, the user's profile first when
+ * `profile`, and a native command's own exit code rather than the 1 PowerShell ends with for any failed line.
+ */
+export const psLine = (line: string, profile = false) => `[Console]::OutputEncoding = [Text.Encoding]::UTF8\n${profile ? PS_PROFILE : ''}${line}\n$ok = $?; if ($ok) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }`;
+
+/**
+ * Printed on a line of its own by an interactive shell's line before the user's command (shellArgs). What the rc
+ * files print while the shell starts (a greeting, compinit's or bash's job-control warnings) comes before it and is
+ * dropped (dropRcNoise).
+ */
+export const RC_DONE = '__oma_rc_done__';
+/** Shells that take -i, -l and -c together. Others (csh, tcsh, nu) run as before: a login shell, not interactive. */
+const SH_LIKE = /^-?(zsh|bash|ksh|mksh|dash|ash|sh|fish)$/;
+
+export interface ShellSpawn { file: string; args: string[]; /** Its output starts with the rc files' (RC_DONE). */ marked: boolean }
+
+/**
+ * How a "!" line, a saved script or a side-terminal line is started. Each line is a shell of its own, so `cd` and
+ * `export` do not carry over to the next one.
+ * - `profile` off: `$SHELL -lc` (a login shell, which skips ~/.zshrc and ~/.bashrc), or Windows PowerShell 5.1 with
+ *   -NoProfile.
+ * - `profile` on: `$SHELL -ilc`, interactive as a terminal's shell is, so the aliases and functions of ~/.zshrc and
+ *   ~/.bashrc work. /bin/sh starts it with its errors on the same pipe as its output, so what the rc files print,
+ *   in order, is before RC_DONE. Input stays closed and the shell has no terminal, so an rc file that asks something
+ *   gets end-of-file instead of waiting. On Windows, PowerShell 7 (`pwsh`, when found) with the profile loaded.
+ */
+export function shellArgs(o: { platform: string; shell: string; cmd: string; profile: boolean; pwsh?: string | null }): ShellSpawn {
+  if (o.platform === 'win32') {
+    return { file: o.profile && o.pwsh ? o.pwsh : 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', psLine(o.cmd, o.profile)], marked: false };
+  }
+  const name = o.shell.split('/').pop() ?? '';
+  if (!o.profile || !SH_LIKE.test(name)) return { file: o.shell, args: ['-lc', o.cmd], marked: false };
+  return { file: '/bin/sh', args: ['-c', 'exec "$0" -ilc "$1" 2>&1', o.shell, `printf '%s\\n' ${RC_DONE}\n${o.cmd}`], marked: true };
+}
+
+/**
+ * The output of a marked run (shellArgs) as it comes: `pending` is what came before RC_DONE so far. Returns what to
+ * show and what is still pending; once RC_DONE is past, `pending` is null and everything shows. At the end
+ * (`done`), output that never reached RC_DONE (the shell failed or stopped while starting) shows as it is.
+ */
+export function dropRcNoise(pending: string | null, chunk: string, done = false): { show: string; pending: string | null } {
+  if (pending === null) return { show: chunk, pending: null };
+  const all = pending + chunk;
+  const at = all.indexOf(`${RC_DONE}\n`);
+  if (at >= 0) return { show: all.slice(at + RC_DONE.length + 1), pending: null };
+  return done ? { show: all, pending: null } : { show: '', pending: all };
+}
+
 /** The command in a composer line that starts with "!", or null for a message. */
 export function shellCommand(text: string): string | null {
   return text.startsWith('!') ? text.slice(1).trim() : null;
