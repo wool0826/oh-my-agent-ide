@@ -123,6 +123,9 @@
   --panel-inset: 8px;
   --settings-nav-w: 240px;
   --settings-max: 680px;
+  --lights-x: 22px;
+  --lights-w: 60px;
+  --lights-gap: 14px;
   --dur-instant: 80ms;
   --dur-fast: 120ms;
   --dur-base: 180ms;
@@ -188,6 +191,20 @@
   --text-on-solid: var(--ref-gray-0);
   --surface-on-accent: rgba(255, 255, 255, .2);
   --surface-on-accent-sunken: rgba(0, 0, 0, .2);
+  --on-accent-line: rgba(255, 255, 255, .4);
+  --pr-open: var(--state-done);
+  --pr-open-text: var(--success-text);
+  --pr-open-soft: var(--success-soft);
+  --pr-merged: var(--state-review);
+  --pr-merged-text: var(--review-text);
+  --pr-merged-soft: var(--review-soft);
+  --pr-closed: var(--state-idle);
+  --pr-closed-text: var(--text-secondary);
+  --pr-closed-soft: var(--neutral-soft);
+  --avatar-1: var(--accent-solid);
+  --avatar-2: var(--success-solid);
+  --avatar-3: var(--ref-purple-600);
+  --avatar-4: var(--ref-orange-600);
   --border-subtle: rgba(255, 255, 255, .09);
   --border-default: rgba(255, 255, 255, .14);
   --border-strong: rgba(255, 255, 255, .4);
@@ -261,6 +278,7 @@
   --rim-on-accent: inset 0 1px 0 rgba(255, 255, 255, .22);
   --knob-edge: 0 0 0 .5px rgba(0, 0, 0, .3);
   --focus-outline: 2px solid var(--focus-ring);
+  --on-accent-focus: 2px solid var(--text-on-accent);
   --focus-offset: 2px;
 }
 
@@ -300,6 +318,20 @@
   --text-on-solid: var(--ref-gray-0);
   --surface-on-accent: rgba(255, 255, 255, .2);
   --surface-on-accent-sunken: rgba(0, 0, 0, .2);
+  --on-accent-line: rgba(255, 255, 255, .4);
+  --pr-open: var(--state-done);
+  --pr-open-text: var(--success-text);
+  --pr-open-soft: var(--success-soft);
+  --pr-merged: var(--state-review);
+  --pr-merged-text: var(--review-text);
+  --pr-merged-soft: var(--review-soft);
+  --pr-closed: var(--state-idle);
+  --pr-closed-text: var(--text-secondary);
+  --pr-closed-soft: var(--neutral-soft);
+  --avatar-1: var(--accent-solid);
+  --avatar-2: var(--success-solid);
+  --avatar-3: var(--ref-purple-600);
+  --avatar-4: var(--ref-orange-600);
   --border-subtle: rgba(0, 0, 0, .08);
   --border-default: rgba(0, 0, 0, .12);
   --border-strong: rgba(0, 0, 0, .45);
@@ -373,6 +405,7 @@
   --rim-on-accent: inset 0 1px 0 rgba(255, 255, 255, .22);
   --knob-edge: 0 0 0 .5px rgba(0, 0, 0, .3);
   --focus-outline: 2px solid var(--focus-ring);
+  --on-accent-focus: 2px solid var(--text-on-accent);
   --focus-offset: 2px;
 }
 @media (prefers-color-scheme: light) {
@@ -411,6 +444,20 @@
     --text-on-solid: var(--ref-gray-0);
     --surface-on-accent: rgba(255, 255, 255, .2);
     --surface-on-accent-sunken: rgba(0, 0, 0, .2);
+    --on-accent-line: rgba(255, 255, 255, .4);
+    --pr-open: var(--state-done);
+    --pr-open-text: var(--success-text);
+    --pr-open-soft: var(--success-soft);
+    --pr-merged: var(--state-review);
+    --pr-merged-text: var(--review-text);
+    --pr-merged-soft: var(--review-soft);
+    --pr-closed: var(--state-idle);
+    --pr-closed-text: var(--text-secondary);
+    --pr-closed-soft: var(--neutral-soft);
+    --avatar-1: var(--accent-solid);
+    --avatar-2: var(--success-solid);
+    --avatar-3: var(--ref-purple-600);
+    --avatar-4: var(--ref-orange-600);
     --border-subtle: rgba(0, 0, 0, .08);
     --border-default: rgba(0, 0, 0, .12);
     --border-strong: rgba(0, 0, 0, .45);
@@ -484,6 +531,7 @@
     --rim-on-accent: inset 0 1px 0 rgba(255, 255, 255, .22);
     --knob-edge: 0 0 0 .5px rgba(0, 0, 0, .3);
     --focus-outline: 2px solid var(--focus-ring);
+    --on-accent-focus: 2px solid var(--text-on-accent);
     --focus-offset: 2px;
   }
 }

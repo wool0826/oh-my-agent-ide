@@ -33,6 +33,7 @@ component    in components.css, built only from the two layers above
 - **Reduce transparency**: `prefers-reduced-transparency: reduce` or `data-transparency="reduced"` swaps every glass role for its `*-solid` partner and turns blur, wash and sheen off.
 - **Reduce motion**: `prefers-reduced-motion: reduce` or `data-motion="reduced"` sets all durations to 0; components also stop looping animations (spin, pulse, typing dots).
 - **Text size**: `--ui-font-size` (default 13px) drives `--px`; every type token is `calc(N * var(--px))`, as today.
+- **The app's copy**: `src/renderer/tokens.css` is `tokens/tokens.css` under a header comment, with nothing added (a unit test compares them). Every token the app uses is in `source/tokens.mjs`, including the names only the app needs (`--lights-*`, `--pr-*`, `--avatar-*`, `--on-accent-*`). To change a token: edit `source/tokens.mjs`, run `node source/build.mjs`, copy the file again.
 
 ## 2.3 Color
 
@@ -153,6 +154,16 @@ Dark 400s were nudged so glyphs keep 3:1 on selected glass rows: blue `#0a84ff �
 
 Gradients built from these: `--accent-fill` (top → bottom), `--danger-fill`, `--bg-wash`, `--surface-sheen`; `--accent-rim` and `--danger-rim` add the glossy top edge and glow.
 
+Aliases of the roles above, so they follow every theme:
+
+| Alias | Glyph | Pill text | Pill fill |
+|---|---|---|---|
+| PR open `--pr-open` / `-text` / `-soft` | `--state-done` | `--success-text` | `--success-soft` |
+| PR merged `--pr-merged` / `-text` / `-soft` | `--state-review` | `--review-text` | `--review-soft` |
+| PR closed `--pr-closed` / `-text` / `-soft` | `--state-idle` | `--text-secondary` | `--neutral-soft` |
+
+Account avatars carry white initials (`--text-on-solid`) on one of four fills, by the account's place in the list: `--avatar-1` = `--accent-solid`, `--avatar-2` = `--success-solid`, `--avatar-3` = purple.600, `--avatar-4` = orange.600. Each holds 4.5:1 in both themes.
+
 ### Color usage rules
 
 - `--text-tertiary` is for static meta text only: section headers, timestamps, placeholders, the version string. It is never a button label; on a selected row it steps up to `--text-secondary`.
@@ -160,7 +171,7 @@ Gradients built from these: `--accent-fill` (top → bottom), `--danger-fill`, `
 - Pills and tags: background `*-soft` (hue at 14% dark / 12–14% light) + text `*-text`.
 - Status never relies on color alone: glyphs differ in shape, pills carry words, meters show numbers.
 - **Agent states**: ask = a solid accent fill (`--state-ask` under `--text-on-ask`: the glyph disc, the "Needs your decision" pill and the decision count badges), run = blue, review (PR) = purple, wait = orange, done = green, idle/archived = gray, error = red. Kinds: repo = indigo, preference = pink, document = teal. Red is for errors only: `--state-ask` was red like `--state-error` until T-0045, which split them so "needs you" and "broke" do not look alike. Ask and run share the hue and differ by fill and glyph (a solid disc with "!", a spinning arc).
-- **Usage meter levels** (one rule for the toolbar and account cards): ≤30 `ok`, ≤50 `caution`, ≤80 `warn`, >80 `critical`, set with `data-level` on `.meter`.
+- **Usage meter levels** (one rule for the toolbar rings, the usage popover and account cards): ≤30 `ok`, ≤50 `caution`, ≤80 `warn`, >80 `critical`. A bar carries the level as `data-level` on `.meter`, a ring as `lv-g/y/o/r`.
 
 ## 2.4 Typography
 
@@ -215,6 +226,7 @@ Nested corners stay concentric (inner ≈ outer − padding).
 | `--row-min` | 44 | settings rows |
 | `--icon-sm/md/lg/hero` | 13/16/18/44 | in-button icons / glyph art / glyph box / empty states |
 | Layout | 272 · 344 · 52 · 8 | sidebar, inspector, toolbar height, panel inset (unchanged) |
+| `--lights-x/-w/-gap` | 22 · 60 · 14 | macOS traffic lights: where they start, the room they take, the gap after them. What sits at the top left of the window starts after `x + w + gap`, on macOS outside full screen only |
 
 Targets smaller than 24px visually (chip remove 20, clear 24) get a transparent inset so the clickable area is ≥24×24 (WCAG 2.5.8). Link rows (`.linkbtn`, `.links a`, plan links) are one text line high and get the same 24px-high area through `::after`; links inside a sentence keep the height of their line.
 
@@ -243,6 +255,7 @@ Blur: `--blur-panel` 28px/180% (panels, toolbar capsules, result card), `--blur-
 | Menu / popover / toast | `--surface-overlay` | `--rim-strong` | 4 (toast 3) | overlay |
 | Dialog | `--surface-overlay` on `--surface-scrim` | `--rim-strong` | 5 | overlay / scrim |
 | Chip or key on an accent fill | `--surface-on-accent` (lighter) / `--surface-on-accent-sunken` (the quote in the user's bubble) | — | — | — |
+| Hairline and focus ring on an accent fill | `--on-accent-line` (under a quote in the user's bubble) / `--on-accent-focus` (2px `--text-on-accent`) | — | — | — |
 
 ## 2.7 Motion
 
@@ -289,11 +302,13 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 ### Sidebar — `.row`, `.side-h`
 - Row: glyph box 18, gap 8, padding 6/8, radius 10. Title 13/500 `--text-primary`, meta 11 `--text-secondary`, badge 11/600 tabular.
 - States: hover `--surface-hover`, pressed `--surface-pressed`, selected (`aria-current`) a 2px `--accent` ring with no fill (T-0062), zero count = title in `--text-secondary`/400 and idle glyph (no opacity).
-- Section header 11/600 `--text-tertiary`; "Needs your decision" uses `--danger-text` and pulses 3× when a decision arrives.
+- Section header 11/600 `--text-tertiary`. When a decision arrives, the "Needs your decision" header turns `--accent-text` and pulses 3× (`--dur-attention`); red is for errors only.
+- Decision row (`.drow`): the glyph is a solid `--state-ask` disc with the "!" in `--text-on-ask`; the title clamps to two lines; second line "Worker · kind"; the age sits at the right.
+- Worker row while it runs: its step list under the title (see "Worker steps and queue").
 
 ### Pills, badges, tags — `.pill[data-tone]`, `.count`, `.diff-tag`
 - Pill 18 tall, 11/600, padding 0/8, tones (`data-tone`): neutral (none), `accent`, `danger`, `review`, `warning`, `success`, and the two app tones `pr-open` (an open PR) and `ask` (waits for the user, a solid fill).
-- Count badge: `--danger-solid` + white, min 18.
+- Count badge `.count`: `--state-ask` + `--text-on-ask` (the same solid fill as the `ask` pill and the decision glyph), 11/600 tabular, padding 0/6, min 18 wide. It counts decisions that wait; it pulses 3× when one arrives.
 - Diff file status A/M/D/R: 16×16 tag, radius 4, success/warning/danger/review tones.
 - Plan badge (Team/Enterprise) = accent/review pill.
 
@@ -320,15 +335,22 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 
 ### Inbox — `.group` of `.dec`, `.res`, `.aa`
 - Header `.ins-h`: 13/600 (was 700) + count badge or clear button (24, revealed on hover/focus).
-- Decision: padding 12, gap 8; source 11 `--text-secondary` with glyph; question 13/600; detail 12; command as a code block; buttons right-aligned, primary last; free-text field below. Plan: markdown in a sunken well (max 220). Questions with descriptions stack options as full-width buttons.
+- Decision `.dec`: padding 12, gap 8, 0.5px hairline between cards. In order: the source line, the question 13/600, the reason and detail 12, a command as a code block or a plan (markdown in a sunken well, max 220), the slot clock, the buttons, the free-text field (`.inp`: deny with a reason, revise the plan, another answer).
+  - Source line `.src` (11 `--text-secondary`): the kind chip `.dkind` (capsule, padding 0/8, `--neutral-soft`, 11/600 `--text-primary`, 13 icon: Command, Permission, Question, Plan), then "Worker · task", then the age `.dage` at the right (`--text-tertiary`, tabular). The age turns `--warning-text` (`.late`) when a quarter of the slot time is left, when the slot was given back, or after 10 minutes without a clock. Under 30em the "Worker · task" part takes its own line.
+  - Slot clock `.dhold`: a 48×3 track (`--neutral-soft`) that drains in `--state-wait`, then how long the Worker keeps its slot. After the slot is given back the line is `--warning-text` and the bar is empty.
+  - Buttons `.btns`: one row, right-aligned, gap 6, primary last (Deny, Allow for this task, Allow). When the row would break into two, the buttons become a full-width stack with the primary first (`data-fit="stack"`, set by `fit.ts`). A plan has one primary button. A question has no primary; with more than two options, or any description, the options are a left-aligned column (`.btns.col`, radius 10, padding 6/10) with the description under each label.
+  - Keys, on the selected card only: `kbd` hints on its buttons (the key's fill is 16% of the button's text colour). Enter allows or approves, D denies, T allows for the task, 1–9 pick an option, ↑/↓ move between cards. No modifiers; ignored while a syllable is being composed.
+  - Selected: a 2px `--accent` ring with no fill, radius 14. A new card flashes `--accent-soft` once (`--dur-attention`).
 - Result row: glyph 17, title 12/600, time 11 `--text-tertiary` tabular, links 12, summary 11.
-- Answered-for-you: selected = `--accent-soft`; pencil appears on hover/focus/selection; correction scope is a `.seg-fill`; corrected answers strike through in `--text-secondary` with the new one in `--accent-text`.
+- Answered-for-you: selected = the same 2px `--accent` ring with no fill; pencil appears on hover/focus/selection; correction scope is a `.seg-fill`; corrected answers strike through in `--text-secondary` with the new one in `--accent-text`.
 - All clear: 44 glyph `--text-tertiary`, 15/600 title, optional "N Workers are busy" link button.
 
-### Usage gauge — `.usage`, `.meter`
-- Toolbar capsule (radius full, panel glass, `--shadow-2`): per account name (11/600), "5h", bar 64×6, %, "7d", bar, %. Limited accounts show the name in `--danger-text`.
-- Bars use `.meter[data-level]` with the shared thresholds; the same component renders account-card meters in Settings. Bars are ≥3:1 against their track in both themes.
-- Compact mode (3+ accounts) should keep the numbers in the tooltip and the level colors identical.
+### Usage gauge — `.usage`, `.upop`, `.meter`
+- Toolbar capsule `.usage` (radius full, panel glass, `--shadow-2`, padding 4/8, gap 8): one pair of rings per account, in the order of Settings (T-0053, #120). Rings are 22 on a 24 grid, stroke 3 with round caps: 5 hours outside (r 10), 7 days inside (r 5.5). The track is `--meter-track`, or `--danger-soft` for a limited account. No number is shown in the toolbar.
+- Levels, the same four everywhere: ≤30 `--meter-ok`, ≤50 `--meter-caution`, ≤80 `--meter-warn`, above `--meter-critical`. Rings carry them as `lv-g/y/o/r`, bars as `data-level`. Arcs and bars are ≥3:1 against their track in both themes.
+- States: the rings under the pointer scale to 1.14; an account whose read failed is at 45% with a 7px `--warning` dot; a used-up account gets a danger pill beside its rings ("Resets in 2h 10m" or "Limited"), hidden under 1100px of window width.
+- Popover `.upop` (opens from the rings, by pointer or keyboard): 356 wide, radius 20, padding 6, overlay glass, `--rim-strong` + `--shadow-4`, `--z-popover`. One block per account (`.ua`, radius 10, padding 8/10/10): its rings at 20, name 13/600 with the plan, then the time of the figures or a danger pill. Under it one row per window (`.uw`): label 11/600, a `.meter` bar, the percentage 12/600, and when it resets. Figures kept from before a failed read are at 50% with their time in `--warning-text`. The footer has the last refresh and a round refresh button (26, `--surface-track`), which spins while it reads.
+- `.meter`: 6 tall, radius full, `--meter-track`; no figure = a hatched track (`.none`). Bars grow from 0 when the popover opens (`--dur-glide`). Account cards in Settings use the same bar at 5 tall.
 
 ### Fields and controls
 - `.field`: 28, radius 10, `--surface-sunken` + `--well`, 12px; hover adds a `--border-default` edge; focus `--focus-outline` (offset 0); `.is-warning` (font not installed) and `[aria-invalid]` outlines; disabled 45%. Textarea min 60, 1.5. `.mono` uses `--font-mono`.
@@ -347,8 +369,37 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - `.menu` replaces `.amenu`, `.pop`, `.ctxmenu`: padding 6, radius 14, overlay glass, `--rim-strong` + `--shadow-4`, enters with `--dur-fast`.
 - `.menu-item` 28, radius 8, padding 0/12/0/6, tick column 14 (radio items), optional mono hint on the right. Highlight `--accent-solid` + white (4.95:1). Danger items `--danger-text`, highlighted with `--danger-solid`. Disabled `--text-disabled`. Separator 0.5px; group header 11/600 tertiary.
 - `.dialog` 320 wide, radius 24, padding 24/20/20, title 15/600, body 12/1.5 secondary, two large buttons; scrim `--surface-scrim` + 3px blur.
-- `.toast` capsule, 12, overlay glass; `.is-error` in `--danger-text`.
+- `.toast` capsule, 12, overlay glass, `--rim-strong` + `--shadow-3`, padding 8/16, centred 84 above the bottom edge, `--z-toast`. Up to three stack, the newest at the bottom; the oldest that is not an error leaves first, and the same text again replaces its toast. A toast can carry one action as a link button (600, for example "Undo"); the action dismisses it. It stays 3 s, 6 s with an action. An error (`.err`) is `--danger-text`, has a 20 round close button and stays until closed.
 - z-index: raised 1 (resize edges and grips), composer 2, resize 3 (the panel resize handles), menu-catch 30, menu 31, settings 40, scrim 50, dialog 51, toast 60, popover 80, context menu 90, tooltip 100 (resolves the 50/50 clash).
+
+### Chat blocks — `.hand`, `.sh-run`
+- **Hand-out fold `.hand`**: the tasks the Dispatcher handed out in one turn are one card (min(560, 92%), `--surface-card` + rim, radius 20, padding 6). The heading is a button: CPU glyph, "N tasks handed out", the counts by state, a chevron that turns 90° when open. Each task is a row (`.hrow`, radius 10, padding 4/8): status glyph, title 12/500 over "Worker · repository · detail" 11, and a pill: `ask` "Needs your decision", `accent` "Running", `danger` "Failed", `warning` "Queued" or "After merge", `success` "Done", `pr-open` "PR open", neutral "Stopped". A row with a Worker opens it. The card is open while anything is unsettled and folds to its heading when all is.
+- **Shell run `.sh-run`** (T-0054, #121): a card across the thread (`--surface-card` + rim, radius 20). Header: a 20 "!" tile, the script's name if it has one, the first line of the command in mono 12/600 ("+n lines" when there are more), "in <folder>", then at the right a pill, the elapsed time 11 tabular and, while it runs, a small Stop button. Pill: `accent` with an 8px spinner while running, neutral when stopped, `success` "Exit 0", `danger` for another exit code. Output: mono 11 on `--surface-code`, radius 10, at most 50vh, the last 12 lines when folded, a blinking block cursor while it runs. Footer: what happens to the output (sent = `--success-text` with a tick, waiting for the Dispatcher's turn = a pulsing `--state-run` dot, not sent = `--text-tertiary`), then Copy and Run again as links once it has ended.
+
+### Composer states — `.dstat`, `.composer.shell`
+- **Dispatcher status line `.dstat`**: the first row inside the composer while the Dispatcher works. A 7px `--state-run` dot with a 3px halo that pulses (`--dur-attention`), "Dispatcher" 12/600, what it is doing (one line, cut with an ellipsis), the elapsed time in `--text-tertiary` tabular, and "Stop" as a link button. A 0.5px hairline separates it from the text. The Chat tab of the toolbar shows a 6px pulsing dot meanwhile. Send stays Send; Stop is only on this line.
+- **Shell mode `.composer.shell`**: typing `!` first turns the composer into a command line; Esc or Backspace on the empty line goes back. A 2px `--danger` ring with a soft glow and a `--danger-soft` wash; a "!" tile and the send button in `--danger-fill` (a play glyph); the text in mono 12 with a `--danger` caret. A bar above the text holds the mode pill (`--danger-soft` / `--danger-text`), the folder button, the "ask the Dispatcher about it" toggle (`--accent-soft` when on) and the key hints (↵, Esc).
+- **Strips `.cstrip`, `.cerr`**: a waiting decision on a Worker's composer and a failed send (alert glyph, text, a 20 round close button). Padding 4/10, radius 14, sunken well, 12.
+
+### Floating panels — `.sq`, `.tm`
+- **Side question `.sq`**: a panel over the chat's bottom right corner, above the composer: 420 wide by default, as tall as its content, at least 320×220, at most the chat's room. Opaque overlay surface, `--rim-strong` + `--shadow-4`, radius 20, one layer above the composer. Header: glyph, title 12/600, the "Separate context" chip (lock, `--neutral-soft`, 11/600), then minimise and close (20 round). The thread starts with a meta line (agent · model · folder, which can be picked until the first question); bubbles are 12 and at most 92% wide. After an answer two small buttons send it to the Dispatcher or save it as a memo. Its own composer is a sunken well without blur, with its own context meter.
+- **Side terminal `.tm`**: the same panel at the bottom left: 560×320 by default, at least 360×180. Header: title, folder button, Clear, minimise. The body is on `--surface-code`; each line run is "$ command" in mono 12/600 with "in <folder>", the same pill and timer as a shell run and a small Stop button, then its output in mono 11 `--text-secondary`. The input row gets a 2px `--accent` bottom line on focus.
+- **Resizing `.edge-rz`**: a 36×4 capsule centred on each free edge (top, and the side away from the window edge), the same as the sidebars' handle: hidden until the pointer is over the panel (`--border-default`), stronger on the edge (`--border-strong`), `--accent` and 56 long while dragged or focused. The corner between them drags both ways and draws nothing. Arrow keys move an edge by 16, 64 with Shift.
+
+### Right sidebar — `.inspector`, `.ins-tabs`, `.ins-cols`
+- A glass panel, 344 wide by default, resizable from 320 to 960 with the capsule handle on its left edge (`.rz`, 8 wide; capsule 4×36, `--accent` and 56 while dragged or focused).
+- Tabs `.seg.ins-tabs`: Inbox (with the count of waiting decisions), Memos, Automations, Scripts; full width, at most 360, centred. When the labels do not fit, the tabs that are not selected fold to their icon (`data-fitted`) and show their name in a tooltip.
+- One column up to 560 wide (content at most 440, centred). From 560, with something selected, two panes: the list at 248 and the selected card beside it (`.ins-cols.split`, gap 12). The card is moved, not copied; its pane is a card surface with rim, radius 14, and stays in view while the list scrolls. List rows (`.li`): at least 40 tall, padding 8/10, selected = the 2px `--accent` ring.
+
+### Worker steps and queue — `.stp`, `.pips`, `.plan-steps`, `.q-row`
+- **Step list `.stp`** (left sidebar, under a Worker that runs): one line per step, 11 `--text-tertiary`, a 7px pip joined by a 1px line. Done = a tick, current = a filled pip with a halo, to do = a ring. The colour follows the Worker: `--state-run`, `--state-wait` while it waits for the user, `--state-error` after a failure, `--state-done` when all are done. Up to five steps are drawn whole; a longer plan shows a window of three and counts the hidden ones above and below (`.stp-more`). A step that just finished pops (`--ease-spring`), and the window rolls up by a line (`--dur-glide`).
+- **Pips `.pips`** (Worker list rows): one 9×3 bar per step; done `--state-run` at 55%, current `--state-run` pulsing, the rest `--neutral-soft`; after a failure the current one is `--state-error`.
+- **Plan card `.plan-steps`** (Worker inspector): "Steps" with "done/total", then a numbered list 12 with a 14 circle per step: done = `--accent-soft` with an `--accent-text` tick, current = `--state-run` ring and dot with the text 600, failed = `--danger-soft` with a cross.
+- **Queue**: the section header shows the slots as 6px dots (filled `--state-run` = taken; up to six) and "n/max slots". Each queued row starts with its place in an 18 ring joined to the row above (the next one is `--warning-text` in a `--state-wait` ring); its second line says the repository and why it waits ("next", "3rd in line", "after PR #12", an account limit). Tasks that are held have no place and sit under their own caption.
+
+### Palette and shortcut list — `.cmdk`, `.dlg.keys`
+- **Palette `.cmdk`**: 560 wide, 16vh from the top, at most min(440, 68vh) tall; overlay glass, `--rim-strong` + `--shadow-5`, radius 20, over the scrim at `--z-dialog`. Input row 44 tall with a search glyph, text 15 and an Esc key. Rows (`.cmdk-it`) 32 tall, radius 8, padding 0/10: icon, title 13/500, a second text 12 `--text-secondary`, the shortcut at the right. The selected row is `--accent-solid` with `--text-on-accent`; its key sits on `--surface-on-accent`. Group headers 11/600 `--text-tertiary` show only while the query is empty. Nothing found: one centred line.
+- **Shortcut list `.dlg.keys`**: the dialog at 380 wide, left-aligned, title centred. Two groups (on a decision card, anywhere) with a 12/600 header; each row has the action 13 at the left and its keys at the right, one `kbd` cap per key (min 20 wide). One full-width primary Close button.
 
 ### Tooltip — `.tip`
 One tooltip for the whole app, in place of the native `title` (which the OS draws in its own font, after its own delay, at the pointer, and never on keyboard focus). One element, `<div id="tip" class="tip" role="tooltip">`, and one delegated listener (`src/renderer/ui/tip.ts`).

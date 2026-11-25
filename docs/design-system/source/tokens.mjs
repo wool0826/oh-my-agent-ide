@@ -56,6 +56,10 @@ export const scale = {
     'control-sm': '24px', 'control-md': '28px', 'control-lg': '32px', 'row-min': '44px',
     'icon-sm': '13px', 'icon-md': '16px', 'icon-lg': '18px', 'icon-hero': '44px',
     'sidebar-w': '272px', 'inspector-w': '344px', 'toolbar-h': '52px', 'panel-inset': '8px', 'settings-nav-w': '240px', 'settings-max': '680px',
+    // The macOS traffic lights (trafficLightPosition x in src/main/index.ts): 12px buttons with 8px gaps are 52px wide,
+    // and macOS 26 draws them larger (about 60px), so the wider figure is kept. Things at the top left of the window
+    // start at --lights-end, which styles.css sets on macOS outside full screen only.
+    'lights-x': '22px', 'lights-w': '60px', 'lights-gap': '14px',
   },
   dur: { instant: '80ms', fast: '120ms', base: '180ms', slow: '300ms', glide: '460ms', spin: '1000ms', attention: '1100ms' },
   ease: {
@@ -77,6 +81,15 @@ const common = {
   // on an accent fill (a sent message, a highlighted row): a chip or key cap, and a well
   'surface-on-accent': 'rgba(255, 255, 255, .2)',
   'surface-on-accent-sunken': 'rgba(0, 0, 0, .2)',
+  // on the user's blue bubble (the same blue in both themes): the hairline under a quote
+  'on-accent-line': 'rgba(255, 255, 255, .4)',
+  // PR state, as on GitHub: open = green, merged = purple, closed = gray. Glyphs use pr-*, pill text pr-*-text on
+  // pr-*-soft. Aliases of the roles of each theme, so dark, light and system all follow.
+  'pr-open': 'var(--state-done)', 'pr-open-text': 'var(--success-text)', 'pr-open-soft': 'var(--success-soft)',
+  'pr-merged': 'var(--state-review)', 'pr-merged-text': 'var(--review-text)', 'pr-merged-soft': 'var(--review-soft)',
+  'pr-closed': 'var(--state-idle)', 'pr-closed-text': 'var(--text-secondary)', 'pr-closed-soft': 'var(--neutral-soft)',
+  // Account avatars: white initials on a fill that holds 4.5:1 in both themes.
+  'avatar-1': 'var(--accent-solid)', 'avatar-2': 'var(--success-solid)', 'avatar-3': '{ref.purple.600}', 'avatar-4': '{ref.orange.600}',
 };
 
 export const themes = {
@@ -263,6 +276,7 @@ export const pairs = [
   ...text('text-on-accent', [['accent fill (top)', ['accent-fill-top']], ['accent fill (bottom)', ['accent-fill-bottom']], ['accent solid (menu highlight)', ['accent-solid']]]),
   ...text('text-on-ask', [['needs-you fill (pill, badge, glyph disc)', ['state-ask']]]),
   ...text('text-on-solid', [['danger solid (badge)', ['danger-solid']], ['danger fill (top)', ['danger-fill-top']], ['success solid', ['success-solid']]]),
+  ...text('text-on-solid', [['avatar 3', ['avatar-3']], ['avatar 4', ['avatar-4']]], 'Avatars 1 and 2 are accent-solid and success-solid, checked above.'),
   ...text('danger-text', [...CARDS, ['button in panel', BTN_IN_PANEL], ['menu', OVERLAY], ...softOn('danger-soft')]),
   ...text('warning-text', [...CARDS, ...softOn('warning-soft')]),
   ...text('success-text', [...CARDS, ...softOn('success-soft')]),
