@@ -97,8 +97,8 @@ export async function saveScript(key: string): Promise<boolean> {
   folders.delete(key);
   if (key === 'new') {
     ui.formErr.script = '';
-    name.value = '';
-    cmd.value = '';
+    // A redraw while saving may have replaced the fields: clear the ones on screen now too.
+    for (const el of [name, cmd, field<HTMLInputElement>('name', key), field<HTMLTextAreaElement>('cmd', key)]) if (el) el.value = '';
     ui.scriptSel = (r.v as string) ?? ui.scriptSel;
   } else ui.scriptEdit = null;
   return true;
