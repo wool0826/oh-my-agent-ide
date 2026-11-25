@@ -1322,6 +1322,44 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .sum-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4) var(--space-12); font-size: var(--fs-caption); }
 .sum-links a { color: var(--text-link); cursor: pointer; }
 .sum-task .spend { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+/* The look back (T-0108 option A): the Worker / week switch, each task's time line, permission decisions, the week's lists. */
+#ws-sum { container-type: inline-size; }
+.seg-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); }
+.tl { display: flex; gap: 1px; height: 6px; border-radius: var(--radius-full); overflow: hidden; background: var(--surface-track); min-width: 0; }
+.tl > i { display: block; min-width: 2px; }
+.tl .q, .tl-k .q { background: var(--state-idle); }
+.tl .r, .tl-k .r { background: var(--state-run); }
+.tl .y, .tl-k .y { background: var(--state-wait); }
+.tl .p, .tl-k .p { background: var(--state-review); }
+.tl-k { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-12); font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.tl-k span { display: inline-flex; align-items: center; gap: var(--space-4); white-space: nowrap; }
+.tl-k i { width: 6px; height: 6px; border-radius: var(--radius-full); }
+.sec-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); margin-top: var(--space-6); min-width: 0; }
+.sec-h h5 { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-caption); font-weight: 600; color: var(--text-secondary); }
+.trow { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 64px; gap: var(--space-12); align-items: center; padding: var(--space-8) var(--space-12); box-shadow: inset 0 .5px 0 var(--border-subtle); }
+.trow:first-child { box-shadow: none; }
+.trow .m { min-width: 0; display: flex; flex-direction: column; }
+.trow .m b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trow small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trow .bar { min-width: 0; }
+.trow .tot { text-align: right; font-size: var(--fs-caption); font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
+.prow { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: var(--space-4) var(--space-12); align-items: center; padding: var(--space-8) var(--space-12); box-shadow: inset 0 .5px 0 var(--border-subtle); }
+.prow:first-child { box-shadow: none; }
+.prow .when { font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prow .what { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.prow code { padding: 0; border-radius: 0; background: none; font-family: var(--font-mono); font-size: var(--fs-code); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); user-select: text; }
+.prow small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prow .ans { display: flex; align-items: center; gap: var(--space-6); justify-self: end; }
+.prow .ans small { font-variant-numeric: tabular-nums; }
+.perm-list { display: flex; flex-direction: column; margin-top: var(--space-4); border-radius: var(--radius-md); background: var(--surface-sunken); }
+.perm-list .prow { grid-template-columns: 56px minmax(0, 1fr) auto; padding: var(--space-6) var(--space-10); }
+/* Narrow middle column: a task row stacks its bar under its name, a decision its answer under the action. */
+@container (max-width: 520px) {
+  .trow { grid-template-columns: minmax(0, 1fr) auto; }
+  .trow .bar { grid-column: 1 / -1; grid-row: 2; }
+  .prow, .perm-list .prow { grid-template-columns: 56px minmax(0, 1fr); }
+  .prow .ans { grid-column: 2; justify-self: start; }
+}
 
 /* ---------- two attempts at one task, in the inbox ---------- */
 .cmp + .cmp { border-top: .5px solid var(--border-default); }

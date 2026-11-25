@@ -139,6 +139,7 @@ async function fixCi(task: Task, env: NodeJS.ProcessEnv, checks: Check[], headSh
 
 function sendCiFix(task: Task, body: string) {
   task.ciFixAttempts = (task.ciFixAttempts ?? 0) + 1;
+  task.ciFixTotal = (task.ciFixTotal ?? 0) + 1;
   store.chat('event', t('ev.ciFixing', { id: task.workerId ?? '', title: task.title, n: task.ciFixAttempts, max: MAX_CI_FIXES }));
   workers.sendReview(task, body, 'ci');
 }

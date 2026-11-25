@@ -402,6 +402,8 @@ export async function act(el: HTMLElement, e: Event) {
     case 'select-worker': openWorker(id); break;
     case 'close-session': go({ wOpen: false }); break;
     case 'ws-tab': go({ wTab: el.dataset.v as Screen['wTab'] }); break;
+    case 'sum-scope': ui.sumScope = el.dataset.v === 'week' ? 'week' : 'worker'; renderSession(); break;
+    case 'perm-filter': ui.permFilter = el.dataset.v === 'allowed' || el.dataset.v === 'denied' ? el.dataset.v : 'all'; renderSession(); break;
     case 'diff-refresh': ui.diffs.delete(id); renderSession(true); break;
     case 'issues-refresh': if (id) { ui.issues.delete(id); renderRepos(); } break;
     case 'issue-assign': {

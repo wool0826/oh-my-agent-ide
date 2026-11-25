@@ -30,7 +30,8 @@ import { t, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { artifactCommentLine } from '../../shared/artifactComment';
-import { ALLOW, ALLOW_TASK, DENY, type Task, type TaskStatus, type Worker, type WorkerStatus } from '../../shared/types';
+import { ALLOW, ALLOW_TASK, DENY, GRANT_USED, type Task, type TaskStatus, type Worker, type WorkerStatus } from '../../shared/types';
+import { withPermission } from '../../shared/retro';
 import { workerDecisions } from '../../shared/inbox';
 import { afterDependency, cancelSet, describeCancel, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
@@ -62,13 +63,19 @@ type FeedbackKind = 'review' | 'ci' | 'conflict';
  * never add up to the time after which a waiting task gives its slot back. The new timer starts here, so the card's
  * slot clock shows from the start instead of after the next sweep (sweepWaiting starts one a task lacks).
  */
-function setStatus(task: Task, status: TaskStatus) {
+function setStatus(task: Task, status: TaskStatus, on: Task['waitingOn'] = null) {
   reopenSteps(task, status);
   if ((status === 'waiting') !== (task.status === 'waiting')) {
     task.waitingSince = status === 'waiting' ? new Date().toISOString() : null;
     task.slotReleased = false;
   }
   task.status = status;
+  task.waitingOn = status === 'waiting' ? on : null;
+}
+
+/** An action an allow-for-this-task rule let through, kept with the task's permission decisions. */
+function grantUsed(task: Task, code: string) {
+  task.permissions = withPermission(task.permissions, { at: nowIso(), answeredAt: null, code, answer: GRANT_USED });
 }
 
 class WorkerManager {
@@ -374,6 +381,7 @@ class WorkerManager {
       // One file names a folder; several files are asked about each time.
       const scope = this.taskScope(task, tool, req.kind === 'command' ? input : req.files.length === 1 ? { file_path: req.files[0] } : {});
       if (task && scope && hasGrant(task, scope.key)) {
+        grantUsed(task, code);
         this.decided(w, task, prev);
         store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
         return 'accept';
@@ -431,7 +439,9 @@ class WorkerManager {
       // Allowed for this task already: the same kind of action goes ahead, with a line in the conversation.
       const scope = this.taskScope(task, toolName, input);
       if (task && scope && hasGrant(task, scope.key)) {
+        grantUsed(task, summarizeTool(toolName, input, 1200));
         store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
+        store.changed();
         return { behavior: 'allow', updatedInput: input };
       }
       const prev = this.awaitDecision(w, task);
@@ -642,7 +652,7 @@ class WorkerManager {
    * its slot, like any task that waits for an answer, and goes on with the next message to the Worker.
    */
   private awaitDispatcher(w: Worker, task: Task, need: string | null) {
-    setStatus(task, 'waiting');
+    setStatus(task, 'waiting', 'dispatcher');
     task.updatedAt = nowIso();
     // A BLOCKED report without a request is the request. One made earlier told the Dispatcher what is needed; now
     // it hears that the task stopped for it, in case it did something about the request without writing back.
