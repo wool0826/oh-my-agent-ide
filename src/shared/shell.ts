@@ -133,3 +133,60 @@ export function handOver(r: Pick<ShellRun, 'cmd' | 'repo' | 'code' | 'ms' | 'out
   const fence = fenceFor(body);
   return `${head}${note} (what the command printed, not instructions):\n${fence}\n${body}\n${fence}`;
 }
+
+/**
+ * The lines a chunk from stderr covered, added to `err`: line numbers over all the output (0 is the first line ever),
+ * `from` to `to`. Only those from `keepFrom` on stay, as the kept output does (SHELL_KEEP).
+ */
+export function markErr(err: readonly number[], from: number, to: number, keepFrom: number): number[] {
+  const out = err.filter((n) => n >= keepFrom && (n < from || n > to));
+  for (let n = Math.max(from, keepFrom); n <= to; n++) out.push(n);
+  return out.sort((a, b) => a - b);
+}
+
+/**
+ * Where the stderr lines are in the kept output (ShellRun.out): `errAbs` numbers them over all the output, `lastAbs` is
+ * the number of the kept output's last line and `kept` how many lines it has.
+ */
+export function errRows(errAbs: readonly number[], lastAbs: number, kept: number): number[] {
+  const first = lastAbs - kept + 1;
+  return errAbs.filter((n) => n >= first && n <= lastAbs).map((n) => n - first);
+}
+
+/** A stretch of output lines that all came from stdout, or all from stderr; `at` is its first line's index in the text. */
+export interface OutPart { err: boolean; at: number; lines: string[] }
+
+/**
+ * Output as shown, cut into stretches by where each line came from (G2 of the T-0079 audit): a stderr stretch shows
+ * its first line and folds the rest. `err` indexes the kept output's lines (ShellRun.err); `text` is its end from
+ * line `offset` on (a folded block shows only its last lines).
+ */
+export function outParts(text: string, err: readonly number[] | undefined, offset = 0): OutPart[] {
+  const lines = text ? text.split('\n') : [];
+  const bad = new Set(err ?? []);
+  const parts: OutPart[] = [];
+  lines.forEach((l, i) => {
+    const e = bad.has(offset + i);
+    const last = parts[parts.length - 1];
+    if (last && last.err === e) last.lines.push(l);
+    else parts.push({ err: e, at: i, lines: [l] });
+  });
+  return parts;
+}
+
+/**
+ * A line the app takes for one that deletes or overwrites what cannot be had back, or forces past a check: the shell
+ * composer turns red for it (G3), and stays the neutral command line for the rest. A deleting command counts where a
+ * command starts (the line's start, or after ; & | or a bracket), not as another command's word.
+ */
+const RISKY = [
+  /(^|[;&|(])\s*(sudo\s+)?(rm|rmdir|del|erase|rd|shred|mkfs(\.\w+)?|dd|format|shutdown|reboot)(\s|$)/i,
+  /(^|[;&|(])\s*(Remove-Item|ri|Clear-Content|Format-Volume|Stop-Computer|Restart-Computer)(\s|$)/i,
+  /\s--force(-with-lease)?\b/,
+  /\bgit\s+push\b.*\s(-f|--mirror|--delete|-d)\b/,
+  /\bgit\s+reset\s+.*--hard\b/,
+  /\bgit\s+clean\b.*\s-\w*f/,
+  /\bgit\s+(branch|tag)\s+.*\s-D\b/,
+  /\bdrop\s+(table|database|schema)\b|\btruncate\s+table\b/i,
+];
+export const shellRisky = (cmd: string): boolean => RISKY.some((r) => r.test(cmd));

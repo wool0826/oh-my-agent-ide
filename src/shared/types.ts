@@ -273,6 +273,8 @@ export interface ShellRun {
   out: string;
   /** Lines of output in all. */
   lines: number;
+  /** The lines of `out` that came from stderr, by their index in it (shared/shell.ts errRows). */
+  err?: number[];
   sent: 'wait' | 'queued' | 'sent' | 'off';
   /** The saved script's name, when it was one (shared/scripts.ts). */
   script?: string;

@@ -91,17 +91,22 @@
   <main class="content view" data-view="chat" aria-label="Chat" data-i18n-aria="nav.chat">
     <h1 class="sr-only" data-i18n="nav.chat">Chat</h1>
     <div class="thread" id="chat-thread"></div>
-    <section class="sq" id="sq" role="dialog" aria-labelledby="sq-title" hidden>
-      <div class="edge-rz h" id="sq-rz-h" data-edge="h" role="separator" aria-orientation="horizontal" aria-controls="sq" tabindex="0" data-i18n-tip="sq.rzH" data-tip-key="↑ ↓"></div><div class="edge-rz w" id="sq-rz-w" data-edge="w" role="separator" aria-orientation="vertical" aria-controls="sq" tabindex="0" data-i18n-tip="sq.rzW" data-tip-key="← →"></div><span class="edge-rz c" data-edge="both" aria-hidden="true"></span>
-      <header><svg class="sym" aria-hidden="true"><use href="#s-side-q"/></svg><b id="sq-title" data-i18n="sq.title">Side question</b><span class="sq-wall"><svg class="sym" aria-hidden="true"><use href="#s-lock"/></svg><span data-i18n="sq.wall">Separate context</span></span><span class="gap"></span><button type="button" class="sq-ib" data-action="sq-min" data-i18n-tip="sq.minimise"><svg aria-hidden="true"><use href="#s-minus"/></svg></button><button type="button" class="sq-ib" data-action="sq-close" data-i18n-tip="sq.close"><svg aria-hidden="true"><use href="#s-x"/></svg></button></header>
-      <div class="sq-t" id="sq-thread"></div>
-      <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button></form>
-    </section>
-    <section class="tm" id="tm" role="region" aria-labelledby="tm-title" hidden>
-      <div class="edge-rz h" id="tm-rz-h" data-edge="h" role="separator" aria-orientation="horizontal" aria-controls="tm" tabindex="0" data-i18n-tip="term.rzH" data-tip-key="↑ ↓"></div><div class="edge-rz w" id="tm-rz-w" data-edge="w" role="separator" aria-orientation="vertical" aria-controls="tm" tabindex="0" data-i18n-tip="term.rzW" data-tip-key="← →"></div><span class="edge-rz c" data-edge="both" aria-hidden="true"></span>
-      <header><svg class="sym" aria-hidden="true"><use href="#s-term"/></svg><b id="tm-title" data-i18n="term.title">Terminal</b><button type="button" class="sh-cwd" id="tm-cwd" data-action="tm-cwd" aria-haspopup="listbox" aria-expanded="false"></button><span class="gap"></span><button type="button" class="tm-tb" data-action="tm-clear" data-i18n="term.clear">Clear</button><button type="button" class="sq-ib" data-action="tm-hide" data-i18n-tip="term.hide"><svg aria-hidden="true"><use href="#s-minus"/></svg></button></header>
-      <div class="tm-t" id="tm-thread" role="log"></div>
-      <form class="tm-c" id="tm-form" autocomplete="off"><span class="tm-ps" aria-hidden="true">$</span><textarea class="tm-input" id="tm-input" rows="1" spellcheck="false" data-i18n-aria="term.inputAria" data-i18n-ph="term.placeholder"></textarea></form>
+    <section class="dock" id="dock" aria-label="Terminal and side question" data-i18n-aria="dock.aria" hidden>
+      <div class="edge-rz h" id="dock-rz" role="separator" aria-orientation="horizontal" aria-controls="dock" tabindex="0" data-i18n-tip="dock.rz" data-tip-key="↑ ↓"></div>
+      <header class="dock-h">
+        <div class="dock-tabs" role="tablist" aria-label="Terminal and side question" data-i18n-aria="dock.aria"><button type="button" role="tab" class="dock-tab" id="dock-tab-tm" data-action="dock-tab" data-v="tm" aria-controls="tm" aria-selected="false"><svg class="sym" aria-hidden="true"><use href="#s-term"/></svg><span id="tm-title" data-i18n="term.title">Terminal</span></button><button type="button" role="tab" class="dock-tab" id="dock-tab-sq" data-action="dock-tab" data-v="sq" aria-controls="sq" aria-selected="false"><svg class="sym" aria-hidden="true"><use href="#s-side-q"/></svg><span id="sq-title" data-i18n="sq.title">Side question</span></button></div>
+        <div class="dock-tools" data-for="tm"><span id="tm-cwd-slot"></span><span class="gap"></span><button type="button" class="tm-tb" data-action="tm-clear" data-i18n="term.clear">Clear</button></div>
+        <div class="dock-tools" data-for="sq" hidden><span class="sq-wall"><svg class="sym" aria-hidden="true"><use href="#s-lock"/></svg><span data-i18n="sq.wall">Separate context</span></span><span class="gap"></span><button type="button" class="tm-tb" data-action="sq-close" data-i18n="sq.close">Close and forget</button></div>
+        <button type="button" class="sq-ib" id="dock-hide" data-action="dock-hide"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>
+      </header>
+      <section class="sq" id="sq" role="tabpanel" aria-labelledby="dock-tab-sq" hidden>
+        <div class="sq-t" id="sq-thread"></div>
+        <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button></form>
+      </section>
+      <section class="tm" id="tm" role="tabpanel" aria-labelledby="dock-tab-tm" hidden>
+        <div class="tm-t" id="tm-thread" role="log"></div>
+        <form class="tm-c" id="tm-form" autocomplete="off"><span class="tm-ps" aria-hidden="true">$</span><textarea class="tm-input" id="tm-input" rows="1" spellcheck="false" data-i18n-aria="term.inputAria" data-i18n-ph="term.placeholder"></textarea></form>
+      </section>
     </section>
     <form class="composer" id="chat-form" autocomplete="off">
       <div class="dstat" id="chat-dstat" hidden></div>

@@ -10,7 +10,7 @@ import { t } from './i18n';
 import { log } from './log';
 import { nowIso } from './util';
 import { loadSettings } from './settings';
-import { addOutput, dropRcNoise, handOver, lineCount, shellArgs, tailLines } from '../shared/shell';
+import { addOutput, dropRcNoise, errRows, handOver, lineCount, markErr, shellArgs, SHELL_KEEP, tailLines } from '../shared/shell';
 import type { ChatItem, ShellRun } from '../shared/types';
 
 /**
@@ -60,13 +60,29 @@ export function startLine(run: ShellRun, cwd: string, output: () => void, ended:
   // Line breaks seen in all: the count of lines, past what is kept.
   let breaks = 0;
   const count = () => breaks + (out && !out.endsWith('\n') ? 1 : 0);
-  const keep = (text: string) => {
+  // stderr lines by their number over all the output; the run keeps where they are in its kept end (G2).
+  let errAbs: number[] = [];
+  const syncErr = () => {
+    if (!errAbs.length) return;
+    // The kept end drops the line breaks it ends with: its last line is the one before them.
+    const lastAbs = breaks - (/\n*$/.exec(out)?.[0].length ?? 0);
+    const rows = errRows(errAbs, lastAbs, lineCount(run.out));
+    if (rows.length) run.err = rows; else delete run.err;
+  };
+  const keep = (text: string, err = false) => {
     if (!text) return;
+    // The line this chunk starts on (the one being written, or the next).
+    const from = breaks;
     out = addOutput(out, text);
     run.out = tailLines(out);
     // Counted as kept: without terminal codes, with "\r\n" and "\r" as one break.
     breaks += (addOutput('', text, Infinity).match(/\n/g) ?? []).length;
     run.lines = count();
+    if (err) {
+      const to = out.endsWith('\n') ? breaks - 1 : breaks;
+      if (to >= from) errAbs = markErr(errAbs, from, to, Math.max(0, breaks - SHELL_KEEP - 1));
+    }
+    syncErr();
     output();
   };
   // One decoder for each stream, so a character split between chunks stays whole.
@@ -79,9 +95,8 @@ export function startLine(run: ShellRun, cwd: string, output: () => void, ended:
   };
   for (const [stream, shell] of [[proc.stdout, true], [proc.stderr, false]] as const) {
     const dec = new StringDecoder('utf8');
-    const take = shell ? fromShell : keep;
-    stream?.on('data', (d: Buffer) => take(dec.write(d)));
-    stream?.on('end', () => (shell ? fromShell(dec.end(), true) : keep(dec.end())));
+    stream?.on('data', (d: Buffer) => (shell ? fromShell(dec.write(d)) : keep(dec.write(d), true)));
+    stream?.on('end', () => (shell ? fromShell(dec.end(), true) : keep(dec.end(), true)));
   }
   const started = Date.now();
   let done = false;
@@ -91,6 +106,9 @@ export function startLine(run: ShellRun, cwd: string, output: () => void, ended:
     if (note) out = addOutput(out, `${note}\n`);
     run.out = tailLines(out);
     run.lines = Math.max(count(), lineCount(out));
+    syncErr();
+    // Why it could not start is an error line too: the last one.
+    if (note) run.err = [...(run.err ?? []), lineCount(run.out) - 1];
     run.running = false;
     run.code = run.stopped ? null : code;
     run.ms = Date.now() - started;

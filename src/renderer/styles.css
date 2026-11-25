@@ -441,10 +441,15 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
    folder beside it, so the mode is not told by colour alone. */
 .sh-bar { flex: 0 0 100%; display: flex; align-items: center; gap: var(--space-8); padding: var(--space-2) var(--space-4) 0 0; min-width: 0; }
 .sh-bar .gap { flex: 1; }
-.sh-mode { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px var(--space-8) 1px var(--space-6); border-radius: var(--radius-full); background: var(--danger-soft); color: var(--danger-text); font-size: var(--fs-caption2); font-weight: 600; }
+.sh-mode { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px var(--space-8) 1px var(--space-6); border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); font-size: var(--fs-caption2); font-weight: 600; }
+.sh-risk { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px var(--space-8) 1px var(--space-6); border-radius: var(--radius-full); background: var(--danger-soft); color: var(--danger-text); font-size: var(--fs-caption2); font-weight: 600; white-space: nowrap; }
+.sh-risk[hidden] { display: none; }
+.sh-risk .sym { font-size: var(--icon-sm); }
 .sh-mode .sym { font-size: var(--icon-sm); }
 .sh-cwd { min-width: 0; display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px var(--space-8); border: 0; border-radius: var(--radius-full); background: var(--surface-raised); box-shadow: var(--rim); font: inherit; font-size: var(--fs-caption2); color: var(--text-secondary); cursor: pointer; white-space: nowrap; }
-.sh-cwd b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-weight: 600; }
+/* "in <folder>" is one run of text, so no flex gap opens between the folder and the words around it. */
+.sh-cwd-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sh-cwd b { color: var(--text-primary); font-weight: 600; }
 .sh-cwd .chev { flex: none; width: 5px; height: 9px; rotate: 90deg; color: var(--text-tertiary); }
 .sh-cwd:hover { background: var(--surface-hover); }
 .sh-cwd:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
@@ -457,11 +462,17 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .sh-hint { flex: none; display: inline-flex; align-items: center; gap: var(--space-4); font-size: var(--fs-caption2); color: var(--text-tertiary); }
 .sh-hint kbd + kbd, .sh-hint kbd:not(:first-child) { margin-left: var(--space-6); }
 .sh-bang { flex: none; align-self: center; width: 20px; height: 20px; display: grid; place-items: center; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--fs-caption); font-weight: 700; }
-.composer > .sh-bang { margin: 0 calc(-1 * var(--space-4)) 0 calc(-1 * var(--space-6)); background: var(--danger-fill); color: var(--text-on-solid); }
-.composer.shell, .composer.shell:focus-within { box-shadow: var(--rim-strong), 0 0 0 2px var(--danger), 0 0 24px -6px var(--danger-glow), var(--shadow-3); background: linear-gradient(var(--danger-soft), var(--danger-soft)), var(--surface-composer); }
-.composer.shell .send { background: var(--danger-fill); box-shadow: var(--danger-rim); color: var(--text-on-solid); }
+.composer > .sh-bang { margin: 0 calc(-1 * var(--space-4)) 0 calc(-1 * var(--space-6)); background: var(--neutral-soft); color: var(--text-secondary); }
+/* Shell mode (G3 of the T-0079 audit): a --warning ring on the composer as it is; the send button stays neutral. */
+.composer.shell, .composer.shell:focus-within { box-shadow: var(--rim-strong), 0 0 0 2px var(--warning), var(--shadow-3); }
+.composer.shell .send { background: var(--surface-selected); box-shadow: var(--rim); color: var(--text-primary); }
 .composer.shell .send .sym { font-size: var(--icon-sm); }
-.composer.shell .field.input { caret-color: var(--danger); }
+.composer.shell .field.input { caret-color: var(--warning); }
+/* A line that is hard to undo (shellRisky): the red of errors, with "Hard to undo" on the bar. */
+.composer.shell.risky, .composer.shell.risky:focus-within { box-shadow: var(--rim-strong), 0 0 0 2px var(--danger), 0 0 24px -6px var(--danger-glow), var(--shadow-3); }
+.composer.shell.risky .send { background: var(--danger-fill); box-shadow: var(--danger-rim); color: var(--text-on-solid); }
+.composer.shell.risky > .sh-bang { background: var(--danger-fill); color: var(--text-on-solid); }
+.composer.shell.risky .field.input { caret-color: var(--danger); }
 .field.input.mono { font-family: var(--font-mono); font-size: var(--fs-caption); }
 @media (forced-colors: active) { .composer.shell { outline: 2px solid CanvasText; } }
 
@@ -475,6 +486,13 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .sh-run > header time { flex: none; font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .sh-run > header .btn { flex: none; }
 .sh-out { margin: 0 var(--space-8); font-size: var(--fs-caption2); border-radius: var(--radius-md); max-height: 50vh; overflow-y: auto; }
+/* Output in stretches (ui/shell.ts outHtml, G2): stderr in the danger text colour, folded to its first line behind
+   "+N lines". The same in a "!" run and in the terminal. */
+.o-seg { display: block; min-height: 1lh; }
+.o-err { color: var(--danger-text); }
+.o-more { display: block; margin: var(--space-2) 0; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: none; font: inherit; font-family: var(--font-ui); font-size: var(--fs-caption2); color: var(--text-link); cursor: pointer; }
+.o-more:hover { text-decoration: underline; }
+.o-more:focus-visible { outline: var(--focus-outline); outline-offset: 0; }
 .sh-fold { align-self: flex-start; margin: 0 var(--space-6) var(--space-4); padding: var(--space-2) var(--space-10); border: 0; border-radius: var(--radius-md); background: none; font: inherit; font-size: var(--fs-caption2); color: var(--text-link); cursor: pointer; }
 .sh-fold:hover { text-decoration: underline; }
 .sh-fold:focus-visible { outline: var(--focus-outline); outline-offset: -1px; }
@@ -1584,47 +1602,45 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .mini .err { color: var(--danger-text); overflow-wrap: anywhere; white-space: normal; }
 
 /* Side question (ui/side.ts): its own floating surface over the chat, with its own thread and meter. */
-.sq { position: absolute; right: var(--space-16); bottom: 88px; z-index: calc(var(--z-composer) + 1); width: min(var(--sq-w, 420px), calc(100% - 2 * var(--space-16))); height: var(--sq-h, auto); max-height: calc(100% - 120px); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-overlay-solid, var(--surface-overlay)); box-shadow: var(--rim-strong), var(--shadow-4); overflow: hidden; animation: upop-in var(--dur-base) var(--ease-standard); }
-.sq[hidden] { display: none; }
-/* Resizing (side.ts, terminal.ts): a capsule centred on each free edge, the same as the sidebars' .rz. Hidden until
-   the pointer is over the panel, stronger on its edge, accent and longer while dragged or focused; inset so the focus
-   ring is not cut by the panel's edge. The corner where
-   the two edges meet takes a drag both ways, with nothing drawn on it. */
+/* The dock (ui/dock.ts, G1 of the T-0079 audit): the terminal and the side question as two tabs of one panel between
+   the chat and its composer. It takes its height from the chat, which gets shorter, so no card is covered. */
+.dock { flex: none; position: relative; height: var(--dock-h, 300px); max-height: calc(100% - var(--composer-h, 46px) - 160px); min-height: 120px; margin: 0 var(--space-16) calc(var(--composer-h, 46px) + var(--space-16) + var(--space-8)); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-overlay-solid, var(--surface-overlay)); box-shadow: var(--rim-strong), var(--shadow-2); overflow: hidden; animation: upop-in var(--dur-base) var(--ease-standard); }
+.dock[hidden] { display: none; }
+.dock.sizing { animation: none; user-select: none; }
+/* With the dock, the chat ends above it: no room kept for the composer under the last message. */
+.content.dock-open > .thread { padding-bottom: var(--space-12); }
+.dock-h { flex: none; display: flex; align-items: center; gap: var(--space-8); min-width: 0; padding: var(--space-6) var(--space-8); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
+.dock-tabs { flex: none; display: flex; gap: var(--space-2); }
+.dock-tab { display: inline-flex; align-items: center; gap: var(--space-6); height: var(--control-sm); padding: 0 var(--space-10); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font: inherit; font-size: var(--fs-caption); font-weight: 600; white-space: nowrap; cursor: pointer; }
+.dock-tab .sym { font-size: var(--icon-sm); }
+.dock-tab:hover { background: var(--surface-hover); color: var(--text-primary); }
+.dock-tab[aria-selected="true"] { background: var(--surface-selected); color: var(--text-primary); box-shadow: var(--rim); }
+.dock-tab:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.dock-tools { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--space-8); }
+.dock-tools[hidden] { display: none; }
+.dock-tools .gap { flex: 1; }
+.dock-tools .sh-cwd { flex: 0 1 auto; }
+#tm-cwd-slot { display: contents; }
+#dock-hide svg { rotate: 90deg; width: 6px; height: 10px; }
+.dock > .sq, .dock > .tm { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.dock > :is(.sq, .tm)[hidden] { display: none; }
+/* Resizing: the capsule on the dock's top edge, the same as the sidebars' .rz. Hidden until the pointer is over the
+   dock, stronger on the edge, accent and longer while dragged or focused; inset so the focus ring is not cut. */
 .edge-rz { position: absolute; z-index: var(--z-resize); touch-action: none; outline: none; }
 .edge-rz.h { top: 0; left: 14px; right: 14px; height: 8px; cursor: ns-resize; }
-.edge-rz.w { top: 14px; bottom: 0; width: 8px; cursor: ew-resize; }
-.edge-rz.c { z-index: calc(var(--z-resize) + 1); top: 0; width: 14px; height: 14px; }
-.sq .edge-rz.w, .sq .edge-rz.c { left: 0; }
-.sq .edge-rz.c { cursor: nwse-resize; }
-.tm .edge-rz.w, .tm .edge-rz.c { right: 0; }
-.tm .edge-rz.c { cursor: nesw-resize; }
-.edge-rz:not(.c)::after { content: ''; position: absolute; border-radius: var(--radius-full); background: transparent; transition: background var(--dur-fast) var(--ease-standard), width var(--dur-fast) var(--ease-out), height var(--dur-fast) var(--ease-out); }
-.edge-rz.h::after { top: 4px; left: 50%; width: 36px; height: 4px; translate: -50% 0; }
-.edge-rz.w::after { top: 50%; width: 4px; height: 36px; translate: 0 -50%; }
-.sq .edge-rz.w::after { left: 4px; }
-/* The terminal's side edge is over its output's scrollbar: a narrower band leaves the bar most of its gutter. */
-.tm .edge-rz.w { width: 5px; }
-.tm .edge-rz.w::after { right: 4px; }
-:is(.sq, .tm):hover .edge-rz::after { background: var(--border-default); }
+.edge-rz.h::after { content: ''; position: absolute; top: 4px; left: 50%; width: 36px; height: 4px; translate: -50% 0; border-radius: var(--radius-full); background: transparent; transition: background var(--dur-fast) var(--ease-standard), width var(--dur-fast) var(--ease-out); }
+.dock:hover .edge-rz::after { background: var(--border-default); }
 .edge-rz:hover::after { background: var(--border-strong); }
-/* Over the panel-hover rule above: a dragged or focused capsule stays accent with the pointer on the panel. */
-:is(.sq, .tm) .edge-rz:is(.active, :focus-visible)::after { background: var(--accent); }
-.edge-rz.h.active::after, .edge-rz.h:focus-visible::after { width: 56px; }
-.edge-rz.w.active::after, .edge-rz.w:focus-visible::after { height: 56px; }
+/* Over the dock-hover rule above: a dragged or focused capsule stays accent with the pointer on the dock. */
+.dock .edge-rz:is(.active, :focus-visible)::after { background: var(--accent); width: 56px; }
 .edge-rz:focus-visible::after { outline: var(--focus-outline); outline-offset: 2px; }
-.sq.sizing { animation: none; user-select: none; }
-.win.ins-min .sq { right: calc(var(--panel-inset) + var(--space-10) + var(--control-lg) + var(--space-8)); }
-.sq > header { flex: none; display: flex; align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
-.sq > header > .sym { font-size: var(--icon-md); color: var(--text-secondary); }
-.sq > header b { font-size: var(--fs-caption); font-weight: 600; }
-.sq > header .gap { flex: 1; }
 .sq-wall { display: inline-flex; align-items: center; gap: var(--space-4); padding: 1px var(--space-8) 1px var(--space-6); border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); font-size: var(--fs-caption2); font-weight: 600; white-space: nowrap; }
 .sq-wall .sym { font-size: var(--icon-sm); }
 .sq-ib { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
 .sq-ib svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .sq-ib:hover { background: var(--text-secondary); color: var(--bg-canvas); }
 .sq-ib:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
-.sq-t { flex: 1 1 auto; min-height: 72px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-10) var(--space-12) var(--space-6); }
+.sq-t { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-12) var(--space-12) var(--space-6); -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px); mask-image: linear-gradient(to bottom, transparent 0, #000 10px); }
 .sq-t .bub { max-width: 92%; font-size: var(--fs-caption); }
 .sq-m { align-self: center; display: flex; align-items: center; gap: var(--space-4); font-size: var(--fs-caption2); color: var(--text-tertiary); white-space: nowrap; }
 .sq-pick { display: inline-flex; align-items: center; gap: 2px; padding: 1px var(--space-6); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font: inherit; cursor: pointer; }
@@ -1647,23 +1663,16 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
    button's corner can hold. */
 .sqb i { --fs: clamp(11px, var(--fs-caption2), 13px); position: absolute; right: -3px; top: -3px; min-width: calc(var(--fs) + 4px); height: calc(var(--fs) + 4px); padding: 0 var(--space-4); border-radius: var(--radius-full); background: var(--neutral-soft); box-shadow: var(--rim); color: var(--text-primary); font-style: normal; font-size: var(--fs); font-weight: 700; line-height: calc(var(--fs) + 4px); text-align: center; }
 .sqb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
-@media (prefers-reduced-motion: reduce) { .sq { animation: none; } .sq-spin { animation: none; } }
-@media (forced-colors: active) { .sq { border: 1px solid CanvasText; } .sqb.on { outline: 2px solid Highlight; } }
+@media (prefers-reduced-motion: reduce) { .dock { animation: none; } .sq-spin { animation: none; } }
+@media (forced-colors: active) { .dock { border: 1px solid CanvasText; } .dock-tab[aria-selected="true"] { outline: 2px solid Highlight; } .sqb.on { outline: 2px solid Highlight; } }
 
-/* Side terminal (ui/terminal.ts): a floating surface at the chat's bottom left, sized by its top right corner. Its
-   lines are mono on the code surface; nothing in it is a chat message. */
-.tm { position: absolute; left: var(--space-16); bottom: 88px; z-index: calc(var(--z-composer) + 1); width: 560px; height: 320px; max-width: calc(100% - 2 * var(--space-16)); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-overlay-solid, var(--surface-overlay)); box-shadow: var(--rim-strong), var(--shadow-4); overflow: hidden; animation: upop-in var(--dur-base) var(--ease-standard); }
-.tm[hidden] { display: none; }
-.tm > header { flex: none; display: flex; align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
-.tm > header > .sym { font-size: var(--icon-md); color: var(--text-secondary); }
-.tm > header b { font-size: var(--fs-caption); font-weight: 600; }
-.tm > header .gap { flex: 1; }
-.tm > header .sh-cwd { flex: 0 1 auto; }
+/* Side terminal (ui/terminal.ts): a tab of the dock. Its lines are mono on the code surface; nothing in it is a chat
+   message. */
 .tm-tb { flex: none; height: 20px; padding: 0 var(--space-8); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font: inherit; font-size: var(--fs-caption2); font-weight: 600; cursor: pointer; }
 .tm-tb:hover { background: var(--surface-hover); color: var(--text-primary); }
 .tm-tb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
-.tm.sizing { user-select: none; }
-.tm-t { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-10); padding: var(--space-10) var(--space-12); background: var(--surface-code); }
+/* Room under the header, and lines scrolled up fade out under it rather than being cut (G1). */
+.tm-t { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-10); padding: var(--space-12) var(--space-12) var(--space-10); background: var(--surface-code); -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px); mask-image: linear-gradient(to bottom, transparent 0, #000 10px); }
 .tm-empty { margin: auto 0; font-size: var(--fs-caption); color: var(--text-tertiary); text-align: center; }
 .tm-run { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 .tm-cmd { display: flex; align-items: center; gap: var(--space-8); min-width: 0; min-height: var(--control-sm); }
@@ -1679,8 +1688,7 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .tm-input { flex: 1; min-width: 0; height: 20px; max-height: 120px; padding: 0; border: 0; background: none; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-code); line-height: 20px; resize: none; outline: none; }
 .tm-input::placeholder { color: var(--text-tertiary); }
 .tm:focus-within .tm-c { box-shadow: inset 0 .5px 0 var(--border-subtle), inset 0 -2px 0 var(--accent); }
-@media (prefers-reduced-motion: reduce) { .tm { animation: none; } }
-@media (forced-colors: active) { .tm { border: 1px solid CanvasText; } .tm-input { outline: 1px solid CanvasText; } }
+@media (forced-colors: active) { .tm-input { outline: 1px solid CanvasText; } }
 
 /* The app's one tooltip (ui/tip.ts), in place of the native title: the overlay surface, small, above every other
    layer. Its place is set in code; it comes in from the control's side. */

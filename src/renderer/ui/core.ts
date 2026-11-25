@@ -134,6 +134,8 @@ export const ui = {
   shellRepo: localStorage.getItem('oma.shellRepo') ?? '',
   /** Shell run blocks shown with all their kept lines. */
   shellOpen: new Set<string>(),
+  /** stderr stretches opened past their first line (G2): "<run id>:<first line number>". */
+  errOpen: new Set<string>(),
   langApplied: '' as string,
   fontApplied: '' as string,
   accKey: '' as string,

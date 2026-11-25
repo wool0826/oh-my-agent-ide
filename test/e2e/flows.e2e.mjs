@@ -279,10 +279,17 @@ flow('a saved script shows its command, runs only from its Run button into the c
   await app.until("!document.querySelector('#chat-ins .memo.script')", 'the script deleted');
 });
 
-flow('the side terminal runs lines apart from the chat, recalls them with the up arrow, clears and resizes', {}, async (app) => {
-  // Ctrl+` opens it with its input focused.
+flow('the side terminal runs lines apart from the chat in the dock under it, recalls them with the up arrow, folds stderr and clears', {}, async (app) => {
+  // Ctrl+` opens it with its input focused, in the dock between the chat and the composer.
   await app.key('Backquote', '`', 192, 2);
   await app.until("!document.querySelector('#tm').hidden && document.activeElement?.id === 'tm-input'", 'the open terminal');
+  assert.equal(await app.evaluate("return document.querySelector('#dock-tab-tm').getAttribute('aria-selected');"), 'true');
+  // The dock covers nothing: the chat ends above it, and it ends above the composer.
+  const layout = await app.evaluate("const r = (s) => document.querySelector(s).getBoundingClientRect(); return { chat: r('#chat-thread').bottom, top: r('#dock').top, bottom: r('#dock').bottom, composer: r('#chat-form').top };");
+  assert.ok(layout.chat <= layout.top + 0.5, `the chat ends above the dock: ${JSON.stringify(layout)}`);
+  assert.ok(layout.bottom <= layout.composer, `the dock ends above the composer: ${JSON.stringify(layout)}`);
+  // "in <folder>" is one run of text (no gap before the words after the folder).
+  assert.equal(await app.evaluate("return document.querySelectorAll('#tm-cwd > .sh-cwd-t').length;"), 1);
   await app.evaluate("document.querySelector('#tm-input').value = 'echo side-terminal-ok'; return 1;");
   await app.key('Enter', 'Enter', 13);
   await app.until("[...document.querySelectorAll('#tm-thread .tm-run:not(.live) .tm-out')].some((o) => o.innerText.includes('side-terminal-ok'))", 'the output in the terminal');
@@ -292,35 +299,21 @@ flow('the side terminal runs lines apart from the chat, recalls them with the up
   // ↑ brings the line back.
   await app.key('ArrowUp', 'ArrowUp', 38);
   assert.equal(await app.evaluate("return document.querySelector('#tm-input').value;"), 'echo side-terminal-ok');
-  // The edge handles' arrows resize it, each in its own direction. The window is given a size first: the panel grows
-  // only into the room it has, and a runner's window can be too narrow for one more step. It is back at its first
-  // width once the new size has reached it.
-  await app.size(1400, 900);
-  await app.until("document.querySelector('#tm').offsetWidth === 560", 'the terminal at its first width in the wider window');
-  const tbox = () => app.evaluate("const p = document.querySelector('#tm'); return { w: p.offsetWidth, h: p.offsetHeight };");
-  const before = await tbox();
-  await app.evaluate("document.querySelector('#tm-rz-w').focus(); return 1;");
-  await app.key('ArrowRight', 'ArrowRight', 39, 8);
-  await app.key('ArrowUp', 'ArrowUp', 38);
-  assert.deepEqual(await tbox(), { w: before.w + 64, h: before.h });
-  assert.equal(await app.evaluate("return document.querySelector('#tm-rz-w').getAttribute('aria-valuenow');"), String(before.w + 64));
-  await app.evaluate("document.querySelector('#tm-rz-h').focus(); return 1;");
-  await app.key('ArrowUp', 'ArrowUp', 38);
-  await app.key('ArrowRight', 'ArrowRight', 39);
-  assert.deepEqual(await tbox(), { w: before.w + 64, h: before.h + 16 });
-  // Dragging the top edge's capsule up makes it taller and nothing else; the capsule is marked while it moves.
-  const top = await app.evaluate("const r = document.querySelector('#tm-rz-h').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 3 };");
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: top.x, y: top.y, button: 'left', buttons: 1, clickCount: 1 });
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: top.x + 30, y: top.y - 40, button: 'left', buttons: 1 });
-  assert.equal(await app.evaluate("return document.querySelector('#tm-rz-h').classList.contains('active') && !document.querySelector('#tm-rz-w').classList.contains('active');"), true);
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: top.x + 30, y: top.y - 40, button: 'left', buttons: 0, clickCount: 1 });
-  assert.deepEqual(await tbox(), { w: before.w + 64, h: before.h + 56 });
-  assert.equal(await app.evaluate("return document.querySelector('#tm-rz-h').classList.contains('active');"), false);
-  // Clear empties it; Esc hides it and the chat input has the focus.
+  // stderr in the danger colour, folded to its first line; "+2 lines" opens the rest.
+  await app.evaluate(`document.querySelector('#tm-input').value = ${JSON.stringify(`node -e "console.error('bad one');console.error('bad two');console.error('bad three')"`)}; return 1;`);
+  await app.key('Enter', 'Enter', 13);
+  const errRun = "[...document.querySelectorAll('#tm-thread .tm-run:not(.live)')].find((r) => r.innerText.includes('bad one'))";
+  await app.until(`!!${errRun}?.querySelector('.o-more')`, 'the folded stderr');
+  assert.deepEqual(await app.evaluate(`const r = ${errRun}; return [r.querySelector('.o-err').textContent, r.querySelector('.o-more').textContent];`), ['bad one', '+2 lines']);
+  await app.evaluate(`${errRun}.querySelector('.o-more').click(); return 1;`);
+  await app.until(`${errRun}?.querySelector('.o-err')?.textContent === 'bad one\\nbad two\\nbad three'`, 'the stderr opened');
+  assert.equal(await app.evaluate(`return ${errRun}.querySelector('.o-more').textContent;`), 'Show less');
+  // Clear empties it; Esc puts the dock away and the chat input has the focus.
   await app.click('[data-action="tm-clear"]');
   await app.until("!document.querySelector('#tm-thread .tm-run')", 'the cleared terminal');
   await app.key('Escape', 'Escape', 27);
-  await app.until("document.querySelector('#tm').hidden && document.activeElement?.id === 'chat-input'", 'the hidden terminal');
+  await app.until("document.querySelector('#dock').hidden && document.activeElement?.id === 'chat-input'", 'the dock put away');
+  assert.equal(await app.evaluate("return document.querySelector('#chat-thread').parentElement.classList.contains('dock-open');"), false);
 });
 
 flow('a plan waits for approval before the work goes on', {}, async (app) => {
@@ -402,53 +395,45 @@ flow('a side question is asked and answered in its own panel, and reaches the Di
   assert.deepEqual(chip, { who: 'From a side question', quote: 'It is 4.', count: '2' });
   // Close forgets the thread.
   await app.click('#chat-sq');
-  await app.click('#sq [data-action="sq-close"]');
-  await app.until("document.querySelector('#sq').hidden && !document.querySelector('#chat-sq i')", 'the thread forgotten');
+  await app.click('#dock [data-action="sq-close"]');
+  await app.until("document.querySelector('#dock').hidden && !document.querySelector('#chat-sq i')", 'the thread forgotten');
 });
 
-flow('the side question panel is resized from its edges and top-left corner by drag and by keys, and keeps its size', {}, async (app) => {
-  // A window with room for the panel to grow, whatever the screen the test runs on.
-  await app.size(1600, 1000);
+flow('the dock holds the terminal and the side question as tabs, is resized from its top edge and keeps its height', {}, async (app) => {
+  await app.size(1400, 900);
   await app.click('#chat-sq');
-  await app.until("!document.querySelector('#sq').hidden", 'the side question panel');
-  const box = () => app.evaluate("const r = document.querySelector('#sq').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right), bottom: Math.round(r.bottom) };");
-  const b0 = await box();
-  // Drag the corner up and to the left: the panel grows that way and stays in its corner.
-  const at = await app.evaluate("const r = document.querySelector('#sq .edge-rz.c').getBoundingClientRect(); return { x: r.left + 6, y: r.top + 6 };");
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 60, y: at.y - 40, button: 'left', buttons: 1 });
-  // From the corner both edges' capsules are marked.
-  assert.equal(await app.evaluate("return [...document.querySelectorAll('#sq [role=separator]')].every((h) => h.classList.contains('active'));"), true);
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 120, y: at.y - 80, button: 'left', buttons: 1 });
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x - 120, y: at.y - 80, button: 'left', buttons: 0, clickCount: 1 });
-  const b1 = await box();
-  assert.deepEqual([b1.w - b0.w, b1.h - b0.h, b1.right, b1.bottom], [120, 80, b0.right, b0.bottom]);
-  // The keys on the edges' handles, each its own direction: ← wider on the side one, ↓ shorter on the top one,
-  // Shift by four steps; the other direction's arrows do nothing there.
-  await app.evaluate("document.querySelector('#sq-rz-w').focus(); return 1;");
-  await app.key('ArrowLeft', 'ArrowLeft', 37, 8);
-  await app.key('ArrowDown', 'ArrowDown', 40);
-  await app.evaluate("document.querySelector('#sq-rz-h').focus(); return 1;");
-  await app.key('ArrowDown', 'ArrowDown', 40);
+  await app.until("!document.querySelector('#sq').hidden && document.querySelector('#tm').hidden", 'the side question tab');
+  // One dock: the terminal is the other tab, never a second panel; ← → move between the tabs.
+  await app.evaluate("document.querySelector('#dock-tab-sq').focus(); return 1;");
   await app.key('ArrowLeft', 'ArrowLeft', 37);
-  const b2 = await box();
-  assert.deepEqual([b2.w - b1.w, b2.h - b1.h], [64, -16]);
-  assert.equal(await app.evaluate("return document.querySelector('#sq-rz-h').getAttribute('aria-valuenow');"), String(b2.h));
-  // Dragging the side edge's capsule changes the width only.
-  const side = await app.evaluate("const r = document.querySelector('#sq-rz-w').getBoundingClientRect(); return { x: r.left + 3, y: r.top + r.height / 2 };");
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: side.x, y: side.y, button: 'left', buttons: 1, clickCount: 1 });
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: side.x + 32, y: side.y - 50, button: 'left', buttons: 1 });
-  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: side.x + 32, y: side.y - 50, button: 'left', buttons: 0, clickCount: 1 });
-  const b3 = await box();
-  assert.deepEqual([b3.w - b2.w, b3.h - b2.h], [-32, 0]);
-  assert.equal(await app.evaluate("localStorage.getItem('oma.sqSize')"), `${b3.w}x${b3.h}`);
-  // Minimised and opened again, it keeps its size; a double-click goes back to its own size.
-  await app.click('#chat-sq');
-  await app.click('#chat-sq');
-  await app.until("!document.querySelector('#sq').hidden", 'the panel again');
-  assert.deepEqual(await box().then((b) => [b.w, b.h]), [b3.w, b3.h]);
-  await app.evaluate("document.querySelector('#sq-rz-h').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); return 1;");
-  assert.equal((await box()).w, b0.w);
+  await app.until("!document.querySelector('#tm').hidden && document.querySelector('#sq').hidden && document.activeElement?.id === 'dock-tab-tm'", 'the terminal tab');
+  assert.equal(await app.evaluate("return [document.querySelector('#chat-tm').getAttribute('aria-pressed'), document.querySelector('#chat-sq').getAttribute('aria-pressed')].join();"), 'true,false');
+  const h = () => app.evaluate("return document.querySelector('#dock').offsetHeight;");
+  const h0 = await h();
+  // ↑ ↓ on the top edge's handle, Shift by four steps; the value is said.
+  await app.evaluate("document.querySelector('#dock-rz').focus(); return 1;");
+  await app.key('ArrowUp', 'ArrowUp', 38, 8);
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  assert.equal(await h(), h0 + 64 - 16);
+  assert.equal(await app.evaluate("return document.querySelector('#dock-rz').getAttribute('aria-valuenow');"), String(h0 + 48));
+  // Dragging the capsule up makes it taller; the capsule is marked while it moves, and the chat gets shorter.
+  const chat0 = await app.evaluate("return document.querySelector('#chat-thread').offsetHeight;");
+  const top = await app.evaluate("const r = document.querySelector('#dock-rz').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 3 };");
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: top.x, y: top.y, button: 'left', buttons: 1, clickCount: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: top.x, y: top.y - 40, button: 'left', buttons: 1 });
+  assert.equal(await app.evaluate("return document.querySelector('#dock-rz').classList.contains('active');"), true);
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: top.x, y: top.y - 40, button: 'left', buttons: 0, clickCount: 1 });
+  assert.equal(await h(), h0 + 88);
+  assert.equal(await app.evaluate("return document.querySelector('#chat-thread').offsetHeight;"), chat0 - 40);
+  assert.equal(await app.evaluate("localStorage.getItem('oma.dockH')"), String(h0 + 88));
+  // Put away and opened again, it keeps its height; a double-click goes back to the first one.
+  await app.click('#dock-hide');
+  await app.until("document.querySelector('#dock').hidden", 'the dock put away');
+  await app.click('#chat-tm');
+  await app.until("!document.querySelector('#dock').hidden", 'the dock again');
+  assert.equal(await h(), h0 + 88);
+  await app.evaluate("document.querySelector('#dock-rz').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); return 1;");
+  assert.equal(await h(), h0);
 });
 
 flow('the hand-outs of one turn fold into one block with a row per task', {}, async (app) => {
@@ -675,7 +660,7 @@ flow("replies to a report or a Dispatcher message are a thread: the chat shows t
   await app.until("document.querySelector('#thr-title')?.textContent === 'Thread · Write the notes'", 'the panel on the report');
   await app.until("!document.querySelector('#chat-thread .t-new')", 'nothing new once opened');
 
-  // T on a message in the chat opens its thread; the side question floats over the chat, clear of the panel.
+  // T on a message in the chat opens its thread; the side question is in the dock under the chat, clear of the panel.
   await app.key('Escape', 'Escape', 27);
   await app.evaluate(`const b = ${bline}; b.tabIndex = -1; b.focus(); return 1;`);
   await app.key('KeyT', 't', 84);
@@ -684,7 +669,7 @@ flow("replies to a report or a Dispatcher message are a thread: the chat shows t
   await app.until("!document.querySelector('#sq').hidden", 'the side question');
   const apart = await app.evaluate("const a = document.querySelector('#sq').getBoundingClientRect(), b = document.querySelector('#chat-thr').getBoundingClientRect(); return a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;");
   assert.equal(apart, true, 'the side question and the panel do not overlap');
-  await app.click('#sq [data-action="sq-close"]');
+  await app.click('#dock [data-action="sq-close"]');
   // With the right sidebar put away, a thread brings it out, and closing the thread puts it away again.
   await app.click('[data-action="thread-close"]');
   await app.click('#ins-toggle');
@@ -707,6 +692,13 @@ flow('a line run with ! shows its output in the chat; with the reply chip off, t
 
   await typeIn('!node -e "console.log(41 + 1)"');
   assert.equal(await shellMode(), true);
+  // A plain line keeps the neutral command line with its warn ring; one that is hard to undo turns it red and says so.
+  const risky = () => app.evaluate("return [document.querySelector('#chat-form').classList.contains('risky'), !document.querySelector('#chat-shbar .sh-risk').hidden].join();");
+  assert.equal(await risky(), 'false,false');
+  await typeIn('git push --force origin main');
+  assert.equal(await risky(), 'true,true');
+  await typeIn('node -e "console.log(41 + 1)"');
+  assert.equal(await risky(), 'false,false');
   // The chip on the bar: on by default; off, the result waits for the next message, and the setting is saved.
   assert.equal(await app.evaluate("document.querySelector('#chat-shbar .sh-ask').getAttribute('aria-pressed')"), 'true');
   await app.click('#chat-shbar .sh-ask');
@@ -728,6 +720,17 @@ flow('a line run with ! shows its output in the chat; with the reply chip off, t
   const said = await app.evaluate("[...document.querySelectorAll('#chat-thread .bub.ai')].map((b) => b.innerText).join('\\n')");
   // The bubble draws the command's backticks as code.
   assert.match(said, /\[Shell run\] The user ran node -e "console\.log\(41 \+ 1\)" in the IDE home: exit 0/);
+});
+
+flow('a line run with ! shows its stderr in the danger colour, folded to its first line', {}, async (app) => {
+  await app.evaluate(`const i = document.querySelector('#chat-input'); i.focus(); i.value = ${JSON.stringify(`!node -e "console.log('fine');console.error('bad one');console.error('bad two')"`)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  await app.evaluate("document.querySelector('#chat-form').requestSubmit(); return 1;");
+  await app.until("!!document.querySelector('#chat-thread .sh-run:not(.live) .o-more')", 'the run with its stderr folded');
+  const out = await app.evaluate("const b = document.querySelector('#chat-thread .sh-run'); return { err: b.querySelector('.o-err').textContent, more: b.querySelector('.o-more').textContent, plain: [...b.querySelectorAll('.o-seg:not(.o-err)')].map((x) => x.textContent).join('|'), red: getComputedStyle(b.querySelector('.o-err')).color !== getComputedStyle(b.querySelector('.sh-out')).color };");
+  assert.deepEqual(out, { err: 'bad one', more: '+1 line', plain: 'fine', red: true });
+  await app.click('#chat-thread .sh-run .o-more');
+  await app.until("document.querySelector('#chat-thread .sh-run .o-err')?.textContent === 'bad one\\nbad two'", 'the stderr opened');
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread .sh-run .o-more').getAttribute('aria-expanded')"), 'true');
 });
 
 flow('a line run with ! hands its result to the Dispatcher, which replies without being asked', {}, async (app) => {

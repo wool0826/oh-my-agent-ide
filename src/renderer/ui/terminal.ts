@@ -1,16 +1,18 @@
-// The side terminal (shared/terminal.ts, main/terminal.ts): a floating panel at the chat's left where lines run as
-// "!" lines do, without the chat. Enter runs, ↑ / ↓ go through what was run, Esc hides it; the corner resizes it.
-import { clampTermSize, keyTermSize, pushHistory, TERM_DEF, TERM_EMPTY, TERM_MIN, type TermRun, type TermView } from '../../shared/terminal';
+// The side terminal (shared/terminal.ts, main/terminal.ts): a tab of the dock under the chat (ui/dock.ts) where
+// lines run as "!" lines do, without the chat. Enter runs, ↑ / ↓ go through what was run, Esc puts the dock away.
+import { pushHistory, TERM_EMPTY, type TermRun, type TermView } from '../../shared/terminal';
 import { shellClock, shellTook } from '../../shared/shell';
-import { $, esc, isMac, S, sym, t, toast, tryCall } from './core';
+import { $, esc, isMac, S, sym, t, toast, tryCall, ui } from './core';
 import { openPop, pop } from './controls';
 import { setTip } from './tip';
+import { dock, onDock, setDock } from './dock';
+import { cwdButton, outHtml } from './shell';
 
-const SIZE_KEY = 'oma.termSize';
 const REPO_KEY = 'oma.termRepo';
 
 export const term = {
-  open: false,
+  /** Its tab shows in the dock. */
+  get open() { return dock.tab === 'tm'; },
   view: { ...TERM_EMPTY } as TermView,
   history: [] as string[],
   /** Where ↑ / ↓ is in the history; history.length is the line being typed. */
@@ -20,13 +22,6 @@ export const term = {
   key: '',
 };
 
-function readSize() {
-  try {
-    const v = JSON.parse(localStorage.getItem(SIZE_KEY) ?? 'null') as { w?: number; h?: number } | null;
-    return { w: Number(v?.w ?? TERM_DEF.w), h: Number(v?.h ?? TERM_DEF.h) };
-  } catch { return { ...TERM_DEF }; }
-}
-let size = readSize();
 /** Follow the output while the view is at its end. */
 let stick = true;
 
@@ -37,15 +32,15 @@ function repoNow(): string {
 }
 
 export function openTerm() {
-  term.open = true;
+  setDock('tm');
   renderTerm();
   $<HTMLTextAreaElement>('#tm-input').focus();
 }
 
+/** Puts the dock away; the runs stay. */
 export function hideTerm(focusChat = true) {
   if (!term.open) return;
-  term.open = false;
-  renderTerm();
+  setDock(null);
   if (focusChat) $<HTMLTextAreaElement>('#chat-input').focus();
 }
 
@@ -102,7 +97,6 @@ function keys(e: KeyboardEvent) {
   if (e.isComposing || e.keyCode === 229) return;
   const el = e.target as HTMLElement;
   if (e.key === 'Escape' && !pop.el) { e.preventDefault(); e.stopPropagation(); hideTerm(); return; }
-  if (el.id === 'tm-rz-h' || el.id === 'tm-rz-w') { edgeKeys(e, el.dataset.edge as 'w' | 'h'); return; }
   if (el.id !== 'tm-input') return;
   const input = el as HTMLTextAreaElement;
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void runTerm(); return; }
@@ -119,98 +113,13 @@ function fitInput(input: HTMLTextAreaElement) {
   input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
 }
 
-/** The room the panel has: the chat's column, above the composer. */
-function room() {
-  const main = $('#tm').parentElement!;
-  const composer = document.getElementById('chat-form');
-  return { w: main.clientWidth - 32, h: main.clientHeight - (composer?.offsetHeight ?? 0) - 48 };
-}
-
-function applySize() {
-  const panel = $('#tm');
-  const s = clampTermSize(size.w, size.h, room());
-  panel.style.width = `${s.w}px`;
-  panel.style.height = `${s.h}px`;
-}
-
-function saveSize() {
-  size = clampTermSize(size.w, size.h, room());
-  ariaSize();
-  try { localStorage.setItem(SIZE_KEY, JSON.stringify(size)); } catch { /* not kept */ }
-}
-
-/** The handles' values: each says the size in its own direction. */
-function ariaSize() {
-  const s = clampTermSize(size.w, size.h, room());
-  const max = room();
-  for (const [id, now, min, top] of [['#tm-rz-h', s.h, TERM_MIN.h, max.h], ['#tm-rz-w', s.w, TERM_MIN.w, max.w]] as const) {
-    const h = $(id);
-    h.setAttribute('aria-valuenow', String(now));
-    h.setAttribute('aria-valuemin', String(min));
-    h.setAttribute('aria-valuemax', String(Math.max(min, Math.round(top))));
-  }
-}
-
-/**
- * The handles on the top and right edges and the top-right corner between them: the panel sits at the bottom left,
- * so it grows up and to the right.
- */
-function bindEdges() {
-  const panel = $('#tm');
-  const handles = (edge: string | undefined) => (edge === 'both' ? ['#tm-rz-h', '#tm-rz-w'] : [`#tm-rz-${edge}`]).map((id) => $(id));
-  panel.querySelectorAll<HTMLElement>('.edge-rz').forEach((grip) => {
-    const edge = grip.dataset.edge;
-    grip.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      grip.setPointerCapture(e.pointerId);
-      const start = { x: e.clientX, y: e.clientY, w: panel.offsetWidth, h: panel.offsetHeight };
-      panel.classList.add('sizing');
-      for (const h of handles(edge)) h.classList.add('active');
-      const move = (m: PointerEvent) => {
-        size = { w: edge === 'h' ? start.w : start.w + (m.clientX - start.x), h: edge === 'w' ? start.h : start.h - (m.clientY - start.y) };
-        applySize();
-      };
-      const up = () => {
-        grip.removeEventListener('pointermove', move);
-        grip.removeEventListener('pointerup', up);
-        grip.removeEventListener('pointercancel', up);
-        grip.removeEventListener('lostpointercapture', up);
-        if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
-        panel.classList.remove('sizing');
-        for (const h of handles(edge)) h.classList.remove('active');
-        saveSize();
-      };
-      grip.addEventListener('pointermove', move);
-      grip.addEventListener('pointerup', up);
-      grip.addEventListener('pointercancel', up);
-      grip.addEventListener('lostpointercapture', up);
-    });
-    // Double click: back to the first size.
-    grip.addEventListener('dblclick', () => { size = { ...TERM_DEF }; applySize(); saveSize(); });
-    if (grip.getAttribute('role') === 'separator') grip.addEventListener('focus', ariaSize);
-  });
-}
-
-/** Arrows on an edge's handle: ↑ ↓ taller / shorter on the top one, → ← wider / narrower on the side one; Shift by more. */
-function edgeKeys(e: KeyboardEvent, edge: 'w' | 'h') {
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const next = keyTermSize(edge, e.key, e.shiftKey, size, room());
-  if (!next) return;
-  e.preventDefault();
-  e.stopPropagation();
-  size = next;
-  applySize();
-  saveSize();
-}
-
 export function bindTerm() {
-  $('#tm').addEventListener('keydown', keys);
+  // Esc anywhere in the dock while this tab shows: on its header too.
+  $('#dock').addEventListener('keydown', (e) => { if (term.open) keys(e); });
   $('#tm-form').addEventListener('submit', (e) => { e.preventDefault(); void runTerm(); });
   const input = $<HTMLTextAreaElement>('#tm-input');
   input.addEventListener('input', () => { fitInput(input); term.at = term.history.length; });
-  bindEdges();
-  window.addEventListener('resize', () => { if (term.open) { applySize(); ariaSize(); } });
+  onDock(renderTerm);
   $('#tm-thread').addEventListener('scroll', () => {
     const th = $('#tm-thread');
     stick = th.scrollHeight - th.scrollTop - th.clientHeight < 24;
@@ -251,9 +160,11 @@ function patchRuns(th: HTMLElement, runs: TermRun[]) {
     const headKey = JSON.stringify([r.running, r.stopped, r.code, r.ms, r.repo, t('shell.home')]);
     if (n.dataset.head !== headKey) { n.dataset.head = headKey; n.querySelector('.tm-cmd')!.innerHTML = headHtml(r); }
     const out = r.out.replace(/\n+$/, '');
+    // stderr in the danger colour, each stretch of it folded to its first line (G2): the same as a "!" run.
+    const html = out ? outHtml(r.id, out, r.err) : '';
     let pre = n.querySelector<HTMLElement>('.tm-out');
-    if (out && !pre) { pre = document.createElement('pre'); pre.className = 'tm-out'; n.append(pre); }
-    if (pre && pre.textContent !== out) { if (out) pre.textContent = out; else pre.remove(); }
+    if (html && !pre) { pre = document.createElement('pre'); pre.className = 'tm-out'; n.append(pre); }
+    if (pre && pre.dataset.html !== html) { if (html) { pre.innerHTML = html; pre.dataset.html = html; } else pre.remove(); }
   }
 }
 
@@ -274,17 +185,12 @@ export function renderTerm() {
   const panel = $('#tm');
   panel.hidden = !term.open;
   if (!term.open) return;
-  const composer = document.getElementById('chat-form');
-  if (composer) panel.style.bottom = `${composer.offsetHeight + 24}px`;
-  applySize();
   const repo = repoNow();
   const where = repo || t('shell.home');
-  const key = JSON.stringify([term.view, where, t('term.title')]);
+  const key = JSON.stringify([term.view, where, t('term.title'), [...ui.errOpen]]);
   if (key === term.key) return;
   term.key = key;
-  const cwd = $('#tm-cwd');
-  cwd.innerHTML = `${t('shell.in', { where: `<b>${esc(where)}</b>` })}<svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg>`;
-  cwd.setAttribute('aria-label', t('shell.folderAria', { where }));
+  $('#tm-cwd-slot').innerHTML = cwdButton('tm-cwd', where, 'tm-cwd');
   const th = $('#tm-thread');
   patchRuns(th, term.view.runs);
   if (stick) th.scrollTop = th.scrollHeight;
