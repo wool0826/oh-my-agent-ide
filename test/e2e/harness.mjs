@@ -198,6 +198,24 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
         await sleep(100);
       }
     },
+    /**
+     * Presses the mouse on an element, moves it by (dx, dy) in `steps` moves `ms` apart, and lets go (trusted events),
+     * as a drag does. `hold` keeps the button down and returns { x, y } to look at the row mid-drag; `release` lets go.
+     */
+    async drag(selector, dx, { dy = 0, steps = 3, ms = 16, hold = false } = {}) {
+      const p = await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+      const x0 = Math.round(p.x), y0 = Math.round(p.y);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: y0, button: 'left', buttons: 1, clickCount: 1 });
+      for (let i = 1; i <= steps; i++) {
+        await sleep(ms);
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x0 + (dx * i) / steps), y: Math.round(y0 + (dy * i) / steps), button: 'left', buttons: 1 });
+      }
+      const at = { x: Math.round(x0 + dx), y: Math.round(y0 + dy) };
+      if (!hold) await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', buttons: 0, clickCount: 1 });
+      return at;
+    },
+    release: (at) => send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', buttons: 0, clickCount: 1 }),
     /** Sets the page's size, as resizing the window does. */
     async size(width, height = 900) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });

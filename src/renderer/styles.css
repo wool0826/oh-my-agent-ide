@@ -716,6 +716,19 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .row-acts { position: absolute; top: var(--space-6); right: var(--space-6); display: flex; gap: var(--space-2); opacity: 0; transition: opacity var(--dur-fast); }
 :is(.res, .aa):is(:hover, :focus-within, .sel) > .row-acts { opacity: 1; }
 .btn.row-x svg { width: 10px; height: 10px; }
+/* Swiping a Notifications row sideways (ui/swipe.ts): the row follows the pointer and the side it leaves shows red
+   with an ✕, solid once letting go clears it. Rows that cannot be cleared only give a little. Vertical drags stay scrolls. */
+#chat-ins .ins-list :is(.res, .aa, .dec, .away-row)[data-nav] { touch-action: pan-y; }
+body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+.swipe-host { position: relative; }
+.swiping { position: relative; z-index: 1; will-change: transform; }
+.swiping.swipe-close { padding-block: 0; overflow: hidden; }
+.swipe-under { position: absolute; left: 0; z-index: 0; display: flex; align-items: center; justify-content: flex-start; padding: 0 var(--space-16); overflow: hidden; background: var(--danger-soft); color: var(--danger-text); pointer-events: none; transition: background var(--dur-fast) var(--ease-standard); }
+.swipe-under.right { left: auto; right: 0; justify-content: flex-end; }
+.swipe-under.armed { background: var(--danger-fill); color: var(--text-on-solid); }
+.swipe-under svg { flex: none; width: 12px; height: 12px; transition: scale var(--dur-fast) var(--ease-out); }
+.swipe-under.armed svg { scale: 1.25; }
+@media (prefers-reduced-motion: reduce) { .swipe-under, .swipe-under svg { transition: none; } }
 :is(.res, .aa)[data-nav]:focus-visible { outline: var(--focus-outline); outline-offset: -2px; border-radius: var(--radius-lg); }
 .fix { display: flex; flex-direction: column; gap: var(--space-8); padding-top: var(--space-2); }
 .lab { font-size: var(--fs-caption2); color: var(--text-secondary); }
