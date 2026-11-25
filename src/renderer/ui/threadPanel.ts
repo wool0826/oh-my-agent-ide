@@ -9,7 +9,7 @@ import { isReport, threadIndex } from '../../shared/thread';
 import { $, lang, S, t, toast, tryCall, ui } from './core';
 import { keepThreadFocus } from './thread';
 import { chatAll, renderChat, rootHtml, rootName, rootQuote, rootWho, threadRow } from './chat';
-import { togglePanel } from './sidebar';
+import { panelHooks, togglePanel } from './sidebar';
 
 let drawn = '';
 let sending = false;
@@ -63,7 +63,7 @@ export function openThread(id: string, focus = true) {
     ui.thread = id;
     const el = input();
     el.value = ui.threadDrafts.get(id) ?? '';
-    if (ui.insMin) { togglePanel('ins'); ui.threadOpenedIns = true; }
+    if (ui.insMin) { togglePanel('ins', false); ui.threadOpenedIns = true; }
     drawn = '';
     renderChat();
     // Measured once the panel shows: hidden, the box has no height to take.
@@ -82,7 +82,7 @@ export function closeThread(back = true) {
   $('#win').classList.remove('thr-open');
   if (ui.threadOpenedIns) {
     ui.threadOpenedIns = false;
-    if (!ui.insMin) togglePanel('ins');
+    if (!ui.insMin) togglePanel('ins', false);
   }
   renderChat();
   if (back) document.querySelector<HTMLElement>(`#chat-thread [data-action="thread-open"][data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
@@ -130,13 +130,14 @@ export function revealQuoted(who: string, quote: string): HTMLElement | null {
 }
 
 export function bindThread() {
+  // The sidebar put away by hand takes the thread with it; the panel would be hidden but still marking replies read.
+  panelHooks.insAway = () => { ui.threadOpenedIns = false; closeThread(false); };
   const panel = $('#chat-thr');
   const el = input();
   $('#thr-form').addEventListener('submit', (e) => { e.preventDefault(); void sendThread(); });
   el.addEventListener('input', () => fit(el));
   panel.addEventListener('keydown', (e) => {
     if (e.isComposing || e.keyCode === 229) return;
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeThread(); return; }
     if (e.target !== el) return;
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendThread(); return; }
     // From an empty composer, ↑ goes to the newest reply.
@@ -153,7 +154,7 @@ export function bindThread() {
     if (e.code !== 'KeyT' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return;
     const t0 = e.target as HTMLElement;
     if (t0.matches('input, textarea, [contenteditable]')) return;
-    const root = t0.closest<HTMLElement>('[data-root]')?.dataset.root;
+    const root = t0.closest<HTMLElement>('[data-root]')?.dataset.root ?? t0.closest<HTMLElement>('[data-action="thread-open"]')?.dataset.id;
     if (!root) return;
     e.preventDefault();
     openThread(root);

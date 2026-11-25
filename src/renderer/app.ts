@@ -156,7 +156,6 @@ export async function act(el: HTMLElement, e: Event) {
     }
     // The chip over a late reply: back to the report it answers.
     // A task can have several cards (a result, then a follow-up): the one the group answers is the last one above it.
-    case 'goto-report': flashCard([...document.querySelectorAll<HTMLElement>(`#chat-thread .attach[data-task="${CSS.escape(id)}"]`)].filter((c) => c.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop() ?? null); break;
     case 'shell-cwd': pickShellFolder(el); break;
     case 'shell-ask': toggleShellAsk(); break;
     case 'shell-stop': (el as HTMLButtonElement).disabled = true; void tryCall('shell:stop', id); break;
@@ -302,7 +301,8 @@ export async function act(el: HTMLElement, e: Event) {
     // A quote at the top of a reply: back to the message it quotes, the nearest one above with those words. A
     // message that is only in a thread opens the thread, and its row there is the one shown.
     case 'goto-quote': {
-      const th = el.closest('.thread');
+      // From the panel, the quoted message is in the chat.
+      const th = el.closest('#thr-body') ? $('#chat-thread') : el.closest('.thread');
       const src = [...(th?.querySelectorAll<HTMLElement>('[data-action="reply"]') ?? [])]
         .filter((b) => b.dataset.who === el.dataset.who && b.dataset.quote === el.dataset.quote && b.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
       let msg = src?.closest<HTMLElement>('.t-row, .attach') ?? src?.closest('.bline')?.querySelector<HTMLElement>('.bub') ?? null;
@@ -1076,6 +1076,8 @@ export function init() {
       if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }
       if (ui.aaEdit) { ui.aaEdit = null; renderChatInspector(); return; }
       if (ui.sugEdit) { ui.sugEdit = null; renderChatInspector(); return; }
+      // The thread panel goes last: whatever opened over it closes first. The keyboard goes back to its thread.
+      if (ui.thread) { closeThread(); return; }
     }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {

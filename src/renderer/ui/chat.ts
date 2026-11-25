@@ -259,8 +259,12 @@ export function threadRow(c: ChatItem, prev: ChatItem | null, root: ChatItem, re
   return `<div class="t-row ev" data-id="${esc(c.id)}">${chatItemHtml(c)}</div>`;
 }
 
-/** The chat was drawn once: a thread first seen after that starts with none of its replies seen. */
+/**
+ * The chat was drawn once: a thread first seen after that starts with none of its replies seen. Not a thread on a page
+ * loaded above (`older`): its replies were there before.
+ */
 let threadsPrimed = false;
+let drawingOlder = false;
 
 /**
  * Replies from someone else that came while the thread was not open in the panel, and that the chat does not show:
@@ -269,7 +273,7 @@ let threadsPrimed = false;
 function unread(root: ChatItem, rows: ChatItem[]) {
   if (ui.thread === root.id) { ui.threadSeen.set(root.id, rows.length); return 0; }
   let seen = ui.threadSeen.get(root.id);
-  if (seen === undefined) ui.threadSeen.set(root.id, (seen = threadsPrimed ? 0 : rows.length));
+  if (seen === undefined) ui.threadSeen.set(root.id, (seen = threadsPrimed && !drawingOlder ? 0 : rows.length));
   return rows.slice(seen, -1).filter((c) => c.kind !== 'user').length;
 }
 
@@ -330,7 +334,7 @@ export function renderChat(force = false, older = false) {
   runs = handoutRuns(all.slice(from));
   const key = `${lang()}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${shellKey(all.slice(from))}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
   // The hand-out blocks follow their tasks: a step done or a decision answered draws them again.
-  const hands = `${handoutKey()}:${[...ui.handToggled].join()}:${ui.thread}:${[...ui.threadSeen.values()].join()}`;
+  const hands = `${handoutKey()}:${[...ui.handToggled].join()}:${ui.thread}`;
   renderThreadPanel();
   if (!force && !older && key === ui.lastChatKey && hands === ui.lastHandKey) return;
   ui.lastChatKey = key;
@@ -360,6 +364,7 @@ export function renderChat(force = false, older = false) {
   const late = lateReplies(ix);
   const rowsOf = (r: number) => ix.replies.get(r)!.map((j) => items[j].c);
   let mark = seenAt >= 0 ? seenAt + 1 : -1;
+  drawingOlder = older;
   for (let i = 0; i < items.length; i++) {
     const { c, n } = items[i];
     const lateOf = ix.rootOf[i] >= 0 ? late.get(i) : undefined;
