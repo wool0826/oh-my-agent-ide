@@ -1662,6 +1662,8 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
    purpose known there is no line, so no empty gap. The Worker's decision line carries it as a second line. */
 .dec .purpose { font-size: var(--fs-caption); line-height: var(--lh-ui); color: var(--text-primary); overflow-wrap: anywhere; word-break: keep-all; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .cstrip:has(> .cs-why) { flex-wrap: wrap; row-gap: var(--space-2); }
+/* A zero basis so a long command never wraps to a line of its own: it grows to its width at most, then cuts. */
+.cstrip:has(> .cs-why) > code { flex: 1 1 0%; max-width: max-content; }
 .cstrip > .cs-why { flex: 1 1 100%; order: 1; padding-left: calc(var(--icon-sm) + var(--space-8)); color: var(--text-secondary); }
 
 /* The thread panel (T-0076): in the right sidebar's place while a thread is open, so the side question and the

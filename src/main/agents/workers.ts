@@ -261,7 +261,8 @@ class WorkerManager {
       onStatus: (st, text) => {
         // The turn the user stopped ends in an error: the Worker is idle, not in error.
         const stopped = st !== 'busy' && this.stopping.has(w.id);
-        if (st !== 'busy') this.said.delete(w.id);
+        // A turn starts or ends: what the Worker said before belongs to another turn.
+        this.said.delete(w.id);
         if (st === 'busy') {
           if (w.status !== 'waiting') w.status = 'running';
           w.stalledAt = null;
@@ -1218,6 +1219,7 @@ class WorkerManager {
     if (s && s.background + s.shells > 0) {
       s.close();
       this.sessions.delete(w.id);
+      this.said.delete(w.id);
     }
     // Idle first: failing the task frees the slot, and fillSlots may hand this Worker held feedback or queued work.
     w.status = 'idle';
@@ -1392,6 +1394,7 @@ class WorkerManager {
     this.checkArchive(w.id);
     this.sessions.get(w.id)?.close();
     this.sessions.delete(w.id);
+    this.said.delete(w.id);
     w.status = 'archived';
     w.statusText = '';
     let kept: 'task' | 'dirty' | null = w.taskIds.some((id) => holdsWorktree(store.task(id))) ? 'task' : null;
