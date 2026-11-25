@@ -31,7 +31,8 @@
 /* Status glyph */
 .glyph { --c: var(--state-idle); width: var(--icon-lg); height: var(--icon-lg); flex: none; display: grid; place-items: center; color: var(--c); }
 .glyph svg { width: var(--icon-md); height: var(--icon-md); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.glyph[data-s="ask"] { --c: var(--state-ask); } .glyph[data-s="run"] { --c: var(--state-run); } .glyph[data-s="review"] { --c: var(--state-review); }
+.glyph[data-s="ask"] { --c: var(--text-on-ask); } .glyph[data-s="ask"] svg { border-radius: 50%; background: var(--state-ask); stroke-width: 1.9; }
+.glyph[data-s="run"] { --c: var(--state-run); } .glyph[data-s="review"] { --c: var(--state-review); }
 .glyph[data-s="wait"] { --c: var(--state-wait); } .glyph[data-s="done"] { --c: var(--state-done); } .glyph[data-s="error"] { --c: var(--state-error); }
 .glyph[data-s="repo"] { --c: var(--kind-repo); } .glyph[data-s="pref"] { --c: var(--kind-pref); } .glyph[data-s="doc"] { --c: var(--kind-doc); }
 .glyph[data-s="run"] svg { animation: ds-spin var(--dur-spin) linear infinite; }
@@ -85,7 +86,7 @@
 .row { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-6) var(--space-8); border-radius: var(--radius-md); cursor: default; transition: background var(--dur-fast) var(--ease-standard); }
 .row:hover, .row.is-hover { background: var(--surface-hover); }
 .row:active, .row.is-active { background: var(--surface-pressed); }
-.row[aria-current="true"], .row.is-selected { background: var(--surface-selected); box-shadow: var(--rim); }
+.row[aria-current="true"], .row.is-selected { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; }
 .row .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .row .t b { font-weight: var(--fw-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .t small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -101,9 +102,10 @@
 .pill[data-tone="danger"] { background: var(--danger-soft); color: var(--danger-text); }
 .pill[data-tone="review"] { background: var(--review-soft); color: var(--review-text); }
 .pill[data-tone="warning"] { background: var(--warning-soft); color: var(--warning-text); }
-.pill[data-tone="success"] { background: var(--success-soft); color: var(--success-text); }
+.pill[data-tone="success"], .pill[data-tone="pr-open"] { background: var(--success-soft); color: var(--success-text); }
+.pill[data-tone="ask"] { background: var(--state-ask); color: var(--text-on-ask); }
 .pill-square { width: 18px; padding: 0; justify-content: center; border-radius: var(--radius-xs); font-weight: var(--fw-bold); }
-.count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 var(--space-6); border-radius: var(--radius-full); background: var(--danger-solid); color: var(--text-on-solid); font-size: var(--fs-caption2); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 var(--space-6); border-radius: var(--radius-full); background: var(--state-ask); color: var(--text-on-ask); font-size: var(--fs-caption2); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
 .count.is-pulse { animation: ds-pulse var(--dur-attention) var(--ease-in-out) 3; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex: none; }
 kbd { font: inherit; font-size: var(--fs-caption2); font-weight: var(--fw-semibold); padding: 0 var(--space-4); border-radius: var(--radius-xs); background: var(--surface-code-inline); }
@@ -175,7 +177,7 @@ kbd { font: inherit; font-size: var(--fs-caption2); font-weight: var(--fw-semibo
 .task:first-child, .task.is-selected, .task.is-selected + .task, .task.solo { box-shadow: none; }
 .task:hover, .task.is-hover { background: var(--surface-hover); }
 .task:active, .task.is-active { background: var(--surface-pressed); }
-.task.is-selected { background: var(--surface-selected); box-shadow: var(--rim); }
+.task.is-selected { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; }
 .task .m { min-width: 0; display: flex; flex-direction: column; }
 .task .m b { font-weight: var(--fw-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task .m span { font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -209,7 +211,7 @@ kbd { font: inherit; font-size: var(--fs-caption2); font-weight: var(--fw-semibo
 .res .body > span { font-size: var(--fs-caption2); color: var(--text-secondary); }
 .res .lk { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-10); font-size: var(--fs-caption); }
 .aa { position: relative; display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-10) var(--space-12); transition: background var(--dur-fast) var(--ease-standard); }
-.aa.is-selected { background: var(--accent-soft); }
+.aa.is-selected { box-shadow: inset 0 0 0 2px var(--accent); outline: 2px solid transparent; border-radius: var(--radius-lg); }
 .aa .q { padding-right: 28px; font-size: var(--fs-caption); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
 .aa .q em { font-style: normal; color: var(--success-text); }
 .aa .q ins { text-decoration: none; color: var(--accent-text); }
@@ -225,11 +227,13 @@ kbd { font: inherit; font-size: var(--fs-caption2); font-weight: var(--fw-semibo
 .allclear b { font-size: var(--fs-headline); color: var(--text-primary); font-weight: var(--fw-semibold); }
 
 /* Usage gauge */
-.usage { display: grid; grid-template-columns: auto 14px 64px 32px 14px 64px 32px; column-gap: var(--space-6); row-gap: var(--space-4); align-items: center; padding: var(--space-6) var(--space-16); border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.usage .acct { display: contents; }
-.usage .nm { max-width: 110px; padding-right: var(--space-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-semibold); color: var(--text-primary); }
-.usage .acct.is-limited .nm { color: var(--danger-text); }
-.usage .pc { text-align: right; }
+.usage { display: inline-flex; align-items: center; gap: var(--space-8); padding: var(--space-4) var(--space-8); border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); }
+.usage .acct { display: inline-flex; align-items: center; gap: var(--space-4); }
+.usage svg { width: 22px; height: 22px; transform: rotate(-90deg); }
+.usage circle { fill: none; stroke-width: 3; stroke-linecap: round; stroke: var(--meter-ok); }
+.usage circle.trk { stroke: var(--meter-track); }
+.usage .acct.is-limited circle.trk { stroke: var(--danger-soft); }
+.usage circle[data-level="caution"] { stroke: var(--meter-caution); } .usage circle[data-level="warn"] { stroke: var(--meter-warn); } .usage circle[data-level="critical"] { stroke: var(--meter-critical); }
 .meter { height: 6px; border-radius: var(--radius-full); background: var(--meter-track); overflow: hidden; }
 .meter > i { display: block; height: 100%; border-radius: inherit; background: var(--meter-ok); transition: width var(--dur-slow) var(--ease-standard); }
 .meter[data-level="caution"] > i { background: var(--meter-caution); } .meter[data-level="warn"] > i { background: var(--meter-warn); } .meter[data-level="critical"] > i { background: var(--meter-critical); }
@@ -683,7 +687,7 @@ table.t td code { white-space: nowrap; }
       <h3>Pills, badges, tags</h3>
       <div class="comp"><div class="comp-h"><h4>Tones</h4><span>18px, 11/600 · soft = hue at 14% (dark) / 12–14% (light) · text uses the hue's *-text role</span></div>
         <div class="stage"><div class="flexrow" style="gap:10px">
-          <span class="pill" data-tone="accent" data-i18n="pill.run">3m</span><span class="pill" data-tone="danger" data-i18n="st.waitingMe">Waiting for you</span><span class="pill" data-tone="danger" data-i18n="st.error">Error</span><span class="pill" data-tone="review" data-i18n="st.prOpen">PR open</span><span class="pill" data-tone="warning" data-i18n="st.afterMerge">After merge</span><span class="pill" data-tone="warning" data-i18n="st.limitWait">Waiting for limit</span><span class="pill" data-tone="success" data-i18n="pr.merged">merged</span><span class="pill" data-i18n="st.archived">Archived</span>
+          <span class="pill" data-tone="accent" data-i18n="pill.run">3m</span><span class="pill" data-tone="ask" data-i18n="st.waitingMe">Needs your decision</span><span class="pill" data-tone="danger" data-i18n="st.error">Error</span><span class="pill" data-tone="review" data-i18n="st.prOpen">PR open</span><span class="pill" data-tone="warning" data-i18n="st.afterMerge">After merge</span><span class="pill" data-tone="warning" data-i18n="st.limitWait">Waiting for limit</span><span class="pill" data-tone="success" data-i18n="pr.merged">merged</span><span class="pill" data-i18n="st.archived">Archived</span>
           <span class="pill" data-tone="accent">Team</span><span class="pill" data-tone="review">Enterprise</span>
           <span class="count">2</span><span class="count">12</span>
           <span class="diff-tag" data-st="A">A</span><span class="diff-tag" data-st="M">M</span><span class="diff-tag" data-st="D">D</span><span class="diff-tag" data-st="R">R</span>
@@ -716,19 +720,19 @@ table.t td code { white-space: nowrap; }
         <p class="note" style="margin-top:8px">Archived cards used 55% opacity (text fell below 4.5:1); now the title steps down to text-secondary/500 and the glyph to idle gray.</p></div>
 
       <h3>Inbox</h3>
-      <div class="comp"><div class="comp-h"><h4>Decision, plan, results, answered-for-you</h4><span>inspector groups: card radius 14 · item padding 12 · question 13/600 · source 11 text-secondary · buttons right-aligned, primary last</span></div>
+      <div class="comp"><div class="comp-h"><h4>Decision, plan, results, answered-for-you</h4><span>inspector groups: card radius 14 · item padding 12 · question 13/600 · source 11 text-secondary · buttons in one row with the primary last, or a full-width stack with the primary first when they do not fit</span></div>
         <div class="ba">
           <div class="stage glass-panel flexcol" style="gap:10px" id="inbox-a"></div>
           <div class="stage glass-panel flexcol" style="gap:10px" id="inbox-b"></div>
         </div></div>
 
       <h3>Usage gauge</h3>
-      <div class="comp"><div class="comp-h"><h4>Toolbar capsule and account meters</h4><span>one level rule everywhere: ≤30 ok · ≤50 caution · ≤80 warn · &gt;80 critical · bar 6px · numbers always shown</span></div>
+      <div class="comp"><div class="comp-h"><h4>Toolbar rings and account meters</h4><span>one level rule everywhere: ≤30 ok · ≤50 caution · ≤80 warn · &gt;80 critical · rings 22 (5h outside, 7d inside) · bar 6px · numbers in the popover and on account cards</span></div>
         <div class="stage" style="background:var(--bg-backdrop)"><div class="flexcol" style="gap:16px">
           <div class="usage" style="align-self:flex-start" id="usage-demo"></div>
           <div class="sgroup" style="max-width:640px"><div class="srow" style="gap:14px"><span class="avatar" data-c="0">WO</span><span style="flex:1 1 160px;display:flex;flex-direction:column;gap:2px"><span class="flexrow"><b>Work</b><span class="pill" data-tone="accent">Team</span></span><span class="note" data-i18n="acc.kindToken">Token</span></span><span class="meters" style="flex:1 1 220px" id="meters-demo"></span><button class="btn btn-icon" type="button" aria-label="Options"><svg><use href="#s-more"/></svg></button></div></div>
         </div></div>
-        <p class="note" style="margin-top:8px">The toolbar used green → yellow → orange → red while account cards used blue with orange at 80%, so one account showed two colors for the same number. Both now use <code>data-level</code> on <code>.meter</code>. Bars clear 3:1 against their track in both themes.</p></div>
+        <p class="note" style="margin-top:8px">The toolbar used green → yellow → orange → red while account cards used blue with orange at 80%, so one account showed two colors for the same number. Both now use the same four levels. The toolbar shows two rings per account (T-0053, #120) and names a used-up account in a danger pill; the numbers, the reset times and the <code>.meter</code> bars are in the popover that opens from the rings, and on account cards in Settings. Bars and arcs clear 3:1 against their track in both themes.</p></div>
 
       <h3>Fields and controls</h3>
       <div class="comp"><div class="comp-h"><h4>Text field</h4><span>28px · radius 10 · sunken well · focus 2px ring · warning (font not installed) and invalid outlines</span></div>
@@ -944,7 +948,7 @@ table.t td code { white-space: nowrap; }
     'r.run2.t': ['Fix the Windows window frame', 'Windows 창 외곽선 수정'], 'r.run2.s': ['oh-my-agent-ide, W-03, 12m', 'oh-my-agent-ide, W-03, 12분'],
     'r.pr1.t': ['Slide the view pill on every tab switch', '탭 알약이 모든 전환에서 미끄러지게'], 'r.pr1.s': ['oh-my-agent-ide #3, in review', 'oh-my-agent-ide #3, 리뷰 대기'],
     'r.q1.t': ['Split the login PR', '로그인 PR 나누기'], 'r.q1.s': ['Starts after T-0007 is merged', 'T-0007 머지 후 시작'],
-    'pill.run': ['3m', '3분'], 'st.waitingMe': ['Waiting for you', '내 결정 대기'], 'st.error': ['Error', '오류'], 'st.prOpen': ['PR open', 'PR 열림'],
+    'pill.run': ['3m', '3분'], 'st.waitingMe': ['Needs your decision', '결정 필요'], 'st.error': ['Error', '오류'], 'st.prOpen': ['PR open', 'PR 열림'],
     'st.afterMerge': ['After merge', '머지 후 시작'], 'st.limitWait': ['Waiting for limit', '한도 대기'], 'pr.merged': ['merged', '머지됨'], 'st.archived': ['Archived', '보관됨'], 'st.running': ['Running', '실행 중'],
     'chat.stamp': ['Today 1:32 PM', '오늘 오후 1:32'],
     'chat.me1': ['Split the login refactor into two PRs.', '로그인 리팩터링을 PR 두 개로 나눠 줘.'],
@@ -1196,7 +1200,9 @@ table.t td code { white-space: nowrap; }
       '<div class="state"><span class="lab">Dropdown · default / hover / open / disabled</span><button class="dd-btn" type="button"><span>Opus 5.5</span><svg><use href="#s-updown"/></svg></button><button class="dd-btn is-hover" type="button"><span>Sonnet 5.5</span><svg><use href="#s-updown"/></svg></button><button class="dd-btn" aria-expanded="true" type="button"><span>Fable 5.2</span><svg><use href="#s-updown"/></svg></button><button class="dd-btn" disabled type="button"><span>Haiku 5.5</span><svg><use href="#s-updown"/></svg></button></div>' +
       '<div class="state"><span class="lab">Search · default / focus</span><label class="search"><svg><use href="#s-search"/></svg><input type="search" placeholder="Search memory"></label><label class="search is-focus"><svg><use href="#s-search"/></svg><input type="search" value="usage limit"></label></div>';
     var lvl = function (v) { return v <= 30 ? 'ok' : v <= 50 ? 'caution' : v <= 80 ? 'warn' : 'critical'; };
-    var acct = function (n, a, b, lim) { return '<span class="acct' + (lim ? ' is-limited' : '') + '"><span class="nm">' + n + '</span><span>5h</span><span class="meter" data-level="' + lvl(a) + '"><i style="width:' + a + '%"></i></span><span class="pc">' + a + '%</span><span>7d</span><span class="meter" data-level="' + lvl(b) + '"><i style="width:' + b + '%"></i></span><span class="pc">' + b + '%</span></span>'; };
+    // Two rings per account on a 24 grid: 5h outside (r 10), 7d inside (r 5.5), as the app draws them.
+    var arc = function (v, r) { var c = 2 * Math.PI * r; return '<circle class="trk" cx="12" cy="12" r="' + r + '"/>' + (v > 0 ? '<circle data-level="' + lvl(v) + '" cx="12" cy="12" r="' + r + '" stroke-dasharray="' + (Math.min(100, v) / 100 * c).toFixed(2) + ' ' + c.toFixed(2) + '"/>' : ''); };
+    var acct = function (n, a, b, lim) { return '<span class="acct' + (lim ? ' is-limited' : '') + '" title="' + n + ' · 5h ' + a + '% · 7d ' + b + '%"><svg viewBox="0 0 24 24" aria-hidden="true">' + arc(a, 10) + arc(b, 5.5) + '</svg>' + (lim ? '<span class="pill" data-tone="danger">Resets in 2h 10m</span>' : '') + '</span>'; };
     var usage = acct('Work', 24, 47) + acct('개인', 82, 100, true);
     $('#usage-demo').innerHTML = usage; $('#usage-mock').innerHTML = usage;
     $('#meters-demo').innerHTML = [['5h', 24], ['7d', 47]].map(function (m) { return '<span>' + m[0] + '</span><span class="meter" data-level="' + lvl(m[1]) + '"><i style="width:' + m[1] + '%"></i></span><span class="mv">' + m[1] + '%</span>'; }).join('');
@@ -1210,7 +1216,7 @@ table.t td code { white-space: nowrap; }
   function renderTasks() {
     var ko = lang === 'ko';
     var T = [
-      ['ask', 'ask', 'W-02', ko ? '로그인 리팩터링' : 'Login refactor', 'oh-my-agent-ide, Opus 5.5, Work', 18, '<span class="pill" data-tone="danger">' + (ko ? '내 결정 대기' : 'Waiting for you') + '</span>', ''],
+      ['ask', 'ask', 'W-02', ko ? '로그인 리팩터링' : 'Login refactor', 'oh-my-agent-ide, Opus 5.5, Work', 18, '<span class="pill" data-tone="ask">' + (ko ? '결정 필요' : 'Needs your decision') + '</span>', ''],
       ['run', 'run', 'W-08', ko ? '디자인 시스템 추출' : 'Extract the design system', 'oh-my-agent-ide, Opus 5.5, Work, ' + (ko ? 'styles.css 읽는 중' : 'reading styles.css'), 17, '<span class="pill" data-tone="accent">' + (ko ? '3분' : '3m') + '</span>', 'is-selected'],
       ['review', 'pr', 'W-04', ko ? '탭 알약이 모든 전환에서 미끄러지게' : 'Slide the view pill on every tab switch', 'oh-my-agent-ide, Opus 5.5, 개인', 61, '<span class="pill" data-tone="review">' + (ko ? 'PR 열림' : 'PR open') + '</span>', ''],
       ['wait', 'wait', 'W-06', ko ? '로그인 PR 나누기' : 'Split the login PR', 'oh-my-agent-ide, Sonnet 5.5, Work', 4, '<span class="pill" data-tone="warning">' + (ko ? '머지 후 시작' : 'After merge') + '</span>', '']

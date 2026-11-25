@@ -68,6 +68,8 @@ const derived = [
   ['rim-on-accent', 'inset 0 1px 0 rgba(255, 255, 255, .22)'],
   ['knob-edge', '0 0 0 .5px rgba(0, 0, 0, .3)'],
   ['focus-outline', '2px solid var(--focus-ring)'],
+  // on the user's blue bubble the blue ring would not show, so the focus ring is white
+  ['on-accent-focus', '2px solid var(--text-on-accent)'],
   ['focus-offset', '2px'],
 ];
 
