@@ -10,9 +10,13 @@ const STOPS = 'button:not(:disabled), a[href], a[tabindex], input:not(:disabled)
 
 const shown = (x: HTMLElement) => !!x.getClientRects().length;
 
-/** The messages of a thread: its children, without the date and name lines between them, or what an empty one says. */
+/**
+ * The messages of a thread: its children, without the date and name lines between them, or what an empty one says. A
+ * branch of replies (.br) is its tag and each reply, as messages of their own.
+ */
 function rows(th: HTMLElement): HTMLElement[] {
-  return [...th.children].filter((x): x is HTMLElement => x instanceof HTMLElement && !x.matches('.stamp, .who, .new-from, .empty-view') && shown(x));
+  const kids = (el: Element) => [...el.children].flatMap((x): Element[] => (x.matches('.br') ? kids(x) : [x]));
+  return kids(th).filter((x): x is HTMLElement => x instanceof HTMLElement && !x.matches('.stamp, .who, .new-from, .empty-view') && shown(x));
 }
 
 /** The controls inside a message. A message that is itself a button ("Earlier messages") has none. */

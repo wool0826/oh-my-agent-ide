@@ -1,7 +1,7 @@
 // Reply threads in the chat (shared/thread.ts).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canRoot, lateReplies, threadIndex, threadTarget, turnReplyTo, type RootItem } from '../src/shared/thread';
+import { branchLayout, canRoot, threadIndex, threadTarget, turnReplyTo, type RootItem } from '../src/shared/thread';
 
 test('a turn answers a report only when exactly one report started it', () => {
   assert.equal(turnReplyTo(['T-1']), 'T-1');
@@ -10,7 +10,7 @@ test('a turn answers a report only when exactly one report started it', () => {
   assert.equal(turnReplyTo([]), null);
 });
 
-// Threads as a panel (T-0076).
+// Threads (T-0076), drawn as branches (T-0086).
 let n = 0;
 const it = (kind: string, o: Partial<RootItem> = {}): RootItem => ({ id: o.id ?? `m${++n}`, kind, ...o });
 
@@ -37,12 +37,14 @@ test('a reply to a reply joins its root; one whose root is missing or no root st
   assert.deepEqual(threadIndex(items).rootOf, [-1, 0, 0, -1, -1, -1, -1]);
 });
 
-test('a thread whose newest reply came after other chat messages is marked where that reply is', () => {
-  const items = [it('result', { ref: 'T-1' }), it('dispatcher', { replyTo: 'T-1' }), it('dispatcher', { id: 'x' }), it('user', { replyTo: 'x' }),
-    it('user', { replyTo: 'T-1' })];
-  // T-1's thread: its last reply (4) comes after the message x; x's thread is right under it, with only replies between.
-  assert.deepEqual([...lateReplies(threadIndex(items))], [[4, 0]]);
-  assert.deepEqual([...lateReplies(threadIndex(items.slice(0, 4)))], []);
+/** The layout as short marks: '-' a chat message, 'b<root>' a row on a branch, '+' opening it, '^' from a tag. */
+const marks = (items: RootItem[]) => branchLayout(threadIndex(items)).map((b) => (b ? `${b.start ? (b.late ? '^' : '+') : ''}b${b.root}` : '-'));
+
+test('replies right under their root are one branch; after other messages, a branch from a tag', () => {
+  const items = [it('result', { ref: 'T-1' }), it('dispatcher', { replyTo: 'T-1' }), it('user', { replyTo: 'T-1' }), it('dispatcher', { id: 'x' }),
+    it('user', { replyTo: 'x' }), it('user', { replyTo: 'T-1' }), it('dispatcher', { replyTo: 'T-1' }), it('user')];
+  assert.deepEqual(marks(items), ['-', '+b0', 'b0', '-', '+b3', '^b0', 'b0', '-']);
+  assert.deepEqual(marks([]), []);
 });
 
 test('a reply is filed under the root it names, the root of the reply it names, or a report task', () => {
@@ -71,10 +73,11 @@ test('a task reported twice: a reply in the older card thread stays there, by th
   assert.deepEqual([...ix.replies], [[0, [1, 4]], [2, [3]]]);
 });
 
-test('two threads whose replies interleave: each is marked late only when a chat message came between', () => {
+test('two threads whose replies interleave: each run is a branch of its own, from a tag unless right under its root', () => {
   const items = [it('dispatcher', { id: 'p' }), it('dispatcher', { id: 'q' }), it('user', { replyTo: 'p' }), it('user', { replyTo: 'q' }), it('user', { replyTo: 'p' })];
-  // q (a chat message) lies between p and its replies; only replies lie between q and its one.
-  assert.deepEqual([...lateReplies(threadIndex(items))], [[4, 0]]);
+  // The trunk of q cannot pass p's branch, so q's reply starts from a tag too.
+  assert.deepEqual(marks(items), ['-', '-', '^b0', '^b1', '^b0']);
+  assert.deepEqual(marks([it('dispatcher', { id: 'p' }), it('user', { replyTo: 'p' }), it('dispatcher', { id: 'q', replyTo: 'p' }), it('user', { replyTo: 'q' })]), ['-', '+b0', 'b0', 'b0']);
   // A report that comes after the reply that names its task does not take it.
   assert.deepEqual(threadIndex([it('user', { replyTo: 'T-5' }), it('result', { ref: 'T-5' })]).rootOf, [-1, -1]);
 });

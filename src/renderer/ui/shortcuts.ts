@@ -17,6 +17,8 @@ export function shortcutsHtml() {
     row(t('allowTask'), ['T']),
     row(t('keys.pick'), ['1–9']),
     row(t('keys.move'), ['↓', '↑']),
+  ].join('')) + group('keys.chat', [
+    row(t('chat.reply'), ['R']),
   ].join('')) + group('keys.any', [
     row(t('keys.input'), [mod, 'L']),
     row(t('keys.find'), [mod, 'K']),

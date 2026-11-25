@@ -128,6 +128,9 @@ export const themes = {
     'border-subtle': 'rgba(255, 255, 255, .09)',
     'border-default': 'rgba(255, 255, 255, .14)',
     'border-strong': 'rgba(255, 255, 255, .4)',
+    // reply branches in the chat: one opaque colour, so joints never double up; blue while lit
+    'reply-line': '{ref.gray.600}',
+    'reply-line-on': '{ref.blue.400}',
     'focus-ring': '{ref.blue.300}',
     // accent
     accent: '{ref.blue.400}',
@@ -190,6 +193,8 @@ export const themes = {
     'border-subtle': 'rgba(0, 0, 0, .08)',
     'border-default': 'rgba(0, 0, 0, .12)',
     'border-strong': 'rgba(0, 0, 0, .45)',
+    'reply-line': '{ref.gray.400}',
+    'reply-line-on': '{ref.blue.500}',
     'focus-ring': '{ref.blue.500}',
     accent: '{ref.blue.500}',
     'accent-text': '{ref.blue.700}',

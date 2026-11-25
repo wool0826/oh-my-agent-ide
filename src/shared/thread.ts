@@ -1,5 +1,5 @@
-// Reply threads in the chat (T-0076, design C of T-0074): a report or a Dispatcher message is the root of a thread.
-// The chat shows the root with its newest reply and the count; the whole thread opens in a panel beside the chat.
+// Reply threads in the chat: a report or a Dispatcher message is the root of a thread (T-0076). Its replies hang off it
+// on branches (A-1 of T-0086): one step in under the root, every message still in the chat in its place in time.
 
 /** A report card: a task's result, or its failure. */
 export function isReport(c: { kind: string; ref?: string }): boolean {
@@ -51,16 +51,22 @@ export function threadIndex(items: RootItem[]): ThreadIndex {
   return { rootOf, replies };
 }
 
+/** Where a reply is drawn: on the branch of `root`; `start` opens a branch, `late` one that starts from a tag. */
+export interface BranchRow { root: number; start: boolean; late: boolean }
+
 /**
- * Threads whose newest reply came after other messages in the chat: the root is out of the way by then, so the chat
- * says so where that reply is (the index of the reply → its root).
+ * The branches of the chat, by item: null for a message drawn in the chat itself. A run of replies to one root is one
+ * branch; it hangs right under the root when the root is the message above it, and otherwise (other messages, or
+ * another thread's replies, came between) it starts from a tag that names the root.
  */
-export function lateReplies(index: ThreadIndex): Map<number, number> {
-  const out = new Map<number, number>();
-  for (const [root, list] of index.replies) {
-    const last = list[list.length - 1];
-    for (let i = root + 1; i < last; i++) if (index.rootOf[i] < 0) { out.set(last, root); break; }
-  }
+export function branchLayout(index: ThreadIndex): (BranchRow | null)[] {
+  const out: (BranchRow | null)[] = [];
+  index.rootOf.forEach((root, i) => {
+    if (root < 0) { out.push(null); return; }
+    const prev = out[i - 1];
+    if (prev && prev.root === root) { out.push({ root, start: false, late: prev.late }); return; }
+    out.push({ root, start: true, late: i - 1 !== root });
+  });
   return out;
 }
 

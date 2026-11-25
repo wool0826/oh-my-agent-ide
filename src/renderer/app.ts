@@ -17,7 +17,7 @@ import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { Drafts } from '../shared/drafts';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
-import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, renderChat, renderChatInspector, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
+import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
@@ -36,7 +36,6 @@ import { initTip } from './ui/tip';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
 import { bindDock } from './ui/dock';
 import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
-import { bindThread, closeThread, openThread, revealQuoted } from './ui/threadPanel';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { navItem, navItems, noteNav, rove, watchPanes } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
@@ -228,8 +227,6 @@ export async function act(el: HTMLElement, e: Event) {
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
       break;
     }
-    // The chip over a late reply: back to the report it answers.
-    // A task can have several cards (a result, then a follow-up): the one the group answers is the last one above it.
     case 'shell-cwd': pickShellFolder(el); break;
     case 'shell-ask': toggleShellAsk(); break;
     case 'shell-stop': (el as HTMLButtonElement).disabled = true; void tryCall('shell:stop', id); break;
@@ -374,23 +371,18 @@ export async function act(el: HTMLElement, e: Event) {
       input.setSelectionRange(input.value.length, input.value.length);
       break;
     }
-    case 'thread-open': openThread(id); break;
-    case 'thread-close': closeThread(); break;
-    // The root on top of the panel: back to it in the chat.
-    case 'thread-root': {
-      const at = document.querySelector<HTMLElement>(`#chat-thread .attach[data-root="${CSS.escape(id)}"], #chat-thread .bline[data-root="${CSS.escape(id)}"] > .bub`);
+    // A reply's tag or line: back to the message it answers, which flashes once.
+    case 'reply-root': {
+      const at = rootEl(id);
       if (at) flashCard(at); else toast(t('reply.gone'));
       break;
     }
-    // A quote at the top of a reply: back to the message it quotes, the nearest one above with those words. A
-    // message that is only in a thread opens the thread, and its row there is the one shown.
+    // A quote at the top of a reply: back to the message it quotes, the nearest one above with those words.
     case 'goto-quote': {
-      // From the panel, the quoted message is in the chat.
-      const th = el.closest('#thr-body') ? $('#chat-thread') : el.closest('.thread');
+      const th = el.closest('.thread');
       const src = [...(th?.querySelectorAll<HTMLElement>('[data-action="reply"]') ?? [])]
         .filter((b) => b.dataset.who === el.dataset.who && b.dataset.quote === el.dataset.quote && b.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-      let msg = src?.closest<HTMLElement>('.t-row, .attach') ?? src?.closest('.bline')?.querySelector<HTMLElement>('.bub') ?? null;
-      if (!msg && !el.closest('#ws-thread')) msg = revealQuoted(el.dataset.who ?? '', el.dataset.quote ?? '');
+      const msg = src?.closest<HTMLElement>('.attach') ?? src?.closest('.bline')?.querySelector<HTMLElement>('.bub') ?? null;
       if (msg) flashCard(msg); else toast(t('reply.gone'));
       break;
     }
@@ -1180,8 +1172,6 @@ export function init() {
       if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }
       if (ui.aaEdit) { ui.aaEdit = null; renderChatInspector(); return; }
       if (ui.sugEdit) { ui.sugEdit = null; renderChatInspector(); return; }
-      // The thread panel goes last: whatever opened over it closes first. The keyboard goes back to its thread.
-      if (ui.thread) { closeThread(); return; }
       // Then the right sidebar's drawer in a narrow window (I1).
       if (closeDrawer()) return;
     }
@@ -1292,9 +1282,9 @@ export function init() {
     else if (ui.settingsShown && accChanged && !langChanged) openSettings();
   });
   bindSide();
-  bindThread();
   bindTerm();
   bindDock((tab) => { if (tab === 'sq') openSide(); else openTerm(); });
+  bindBranches();
   ide.onTermState(setTermView);
   void call('term:state').then((v) => { if (v) setTermView(v); });
   ide.onSideState(setSideView);

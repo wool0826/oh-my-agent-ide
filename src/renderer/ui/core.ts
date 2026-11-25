@@ -112,14 +112,6 @@ export const ui = {
   undo: [] as { kind: 'result' | 'auto'; ids: string[] }[],
   /** Hand-out blocks the user opened or folded against their default (by their first line). */
   handToggled: new Set<string>(),
-  /** The thread open in the panel beside the chat: its root's chat id (ui/thread.ts). */
-  thread: null as string | null,
-  /** How many replies of each thread were in view (in the panel, or when the app started), by root id. */
-  threadSeen: new Map<string, number>(),
-  /** The panel's unsent text, by thread. */
-  threadDrafts: new Map<string, string>(),
-  /** The thread opened the right sidebar, which goes away again with it. */
-  threadOpenedIns: false,
   /** Inbox results whose summary is shown in full. */
   resOpen: new Set<string>(),
   lastChatKey: '',
@@ -229,7 +221,7 @@ export function inline(s: unknown) {
 export function replyBtn(box: 'chat' | 'ws', who: string, text: string, task?: string, src?: string) {
   const quote = replyExcerpt(text);
   if (!quote) return '';
-  return `<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}"${task ? ` data-task="${esc(task)}"` : ''}${src ? ` data-src="${esc(src)}"` : ''} data-tip="${t('reply.to')}" aria-label="${t('reply.to')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button>`;
+  return `<button class="rbtn" data-action="reply" data-box="${box}" data-who="${esc(who)}" data-quote="${esc(quote)}"${task ? ` data-task="${esc(task)}"` : ''}${src ? ` data-src="${esc(src)}"` : ''} data-tip="${t('chat.reply')}"${box === 'chat' ? ' data-tip-key="R"' : ''} aria-label="${t('chat.reply')}"><svg aria-hidden="true"><use href="#s-reply"/></svg></button>`;
 }
 
 /** An agent's bubble with the Reply button beside it (replyBtn). */
@@ -285,19 +277,18 @@ export function md(src: string) {
 }
 
 /**
- * What a reply quotes: whose message and its first words. It goes back to the message (goto-quote); a side
- * question's answer has no message in the thread, so its quote only reads. `cls`: `bq` at the top of a bubble, `t-q`
- * a line in a reply thread.
+ * What a reply quotes, at the top of its bubble: whose message and its first words. It goes back to the message
+ * (goto-quote); a side question's answer has no message in the thread, so its quote only reads.
  */
-export function quoteHtml(who: string, quote: string, cls: 'bq' | 't-q') {
-  const inner = `${cls === 't-q' ? sym('s-reply') : ''}<b>${esc(whoLabel(who))}</b><span>${esc(quote)}</span>`;
-  return who === SIDE_WHO ? `<span class="${cls}">${inner}</span>` : `<button type="button" class="${cls}" data-action="goto-quote" data-who="${esc(who)}" data-quote="${esc(quote)}">${inner}</button>`;
+export function quoteHtml(who: string, quote: string) {
+  const inner = `<b>${esc(whoLabel(who))}</b><span>${esc(quote)}</span>`;
+  return who === SIDE_WHO ? `<span class="bq">${inner}</span>` : `<button type="button" class="bq" data-action="goto-quote" data-who="${esc(who)}" data-quote="${esc(quote)}">${inner}</button>`;
 }
 
 /** A user message: plain text, with the "[Attached files]" block shown as file chips. */
 export function userText(text: string): string {
   const reply = parseReply(text);
-  if (reply) return `${quoteHtml(reply.who, reply.quote, 'bq')}${userText(reply.body)}`;
+  if (reply) return `${quoteHtml(reply.who, reply.quote)}${userText(reply.body)}`;
   const i = text.indexOf('\n\n[Attached files]\n');
   if (i < 0) return linkify(esc(text));
   const files = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
