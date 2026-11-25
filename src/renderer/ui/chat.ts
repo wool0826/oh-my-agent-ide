@@ -111,12 +111,21 @@ function resultMeta(x: Task | null) {
   return parts.length ? `<span class="rmeta">${esc(parts.join(' · '))}</span>` : '';
 }
 
+/** A report cut to about n characters without cutting a URL or a Markdown link in two: the word it would cut goes. */
+function clipWords(s: string, n: number) {
+  const x = oneLine(s, n);
+  if (!x.endsWith('…')) return x;
+  const cut = x.slice(0, -1);
+  const last = cut.slice(cut.lastIndexOf(' ') + 1);
+  return /https?:|\[|\]\(/.test(last) ? `${cut.slice(0, cut.length - last.length).trimEnd()}…` : x;
+}
+
 /** An inbox result's report without the RESULT: label; a long one opens in place. */
 function resultSummary(c: ChatItem) {
   const full = plainStatus(c.text);
   if (full.length <= 140) return `<span>${reportText(full)}</span>`;
   const open = ui.resOpen.has(c.id);
-  return `<span>${reportText(open ? full : oneLine(full, 140))} <button type="button" class="linkbtn" data-action="res-more" data-id="${esc(c.id)}" aria-expanded="${open}">${t(open ? 'res.less' : 'res.more')}</button></span>`;
+  return `<span>${reportText(open ? full : clipWords(full, 140))} <button type="button" class="linkbtn" data-action="res-more" data-id="${esc(c.id)}" aria-expanded="${open}">${t(open ? 'res.less' : 'res.more')}</button></span>`;
 }
 
 export function resultGlyph(x: Task | null, err = false) {

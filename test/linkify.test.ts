@@ -71,3 +71,8 @@ test('a line that cannot hold links reads the short names', () => {
   assert.equal(shortUrls(`Published https://claude.ai/artifact/2hL45 and ${PR}.`, 'Artifact'), 'Published Artifact and PR #27.');
   assert.equal(shortUrls('See [the notes](https://claude.ai/artifact/2hL45).', 'Artifact'), 'See the notes.');
 });
+
+test('emphasis around a URL and a trailing slash do not change which link it is', () => {
+  assert.deepEqual(reportLinks('See **https://example.com/a** and [Docs](https://example.com/d/) at https://example.com/d'),
+    [{ url: 'https://example.com/a', kind: 'link', name: 'example.com' }, { url: 'https://example.com/d/', kind: 'link', name: 'Docs' }]);
+});

@@ -314,6 +314,7 @@ export class AgentSession {
       if (q !== this.q || this.closed) return;
       const msg = (e as Error).message ?? String(e);
       log.error(`[${this.cfg.label}] session error`, msg);
+      this.endComment();
       this.q = null;
       this.busy = false;
       if (LIMIT_RE.test(msg)) {

@@ -58,17 +58,20 @@ const ARTIFACT = /^https:\/\/claude\.ai\/(?:code\/)?artifacts?\/[\w-]+/;
 export function reportLinks(text: string | null | undefined, skip: (string | null | undefined)[] = []): ReportLink[] {
   const s = String(text ?? '');
   const named = new Map<string, string>();
-  for (const m of s.matchAll(MD_LINK)) named.set(m[2].slice(0, urlEnd(m[2])), m[1].trim());
-  const seen = new Set(skip.filter(Boolean).map((u) => String(u).replace(/\/+$/, '')));
+  const norm = (u: string) => u.replace(/\/+$/, '');
+  for (const m of s.matchAll(MD_LINK)) named.set(norm(m[2].slice(0, urlEnd(m[2]))), m[1].trim());
+  const seen = new Set(skip.filter(Boolean).map((u) => norm(String(u))));
   const out: ReportLink[] = [];
   for (const m of s.matchAll(/https?:\/\/[^\s<>"'`]+/g)) {
-    const url = m[0].slice(0, urlEnd(m[0]));
+    // Markdown emphasis around a URL ("**https://…**") is not part of it.
+    const run = m[0].replace(/[*~]+$/, '');
+    const url = run.slice(0, urlEnd(run));
     if (!/^https?:\/\/[^/.]/.test(url)) continue;
-    const key = url.replace(/\/+$/, '');
+    const key = norm(url);
     if (seen.has(key)) continue;
     seen.add(key);
     const pr = url.match(/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/);
-    const title = named.get(url);
+    const title = named.get(key);
     if (pr) out.push({ url, kind: 'pr', name: pr[1] });
     else if (ARTIFACT.test(url)) out.push({ url, kind: 'artifact', name: title ?? '' });
     else out.push({ url, kind: 'link', name: title ?? hostOf(url) });
