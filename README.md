@@ -83,8 +83,9 @@ Settings opens. Sections are on the left. The Status group at the top of General
 |---|---|
 | ⌘/Ctrl+K | Command palette: go to a place, find a task or something said |
 | ⌘/Ctrl+Shift+Space (anywhere on the computer) | Quick message box; change it in Settings → General |
-| ⌘/Ctrl+1–4 | Switch view |
-| ⌘/Ctrl+B, with Alt (⌥) for the right one | Collapse or expand a sidebar |
+| ⌘/Ctrl+L | Go to the message field (the app also starts there) |
+| ⌘/Ctrl+1–4, or ←/→ on the view tabs | Switch view |
+| ⌘/Ctrl+B, with Alt (⌥) for the right one | Collapse or expand a sidebar (below 1100px the right one opens as a drawer over the chat; Esc closes it) |
 | ←/→ on a sidebar's edge (Shift for larger steps, Home/End for the limits) | Narrow or widen that sidebar |
 | Mouse back button, Alt+← (⌘[ on macOS) | Back to the previous screen |
 | Mouse forward button, Alt+→ (⌘] on macOS) | Forward again |

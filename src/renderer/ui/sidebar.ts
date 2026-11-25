@@ -17,10 +17,11 @@ import { groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { History, type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
 import { applyWidths } from './resize';
+import { narrowLayout } from '../../shared/panelWidth';
 import { ageHtml, away, tickDecisions } from './chat';
 import { pop } from './controls';
 import { quietUntil } from '../../shared/notifyRules';
-import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, queuedLabel, ring, S, store, sym, t, task, ui, when, worker } from './core';
+import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, queuedLabel, ring, S, store, stored, sym, t, task, ui, when, worker } from './core';
 import { setTip } from './tip';
 import { segc } from './settings';
 import { screen } from './history';
@@ -473,6 +474,7 @@ export function applyPanels() {
   const win = $('#win');
   win.classList.toggle('side-min', ui.sideMin);
   win.classList.toggle('ins-min', ui.insMin);
+  win.classList.toggle('ins-over', ui.drawer);
   applyWidths();
   const left = $('#side-toggle');
   const leftTip = t(ui.sideMin ? 'side.expand' : 'side.collapse');
@@ -494,6 +496,8 @@ export function applyPanels() {
   setTip(right, rightTip, key);
   right.setAttribute('aria-label', rightTip);
   right.setAttribute('aria-expanded', String(!ui.insMin));
+  // As a drawer the right sidebar is opened from here: the button says what it holds, with its count.
+  $('#ins-lbl').textContent = t('ins.tabInbox');
   const badge = $('#ins-count');
   badge.hidden = !n;
   badge.textContent = n ? String(n) : '';
@@ -508,7 +512,7 @@ export const panelHooks: { insAway: (() => void) | null } = { insAway: null };
 export function togglePanel(which: 'side' | 'ins', keep = true) {
   if (which === 'side') {
     ui.sideMin = !ui.sideMin;
-    store('oma.sideMin', ui.sideMin);
+    if (!ui.rail) store('oma.sideMin', ui.sideMin);
     // The sidebar's new content fades in only for this change: every later state update rebuilds it and must not fade.
     const win = $('#win');
     win.classList.add('side-anim');
@@ -516,9 +520,47 @@ export function togglePanel(which: 'side' | 'ins', keep = true) {
     sideAnim = window.setTimeout(() => win.classList.remove('side-anim'), 400);
   } else {
     ui.insMin = !ui.insMin;
-    if (keep) store('oma.insMin', ui.insMin);
+    if (keep && !ui.drawer) store('oma.insMin', ui.insMin);
     if (keep && ui.insMin) panelHooks.insAway?.();
   }
   applyPanels();
   if (S) renderSidebar();
+}
+
+/**
+ * Follows the window's width (I1): narrower than 1100 the right sidebar becomes a drawer over the chat, closed until
+ * its toolbar button opens it; narrower than 960 the left sidebar folds to its rail. Each panel goes back to the
+ * user's stored choice when the window is wide again. Returns whether anything changed.
+ */
+export function applyNarrow(): boolean {
+  const n = narrowLayout($('#win').clientWidth || window.innerWidth);
+  let changed = false;
+  if (n.drawer !== ui.drawer) {
+    ui.drawer = n.drawer;
+    // A thread that opened the drawer did not open the sidebar the window now shows: closing it leaves that as it is.
+    ui.threadOpenedIns = false;
+    const min = n.drawer || stored('oma.insMin');
+    if (min && !ui.insMin) panelHooks.insAway?.();
+    ui.insMin = min;
+    changed = true;
+  }
+  if (n.rail !== ui.rail) {
+    ui.rail = n.rail;
+    ui.sideMin = n.rail || stored('oma.sideMin');
+    changed = true;
+  }
+  if (changed) { applyPanels(); if (S) renderSidebar(); }
+  return changed;
+}
+
+/**
+ * Closes the right sidebar's drawer; from the keyboard the focus goes back to its button when it was inside. A reply
+ * thread in it stays, with its draft, for when the drawer opens again.
+ */
+export function closeDrawer(refocus = true): boolean {
+  if (!ui.drawer || ui.insMin) return false;
+  const inside = !!document.activeElement?.closest('.inspector');
+  togglePanel('ins', false);
+  if (inside && refocus) $('#ins-toggle').focus();
+  return true;
 }

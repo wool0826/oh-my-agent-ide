@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clampWidth, fitWidths, keyWidth, MAIN_MIN, maxWidth, PANELS, parseWidth, RAIL_W } from '../src/shared/panelWidth';
+import { clampWidth, DRAWER_BELOW, fitWidths, keyWidth, MAIN_MIN, maxWidth, narrowLayout, PANELS, parseWidth, RAIL_BELOW, RAIL_W } from '../src/shared/panelWidth';
 
 const wide = { winW: 1600, sideMin: false, insMin: false };
 const def = { side: PANELS.side.def, ins: PANELS.ins.def };
@@ -18,14 +18,14 @@ test('parseWidth: a stored number is kept within limits; anything else is the de
 
 test('fitWidths: a wide window shows the chosen widths', () => {
   assert.deepEqual(fitWidths({ side: 320, ins: 400 }, wide), { side: 320, ins: 400 });
-  assert.deepEqual(fitWidths({ side: 10, ins: 5000 }, wide), { side: PANELS.side.min, ins: PANELS.ins.max });
+  assert.deepEqual(fitWidths({ side: 10, ins: 5000 }, { ...wide, winW: 2000 }), { side: PANELS.side.min, ins: PANELS.ins.max });
 });
 
 test('fitWidths: a narrow window narrows the right sidebar first, then the left, never below their minimums', () => {
-  // 1040 is the window's minimum width (main/index.ts).
-  const l = { winW: 1040, sideMin: false, insMin: false };
-  assert.deepEqual(fitWidths({ side: 300, ins: 500 }, l), { side: 300, ins: 1040 - 300 - MAIN_MIN });
-  assert.deepEqual(fitWidths({ side: 480, ins: 640 }, l), { side: 1040 - PANELS.ins.min - MAIN_MIN, ins: PANELS.ins.min });
+  // Just above the width where the right sidebar becomes a drawer.
+  const l = { winW: 1200, sideMin: false, insMin: false };
+  assert.deepEqual(fitWidths({ side: 300, ins: 500 }, l), { side: 300, ins: 1200 - 300 - MAIN_MIN });
+  assert.deepEqual(fitWidths({ side: 480, ins: 640 }, l), { side: 1200 - PANELS.ins.min - MAIN_MIN, ins: PANELS.ins.min });
   // Smaller than both minimums and the main area: the panels stop at their minimums.
   assert.deepEqual(fitWidths({ side: 480, ins: 640 }, { ...l, winW: 600 }), { side: PANELS.side.min, ins: PANELS.ins.min });
   const shown = fitWidths(def, l);
@@ -64,7 +64,21 @@ test('keyWidth: arrows move the handle, Shift moves it further, Home and End go 
   assert.equal(keyWidth('ins', 'End', false, 300, def, { ...wide, winW: 2000 }), PANELS.ins.max);
   // On 1600 the right sidebar may still pass 640 (the old maximum), up to what leaves MAIN_MIN.
   assert.equal(keyWidth('ins', 'End', false, 300, def, wide), 1600 - def.side - MAIN_MIN);
-  assert.equal(keyWidth('ins', 'End', false, 300, def, { winW: 1040, sideMin: false, insMin: false }), 1040 - def.side - MAIN_MIN);
+  assert.equal(keyWidth('ins', 'End', false, 300, def, { winW: 1200, sideMin: false, insMin: false }), 1200 - def.side - MAIN_MIN);
   assert.equal(keyWidth('side', 'Enter', false, 300, def, wide), null);
   assert.equal(keyWidth('side', 'ArrowUp', false, 300, def, wide), null);
+});
+
+test('narrowLayout: the right sidebar is a drawer below 1100, the left one a rail below 960 (I1)', () => {
+  assert.deepEqual(narrowLayout(1320), { drawer: false, rail: false });
+  assert.deepEqual(narrowLayout(DRAWER_BELOW), { drawer: false, rail: false });
+  assert.deepEqual(narrowLayout(DRAWER_BELOW - 1), { drawer: true, rail: false });
+  assert.deepEqual(narrowLayout(RAIL_BELOW - 1), { drawer: true, rail: true });
+  // With the drawer, the chat keeps MAIN_MIN beside the left sidebar down to the rail width, and beside the rail below it.
+  for (const winW of [RAIL_BELOW, DRAWER_BELOW - 1]) {
+    const shown = fitWidths(def, { winW, sideMin: false, insMin: true });
+    assert.ok(winW - shown.side >= MAIN_MIN, String(winW));
+  }
+  // The window's minimum width (main/index.ts) still leaves the chat its minimum beside the rail.
+  assert.ok(760 - RAIL_W >= MAIN_MIN);
 });

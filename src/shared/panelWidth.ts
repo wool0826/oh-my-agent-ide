@@ -14,13 +14,23 @@ export const PANELS: Record<Panel, PanelLimits> = {
 };
 
 /** The main area never gets narrower than this while a panel can still give way. */
-export const MAIN_MIN = 420;
+export const MAIN_MIN = 520;
+/** Below this window width the right sidebar is a drawer over the main area, opened from its toolbar button. */
+export const DRAWER_BELOW = 1100;
+/** Below this window width the left sidebar is folded to its rail of glyphs (it can still be opened for a while). */
+export const RAIL_BELOW = 960;
+
+/** What a window `winW` wide puts away so the main area keeps its room (I1). */
+export function narrowLayout(winW: number): { drawer: boolean; rail: boolean } {
+  return { drawer: winW < DRAWER_BELOW, rail: winW < RAIL_BELOW };
+}
 /** The collapsed left sidebar (--rail-w in styles.css). */
 export const RAIL_W = 60;
 /** One arrow key press; with Shift, four. */
 export const KEY_STEP = 16;
 
 export interface Widths { side: number; ins: number }
+/** `insMin`: the right sidebar takes no column, put away or shown as a drawer over the main area. */
 export interface Layout { winW: number; sideMin: boolean; insMin: boolean }
 
 const within = (p: Panel, w: number) => Math.round(Math.min(PANELS[p].max, Math.max(PANELS[p].min, w)));

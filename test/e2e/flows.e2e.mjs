@@ -1290,7 +1290,10 @@ flow('a conversation is one Tab stop, and the arrows move between its messages',
     const i = rows.findIndex((r) => r.contains(a));
     return (a === rows[i] ? 'message ' : 'control ') + (i - rows.length);`;
   // An empty conversation has no message to stop on: Tab goes on to what it offers.
+  // The toolbar's last stop is the informational pill (K1), after the right sidebar's button.
   await app.evaluate("document.querySelector('#ins-toggle').focus()");
+  await tab();
+  assert.equal(await app.evaluate("document.activeElement?.id"), 'fake-badge');
   await tab();
   assert.equal(await app.evaluate("document.activeElement?.dataset.action"), 'chat-start');
   for (let i = 1; i <= 6; i++) {
@@ -1298,7 +1301,7 @@ flow('a conversation is one Tab stop, and the arrows move between its messages',
     await app.until(`document.querySelector('#chat-thread').innerText.includes('Answer ${i} with')`, `answer ${i}`);
   }
   // From the toolbar, the thread is one stop (its last message), however many links and reply buttons it holds.
-  await app.evaluate("document.querySelector('#ins-toggle').focus()");
+  await app.evaluate("document.querySelector('#fake-badge').focus()");
   await tab();
   await app.until("document.querySelector('#chat-thread').contains(document.activeElement)", 'the focus in the thread');
   assert.equal(await app.evaluate(AT), 'message -1');
@@ -1486,4 +1489,55 @@ flow('the repository list has columns, the sidebar sums up before a pick, and Se
   assert.match(await app.evaluate("document.querySelector('#pre-rows .pre-all .pill').textContent"), /^All \d OK$/);
   const home = await app.evaluate("[document.querySelector('#set-home').value, document.querySelector('#set-home-v').textContent]");
   assert.ok(home[1].includes('…') && home[0].endsWith(home[1].split('…').pop()), `home shown as ${home[1]}`);
+});
+
+flow('the app starts in the message field, the views are one Tab stop, and a narrow window keeps the chat wide', {}, async (app) => {
+  const mod = process.platform === 'darwin' ? 4 : 2;
+  // K1: the focus starts in the message field, and Ctrl/Cmd+L brings it back there from another view.
+  await app.until("document.activeElement?.id === 'chat-input'", 'the focus in the message field at start');
+  const stops = "[...document.querySelectorAll('#views [role=\"tab\"]')].map((b) => b.tabIndex + (b.getAttribute('aria-selected') === 'true' ? '*' : '')).join()";
+  assert.equal(await app.evaluate(stops), '0*,-1,-1,-1');
+  await app.evaluate("document.querySelector('#views [aria-selected=\"true\"]').focus(); return 1;");
+  await app.key('ArrowRight', 'ArrowRight', 39);
+  await app.until("document.activeElement?.dataset.v === 'worker' && !document.querySelector('[data-view=\"worker\"].content').hidden", 'the next view, chosen and focused');
+  assert.equal(await app.evaluate(stops), '-1,0*,-1,-1');
+  await app.key('End', 'End', 35);
+  await app.until("document.activeElement?.dataset.v === 'memory' && document.activeElement.getAttribute('aria-selected') === 'true'", 'the last view');
+  await app.key('ArrowRight', 'ArrowRight', 39);
+  await app.until("document.activeElement?.dataset.v === 'chat'", 'round the end to the first view');
+  await app.key('ArrowLeft', 'ArrowLeft', 37);
+  await app.until("document.activeElement?.dataset.v === 'memory'", 'round the start to the last view');
+  await app.key('KeyL', 'l', 76, mod);
+  await app.until("document.activeElement?.id === 'chat-input' && !document.querySelector('[data-view=\"chat\"].content').hidden", 'the message field from Ctrl+L');
+  // The list of keys names it.
+  await app.key('Slash', '/', 191, mod);
+  await app.until("document.querySelector('#dlg .keys')?.innerText.includes('Message field')", 'Ctrl+L in the list of keys');
+  await app.key('Escape', 'Escape', 27);
+
+  // I1: below 1100 the right sidebar is a drawer, closed, and its button names it; the chat keeps its width.
+  const box = "const r = (q) => document.querySelector(q).getBoundingClientRect(); const w = document.querySelector('#win').classList; return JSON.stringify({ main: r('main[data-view=\"chat\"]').width, ins: r('#chat-ins').left, over: w.contains('ins-over'), insMin: w.contains('ins-min'), sideMin: w.contains('side-min'), lbl: getComputedStyle(document.querySelector('#ins-lbl')).display });";
+  await app.size(1000, 760);
+  let b = JSON.parse(await app.until(`return document.querySelector('#win').classList.contains('ins-over') && (() => { ${box} })()`, 'the drawer at 1000px'));
+  assert.ok(b.insMin && !b.sideMin && b.lbl !== 'none' && b.main >= 520, JSON.stringify(b));
+  const mainW = b.main;
+  await app.click('#ins-toggle');
+  b = JSON.parse(await app.until(`return !document.querySelector('#win').classList.contains('ins-min') && (() => { ${box} })()`, 'the drawer open'));
+  assert.equal(b.main, mainW, 'the open drawer covers the chat instead of narrowing it');
+  assert.ok(b.ins < 1000 && b.ins > 1000 - 400, JSON.stringify(b));
+  // Escape closes it; so does a press on the chat.
+  await app.evaluate("document.querySelector('#chat-ins [role=\"tab\"][aria-selected=\"true\"]').focus(); return 1;");
+  await app.key('Escape', 'Escape', 27);
+  await app.until("document.querySelector('#win').classList.contains('ins-min') && document.activeElement?.id === 'ins-toggle'", 'closed by Escape, the focus on its button');
+  await app.click('#ins-toggle');
+  await app.until("!document.querySelector('#win').classList.contains('ins-min')", 'open again');
+  for (const type of ['mousePressed', 'mouseReleased']) await app.cdp('Input.dispatchMouseEvent', { type, x: 400, y: 300, button: 'left', clickCount: 1 });
+  await app.until("document.querySelector('#win').classList.contains('ins-min')", 'closed by a press on the chat');
+  // Below 960 the left sidebar is a rail too.
+  await app.size(900, 760);
+  b = JSON.parse(await app.until(`return document.querySelector('#win').classList.contains('side-min') && (() => { ${box} })()`, 'the rail at 900px'));
+  assert.ok(b.main >= 520, JSON.stringify(b));
+  // Wide again, both come back as they were.
+  await app.size(1320, 860);
+  b = JSON.parse(await app.until(`return !document.querySelector('#win').classList.contains('ins-over') && (() => { ${box} })()`, 'wide again'));
+  assert.ok(!b.insMin && !b.sideMin && b.lbl === 'none', JSON.stringify(b));
 });

@@ -29,7 +29,7 @@ import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory'
 import { closePalette, Cmd, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
-import { applyPanels, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
+import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initTip } from './ui/tip';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
@@ -41,10 +41,22 @@ import { navItem, navItems, noteNav, rove, watchPanes } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 import { canStop } from '../shared/canStop';
 
+/**
+ * The message field of the view: the open Worker's in the Worker view, the Dispatcher's otherwise (the chat is shown
+ * for it). An open drawer closes, so it does not cover the field.
+ */
+export function focusComposer() {
+  closeDrawer(false);
+  if (ui.view === 'worker' && ui.wOpen) { $('#ws-input').focus(); return; }
+  if (ui.view !== 'chat') go({ view: 'chat' });
+  $('#chat-input').focus();
+}
+
 /** Shows a view tab. Navigation goes through go(), which calls this. */
 export function setView(v: View) {
   ui.view = v;
-  document.querySelectorAll<HTMLButtonElement>('#views button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+  // One Tab stop (K1): the chosen view's tab; ←/→, Home and End choose another (the tablist keys below).
+  document.querySelectorAll<HTMLButtonElement>('#views button').forEach((b) => { b.setAttribute('aria-selected', String(b.dataset.v === v)); b.tabIndex = b.dataset.v === v ? 0 : -1; });
   document.querySelectorAll<HTMLElement>('.view').forEach((el) => { el.hidden = el.dataset.view !== v; });
   if (v === 'memory') void loadMemory();
   renderAll(true);
@@ -973,6 +985,12 @@ export function init() {
     if (el.closest('#sheet') && el.id !== 'set-home') saveSoon(el.matches('.step-v, .slider') ? 300 : 600);
   });
   document.querySelectorAll<HTMLButtonElement>('#views button').forEach((b) => b.addEventListener('click', () => go({ view: b.dataset.v as View })));
+  // A press outside the right sidebar's drawer closes it, as a menu would; layers over it (dialogs, menus) keep it.
+  document.addEventListener('pointerdown', (e) => {
+    const at = e.target as Element | null;
+    if (!at?.closest || at.closest('.inspector, #ins-toggle')) return;
+    if (at.closest('.content, .sidebar, .toolbar')) closeDrawer(false);
+  }, true);
   // Mouse side buttons step through the screen history. Their default (the page's own history) is blocked.
   const sideButton = (e: MouseEvent) => e.button === 3 || e.button === 4;
   document.addEventListener('mousedown', (e) => { if (sideButton(e)) e.preventDefault(); });
@@ -1162,6 +1180,8 @@ export function init() {
       if (ui.sugEdit) { ui.sugEdit = null; renderChatInspector(); return; }
       // The thread panel goes last: whatever opened over it closes first. The keyboard goes back to its thread.
       if (ui.thread) { closeThread(); return; }
+      // Then the right sidebar's drawer in a narrow window (I1).
+      if (closeDrawer()) return;
     }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
@@ -1171,6 +1191,8 @@ export function init() {
     // Under an open dialog or the Settings sheet, the view does not change behind it (L14).
     const covered = ui.settingsShown || !$('#dlg').hidden;
     if (mod && e.key === ',') { e.preventDefault(); if ($('#dlg').hidden) openSettings(); }
+    // Ctrl/Cmd+L: to the message field of the view (K1).
+    if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyL') { e.preventDefault(); if (!covered) focusComposer(); return; }
     if (mod && /^[1-4]$/.test(e.key) && covered) e.preventDefault();
     else if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); go({ view: (['chat', 'worker', 'repo', 'memory'] as const)[Number(e.key) - 1] }); }
     const dir = navKey(e);
@@ -1310,6 +1332,8 @@ export function init() {
     setS(s);
     renderAll(true);
     if (s.setupNeeded) openSettings('accounts');
+    // The app starts where its main work is: the message field (K1).
+    else if (!document.activeElement || document.activeElement === document.body) focusComposer();
   });
 }
 
