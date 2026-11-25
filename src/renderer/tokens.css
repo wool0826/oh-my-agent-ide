@@ -570,3 +570,9 @@
   --avatar-3: var(--ref-purple-600);
   --avatar-4: var(--ref-orange-600);
 }
+/* On the user's blue bubble (the same blue in both themes): the hairline under a quote and the
+   focus ring, which is white because the blue one would not show on blue. */
+:root, [data-theme] {
+  --on-accent-line: rgba(255, 255, 255, .4);
+  --on-accent-focus: 2px solid var(--text-on-accent);
+}

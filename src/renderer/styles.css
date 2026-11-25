@@ -136,8 +136,8 @@ body { --lights-end: 0px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 /* Motion reduced: nothing spins, pulses or flashes. The tokens already make every transition instant. */
-@media (prefers-reduced-motion: reduce) { .k-run svg, .side-sec.blink h4, .pulse, .dots i, .dec.flash, .res.flash, .attach.flash, .pips i.c { animation: none; } }
-:root[data-motion="reduced"] :is(.k-run svg, .side-sec.blink h4, .pulse, .dots i, .dec.flash, .res.flash, .attach.flash, .pips i.c) { animation: none; }
+@media (prefers-reduced-motion: reduce) { .k-run svg, .side-sec.blink h4, .pulse, .dots i, .dec.flash, .res.flash, .attach.flash, .bub.flash, .t-row.flash, .pips i.c { animation: none; } }
+:root[data-motion="reduced"] :is(.k-run svg, .side-sec.blink h4, .pulse, .dots i, .dec.flash, .res.flash, .attach.flash, .bub.flash, .t-row.flash, .pips i.c) { animation: none; }
 
 /* toolbar */
 .toolbar { grid-row: 1; grid-column: 2 / 4; display: flex; align-items: center; gap: var(--space-12); padding: 0 var(--space-12); white-space: nowrap; min-width: 0; }
@@ -249,8 +249,8 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .thread > [tabindex="-1"]:focus-visible { outline: var(--focus-outline); outline-offset: 2px; border-radius: var(--radius-xl); }
 .stamp { align-self: center; font-size: var(--fs-caption2); color: var(--text-tertiary); font-weight: 500; margin: var(--space-6) 0 var(--space-2); }
 .bub { max-width: 78%; padding: var(--space-8) var(--space-12); border-radius: var(--radius-xl); font-size: var(--fs-body); line-height: var(--lh-body); user-select: text; overflow-wrap: anywhere; }
-.bub p + p { margin-top: var(--space-6); }
-.bub ul, .bub ol { margin: var(--space-4) 0; padding-left: var(--space-20); }
+:is(.bub, .t-txt) p + p { margin-top: var(--space-6); }
+:is(.bub, .t-txt) :is(ul, ol) { margin: var(--space-4) 0; padding-left: var(--space-20); }
 .bub.me { align-self: flex-end; background: var(--accent-fill); box-shadow: var(--rim-on-accent); color: var(--text-on-accent); white-space: pre-wrap; }
 .bub.me a { color: inherit; text-decoration: underline; }
 .bub.ai { align-self: flex-start; background: var(--surface-raised); box-shadow: var(--rim); }
@@ -264,27 +264,59 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .rbtn:hover { background: var(--accent-solid); color: var(--text-on-accent); }
 .bline:hover .rbtn, .rbtn:focus-visible { opacity: 1; }
 .rbtn:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
-/* Replies under a Worker's report (shared/thread.ts): one step in, never deeper, and one hairline branch from the
-   card's tile to each reply. For the user's own bubble on the right the branch runs across to it. */
-/* Replies to a Worker's report (T-0061): one sunken well a step in under the card, with no connector lines, so
-   nothing crosses or overlaps whatever the widths. Each message keeps its side as in the rest of the chat. A group
-   that came later opens with a chip naming the report, which goes back to it. */
-.rth { align-self: stretch; margin: calc(var(--space-4) - var(--space-8)) 0 var(--space-4) var(--space-24); padding: var(--space-8) var(--space-10); display: flex; flex-direction: column; gap: var(--space-6); border-radius: var(--radius-xl); background: var(--surface-sunken); box-shadow: var(--well); }
-.rth.late { margin-top: 0; }
-.rth-r { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
-.rth-r.me { align-items: flex-end; }
-.rth-r > .bline { max-width: calc(86% + 30px); }
-.rth-r > .bub { max-width: 86%; }
-.rth-ref { align-self: flex-start; display: flex; align-items: center; gap: var(--space-6); max-width: 100%; margin: calc(-1 * var(--space-2)) 0 var(--space-2) calc(-1 * var(--space-4)); padding: var(--space-2) var(--space-8) var(--space-2) var(--space-6); border: 0; border-radius: var(--radius-full); background: none; font: inherit; font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; }
-.rth-ref .sym { flex: none; font-size: var(--icon-sm); color: var(--accent-text); }
-.rth-ref b { flex: none; color: var(--text-primary); font-weight: 600; }
-.rth-ref span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rth-ref:hover { color: var(--text-primary); background: var(--surface-hover); }
-.rth-ref:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
-.quote { display: flex; flex-direction: column; gap: 1px; margin: 0 0 var(--space-6); padding: var(--space-4) var(--space-8); border-radius: var(--radius-md); background: var(--surface-on-accent-sunken); font-size: var(--fs-caption); line-height: var(--lh-ui); white-space: normal; }
-.quote b { font-size: var(--fs-caption2); font-weight: 600; }
-.quote span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; opacity: .86; }
-.rchip { flex: 1 1 100%; display: flex; align-items: center; gap: var(--space-8); margin: var(--space-2) var(--space-2) 0 -6px; padding: var(--space-4) var(--space-6) var(--space-4) var(--space-10); border-radius: var(--radius-lg); background: var(--surface-sunken); box-shadow: var(--well); font-size: var(--fs-caption); min-width: 0; }
+/* A report and its replies are one card (T-0072, design B; shared/thread.ts): the report, a heading that counts the
+   replies and folds them, then a row per reply, never deeper. A thread that came later is a card of its own whose top
+   line goes back to the report. */
+.tcard { align-self: flex-start; width: min(560px, 92%); display: flex; flex-direction: column; min-width: 0; background: var(--surface-card); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim); border-radius: var(--radius-xl); }
+.tcard > .attach { align-self: stretch; width: auto; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; box-shadow: inset 0 -.5px 0 var(--border-subtle); }
+.tcard > .attach.flash { animation-name: flash; }
+.t-head { display: flex; align-items: center; gap: var(--space-6); min-width: 0; margin: var(--space-6) var(--space-6) 0; padding: var(--space-4) var(--space-10); border: 0; border-radius: var(--radius-md); background: none; font: inherit; font-size: var(--fs-caption); color: var(--text-secondary); text-align: left; cursor: pointer; }
+.t-head .sym { flex: none; font-size: var(--icon-sm); color: var(--accent-text); }
+.t-head b { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-weight: 600; }
+.t-head > span { flex: none; }
+.t-fold { display: flex; align-items: center; gap: var(--space-8); min-width: 0; min-height: var(--control-sm); margin: var(--space-6); padding: var(--space-2) var(--space-10); border: 0; border-radius: var(--radius-md); background: none; font: inherit; font-size: var(--fs-caption); color: var(--text-secondary); text-align: left; cursor: pointer; }
+.t-head + .t-fold { margin-top: 0; }
+.tcard.open > .t-fold { margin-bottom: 0; }
+.t-fold b { flex: none; color: var(--text-primary); font-weight: 600; }
+.t-fold > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-fold .chev { flex: none; width: 7px; height: 11px; color: var(--text-tertiary); transition: rotate var(--dur-fast) var(--ease-standard); }
+.t-fold[aria-expanded="true"] .chev { rotate: 90deg; }
+:is(.t-head, .t-fold, button.t-q):hover { background: var(--surface-hover); color: var(--text-primary); }
+:is(.t-head, .t-fold):focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.t-rows { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-6) var(--space-6); }
+.t-row { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding: var(--space-6) var(--space-10); border-radius: var(--radius-md); }
+.t-row:hover { background: var(--surface-hover); }
+.t-row .who { display: flex; align-items: baseline; gap: var(--space-6); margin: 0; font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); }
+.t-row.me .who b { color: var(--accent-text); }
+.t-row .who time { font-weight: 400; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.t-txt { align-self: stretch; min-width: 0; font-size: var(--fs-body); line-height: var(--lh-body); overflow-wrap: anywhere; }
+.t-row.me .t-txt { white-space: pre-wrap; }
+.t-row .rbtn { position: absolute; top: var(--space-4); right: var(--space-6); }
+.t-row:hover .rbtn { opacity: 1; }
+.t-row.ev { padding: var(--space-2) var(--space-6); }
+/* A row's quote of another message: one line that goes back to it. */
+.t-q { display: flex; align-items: center; gap: var(--space-6); max-width: 100%; margin: 0 0 0 calc(-1 * var(--space-6)); padding: var(--space-2) var(--space-8) var(--space-2) var(--space-6); border: 0; border-radius: var(--radius-full); background: none; font: inherit; font-size: var(--fs-caption); color: var(--text-secondary); text-align: left; }
+button.t-q { cursor: pointer; }
+.t-q .sym { flex: none; font-size: var(--icon-sm); color: var(--accent-text); }
+.t-q b { flex: none; color: var(--text-primary); font-weight: 600; }
+.t-q span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-q:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+/* A quote at the top of the user's bubble: two lines over a white hairline, and a white focus ring on the blue. */
+.bq { display: flex; flex-direction: column; gap: 1px; width: calc(100% + var(--space-8)); margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-4)) var(--space-6); padding: var(--space-2) var(--space-4) var(--space-6); border: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: none; box-shadow: inset 0 -.5px 0 var(--on-accent-line); font: inherit; font-size: var(--fs-caption); line-height: var(--lh-ui); color: inherit; text-align: left; white-space: normal; }
+.bq b { font-size: var(--fs-caption2); font-weight: 600; }
+.bq > span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; opacity: .88; }
+button.bq { cursor: pointer; }
+button.bq:hover { background: var(--surface-on-accent); }
+.bq:focus-visible { outline: var(--on-accent-focus); outline-offset: 1px; }
+/* The message a composer's reply answers: a ring, no fill (as a selection). */
+:is(.attach, .t-row).target, .tcard:has(> .attach.target), .bline.target > .bub { box-shadow: inset 0 0 0 2px var(--accent); }
+.tcard > .attach.target { box-shadow: inset 0 -.5px 0 var(--border-subtle); }
+/* A message gone back to: a ring that fades, which leaves its fill and text as they are. */
+:is(.bub, .t-row).flash { animation: flash-ring var(--dur-attention) var(--ease-out); }
+@keyframes flash-ring { 0%, 40% { box-shadow: inset 0 0 0 2px var(--accent); } }
+/* While a reply is written: a two-line card of the message it answers, inside the composer. */
+.rchip { flex: 1 1 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-8); row-gap: 1px; align-items: center; margin: var(--space-2) var(--space-2) 0 -6px; padding: var(--space-6) var(--space-6) var(--space-6) var(--space-10); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); font-size: var(--fs-caption); min-width: 0; }
+.rchip.has-icon { grid-template-columns: auto minmax(0, 1fr) auto; }
 /* The Dispatcher at work (S1): on top of the composer, what it does, for how long, and Stop. A dot on the Chat tab says the same from other views. */
 .dstat { flex: 0 0 100%; display: flex; align-items: center; gap: var(--space-8); min-width: 0; margin-left: calc(-1 * var(--space-6)); padding: var(--space-2) var(--space-4) var(--space-6); font-size: var(--fs-caption); color: var(--text-secondary); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
 .dstat b { flex: none; color: var(--text-primary); font-weight: 600; }
@@ -302,10 +334,10 @@ button.ctx .pill { margin-left: var(--space-2); }
 /* Starts in an empty chat (E1). */
 .empty-view .starts { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-8); margin-top: var(--space-10); max-width: 520px; }
 .empty-view .starts .btn { margin-top: 0; }
-.rchip > .sym { flex: none; font-size: var(--icon-sm); color: var(--accent-text); }
-.rchip b { flex: none; font-weight: 600; }
-.rchip > span { flex: 1; min-width: 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rchip button { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+.rchip > .sym { grid-column: 1; grid-row: 1 / 3; font-size: var(--icon-sm); color: var(--accent-text); }
+.rchip b { grid-column: -3 / -2; grid-row: 1; min-width: 0; font-size: var(--fs-caption2); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rchip > span { grid-column: -3 / -2; grid-row: 2; min-width: 0; color: var(--text-secondary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.rchip button { grid-column: -2; grid-row: 1 / 3; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
 .rchip button:hover { background: var(--text-secondary); color: var(--bg-canvas); }
 .rchip button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .rchip button svg { width: 8px; height: 8px; }
@@ -1049,8 +1081,8 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 @keyframes sheet-in { from { opacity: 0; scale: .985; } }
 /* Messages that arrived since the thread was last drawn */
 .new-from ~ :not(.typing) { animation: rise-in var(--dur-slow) var(--ease-out) backwards; }
-/* The marker inside a group of replies: what follows the group is new too. */
-.rth:has(> .new-from) ~ :not(.typing) { animation: rise-in var(--dur-slow) var(--ease-out) backwards; }
+/* The marker inside a reply card: what follows the card is new too. */
+.tcard:has(.new-from) ~ :not(.typing) { animation: rise-in var(--dur-slow) var(--ease-out) backwards; }
 /* What a message is a reply to, as it is picked */
 .rchip { animation: rise-in var(--dur-base) var(--ease-out); }
 /* Menus, the confirm dialog, the toast */
@@ -1433,11 +1465,11 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .li.sel .pill:is([data-tone="success"], [data-tone="pr-open"]), .li:hover .pill:is([data-tone="success"], [data-tone="pr-open"]) { background: linear-gradient(var(--success-soft), var(--success-soft)), var(--surface-card-solid); }
 
 /* Markdown lists and tables in agent text (shared/markdown.ts). */
-:is(.bub, .sum-report, .plan-md) li :is(ul, ol) { margin: var(--space-2) 0; padding-left: var(--space-20); }
-:is(.bub, .sum-report, .plan-md) li ul { list-style-type: circle; }
-:is(.bub, .sum-report, .plan-md) li li ul { list-style-type: square; }
-:is(.bub, .sum-report, .plan-md) blockquote { margin: var(--space-4) 0; padding-left: var(--space-8); border-left: 2px solid var(--border-default); color: var(--text-secondary); }
-:is(.bub, .sum-report, .plan-md) hr { border: 0; height: 1px; background: var(--border-subtle); margin: var(--space-6) 0; }
+:is(.bub, .t-txt, .sum-report, .plan-md) li :is(ul, ol) { margin: var(--space-2) 0; padding-left: var(--space-20); }
+:is(.bub, .t-txt, .sum-report, .plan-md) li ul { list-style-type: circle; }
+:is(.bub, .t-txt, .sum-report, .plan-md) li li ul { list-style-type: square; }
+:is(.bub, .t-txt, .sum-report, .plan-md) blockquote { margin: var(--space-4) 0; padding-left: var(--space-8); border-left: 2px solid var(--border-default); color: var(--text-secondary); }
+:is(.bub, .t-txt, .sum-report, .plan-md) hr { border: 0; height: 1px; background: var(--border-subtle); margin: var(--space-6) 0; }
 .md-table { max-width: 100%; overflow-x: auto; margin: var(--space-4) 0 var(--space-6); }
 .md-table table { border-collapse: collapse; font-size: var(--fs-caption); line-height: var(--lh-body); }
 .md-table th, .md-table td { padding: var(--space-2) var(--space-8); border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: top; }

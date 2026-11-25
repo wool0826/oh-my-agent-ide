@@ -3,9 +3,10 @@
 
 /**
  * `task`: the reply answers that task's report card, so it is filed under the card (shared/thread.ts).
- * `max`: how much of the quote is sent (default QUOTE_MAX). `icon`: the chip's symbol (default the reply arrow).
+ * `max`: how much of the quote is sent (default QUOTE_MAX). `icon`: a symbol on the composer's quote card.
+ * `src`: the message answered, as the thread names it (`data-src`), so it is ringed while the reply is written.
  */
-export interface Reply { who: string; quote: string; task?: string; max?: number; icon?: string }
+export interface Reply { who: string; quote: string; task?: string; max?: number; icon?: string; src?: string }
 
 /** A quote is a reminder of the message, not a copy of it. */
 export const QUOTE_MAX = 280;

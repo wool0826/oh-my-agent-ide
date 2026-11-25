@@ -20,13 +20,13 @@ import { scriptsHtml } from './scripts';
 import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
 import { canStop } from '../../shared/canStop';
-import { threadLayout } from '../../shared/thread';
+import { replyThreads, threadLayout, threadOpen, type ReplyThread } from '../../shared/thread';
 import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, nextCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
 import { act } from '../app';
-import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, quoteHtml, replyable, replyBtn, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { setTip } from './tip';
 import { go } from './history';
 import { segc, syncSegs } from './settings';
@@ -126,12 +126,12 @@ function failureHtml(c: ChatItem) {
   const why = still ? plainStatus(x.summary) : c.text;
   const last = w.taskIds[w.taskIds.length - 1] === x.id;
   const go = still && last && lastFailed(w, x) ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
-  return `<div class="attach fail" data-task="${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill" data-tone="danger">${t('st.failed')}</span></b><span class="sm">${esc([at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why)}</span></span></div>`;
+  return `<div class="attach fail" data-task="${esc(x.id)}" data-src="card:${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill" data-tone="danger">${t('st.failed')}</span></b><span class="sm">${esc([at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why)}</span></span></div>`;
 }
 
 /** "Reply" on a report card: the composer's reply chip quotes the report, and the message is filed under the card. */
 function replyLink(x: Task, text: string) {
-  return `<a tabindex="0" role="link" data-action="reply" data-box="chat" data-who="${esc(x.workerId ?? x.id)}" data-quote="${esc(replyExcerpt(`${x.title}: ${text}`))}" data-task="${esc(x.id)}">${t('chat.reply')}</a>`;
+  return `<a tabindex="0" role="link" data-action="reply" data-box="chat" data-who="${esc(x.workerId ?? x.id)}" data-quote="${esc(replyExcerpt(`${x.title}: ${text}`))}" data-task="${esc(x.id)}" data-src="card:${esc(x.id)}">${t('chat.reply')}</a>`;
 }
 
 /** The hand-out runs of the thread drawn last, by their first line (shared/handouts.ts). */
@@ -187,7 +187,7 @@ function handoutHtml(c: ChatItem) {
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
     case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
-    case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.replyTo);
+    case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.replyTo, c.id);
     case 'event': return isHandout(c) ? handoutHtml(c) : `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
     case 'error': return failureHtml(c) ?? `<span class="event err">${sym('s-alert', 'c-red')}<span>${esc(c.text)}</span></span>`;
@@ -201,27 +201,52 @@ export function chatItemHtml(c: ChatItem) {
       const links = resultLinks(x);
       if (x?.workerId) links.push(`<a tabindex="0" role="link" data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
       if (x) links.push(replyLink(x, c.text));
-      return `<div class="attach" data-task="${esc(c.ref ?? '')}"><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}${resultMeta(x)}</b><span class="sm">${inline(plainStatus(c.text))}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
+      return `<div class="attach" data-task="${esc(c.ref ?? '')}"${x ? ` data-src="card:${esc(x.id)}"` : ''}><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}${resultMeta(x)}</b><span class="sm">${inline(plainStatus(c.text))}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
     }
   }
 }
 
+/** Whose a thread row is, as its heading names it. */
+const rowWho = (c: ChatItem) => (c.kind === 'user' ? t('chat.you') : c.kind === 'dispatcher' ? 'Dispatcher' : '');
+
+/** A row's own words: a user's message without the quote on top. */
+const ownText = (c: ChatItem) => (c.kind === 'user' ? parseReply(c.text)?.body ?? c.text : c.text);
+
 /**
- * One reply in a report's group, on its own side as in the rest of the chat. The group already says which report it
- * answers (it sits under the card, or opens with the report's chip), so a quote of that report is left out.
+ * One reply as a row of its report's card: who and when, then the message. A quote of the report, or of the row right
+ * above, would say again what is in view, so only a quote of another message shows, as a line that goes back to it.
  */
-function replyRow(c: ChatItem, html: string) {
-  const me = c.kind === 'user';
-  const r = me ? parseReply(c.text) : null;
-  if (r && r.who === (task(c.replyTo)?.workerId ?? c.replyTo)) html = `<div class="bub me">${userText(r.body)}</div>`;
-  return `<div class="rth-r${me ? ' me' : ''}">${html}</div>`;
+function threadRow(c: ChatItem, prev: ChatItem | null, root: string) {
+  // The time alone today, with the day before that.
+  const at = new Date(c.ts).toDateString() === new Date().toDateString() ? when(c.ts) : hhmm(c.ts);
+  const head = `<span class="who"><b>${esc(rowWho(c))}</b><time datetime="${esc(c.ts)}">${at}</time></span>`;
+  if (c.kind === 'user') {
+    const r = parseReply(c.text);
+    const inView = !r || r.who === (task(root)?.workerId ?? root) || (prev?.kind === 'dispatcher' && r.who === 'Dispatcher' && replyExcerpt(prev.text) === r.quote);
+    return `<div class="t-row me" data-id="${esc(c.id)}">${head}${inView ? '' : quoteHtml(r.who, r.quote, 't-q')}<div class="t-txt">${userText(r?.body ?? c.text)}</div></div>`;
+  }
+  if (c.kind === 'dispatcher') return `<div class="t-row" data-id="${esc(c.id)}" data-src="${esc(c.id)}">${head}<div class="t-txt">${md(c.text)}</div>${replyBtn('chat', 'Dispatcher', c.text, root, c.id)}</div>`;
+  return `<div class="t-row ev" data-id="${esc(c.id)}">${chatItemHtml(c)}</div>`;
 }
 
-/** At the top of a group that came later: the report it answers, which the chip goes back to. */
-function reportRef(id: string) {
-  const x = task(id);
-  const what = [x?.title ?? id, x?.prUrl ? `PR #${prNum(x.prUrl)}` : ''].filter(Boolean).join(' · ');
-  return `<button type="button" class="rth-ref" data-action="goto-report" data-id="${esc(id)}" data-tip="${esc(t('chat.toReport'))}">${sym('s-reply')}<b>${esc(x?.workerId ?? id)}</b><span>${esc(what)}</span></button>`;
+/**
+ * A report with its replies in one card (T-0072, design B): the report, a heading that folds the replies and counts
+ * them, then a row per reply. A thread that came later is a card of its own whose top line goes back to the report.
+ * The newest thread is open and the others folded, unless the user opened or folded it (ui.replyOpen).
+ * `mark`: the index before which the "new" marker goes, which a folded thread puts after itself.
+ */
+function threadCard(card: string | null, g: ReplyThread, items: { c: ChatItem }[], open: boolean, mark: number) {
+  const x = task(g.root);
+  const title = x?.title ?? g.root;
+  const n = g.rows.length;
+  const lastRow = items[g.rows[n - 1]].c;
+  const sum = open ? '' : `<span>${esc([rowWho(lastRow), oneLine(ownText(lastRow), 140)].filter(Boolean).join(': '))}</span>`;
+  const fold = `<button type="button" class="t-fold" data-action="reply-fold" data-id="${esc(g.key)}" aria-expanded="${open}"><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg><b>${t('chat.replies', { n })}</b>${sum}</button>`;
+  const head = card ?? `<button type="button" class="t-head" data-action="goto-report" data-id="${esc(g.root)}" data-tip="${esc(t('chat.toReport'))}">${sym('s-reply')}<b>${esc(title)}</b><span>${esc([x?.workerId, x?.prUrl ? `PR #${prNum(x.prUrl)}` : ''].filter(Boolean).join(' · '))}</span></button>`;
+  // A folded thread keeps its rows, hidden, so a quote of one of them can still find it and open it (goto-quote).
+  const rows = `<div class="t-rows"${open ? '' : ' hidden'}>${g.rows.map((j, k) => (open && j === mark ? NEW_FROM : '') + threadRow(items[j].c, k ? items[g.rows[k - 1]].c : null, g.root)).join('')}</div>`;
+  const after = !open && g.rows.includes(mark) ? NEW_FROM : '';
+  return `<div class="tcard${card ? '' : ' late'}${open ? ' open' : ''}" role="group" aria-label="${esc(t('chat.repliesTo', { title }))}">${head}${fold}${rows}</div>${after}`;
 }
 
 /** The chat items held: pages loaded with chat:page, then the state's snapshot. */
@@ -252,7 +277,7 @@ export function renderChat(force = false, older = false) {
   runs = handoutRuns(all.slice(from));
   const key = `${lang()}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${shellKey(all.slice(from))}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
   // The hand-out blocks follow their tasks: a step done or a decision answered draws them again.
-  const hands = `${handoutKey()}:${[...ui.handToggled].join()}`;
+  const hands = `${handoutKey()}:${[...ui.handToggled].join()}:${[...ui.replyOpen].join()}`;
   if (!force && !older && key === ui.lastChatKey && hands === ui.lastHandKey) return;
   ui.lastChatKey = key;
   ui.lastHandKey = hands;
@@ -277,25 +302,34 @@ export function renderChat(force = false, older = false) {
     if (fresh.length) announce(fresh[fresh.length - 1].text);
   }
   const slots = threadLayout(items.map(({ c }) => c));
-  for (const [i, { c, n }] of items.entries()) {
-    const slot = slots[i];
-    const inGroup = slot.depth === 1 && !slot.start;
-    if (seenAt >= 0 && i === seenAt + 1) html += NEW_FROM;
+  const groups = replyThreads(items.map(({ c }) => c), slots);
+  const newest = [...groups.values()].pop()?.key;
+  const mark = seenAt >= 0 ? seenAt + 1 : -1;
+  for (let i = 0; i < items.length; i++) {
+    const { c, n } = items[i];
+    // A thread that came later starts here; one right under its report follows the report's card.
+    const late = groups.get(i)?.late ? groups.get(i)! : null;
+    const next = groups.get(i + 1);
+    const under = late || next?.late ? null : next;
+    const g = late ?? under;
+    if (i === mark) html += NEW_FROM;
     const ts = Date.parse(c.ts);
-    // A group of replies is not cut by a time stamp; the next one at the top level gets it.
-    if (ts - last > 30 * 60_000 && !inGroup) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
-    last = ts;
-    const one = n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
-    if (slot.depth === 0) { html += one; continue; }
-    // A group is one well, one step in: right under its card, or further down opening with the report's chip.
-    if (slot.start) html += `<div class="rth${slot.late ? ' late' : ''}" role="group" aria-label="${esc(t('chat.repliesTo', { title: task(slot.root)?.title ?? slot.root! }))}">${slot.late ? reportRef(slot.root!) : ''}`;
-    html += replyRow(c, one);
-    if (slots[i + 1]?.depth !== 1 || slots[i + 1].start) html += '</div>';
+    if (ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
+    if (!g) {
+      last = ts;
+      html += n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
+      continue;
+    }
+    // The replies are rows of the card, which no time stamp cuts: each row says its own time.
+    html += threadCard(late ? null : chatItemHtml(c), g, items, threadOpen(g.key, newest, ui.replyOpen), late && mark === i ? -1 : mark);
+    i = g.rows[g.rows.length - 1];
+    last = Date.parse(items[i].c.ts);
   }
   // A first start: a few starts that fill the composer for the user to finish. Nothing is sent.
   if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><div class="starts">${STARTS.map((key) => `<button type="button" class="btn" data-action="chat-start" data-text="${esc(t(key))}">${t(key)}</button>`).join('')}</div></div>`;
   ui.chatSeen = tail;
   setThread(th, html, nearBottom || force, older);
+  markReplyTarget('chat');
   watchTop(th, () => void olderChat());
   renderCtxMeter();
   updateSendButton();
