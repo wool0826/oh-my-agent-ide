@@ -19,6 +19,10 @@ export function paths() {
     backups: path.join(home, 'data', 'backups'),
     workerLogs: path.join(home, 'data', 'workers'),
     appLog: path.join(home, 'data', 'app.log'),
+    /** Errors nothing caught and window pages that died, with their stacks (crash.ts). */
+    crashLog: path.join(home, 'data', 'crash.log'),
+    /** Present while the app runs; left behind by a run that did not quit (crash.ts). */
+    runMarker: path.join(home, 'data', 'running.json'),
   };
 }
 

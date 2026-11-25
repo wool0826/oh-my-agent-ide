@@ -50,6 +50,7 @@ import { lastPreflight, runPreflight } from './preflight';
 import { fixToolPath } from './toolpath';
 import { failedCount } from '../shared/preflight';
 import { diagnostics, exportDiagnostics } from './diagnostics';
+import { beginRun, installCrashHandlers, noticeLastRun, watchWindow } from './crash';
 import { effectiveTheme, windowColors } from '../shared/theme';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -199,6 +200,7 @@ function createWindow() {
     },
   });
   setWindow(win);
+  watchWindow(win, () => quitting);
   // The AppUserModelID has no Start-menu shortcut when run with `electron .`, so the taskbar gets the icon and name from the window.
   if (process.platform === 'win32') win.setAppDetails({ appId: APP_ID, appIconPath: windowIconFile({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }, 'win32'), relaunchDisplayName: 'Oh My Agent IDE' });
   win.loadFile(path.join(here, 'renderer', 'index.html'));
@@ -559,6 +561,7 @@ async function boot() {
   setTimeout(() => workers.autoArchive(), 60_000).unref();
 }
 
+installCrashHandlers();
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
 else {
@@ -566,6 +569,7 @@ else {
   app.on('second-instance', (_e, argv) => { if (argv.includes(QUICK_ARG)) openQuick(here); else showWindow(win); });
   app.whenReady().then(async () => {
     registerIpc();
+    beginRun();
     try {
       await boot();
     } catch (e) {
@@ -573,6 +577,7 @@ else {
       dialog.showErrorBox(t('err.bootTitle'), String((e as Error).message));
     }
     createWindow();
+    void noticeLastRun(() => win);
     syncTray();
     // With System chosen, the window's own colours follow the OS when it changes.
     nativeTheme.on('updated', () => { if (loadSettings().theme === 'system') applyTheme(); });

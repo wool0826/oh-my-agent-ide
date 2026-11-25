@@ -31,6 +31,8 @@ export interface DiagnosticsInput {
   counts: { workers: Record<string, number>; tasks: Record<string, number>; decisionsPending: number; repos: number; automations: number };
   /** The end of the app's log. */
   log: string;
+  /** The end of the crash log (errors nothing caught, pages that died); empty when there were none. */
+  crashes?: string;
   /**
    * Words that name the user or their company (the company's GitHub host, the Jira site, the email, the OS user name):
    * each is replaced by its stand-in wherever it appears, the log included.
@@ -53,6 +55,7 @@ export function diagnosticsText(d: DiagnosticsInput): string {
     `\n[accounts]\n${d.accounts.map((a, i) => `  ${i + 1}. ${a.provider} ${a.kind} ${a.plan}${a.limited ? ' limited' : ''}${a.lastError ? ` error: ${a.lastError}` : ''}`).join('\n') || '  (none)'}`,
     `\n[counts]\n${kv({ ...d.counts })}`,
     `\n[settings]\n${kv({ ...settings, ...set })}`,
+    `\n[crashes]\n${d.crashes?.trim() || '(none)'}`,
     `\n[log]\n${d.log.trim() || '(empty)'}`,
   ];
   let out = redact(parts.join('\n'));

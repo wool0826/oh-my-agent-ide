@@ -1043,6 +1043,13 @@ const en = {
   'err.correction': 'Could not send the correction to {id}: {msg}',
   'err.stopped': 'Stopped with an error',
   'err.bootTitle': 'Oh My Agent IDE could not start',
+  'crash.lastTitle': 'The last run ended unexpectedly',
+  'crash.saveReport': 'Save report…',
+  'crash.close': 'Close',
+  'crash.pageTitle': 'The window stopped {n} times in a minute',
+  'crash.reload': 'Reload window',
+  'crash.quit': 'Quit',
+  'crash.loopTitle': 'Oh My Agent IDE quit after repeated errors',
 
   // toasts and confirms
   'toast.clearedResults': 'Cleared results.',
@@ -2079,6 +2086,13 @@ const ko: Record<Key, string> = {
   'err.correction': '{id}에게 정정을 전하지 못했어요: {msg}',
   'err.stopped': '오류로 멈췄어요',
   'err.bootTitle': 'Oh My Agent IDE를 시작하지 못했어요',
+  'crash.lastTitle': '지난 실행이 비정상적으로 끝났어요',
+  'crash.saveReport': '보고서 저장…',
+  'crash.close': '닫기',
+  'crash.pageTitle': '창이 1분 안에 {n}번 멈췄어요',
+  'crash.reload': '창 다시 열기',
+  'crash.quit': '종료',
+  'crash.loopTitle': '오류가 반복돼 Oh My Agent IDE를 종료했어요',
 
   'toast.clearedResults': '결과 목록을 정리했어요.',
   'toast.clearedAuto': '대신 답한 것 목록을 정리했어요.',

@@ -57,6 +57,8 @@ class Store extends EventEmitter {
 
   /** Set by load() when the state file could not be read and a backup took its place: the day of that backup, or 'none'. */
   restoredFrom: string | null = null;
+  /** load() has run. Before it `data` is the empty state, and saving that would replace the file on disk. */
+  loaded = false;
 
   /**
    * Reads the state. A file that holds something unreadable is set aside (never overwritten), and the newest
@@ -84,6 +86,7 @@ class Store extends EventEmitter {
     }
     const raw = stateText(text) === 'ok' ? (JSON.parse(text!.replace(/^\uFEFF/, '')) as Partial<Data>) : {};
     this.data = { ...empty(), ...raw } as Data;
+    this.loaded = true;
     if (this.restoredFrom) this.flush();
   }
 
@@ -237,3 +240,12 @@ class Store extends EventEmitter {
 }
 
 export const store = new Store();
+
+/**
+ * Writes the state now, without waiting for the debounce, for an error nothing caught (crash.ts). Nothing is written
+ * before the state was read, and a write that fails is reported, not thrown.
+ */
+export function flushNow(): boolean {
+  if (!store.loaded) return false;
+  try { store.flush(); return true; } catch { return false; }
+}
