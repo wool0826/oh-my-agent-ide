@@ -735,14 +735,14 @@ test('a question to an idle Worker reopens no task, and what its turn says reach
   assert.deepEqual(chatLines(), [`Dispatcher → ${w.id} question: Which file holds the parser?`, `${w.id} → Dispatcher: It is src/parse.ts.`]);
 });
 
-test('mid-task, tell_dispatcher answers the question and the task goes on to its own report', () => {
+test('mid-task, tell_dispatcher answers the question and the task goes on to its own report', async () => {
   const { w, x, s } = talking();
   workers.ask(w.id, 'How far along are you?');
   assert.match(workers.fromWorker(w, 'answer', 'Half way: the parser is done.'), /^Delivered/);
   assert.equal(w.ask, null);
   assert.equal(x.status, 'running');
   assert.equal(wakes, 1);
-  assert.deepEqual(store.readLog(w.id, undefined, 2).items.map((i) => [i.from, i.text]), [
+  assert.deepEqual((await store.readLog(w.id, undefined, 2)).items.map((i) => [i.from, i.text]), [
     ['dispatcher', 'Question: How far along are you?'],
     ['worker', 'To the Dispatcher: Half way: the parser is done.'],
   ]);

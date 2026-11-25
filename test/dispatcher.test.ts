@@ -179,7 +179,7 @@ test('while a usage limit holds every account, the news waits and starts its tur
   assert.deepEqual(sent, [`[Worker updates]\n- W-1 T-1 "Task" done: Done\n\n${AUTO}`]);
 });
 
-test("read_worker shows what a Worker is doing, what is unanswered, and the latest of its conversation, long messages cut", () => {
+test("read_worker shows what a Worker is doing, what is unanswered, and the latest of its conversation, long messages cut", async () => {
   const at = new Date();
   const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   const w: Worker = {
@@ -189,13 +189,13 @@ test("read_worker shows what a Worker is doing, what is unanswered, and the late
     request: { text: 'I need the bucket name.', at: at.toISOString() },
   };
   store.data.workers.push(w);
-  assert.equal(readWorker('W-0'), null);
-  assert.match(readWorker(w.id)!, /\(latest 0 of 0 messages, oldest first\)\n\(empty\)$/);
+  assert.equal(await readWorker('W-0'), null);
+  assert.match((await readWorker(w.id))!, /\(latest 0 of 0 messages, oldest first\)\n\(empty\)$/);
 
   store.log(w.id, 'dispatcher', '[Task T-1] Do it.');
   store.log(w.id, 'worker', 'Looking at the parser.');
   store.log(w.id, 'worker', `RESULT: Done\n${'x'.repeat(2000)}`);
-  const view = readWorker(w.id, 2)!;
+  const view = (await readWorker(w.id, 2))!;
   assert.ok(view.startsWith('- W-7 [idle] app, '), view);
   assert.ok(view.includes('context 120K\n  Now: Waiting for the Dispatcher\n  Tasks: none'), view);
   assert.ok(view.includes(`\n  Has not answered your question yet (asked ${hhmm}): Which file holds the parser?`), view);

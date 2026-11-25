@@ -65,6 +65,25 @@ export function threadStart(total: number, from: number, page: number, follow: b
   return from;
 }
 
+/**
+ * Finds where lines start in a piece of a log file at byte `base`, and adds those offsets to `starts`. A line is a
+ * run of bytes up to "\n" that is not empty, as `text.split('\n').filter(Boolean)` counts them; the last one may
+ * still lack its "\n". `inLine` says the piece continues a line begun before it; the result says the same for the
+ * next piece. Works on bytes: "\n" never occurs inside a multi-byte UTF-8 character.
+ */
+export function scanLines(buf: Uint8Array, base: number, starts: number[], inLine: boolean): boolean {
+  let i = 0;
+  while (i < buf.length) {
+    const nl = buf.indexOf(10, i);
+    const stop = nl < 0 ? buf.length : nl;
+    if (stop > i && !inLine) starts.push(base + i);
+    if (nl < 0) return true;
+    inLine = false;
+    i = nl + 1;
+  }
+  return inLine;
+}
+
 /** The first `shown` items of a list, and how many are left after them. */
 export function firstPage<T>(items: T[], shown: number): { items: T[]; left: number } {
   const n = Math.max(0, shown);

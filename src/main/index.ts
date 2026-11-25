@@ -508,6 +508,13 @@ async function boot() {
     log.error('state file unreadable; restored from', store.restoredFrom);
     store.chat('error', store.restoredFrom === 'none' ? t('backup.lost') : t('backup.restored', { day: store.restoredFrom }));
   }
+  // The state is not written this launch (shared/migrate.ts): the user hears why before anything is lost.
+  const ro = store.readOnly;
+  if (ro) {
+    log.error('state file opened read-only', JSON.stringify(ro));
+    store.chat('error', ro.why === 'newer' ? t('state.newer', { version: ro.version }) : t('state.migrateFailed', { error: ro.error }));
+  }
+  if (store.migrated) log.info('state file migrated from version', store.migrated.from, 'copy kept at', store.migrated.copy);
   store.backup();
   setInterval(() => store.backup(), 3600_000).unref();
   pruneDecisions();
