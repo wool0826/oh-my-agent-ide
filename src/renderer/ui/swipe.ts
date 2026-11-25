@@ -80,7 +80,8 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => Pro
     draw();
   };
 
-  const up = (e: PointerEvent) => { if (e.pointerId === id) end(e.type === 'pointercancel'); };
+  let upAt = 0;
+  const up = (e: PointerEvent) => { if (e.pointerId === id) { upAt = e.timeStamp; end(e.type === 'pointercancel'); } };
 
   const stop = () => {
     window.removeEventListener('pointermove', move, true);
@@ -120,7 +121,8 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => Pro
     setTimeout(() => window.removeEventListener('click', eat, true), 300);
     if (!row.isConnected) return tidy();
     const first = trail[0], last = trail[trail.length - 1];
-    const v = first && last && last.t > first.t ? (last.x - first.x) / (last.t - first.t) : 0;
+    // A row held still before letting go is not flicked, however fast it got there.
+    const v = first && last && last.t > first.t && upAt - last.t <= 100 ? (last.x - first.x) / (last.t - first.t) : 0;
     const w = row.offsetWidth;
     if (!cancel && clears && swipeClears(dx, v, w)) return away(Math.sign(dx) || 1, w);
     back();

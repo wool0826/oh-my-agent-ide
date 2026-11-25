@@ -237,6 +237,9 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
         }
       }
       if (!hold) await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', buttons: 0, clickCount: 1 });
+      // A held drag rests before it is let go, so the last moves (the ones made again above, a pixel apart in a
+      // moment) are not taken for a flick.
+      else await sleep(150);
       return at;
     },
     release: (at) => send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', buttons: 0, clickCount: 1 }),
