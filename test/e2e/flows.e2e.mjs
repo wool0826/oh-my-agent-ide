@@ -1681,6 +1681,14 @@ flow('the app starts in the message field, the views are one Tab stop, and a nar
   await app.size(900, 760);
   b = JSON.parse(await app.until(`return document.querySelector('#win').classList.contains('side-min') && (() => { ${box} })()`, 'the rail at 900px'));
   assert.ok(b.main >= 520, JSON.stringify(b));
+  // The rail holds the macOS traffic lights (x 22, up to 60 wide) with even margins; elsewhere it stays 60 wide, and
+  // the toolbar's controls end clear of the caption buttons (150px at 100%). The grid animates, so wait for it to settle.
+  await app.until("return (() => { const s = document.querySelector('.sidebar').getBoundingClientRect(); const mac = !!document.querySelector('.platform-darwin:not(.fullscreen)'); return mac ? Math.abs((s.right - 82) - (22 - s.left)) < 0.5 : Math.abs(s.right - 60) < 0.5; })()", 'the rail sized for the traffic lights on macOS, 60px elsewhere');
+  for (const w of [900, 760]) {
+    await app.size(w, 760);
+    const end = Number(await app.until(`return (() => { if (document.querySelector('.platform-darwin')) return 1; const r = Math.max(...[...document.querySelector('.toolbar').children].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right)); return r <= innerWidth - 150 + 0.5 ? String(r) : ''; })()`, `the toolbar clear of the caption buttons at ${w}px`));
+    assert.ok(end > 0, String(end));
+  }
   // Wide again, both come back as they were.
   await app.size(1320, 860);
   b = JSON.parse(await app.until(`return !document.querySelector('#win').classList.contains('ins-over') && (() => { ${box} })()`, 'wide again'));
