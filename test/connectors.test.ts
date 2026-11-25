@@ -54,6 +54,7 @@ test('connectors on: sessions get CLAUDE_CODE_ARTIFACT=1, since Agent SDK sessio
 test("an explicit CLAUDE_CODE_ARTIFACT, in the session env or the app's own, is kept; off adds nothing", () => {
   assert.equal(artifactEnv({ CLAUDE_CODE_ARTIFACT: '0' }, true, {}).CLAUDE_CODE_ARTIFACT, '0');
   assert.equal(artifactEnv({}, true, { CLAUDE_CODE_ARTIFACT: 'false' }).CLAUDE_CODE_ARTIFACT, 'false');
+  assert.equal(artifactEnv({ CLAUDE_CODE_ARTIFACT: '' }, true, { CLAUDE_CODE_ARTIFACT: '' }).CLAUDE_CODE_ARTIFACT, '1');
   assert.equal(artifactEnv({}, false, {}).CLAUDE_CODE_ARTIFACT, undefined);
   assert.equal(artifactEnv({}, undefined, {}).CLAUDE_CODE_ARTIFACT, undefined);
 });

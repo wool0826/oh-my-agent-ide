@@ -39,8 +39,8 @@ export function connectorSettings(on: boolean): NonNullable<Exclude<Options['set
  * Off, nothing is added: enableArtifact: false keeps the tools out.
  */
 export function artifactEnv(env: NodeJS.ProcessEnv, on: boolean | undefined, parent: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  if (!on || env.CLAUDE_CODE_ARTIFACT !== undefined) return env;
-  return { ...env, CLAUDE_CODE_ARTIFACT: parent.CLAUDE_CODE_ARTIFACT ?? '1' };
+  if (!on || env.CLAUDE_CODE_ARTIFACT) return env;
+  return { ...env, CLAUDE_CODE_ARTIFACT: parent.CLAUDE_CODE_ARTIFACT || '1' };
 }
 
 export const isConnector = (s: ServerStatus) => s.scope === 'claudeai' || s.config?.type === 'claudeai-proxy';
