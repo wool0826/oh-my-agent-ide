@@ -131,14 +131,21 @@ export function lateReplies(index: ThreadIndex): Map<number, number> {
 }
 
 /**
- * What a reply is filed under when it is sent: the root it names, the root of the reply it names, or a report's
- * task. Null when it names nothing in `chat` that a thread can grow from.
+ * What a reply is filed under when it is sent: the root of the message it names (that message, or the root of the
+ * thread it is in), by its chat id; a report that is its task's newest card is named by the task, as saved replies are.
+ * A task id is that task's newest report. Null when it names nothing in `chat` that a thread can grow from.
  */
 export function threadTarget(chat: RootItem[], to: string | null | undefined): string | null {
   if (!to) return null;
-  if (chat.some((c) => isReport(c) && c.ref === to)) return to;
-  const c = chat.find((x) => x.id === to);
-  if (!c) return null;
-  if (c.replyTo) return c.replyTo === to ? null : threadTarget(chat.filter((x) => x !== c), c.replyTo);
-  return canRoot(c) ? c.id : null;
+  const newest = (ref: string) => {
+    for (let i = chat.length - 1; i >= 0; i--) if (isReport(chat[i]) && chat[i].ref === ref) return i;
+    return -1;
+  };
+  const at = chat.findIndex((c) => c.id === to);
+  if (at < 0) return newest(to) >= 0 ? to : null;
+  const ix = threadIndex(chat);
+  const root = ix.rootOf[at] >= 0 ? ix.rootOf[at] : at;
+  const c = chat[root];
+  if (!canRoot(c)) return null;
+  return isReport(c) && newest(c.ref!) === root ? c.ref! : c.id;
 }

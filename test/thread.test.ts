@@ -114,7 +114,26 @@ test('a reply is filed under the root it names, the root of the reply it names, 
   assert.equal(threadTarget(chat, 'u'), null);
   assert.equal(threadTarget(chat, 'T-9'), null);
   assert.equal(threadTarget(chat, null), null);
-  // A reply that names itself, or a gone root, is filed nowhere.
-  assert.equal(threadTarget([it('dispatcher', { id: 'z', replyTo: 'z' })], 'z'), null);
-  assert.equal(threadTarget([it('dispatcher', { id: 'y', replyTo: 'gone' })], 'y'), null);
+  // A message whose own root is gone, or that names itself, is a root of its own.
+  assert.equal(threadTarget([it('dispatcher', { id: 'z', replyTo: 'z' })], 'z'), 'z');
+  assert.equal(threadTarget([it('dispatcher', { id: 'y', replyTo: 'gone' })], 'y'), 'y');
+});
+
+test('a task reported twice: a reply in the older card thread stays there, by the card id', () => {
+  const chat = [it('result', { id: 'c1', ref: 'T-1' }), it('dispatcher', { id: 'a', replyTo: 'T-1' }), it('result', { id: 'c2', ref: 'T-1' }),
+    it('dispatcher', { id: 'b', replyTo: 'T-1' })];
+  assert.equal(threadTarget(chat, 'a'), 'c1');
+  assert.equal(threadTarget(chat, 'c1'), 'c1');
+  assert.equal(threadTarget(chat, 'b'), 'T-1');
+  assert.equal(threadTarget(chat, 'c2'), 'T-1');
+  const ix = threadIndex([...chat, it('user', { replyTo: 'c1' })]);
+  assert.deepEqual([...ix.replies], [[0, [1, 4]], [2, [3]]]);
+});
+
+test('two threads whose replies interleave: each is marked late only when a chat message came between', () => {
+  const items = [it('dispatcher', { id: 'p' }), it('dispatcher', { id: 'q' }), it('user', { replyTo: 'p' }), it('user', { replyTo: 'q' }), it('user', { replyTo: 'p' })];
+  // q (a chat message) lies between p and its replies; only replies lie between q and its one.
+  assert.deepEqual([...lateReplies(threadIndex(items))], [[4, 0]]);
+  // A report that comes after the reply that names its task does not take it.
+  assert.deepEqual(threadIndex([it('user', { replyTo: 'T-5' }), it('result', { ref: 'T-5' })]).rootOf, [-1, -1]);
 });
