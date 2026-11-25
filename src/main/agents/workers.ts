@@ -20,7 +20,7 @@ import { loadSettings, claudeHelperModel } from '../settings';
 import { cachedModels } from '../models';
 import { modelLabel as labelFor } from '../../shared/models';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
-import { dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork';
+import { changedFiles, dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork';
 import { worktreeDiff } from '../gitdiff';
 import { listCheckpoints, restoreCheckpoint, saveCheckpoint } from '../checkpoints';
 import { checkpointLabel } from '../../shared/checkpoints';
@@ -30,7 +30,8 @@ import { t, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
 import { artifactCommentLine } from '../../shared/artifactComment';
-import { ALLOW, ALLOW_TASK, DENY, type Task, type TaskStatus, type Worker, type WorkerStatus } from '../../shared/types';
+import { ALLOW, ALLOW_TASK, DENY, GRANT_USED, type Task, type TaskStatus, type Worker, type WorkerStatus } from '../../shared/types';
+import { withPermission } from '../../shared/retro';
 import { workerDecisions } from '../../shared/inbox';
 import { afterDependency, cancelSet, describeCancel, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { planFallback, planSummary } from '../../shared/plan';
@@ -62,13 +63,19 @@ type FeedbackKind = 'review' | 'ci' | 'conflict';
  * never add up to the time after which a waiting task gives its slot back. The new timer starts here, so the card's
  * slot clock shows from the start instead of after the next sweep (sweepWaiting starts one a task lacks).
  */
-function setStatus(task: Task, status: TaskStatus) {
+function setStatus(task: Task, status: TaskStatus, on: Task['waitingOn'] = null) {
   reopenSteps(task, status);
   if ((status === 'waiting') !== (task.status === 'waiting')) {
     task.waitingSince = status === 'waiting' ? new Date().toISOString() : null;
     task.slotReleased = false;
   }
   task.status = status;
+  task.waitingOn = status === 'waiting' ? on : null;
+}
+
+/** An action an allow-for-this-task rule let through, kept with the task's permission decisions. */
+function grantUsed(task: Task, code: string) {
+  task.permissions = withPermission(task.permissions, { at: nowIso(), answeredAt: null, code, answer: GRANT_USED });
 }
 
 class WorkerManager {
@@ -79,6 +86,8 @@ class WorkerManager {
   private reviewing = new Set<string>();
   /** Workers whose files were put back to a checkpoint since their last message. */
   private restored = new Set<string>();
+  /** The latest read of each Worker's changed files (recordChanged): an older read finishing later is dropped. */
+  private changedSeq = new Map<string, number>();
   private ciFixing = new Set<string>();
   private followups = new Set<string>();
   /** Plan-first tasks whose Worker was reminded to present its plan, until it presents one. */
@@ -296,6 +305,7 @@ class WorkerManager {
         if (st === 'idle') this.fillSlots();
       },
       onTurnEnd: (r) => {
+        void this.recordChanged(w);
         // With more input queued, the turn that follows settles the task.
         if (r.internal || r.queued) return;
         this.turnEnded(w, r.text, r.isError, !!r.background);
@@ -371,6 +381,7 @@ class WorkerManager {
       // One file names a folder; several files are asked about each time.
       const scope = this.taskScope(task, tool, req.kind === 'command' ? input : req.files.length === 1 ? { file_path: req.files[0] } : {});
       if (task && scope && hasGrant(task, scope.key)) {
+        grantUsed(task, code);
         this.decided(w, task, prev);
         store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
         return 'accept';
@@ -428,7 +439,9 @@ class WorkerManager {
       // Allowed for this task already: the same kind of action goes ahead, with a line in the conversation.
       const scope = this.taskScope(task, toolName, input);
       if (task && scope && hasGrant(task, scope.key)) {
+        grantUsed(task, summarizeTool(toolName, input, 1200));
         store.log(w.id, 'event', t('log.grantUsed', { what: scope.label }));
+        store.changed();
         return { behavior: 'allow', updatedInput: input };
       }
       const prev = this.awaitDecision(w, task);
@@ -541,6 +554,27 @@ class WorkerManager {
     return worktreeDiff(repo.defaultBranch, w.cwd, isLocalRepo(repo));
   }
 
+  /**
+   * Record on the task whose branch the Worker's worktree has checked out which files that branch changes, so a new
+   * task naming one of them is flagged (shared/overlap.ts). Read from git each time a turn ends; a later read wins.
+   * Detached with the task in progress's branch never made (a fake Worker), the files are that task's, taken before
+   * the turn settles it. Detached otherwise (mid-rebase, back at the base) nothing is recorded.
+   */
+  private async recordChanged(w: Worker) {
+    const repo = w.repo ? store.repo(w.repo) : null;
+    if (!repo) return;
+    const seq = (this.changedSeq.get(w.id) ?? 0) + 1;
+    this.changedSeq.set(w.id, seq);
+    const cur = this.currentTask(w);
+    const r = await changedFiles(w.cwd, repo.defaultBranch, isLocalRepo(repo), cur?.kind === 'code' ? cur.branch : null).catch(() => null);
+    if (!r || this.changedSeq.get(w.id) !== seq) return;
+    const task = r.branch ? w.taskIds.map((id) => store.task(id)).find((x) => x?.kind === 'code' && x.branch === r.branch)
+      : cur?.kind === 'code' && !r.hintExists ? cur : null;
+    if (!task || task.status === 'cancelled' || !store.task(task.id) || task.changedFiles?.join('\0') === r.files.join('\0')) return;
+    task.changedFiles = r.files;
+    store.changed();
+  }
+
   private async answerQuestions(w: Worker, input: Record<string, unknown>, signal: AbortSignal) {
     const questions = (input.questions as any[]) ?? [];
     const answers: Record<string, string> = {};
@@ -618,7 +652,7 @@ class WorkerManager {
    * its slot, like any task that waits for an answer, and goes on with the next message to the Worker.
    */
   private awaitDispatcher(w: Worker, task: Task, need: string | null) {
-    setStatus(task, 'waiting');
+    setStatus(task, 'waiting', 'dispatcher');
     task.updatedAt = nowIso();
     // A BLOCKED report without a request is the request. One made earlier told the Dispatcher what is needed; now
     // it hears that the task stopped for it, in case it did something about the request without writing back.

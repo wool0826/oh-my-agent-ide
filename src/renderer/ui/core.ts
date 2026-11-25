@@ -9,6 +9,7 @@ import { linkify } from '../../shared/linkify';
 import { mdHtml } from '../../shared/markdown';
 import { type DiffNote } from '../../shared/diffComment';
 import { type Issue } from '../../shared/issues';
+import { type PermFilter } from '../../shared/retro';
 import { parseReply, replyExcerpt, withReply, type Reply } from '../../shared/reply';
 import { SIDE_WHO } from '../../shared/side';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
@@ -139,6 +140,9 @@ export const ui = {
   claude: null as ClaudeInfo | null,
   accKind: 'token' as 'token' | 'login' | 'chatgpt',
   wTab: 'chat' as 'chat' | 'changes' | 'summary',
+  /** The Summary tab shows the open Worker's tasks or the last seven days of every Worker's, and which permission decisions. */
+  sumScope: 'worker' as 'worker' | 'week',
+  permFilter: 'all' as PermFilter,
   diffs: new Map<string, DiffView | 'loading' | null>(),
   diffOpen: new Set<string>(),
   /** Review comments not sent yet, per Worker, and the line a comment is being written for. */
@@ -390,6 +394,8 @@ export function shortPath(p: string, keep = 3) {
 export function base(p: string) { return p.split(/[\\/]/).filter(Boolean).pop() ?? p; }
 
 export const task = (id: string | null | undefined) => (id ? S?.tasks.find((x) => x.id === id) ?? null : null);
+/** Every task the window knows of, open and finished. */
+export const allTasks = (): readonly Task[] => S?.tasks ?? [];
 
 export const worker = (id: string | null | undefined) => (id ? S?.workers.find((w) => w.id === id) ?? null : null);
 

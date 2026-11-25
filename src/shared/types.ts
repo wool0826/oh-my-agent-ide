@@ -152,6 +152,14 @@ export interface Task {
   conflictSeen?: string;
   /** Times the Worker was sent failed CI checks to fix. */
   ciFixAttempts?: number;
+  /** Times the Worker was sent failed CI checks in all: ciFixAttempts starts over when the user says to keep fixing. Unset on tasks saved before this existed. */
+  ciFixTotal?: number;
+  /** Who a waiting task waits for, when it is the Dispatcher rather than the user. */
+  waitingOn?: 'dispatcher' | null;
+  /** Each status the task went through, oldest first (shared/retro.ts). Unset on tasks made before this existed. */
+  history?: TaskMark[];
+  /** The permissions asked for during the task, and the actions an allow-for-this-task rule let through (shared/retro.ts). */
+  permissions?: PermissionMark[];
   /** Kinds of action the user allowed for the length of this task (shared/grants.ts). */
   grants?: { key: string; label: string }[];
   /** The request this task is one part of, when it spans several repositories (shared/bundle.ts). */
@@ -160,6 +168,31 @@ export interface Task {
   compare?: { group: string; picked?: string | null };
   /** It failed because the user pressed Stop, not because of an error. Shown as stopped, not in red. */
   stopped?: boolean;
+  /** Files its branch changes against the base, from git in its worktree, refreshed when its Worker's turn ends (code tasks). */
+  changedFiles?: string[] | null;
+  /** Tasks in progress that already changed files its prompt names, found when it was created (shared/overlap.ts). */
+  overlaps?: TaskOverlap[] | null;
+}
+
+/** A task in progress whose branch already changes files a new task's prompt names. */
+export interface TaskOverlap {
+  taskId: string;
+  files: string[];
+}
+
+/** A status a task entered, and when. on: a waiting task waits for the Dispatcher, not the user. */
+export interface TaskMark {
+  status: TaskStatus;
+  at: string;
+  on?: 'dispatcher';
+}
+
+/** A permission asked for during a task: the action, when it was asked and answered, and the answer (ALLOW, ALLOW_TASK, DENY or the user's note), or GRANT_USED with no answer time for an action a rule let through. */
+export interface PermissionMark {
+  at: string;
+  answeredAt: string | null;
+  code: string;
+  answer: string;
 }
 
 /** Is the open PR ready to merge: CI, conflicts and review. */
@@ -225,6 +258,8 @@ export const ALLOW = 'allow';
 export const DENY = 'deny';
 /** Allow, and do not ask again for the same kind of action until this task ends (shared/grants.ts). */
 export const ALLOW_TASK = 'allow-task';
+/** A PermissionMark for an action an allow-for-this-task rule let through without asking. */
+export const GRANT_USED = 'grant-used';
 
 export interface AutoAnswer {
   id: string;

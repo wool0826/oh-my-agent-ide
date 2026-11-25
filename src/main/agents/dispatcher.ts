@@ -27,8 +27,10 @@ import { hasSpend } from '../../shared/spend';
 import { threadTarget, turnReplyTo } from '../../shared/thread';
 import { sharedMemoDigest } from '../../shared/memos';
 import { describeCancel, isQueued } from '../../shared/queue';
+import { firstMarks } from '../../shared/retro';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { bundleName } from '../../shared/bundle';
+import { findOverlaps, overlapNote, promptPaths } from '../../shared/overlap';
 import { FakeSession } from './fakeSession';
 import { fakeMode } from '../fake';
 import { kTokens } from '../../shared/context';
@@ -141,11 +143,15 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     workerId: null, status: 'queued', branch: null, prUrl: null, prState: null, summary: null, files: [],
     createdAt: nowIso(), updatedAt: nowIso(), startedAt: null, finishedAt: null, reviewSyncedAt: null, seenCommentIds: [],
     afterTaskId: after, mergedAt: null,
+    history: firstMarks('queued', nowIso()),
     effort: s.effortPerTask && a.effort ? a.effort : null,
     planFirst: !!a.plan_first,
     ...(a.compare ? { compare: a.compare } : {}),
     ...(bundleName(a.bundle) ? { bundle: bundleName(a.bundle) } : {}),
   };
+  // Work in progress already changing files the prompt names: a warning in the result, the task is still created.
+  const overlaps = task.kind === 'code' ? findOverlaps({ id: task.id, repo: task.repo, paths: promptPaths(task.prompt), after: a.after_task_id, compareGroup: a.compare?.group }, store.data.tasks) : [];
+  if (overlaps.length) task.overlaps = overlaps;
   store.data.tasks.push(task);
   store.changed();
   // No Worker named: reuse the idle one that best knows this code; a new Worker only when none fits.
@@ -242,7 +248,7 @@ function boardTools(d: Dispatcher) {
             : task.status === 'queued' ? ' Every account is held by a usage limit; it starts when the first one resets.'
             : task.status === 'blocked' ? ` It starts when ${task.afterTaskId}'s PR is merged.` : '';
           const how = reused ? ` Reused ${w.id}: ${reused}.` : a.worker_id ? '' : ` ${w.id} is a new Worker: no idle Worker${task.repo ? ` on ${task.repo}` : ''} fit (busy, near compaction, or none yet).`;
-          return ok(`${task.id} assigned to ${w.id}.${how}${wait}`);
+          return ok(`${task.id} assigned to ${w.id}.${how}${wait}${overlapNote(task, task.overlaps ?? [], store.data.tasks)}`);
         } catch (e) {
           return fail(`Could not create the task: ${(e as Error).message}`);
         }
@@ -556,7 +562,7 @@ class Dispatcher {
           const { task, worker: w, reused } = await createTask(a);
           this.acted();
           store.handout(assignedEvent(task, w, !!reused), task.id);
-          return `${task.id} assigned to ${w.id}.`;
+          return `${task.id} assigned to ${w.id}.${overlapNote(task, task.overlaps ?? [], store.data.tasks)}`;
         },
       }, this.sessionEvents());
       this.session = fake;
