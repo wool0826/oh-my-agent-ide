@@ -201,10 +201,14 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     /**
      * Presses the mouse on an element, moves it by (dx, dy) in `steps` moves `ms` apart, and lets go (trusted events),
      * as a drag does. `hold` keeps the button down and returns { x, y } to look at the row mid-drag; `release` lets go.
+     * `ready`, a page expression, is waited for before letting go (or returning), moving again if the page has not
+     * seen the moves yet.
      */
-    async drag(selector, dx, { dy = 0, steps = 3, ms = 16, hold = false } = {}) {
+    async drag(selector, dx, { dy = 0, steps = 3, ms = 16, hold = false, ready = null } = {}) {
       const p = await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
       const x0 = Math.round(p.x), y0 = Math.round(p.y);
+      const hit = await evaluate(`const at = document.elementFromPoint(${x0}, ${y0}); return !!at && !!at.closest(${JSON.stringify(selector)});`);
+      if (!hit) throw new Error(`The press for ${selector} would land on another element`);
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
       await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: y0, button: 'left', buttons: 1, clickCount: 1 });
       for (let i = 1; i <= steps; i++) {
@@ -212,6 +216,16 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
         await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x0 + (dx * i) / steps), y: Math.round(y0 + (dy * i) / steps), button: 'left', buttons: 1 });
       }
       const at = { x: Math.round(x0 + dx), y: Math.round(y0 + dy) };
+      // A window that is not on screen hands moves to the page only when it draws a frame, which can be late (macOS
+      // runners draw none for a while): while `ready` is not true yet, move again, ending where the drag ends.
+      if (ready) {
+        for (const end = Date.now() + 8000; !(await evaluate(`return !!(${ready});`)); ) {
+          if (Date.now() > end) throw new Error(`The drag on ${selector} never reached: ${ready}`);
+          await sleep(100);
+          await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x + (dx < 0 ? 1 : -1), y: at.y, button: 'left', buttons: 1 });
+          await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at, button: 'left', buttons: 1 });
+        }
+      }
       if (!hold) await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', buttons: 0, clickCount: 1 });
       return at;
     },
