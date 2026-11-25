@@ -1,7 +1,7 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { AgentSession, type SessionEvents } from './session';
-import { ARTIFACT_TOOL, connectorPrompt } from './connectors';
+import { ARTIFACT_TOOLS, connectorPrompt } from './connectors';
 import { CodexSession } from './codexSession';
 import { codexToolsFrom, type SdkToolDef } from './codexTools';
 import { codexClient } from '../codex/client';
@@ -599,7 +599,7 @@ class Dispatcher {
       spent: d.sessionSpend,
       mcpServers: { board: boardServer(this) },
       // Artifact appears only once the account has it; claude.ai connectors are MCP servers, not in this list.
-      tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', ...(loadSettings().claudeConnectors ? [ARTIFACT_TOOL] : [])],
+      tools: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', ...(loadSettings().claudeConnectors ? ARTIFACT_TOOLS : [])],
       connectors: loadSettings().claudeConnectors,
       additionalDirectories: [paths().repos],
       effort: loadSettings().dispatcherEffort,

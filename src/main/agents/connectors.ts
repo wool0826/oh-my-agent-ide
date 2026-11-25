@@ -4,13 +4,15 @@
 // - claude.ai connectors (MCP servers of scope "claudeai", such as "claude.ai Claude Docs", whose docs are claude.ai
 //   artifacts). Claude Code fetches and connects them by itself, after the session starts, when it is signed in with
 //   a claude.ai login that may use them. One that needs a sign-in reports "needs-auth"; a session cannot sign in.
-// - The built-in Artifact tool (publish, list, read, upload_asset, read_asset), on once the account has the feature.
-//   It is named in the Dispatcher's tool list so it appears there when it does; Workers have every built-in tool.
+// - The built-in Artifact tools (Artifact: publish, list, read, upload_asset, read_asset; ArtifactComments;
+//   ArtifactData). Claude Code keeps them off in Agent SDK sessions (entrypoint sdk-ts) unless the process has
+//   CLAUDE_CODE_ARTIFACT set (T-0065), so artifactEnv() sets it. They are named in the Dispatcher's tool list;
+//   Workers have every built-in tool.
 // Neither exists for Codex sessions. Turned off in Settings, both are kept out of new sessions.
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 
-/** The built-in tool, for the Dispatcher's own list of built-in tools. */
-export const ARTIFACT_TOOL = 'Artifact';
+/** The built-in tools, for the Dispatcher's own list of built-in tools. */
+export const ARTIFACT_TOOLS = ['Artifact', 'ArtifactComments', 'ArtifactData'];
 
 /** How often a session's connectors are looked at, at most (after a turn). */
 export const CONNECTOR_CHECK_MS = 60_000;
@@ -29,6 +31,16 @@ export interface ServerStatus {
 /** Flag settings for a session: the connectors and the Artifact tool, on or off. */
 export function connectorSettings(on: boolean): NonNullable<Exclude<Options['settings'], string>> {
   return on ? { enableArtifact: true } : { enableArtifact: false, disableClaudeAiConnectors: true };
+}
+
+/**
+ * The session's environment with the built-in Artifact tools on: CLAUDE_CODE_ARTIFACT=1, unless `env` already sets
+ * it or the app was started with it (the user's own value, which accounts.env() strips with the other CLAUDE_* ones).
+ * Off, nothing is added: enableArtifact: false keeps the tools out.
+ */
+export function artifactEnv(env: NodeJS.ProcessEnv, on: boolean | undefined, parent: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (!on || env.CLAUDE_CODE_ARTIFACT !== undefined) return env;
+  return { ...env, CLAUDE_CODE_ARTIFACT: parent.CLAUDE_CODE_ARTIFACT ?? '1' };
 }
 
 export const isConnector = (s: ServerStatus) => s.scope === 'claudeai' || s.config?.type === 'claudeai-proxy';

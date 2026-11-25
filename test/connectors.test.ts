@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { connectorChanges, connectorPrompt, connectorSettings, connectorToolLabel, isConnector, RECONNECT_GAP_MS, toReconnect, type ServerStatus } from '../src/main/agents/connectors';
+import { ARTIFACT_TOOLS, artifactEnv, connectorChanges, connectorPrompt, connectorSettings, connectorToolLabel, isConnector, RECONNECT_GAP_MS, toReconnect, type ServerStatus } from '../src/main/agents/connectors';
 import { sessionSettings } from '../src/main/agents/session';
 
 const docs = (status: string, error?: string): ServerStatus => ({ name: 'claude.ai Claude Docs', status, scope: 'claudeai', error, config: { type: 'claudeai-proxy' } });
@@ -43,4 +43,17 @@ test('connector tools get a readable name in permission cards; the prompt says h
   const p = connectorPrompt().join('\n');
   assert.match(p, /Artifact tool/);
   assert.match(p, /do not retry in a loop or ask for codes or tokens/);
+});
+
+test('connectors on: sessions get CLAUDE_CODE_ARTIFACT=1, since Agent SDK sessions keep the Artifact tools off without it', () => {
+  assert.equal(artifactEnv({ PATH: 'x' }, true, {}).CLAUDE_CODE_ARTIFACT, '1');
+  assert.equal(artifactEnv({ PATH: 'x' }, true, {}).PATH, 'x');
+  assert.deepEqual(ARTIFACT_TOOLS, ['Artifact', 'ArtifactComments', 'ArtifactData']);
+});
+
+test("an explicit CLAUDE_CODE_ARTIFACT, in the session env or the app's own, is kept; off adds nothing", () => {
+  assert.equal(artifactEnv({ CLAUDE_CODE_ARTIFACT: '0' }, true, {}).CLAUDE_CODE_ARTIFACT, '0');
+  assert.equal(artifactEnv({}, true, { CLAUDE_CODE_ARTIFACT: 'false' }).CLAUDE_CODE_ARTIFACT, 'false');
+  assert.equal(artifactEnv({}, false, {}).CLAUDE_CODE_ARTIFACT, undefined);
+  assert.equal(artifactEnv({}, undefined, {}).CLAUDE_CODE_ARTIFACT, undefined);
 });
