@@ -38,3 +38,55 @@ export function linkify(html: string): string {
     return `<a tabindex="0" role="link" data-action="open-url" data-href="${url}">${url}</a>${run.slice(url.length)}`;
   });
 }
+
+/** A URL a report names, with what its short name is made of: a pull request's number, an artifact, or the host. */
+export interface ReportLink {
+  url: string;
+  kind: 'pr' | 'artifact' | 'link';
+  /** The words a Markdown link gave it ("[Release notes](…)"), or the PR's number, or the host. */
+  name: string;
+}
+
+const MD_LINK = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
+const ARTIFACT = /^https:\/\/claude\.ai\/(?:code\/)?artifacts?\/[\w-]+/;
+
+/**
+ * The URLs a report names, once each and in order, as the links a result card lists before its own: a pull request
+ * reads "PR #158", an artifact its Markdown title or "Artifact", anything else its title or host. URLs in `skip` (the
+ * task's own PR, already on the card) are left out.
+ */
+export function reportLinks(text: string | null | undefined, skip: (string | null | undefined)[] = []): ReportLink[] {
+  const s = String(text ?? '');
+  const named = new Map<string, string>();
+  for (const m of s.matchAll(MD_LINK)) named.set(m[2].slice(0, urlEnd(m[2])), m[1].trim());
+  const seen = new Set(skip.filter(Boolean).map((u) => String(u).replace(/\/+$/, '')));
+  const out: ReportLink[] = [];
+  for (const m of s.matchAll(/https?:\/\/[^\s<>"'`]+/g)) {
+    const url = m[0].slice(0, urlEnd(m[0]));
+    if (!/^https?:\/\/[^/.]/.test(url)) continue;
+    const key = url.replace(/\/+$/, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const pr = url.match(/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/);
+    const title = named.get(url);
+    if (pr) out.push({ url, kind: 'pr', name: pr[1] });
+    else if (ARTIFACT.test(url)) out.push({ url, kind: 'artifact', name: title ?? '' });
+    else out.push({ url, kind: 'link', name: title ?? hostOf(url) });
+  }
+  return out;
+}
+
+function hostOf(url: string) {
+  try { return new URL(url).host.replace(/^www\./, ''); } catch { return url; }
+}
+
+/**
+ * Text with each URL replaced by its short name (reportLinks), for a line that is itself a button and cannot hold
+ * links: "Published https://claude.ai/artifact/…" reads "Published Artifact". `artifact` names an untitled one.
+ * A Markdown link keeps its words.
+ */
+export function shortUrls(text: string, artifact: string): string {
+  let s = text.replace(MD_LINK, '$1');
+  for (const l of reportLinks(s)) s = s.split(l.url).join(l.kind === 'pr' ? `PR #${l.name}` : l.name || artifact);
+  return s;
+}

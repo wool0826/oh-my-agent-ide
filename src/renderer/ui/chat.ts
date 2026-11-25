@@ -4,12 +4,13 @@ import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, Tas
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
 import { stepView } from '../../shared/steps';
 import { taskMinutes } from '../../shared/workerSummary';
-import { askLine, lastFailed, plainStatus } from '../../shared/workerState';
+import { askLine, lastFailed, plainStatus, stepText } from '../../shared/workerState';
 import { dayWord, keepPick } from '../../shared/insPanes';
 import { handoutCounts, handoutFolded, handoutRuns, handoutSettled, handoutState, isHandout, runTasks, type HandoutState } from '../../shared/handouts';
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars, type Spend } from '../../shared/spend';
-import { linkify } from '../../shared/linkify';
+import { linkify, reportLinks, type ReportLink } from '../../shared/linkify';
+import { mdInline } from '../../shared/markdown';
 import { busyPrs, mergeWait, type MergeWait } from '../../shared/prMerge';
 import { parseTime } from '../../shared/automations';
 import { canPick, openComparisons } from '../../shared/compare';
@@ -67,11 +68,24 @@ export function prBadges(x: Task) {
   return b.length ? `<span class="prst">${b.join('')}</span>` : '';
 }
 
-export function resultLinks(x: Task | null) {
-  const links: string[] = [];
+/** A link a report names, by its short name with ↗: "PR #158 ↗", an artifact's title, a page's host. */
+function reportLinkHtml(l: ReportLink) {
+  const name = l.kind === 'pr' ? `PR #${l.name}` : l.name || t('link.artifact');
+  return `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(l.url)}" data-tip="${esc(l.url)}">${esc(name)} ↗</a>`;
+}
+
+/** A report's text with its URLs as links, in the same color as the card's link row. */
+export const reportText = (s: string) => mdInline(s);
+
+/**
+ * The link row of a result: the URLs its report names (artifacts, other PRs) first, then the task's PR and files.
+ * `text` is the report as the card shows it; the task's own summary is read too.
+ */
+export function resultLinks(x: Task | null, text?: string | null) {
+  const links = reportLinks([text, x?.summary].filter(Boolean).join('\n'), [x?.prUrl]).map(reportLinkHtml);
   if (x?.prUrl) {
     const st = x.prState === 'MERGED' ? ` · ${t('pr.merged')}` : x.prState === 'CLOSED' ? ` · ${t('pr.closed')}` : '';
-    links.push(`<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${st}</a>`);
+    links.push(`<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${st} ↗</a>`);
     const badges = prBadges(x);
     if (badges) links.push(badges);
   }
@@ -100,9 +114,9 @@ function resultMeta(x: Task | null) {
 /** An inbox result's report without the RESULT: label; a long one opens in place. */
 function resultSummary(c: ChatItem) {
   const full = plainStatus(c.text);
-  if (full.length <= 140) return `<span>${inline(full)}</span>`;
+  if (full.length <= 140) return `<span>${reportText(full)}</span>`;
   const open = ui.resOpen.has(c.id);
-  return `<span>${inline(open ? full : oneLine(full, 140))} <button type="button" class="linkbtn" data-action="res-more" data-id="${esc(c.id)}" aria-expanded="${open}">${t(open ? 'res.less' : 'res.more')}</button></span>`;
+  return `<span>${reportText(open ? full : oneLine(full, 140))} <button type="button" class="linkbtn" data-action="res-more" data-id="${esc(c.id)}" aria-expanded="${open}">${t(open ? 'res.less' : 'res.more')}</button></span>`;
 }
 
 export function resultGlyph(x: Task | null, err = false) {
@@ -123,11 +137,11 @@ function failureHtml(c: ChatItem) {
   // Still where it failed: the card says where and offers to go on. Once the task moved on, it is history.
   const still = x.status === 'failed' && !x.stopped;
   const v = still ? stepView(x) : null;
-  const at = v && !v.allDone ? t('wk.stoppedAt', { n: v.at + 1, total: v.total }) : '';
+  const at = v && !v.allDone ? stepText(t, v, true) : '';
   const why = still ? plainStatus(x.summary) : c.text;
   const last = w.taskIds[w.taskIds.length - 1] === x.id;
   const go = still && last && lastFailed(w, x) ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
-  return `<div class="attach fail" data-task="${esc(x.id)}" data-src="card:${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill" data-tone="danger">${t('st.failed')}</span></b><span class="sm">${esc([at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why, c.id)}</span></span></div>`;
+  return `<div class="attach fail" data-task="${esc(x.id)}" data-src="card:${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill" data-tone="danger">${t('st.failed')}</span></b><span class="sm">${esc([w.id, w.repo ?? t('general'), at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why, c.id)}</span></span></div>`;
 }
 
 /** "Reply" on a report card: the composer's reply chip quotes the report, and the message is filed under the card. */
@@ -172,8 +186,8 @@ function handoutHtml(c: ChatItem) {
     const w = worker(x.workerId);
     const v = stepView(x);
     const detail = st === 'ask' && d ? oneLine(askLine(d), 100)
-      : st === 'run' && v && !v.allDone ? `${v.at + 1}/${v.total} · ${v.current}`
-      : st === 'failed' && v && !v.allDone ? t('wk.stoppedAt', { n: v.at + 1, total: v.total })
+      : st === 'run' && v && !v.allDone ? stepText(t, v)
+      : st === 'failed' && v && !v.allDone ? stepText(t, v, true)
       : st === 'queued' ? taskLabel(x)
       : st === 'done' && x.prUrl ? `PR #${prNum(x.prUrl)}` : '';
     const [cls, label] = st === 'queued' && x.status === 'blocked' ? ['warning', 'st.afterMerge' as Key] : st === 'done' && x.prUrl && x.prState === 'OPEN' ? ['pr-open', 'st.prOpen' as Key] : HAND_PILL[st];
@@ -199,10 +213,10 @@ export function chatItemHtml(c: ChatItem) {
     case 'shell': return shellBlockHtml(c);
     case 'result': {
       const x = task(c.ref);
-      const links = resultLinks(x);
+      const links = resultLinks(x, c.text);
       if (x?.workerId) links.push(`<a tabindex="0" role="link" data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
       if (x) links.push(replyLink(x, c.text, c.id));
-      return `<div class="attach" data-task="${esc(c.ref ?? '')}"${x ? ` data-src="card:${esc(x.id)}"` : ''}><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}${resultMeta(x)}</b><span class="sm">${inline(plainStatus(c.text))}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
+      return `<div class="attach" data-task="${esc(c.ref ?? '')}"${x ? ` data-src="card:${esc(x.id)}"` : ''}><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}${resultMeta(x)}</b><span class="sm">${reportText(plainStatus(c.text))}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
     }
   }
 }
@@ -232,7 +246,7 @@ export const rootName = (c: ChatItem) => (isReport(c) ? task(c.ref)?.title ?? c.
 export function rootHtml(c: ChatItem) {
   const x = isReport(c) ? task(c.ref) : null;
   const who = isReport(c) ? t('thr.report', { who: x?.workerId ?? c.ref ?? '' }) : 'Dispatcher';
-  const body = isReport(c) ? `<b class="thr-rt">${esc(rootName(c))}</b><div class="t-txt">${inline(plainStatus(c.text))}</div>` : `<div class="t-txt">${md(c.text)}</div>`;
+  const body = isReport(c) ? `<b class="thr-rt">${esc(rootName(c))}</b><div class="t-txt">${reportText(plainStatus(c.text))}</div>` : `<div class="t-txt">${md(c.text)}</div>`;
   const back = `<button type="button" class="btn btn-icon btn-sm" data-action="thread-root" data-id="${esc(c.id)}" data-tip="${esc(t('thr.toRoot'))}" aria-label="${esc(t('thr.toRoot'))}"><svg aria-hidden="true"><use href="#s-open"/></svg></button>`;
   return `<div class="thr-root"><span class="who"><b>${esc(who)}</b><time datetime="${esc(c.ts)}">${rowTime(c.ts)}</time><span class="gap"></span>${back}</span>${body}</div>`;
 }
@@ -802,7 +816,7 @@ export function renderChatInspector() {
     if (results.items.length) {
       html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.results')}</b><span class="gap"></span>${clearAllHtml('result')}</div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
-        const lk = resultLinks(x);
+        const lk = resultLinks(x, c.text);
         return `<div class="res" data-task="${esc(c.ref ?? '')}" data-nav="res:${esc(c.id)}" data-id="${esc(c.id)}" tabindex="-1"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span><span class="row-acts">${rowXHtml('result', c.id)}</span></div>`;
       }).join('')}${results.more}</div></div>`;
     }

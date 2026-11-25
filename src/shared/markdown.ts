@@ -167,3 +167,8 @@ export function mdHtml(src: string) {
   const parts = String(src ?? '').split(/```[\w-]*\n?/);
   return parts.map((p, i) => (i % 2 === 1 ? `<pre>${escHtml(p.replace(/\n$/, ''))}</pre>` : blocks(p))).join('');
 }
+
+/** One line of Markdown with no blocks: links (bare URLs too), bold, italics and code spans, escaped. */
+export function mdInline(src: string) {
+  return spans(escHtml(src));
+}

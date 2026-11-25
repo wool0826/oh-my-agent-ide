@@ -37,6 +37,17 @@ flow('a permission is asked once, allowed for the task, and the result card has 
   assert.match(log, /Ran: npm install is-odd/);
 });
 
+flow('a URL in a result is a short link on the card and a link in its words', {}, async (app) => {
+  await app.say('@fake task - Publish notes\n@@fake result Published [Release notes](https://claude.ai/artifact/abc123), see https://claude.ai/artifact/abc123 today.');
+  await app.until("!!document.querySelector('#chat-thread .attach .links a[data-href=\"https://claude.ai/artifact/abc123\"]')", 'the artifact link on the result card');
+  const card = await app.evaluate("[...document.querySelectorAll('#chat-thread .attach .links a')].map((a) => a.innerText).join('|')");
+  assert.match(card, /^Release notes ↗\|Open W-\d+ conversation\|Reply$/);
+  // In the words, the Markdown link reads its title and the bare URL is a link too.
+  assert.equal(await app.evaluate("document.querySelector('#chat-thread .attach .sm').innerText"), 'Published Release notes, see https://claude.ai/artifact/abc123 today.');
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-thread .attach .sm a[data-action=\"open-url\"]').length"), 2);
+  await app.until("!!document.querySelector('#chat-ins .res .lk a[data-href=\"https://claude.ai/artifact/abc123\"]')", 'the artifact link on the inbox row');
+});
+
 flow('an always-ask rule offers no "Allow for this task", and a denial reaches the Worker', {}, async (app) => {
   await app.say('@fake task - Push it\n@@fake permission git push --force origin feature\n@@fake result Left the branch alone.');
   await app.until(`!!document.querySelector('${DEC}')`, 'the permission card');
@@ -312,11 +323,11 @@ flow('a Worker whose turn failed is listed as stopped with an error, says where 
   assert.equal(s.workers.find((w) => w.id === t.workerId).status, 'idle');
   await app.until("document.querySelector('#side').innerText.includes('Stopped with an error')", 'the Worker under "Stopped with an error"');
   await app.until("!!document.querySelector('#chat-thread .attach.fail [data-action=\"worker-continue\"]')", 'the failure card with Continue');
-  assert.match(await app.evaluate("document.querySelector('#chat-thread .attach.fail').innerText"), /stopped at step 2 of 3 · The build is broken/);
+  assert.match(await app.evaluate("document.querySelector('#chat-thread .attach.fail').innerText"), /W-\d+ · general · Stopped at 2\/3 · Build it · The build is broken/);
   await app.click('button[data-v="worker"]');
   const row = await app.evaluate("document.querySelector('#wk-list .wrow').innerText");
   assert.match(row, /Failed/);
-  assert.match(row, /stopped at step 2 of 3 · The build is broken/);
+  assert.match(row, /W-\d+ · general · Stopped at 2\/3 · Build it · The build is broken/);
   assert.doesNotMatch(row, /Idle|just now ago/);
   assert.match(await app.evaluate("document.querySelector('#wk-list .vhead small').innerText"), /^1 failed$/);
   // Continue is a button beside the row's own, and sends the Worker on: the task is reopened and finishes.

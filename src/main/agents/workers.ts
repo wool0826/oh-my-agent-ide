@@ -29,6 +29,7 @@ import { isAttached, readPath } from '../attachments';
 import { t, limitResetText } from '../i18n';
 import { log } from '../log';
 import { ensureDir, nowIso, oneLine, uid } from '../util';
+import { artifactCommentLine } from '../../shared/artifactComment';
 import { ALLOW, ALLOW_TASK, DENY, type Task, type TaskStatus, type Worker, type WorkerStatus } from '../../shared/types';
 import { workerDecisions } from '../../shared/inbox';
 import { afterDependency, cancelSet, describeCancel, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
@@ -244,6 +245,7 @@ class WorkerManager {
         this.touch(w);
       },
       onTool: (_name, summary) => { w.statusText = summary; store.changed(); },
+      onArtifactComment: (e) => store.log(w.id, 'event', artifactCommentLine(t, e)),
       onContext: (n) => { w.contextTokens = n; },
       onSpend: (turn, session) => {
         w.sessionSpend = session;
