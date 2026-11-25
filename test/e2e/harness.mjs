@@ -155,15 +155,17 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     child.kill('SIGKILL');
     throw new Error(`${e.message}\nPage: ${page}\nApp log: ${fs.readFileSync(path.join(dir, 'app.log'), 'utf8').slice(-3000)}`);
   }
-  // Every flow starts as wide as the window's default size, whatever the screen: a CI screen narrower than 1100
-  // would otherwise turn the right sidebar into a closed drawer (I1). A flow that wants another width sets it.
+  // On a screen too small for the window's default size (a CI screen narrower than 1100), the page is made as wide
+  // as that size, or the right sidebar would start as a closed drawer (I1). A wide screen keeps the real width.
   // Its height stays the window's own, so the pointer still reaches the bottom of the page.
-  await send('Emulation.setDeviceMetricsOverride', { width: 1320, height: await evaluate('window.innerHeight'), deviceScaleFactor: 1, mobile: false });
-  await until("document.querySelector('#win').clientWidth === 1320 && !document.querySelector('#win').classList.contains('ins-over')", 'the default width');
-  // The page gets its resize event only with the first input after the change, and that closes a tooltip: a move to an
-  // empty corner of the window lets it pass before the flow starts.
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 3 });
-  await sleep(300);
+  if (await evaluate('window.innerWidth') < 1100) {
+    await send('Emulation.setDeviceMetricsOverride', { width: 1320, height: await evaluate('window.innerHeight'), deviceScaleFactor: 1, mobile: false });
+    await until("document.querySelector('#win').clientWidth === 1320 && !document.querySelector('#win').classList.contains('ins-over')", 'the default width');
+    // The page gets its resize event only with the first input after the change, and that closes a tooltip: a move
+    // to an empty corner of the window lets it pass before the flow starts.
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 3 });
+    await sleep(300);
+  }
 
   return {
     dir, home, evaluate, until,
