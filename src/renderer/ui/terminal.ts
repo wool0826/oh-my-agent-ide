@@ -1,6 +1,6 @@
 // The side terminal (shared/terminal.ts, main/terminal.ts): a floating panel at the chat's left where lines run as
 // "!" lines do, without the chat. Enter runs, ↑ / ↓ go through what was run, Esc hides it; the corner resizes it.
-import { clampTermSize, pushHistory, TERM_DEF, TERM_EMPTY, type TermRun, type TermView } from '../../shared/terminal';
+import { clampTermSize, keyTermSize, pushHistory, TERM_DEF, TERM_EMPTY, TERM_MIN, type TermRun, type TermView } from '../../shared/terminal';
 import { shellClock, shellTook } from '../../shared/shell';
 import { $, esc, isMac, S, sym, t, toast, tryCall } from './core';
 import { openPop, pop } from './controls';
@@ -102,7 +102,7 @@ function keys(e: KeyboardEvent) {
   if (e.isComposing || e.keyCode === 229) return;
   const el = e.target as HTMLElement;
   if (e.key === 'Escape' && !pop.el) { e.preventDefault(); e.stopPropagation(); hideTerm(); return; }
-  if (el.id === 'tm-grip') { gripKeys(e); return; }
+  if (el.id === 'tm-rz-h' || el.id === 'tm-rz-w') { edgeKeys(e, el.dataset.edge as 'w' | 'h'); return; }
   if (el.id !== 'tm-input') return;
   const input = el as HTMLTextAreaElement;
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void runTerm(); return; }
@@ -135,43 +135,70 @@ function applySize() {
 
 function saveSize() {
   size = clampTermSize(size.w, size.h, room());
+  ariaSize();
   try { localStorage.setItem(SIZE_KEY, JSON.stringify(size)); } catch { /* not kept */ }
 }
 
-/** The grip on the top right corner: the panel sits at the bottom left, so it grows up and to the right. */
-function bindGrip() {
-  const grip = $('#tm-grip');
-  grip.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    grip.setPointerCapture(e.pointerId);
-    const start = { x: e.clientX, y: e.clientY, w: $('#tm').offsetWidth, h: $('#tm').offsetHeight };
-    const move = (m: PointerEvent) => {
-      size = { w: start.w + (m.clientX - start.x), h: start.h - (m.clientY - start.y) };
-      applySize();
-    };
-    const up = () => {
-      grip.removeEventListener('pointermove', move);
-      grip.removeEventListener('pointerup', up);
-      grip.removeEventListener('pointercancel', up);
-      saveSize();
-    };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up);
-    grip.addEventListener('pointercancel', up);
-  });
-  // Double click: back to the first size.
-  grip.addEventListener('dblclick', () => { size = { ...TERM_DEF }; applySize(); saveSize(); });
+/** The handles' values: each says the size in its own direction. */
+function ariaSize() {
+  const s = clampTermSize(size.w, size.h, room());
+  const max = room();
+  for (const [id, now, min, top] of [['#tm-rz-h', s.h, TERM_MIN.h, max.h], ['#tm-rz-w', s.w, TERM_MIN.w, max.w]] as const) {
+    const h = $(id);
+    h.setAttribute('aria-valuenow', String(now));
+    h.setAttribute('aria-valuemin', String(min));
+    h.setAttribute('aria-valuemax', String(Math.max(min, Math.round(top))));
+  }
 }
 
-/** Arrows resize from the keyboard: → / ← wider / narrower, ↑ / ↓ taller / shorter; with Shift by more. */
-function gripKeys(e: KeyboardEvent) {
-  const step = e.shiftKey ? 64 : 16;
-  const d = { ArrowRight: [step, 0], ArrowLeft: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
-  if (!d) return;
+/**
+ * The handles on the top and right edges and the top-right corner between them: the panel sits at the bottom left,
+ * so it grows up and to the right.
+ */
+function bindEdges() {
+  const panel = $('#tm');
+  const handles = (edge: string | undefined) => (edge === 'both' ? ['#tm-rz-h', '#tm-rz-w'] : [`#tm-rz-${edge}`]).map((id) => $(id));
+  panel.querySelectorAll<HTMLElement>('.edge-rz').forEach((grip) => {
+    const edge = grip.dataset.edge;
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      const start = { x: e.clientX, y: e.clientY, w: panel.offsetWidth, h: panel.offsetHeight };
+      panel.classList.add('sizing');
+      for (const h of handles(edge)) h.classList.add('active');
+      const move = (m: PointerEvent) => {
+        size = { w: edge === 'h' ? start.w : start.w + (m.clientX - start.x), h: edge === 'w' ? start.h : start.h - (m.clientY - start.y) };
+        applySize();
+      };
+      const up = () => {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        grip.removeEventListener('pointercancel', up);
+        grip.removeEventListener('lostpointercapture', up);
+        if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
+        panel.classList.remove('sizing');
+        for (const h of handles(edge)) h.classList.remove('active');
+        saveSize();
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+      grip.addEventListener('pointercancel', up);
+      grip.addEventListener('lostpointercapture', up);
+    });
+    // Double click: back to the first size.
+    grip.addEventListener('dblclick', () => { size = { ...TERM_DEF }; applySize(); saveSize(); });
+    if (grip.getAttribute('role') === 'separator') grip.addEventListener('focus', ariaSize);
+  });
+}
+
+/** Arrows on an edge's handle: ↑ ↓ taller / shorter on the top one, → ← wider / narrower on the side one; Shift by more. */
+function edgeKeys(e: KeyboardEvent, edge: 'w' | 'h') {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const next = keyTermSize(edge, e.key, e.shiftKey, size, room());
+  if (!next) return;
   e.preventDefault();
-  const s = clampTermSize(size.w, size.h, room());
-  size = { w: s.w + d[0], h: s.h + d[1] };
+  size = next;
   applySize();
   saveSize();
 }
@@ -181,7 +208,7 @@ export function bindTerm() {
   $('#tm-form').addEventListener('submit', (e) => { e.preventDefault(); void runTerm(); });
   const input = $<HTMLTextAreaElement>('#tm-input');
   input.addEventListener('input', () => { fitInput(input); term.at = term.history.length; });
-  bindGrip();
+  bindEdges();
   window.addEventListener('resize', () => { if (term.open) applySize(); });
   $('#tm-thread').addEventListener('scroll', () => {
     const th = $('#tm-thread');

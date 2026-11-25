@@ -239,14 +239,30 @@ flow('the side terminal runs lines apart from the chat, recalls them with the up
   // ↑ brings the line back.
   await app.key('ArrowUp', 'ArrowUp', 38);
   assert.equal(await app.evaluate("return document.querySelector('#tm-input').value;"), 'echo side-terminal-ok');
-  // The grip's arrows resize it. The window is given a size first: the panel grows only into the room it has, and a
-  // runner's window can be too narrow for one more step. It is back at its first width once the new size has reached it.
+  // The edge handles' arrows resize it, each in its own direction. The window is given a size first: the panel grows
+  // only into the room it has, and a runner's window can be too narrow for one more step. It is back at its first
+  // width once the new size has reached it.
   await app.size(1400, 900);
   await app.until("document.querySelector('#tm').offsetWidth === 560", 'the terminal at its first width in the wider window');
-  const before = await app.evaluate("return document.querySelector('#tm').offsetWidth;");
-  await app.evaluate("document.querySelector('#tm-grip').focus(); return 1;");
+  const tbox = () => app.evaluate("const p = document.querySelector('#tm'); return { w: p.offsetWidth, h: p.offsetHeight };");
+  const before = await tbox();
+  await app.evaluate("document.querySelector('#tm-rz-w').focus(); return 1;");
   await app.key('ArrowRight', 'ArrowRight', 39, 8);
-  assert.equal(await app.evaluate("return document.querySelector('#tm').offsetWidth;"), before + 64);
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  assert.deepEqual(await tbox(), { w: before.w + 64, h: before.h });
+  assert.equal(await app.evaluate("return document.querySelector('#tm-rz-w').getAttribute('aria-valuenow');"), String(before.w + 64));
+  await app.evaluate("document.querySelector('#tm-rz-h').focus(); return 1;");
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  await app.key('ArrowRight', 'ArrowRight', 39);
+  assert.deepEqual(await tbox(), { w: before.w + 64, h: before.h + 16 });
+  // Dragging the top edge's capsule up makes it taller and nothing else; the capsule is marked while it moves.
+  const top = await app.evaluate("const r = document.querySelector('#tm-rz-h').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 3 };");
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: top.x, y: top.y, button: 'left', buttons: 1, clickCount: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: top.x + 30, y: top.y - 40, button: 'left', buttons: 1 });
+  assert.equal(await app.evaluate("return document.querySelector('#tm-rz-h').classList.contains('active') && !document.querySelector('#tm-rz-w').classList.contains('active');"), true);
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: top.x + 30, y: top.y - 40, button: 'left', buttons: 0, clickCount: 1 });
+  assert.deepEqual(await tbox(), { w: before.w + 64, h: before.h + 56 });
+  assert.equal(await app.evaluate("return document.querySelector('#tm-rz-h').classList.contains('active');"), false);
   // Clear empties it; Esc hides it and the chat input has the focus.
   await app.click('[data-action="tm-clear"]');
   await app.until("!document.querySelector('#tm-thread .tm-run')", 'the cleared terminal');
@@ -337,7 +353,7 @@ flow('a side question is asked and answered in its own panel, and reaches the Di
   await app.until("document.querySelector('#sq').hidden && !document.querySelector('#chat-sq i')", 'the thread forgotten');
 });
 
-flow('the side question panel is resized from its top-left corner by drag and by keys, and keeps its size', {}, async (app) => {
+flow('the side question panel is resized from its edges and top-left corner by drag and by keys, and keeps its size', {}, async (app) => {
   // A window with room for the panel to grow, whatever the screen the test runs on.
   await app.size(1600, 1000);
   await app.click('#chat-sq');
@@ -345,26 +361,40 @@ flow('the side question panel is resized from its top-left corner by drag and by
   const box = () => app.evaluate("const r = document.querySelector('#sq').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right), bottom: Math.round(r.bottom) };");
   const b0 = await box();
   // Drag the corner up and to the left: the panel grows that way and stays in its corner.
-  const at = await app.evaluate("const r = document.querySelector('#sq-rz').getBoundingClientRect(); return { x: r.left + 8, y: r.top + 8 };");
+  const at = await app.evaluate("const r = document.querySelector('#sq .edge-rz.c').getBoundingClientRect(); return { x: r.left + 6, y: r.top + 6 };");
   await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
   await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 60, y: at.y - 40, button: 'left', buttons: 1 });
+  // From the corner both edges' capsules are marked.
+  assert.equal(await app.evaluate("return [...document.querySelectorAll('#sq [role=separator]')].every((h) => h.classList.contains('active'));"), true);
   await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 120, y: at.y - 80, button: 'left', buttons: 1 });
   await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x - 120, y: at.y - 80, button: 'left', buttons: 0, clickCount: 1 });
   const b1 = await box();
   assert.deepEqual([b1.w - b0.w, b1.h - b0.h, b1.right, b1.bottom], [120, 80, b0.right, b0.bottom]);
-  // The keys on the corner: ← wider, ↓ shorter, Shift by four steps.
-  await app.evaluate("document.querySelector('#sq-rz').focus(); return 1;");
+  // The keys on the edges' handles, each its own direction: ← wider on the side one, ↓ shorter on the top one,
+  // Shift by four steps; the other direction's arrows do nothing there.
+  await app.evaluate("document.querySelector('#sq-rz-w').focus(); return 1;");
   await app.key('ArrowLeft', 'ArrowLeft', 37, 8);
   await app.key('ArrowDown', 'ArrowDown', 40);
+  await app.evaluate("document.querySelector('#sq-rz-h').focus(); return 1;");
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  await app.key('ArrowLeft', 'ArrowLeft', 37);
   const b2 = await box();
   assert.deepEqual([b2.w - b1.w, b2.h - b1.h], [64, -16]);
-  assert.equal(await app.evaluate("localStorage.getItem('oma.sqSize')"), `${b2.w}x${b2.h}`);
+  assert.equal(await app.evaluate("return document.querySelector('#sq-rz-h').getAttribute('aria-valuenow');"), String(b2.h));
+  // Dragging the side edge's capsule changes the width only.
+  const side = await app.evaluate("const r = document.querySelector('#sq-rz-w').getBoundingClientRect(); return { x: r.left + 3, y: r.top + r.height / 2 };");
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: side.x, y: side.y, button: 'left', buttons: 1, clickCount: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: side.x + 32, y: side.y - 50, button: 'left', buttons: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: side.x + 32, y: side.y - 50, button: 'left', buttons: 0, clickCount: 1 });
+  const b3 = await box();
+  assert.deepEqual([b3.w - b2.w, b3.h - b2.h], [-32, 0]);
+  assert.equal(await app.evaluate("localStorage.getItem('oma.sqSize')"), `${b3.w}x${b3.h}`);
   // Minimised and opened again, it keeps its size; a double-click goes back to its own size.
   await app.click('#chat-sq');
   await app.click('#chat-sq');
   await app.until("!document.querySelector('#sq').hidden", 'the panel again');
-  assert.deepEqual(await box().then((b) => [b.w, b.h]), [b2.w, b2.h]);
-  await app.evaluate("document.querySelector('#sq-rz').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); return 1;");
+  assert.deepEqual(await box().then((b) => [b.w, b.h]), [b3.w, b3.h]);
+  await app.evaluate("document.querySelector('#sq-rz-h').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); return 1;");
   assert.equal((await box()).w, b0.w);
 });
 

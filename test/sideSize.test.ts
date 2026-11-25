@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clampSideSize, keySideSize, parseSideSize, sideSizeText, SIDE_MIN } from '../src/shared/sideSize';
+import { clampSideSize, edgeKey, keySideSize, parseSideSize, sideSizeText, SIDE_MIN } from '../src/shared/sideSize';
 
 const room = { w: 900, h: 600 };
 
@@ -28,4 +28,14 @@ test('side question size: ← and ↑ grow it from its top-left corner, Shift by
   assert.deepEqual(keySideSize('ArrowRight', false, now, room), { w: 404, h: 300 });
   assert.deepEqual(keySideSize('ArrowDown', false, { w: 420, h: 225 }, room), { w: 420, h: SIDE_MIN.h });
   assert.equal(keySideSize('Enter', false, now, room), null);
+});
+
+test('side question size: each edge handle takes only its own arrows', () => {
+  const now = { w: 420, h: 300 };
+  assert.ok(edgeKey('h', 'ArrowUp') && edgeKey('w', 'ArrowLeft'));
+  assert.ok(!edgeKey('h', 'ArrowLeft') && !edgeKey('w', 'ArrowDown') && !edgeKey('w', 'Enter'));
+  assert.deepEqual(keySideSize('ArrowUp', true, now, room, 'h'), { w: 420, h: 364 });
+  assert.equal(keySideSize('ArrowLeft', false, now, room, 'h'), null);
+  assert.deepEqual(keySideSize('ArrowLeft', false, now, room, 'w'), { w: 436, h: 300 });
+  assert.equal(keySideSize('ArrowDown', false, now, room, 'w'), null);
 });

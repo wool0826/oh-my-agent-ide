@@ -1503,15 +1503,32 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 /* Side question (ui/side.ts): its own floating surface over the chat, with its own thread and meter. */
 .sq { position: absolute; right: var(--space-16); bottom: 88px; z-index: calc(var(--z-composer) + 1); width: min(var(--sq-w, 420px), calc(100% - 2 * var(--space-16))); height: var(--sq-h, auto); max-height: calc(100% - 120px); display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-overlay-solid, var(--surface-overlay)); box-shadow: var(--rim-strong), var(--shadow-4); overflow: hidden; animation: upop-in var(--dur-base) var(--ease-standard); }
 .sq[hidden] { display: none; }
-/* Resizing (side.ts): the top and left edges and the top-left corner, which also takes the arrow keys. */
-.sq-edge, .sq-rz { touch-action: none; }
-.sq-edge { position: absolute; z-index: 1; }
-.sq-edge.w { left: 0; top: 14px; bottom: 0; width: 5px; cursor: ew-resize; }
-.sq-edge.h { top: 0; left: 14px; right: 0; height: 5px; cursor: ns-resize; }
-.sq-rz { position: absolute; z-index: 2; left: 0; top: 0; width: 16px; height: 16px; padding: 0; border: 0; border-top-left-radius: var(--radius-xl); background: none; cursor: nwse-resize; }
-.sq-rz::before { content: ''; position: absolute; left: 5px; top: 5px; width: 7px; height: 7px; border: solid var(--text-tertiary); border-width: 1.5px 0 0 1.5px; border-top-left-radius: 6px; opacity: 0; transition: opacity var(--dur-fast) var(--ease-standard); }
-.sq:hover .sq-rz::before, .sq.sizing .sq-rz::before, .sq-rz:focus-visible::before { opacity: 1; }
-.sq-rz:focus-visible { outline: var(--focus-outline); outline-offset: calc(-1 * var(--focus-offset) - 2px); }
+/* Resizing (side.ts, terminal.ts): a capsule centred on each free edge, the same as the sidebars' .rz. Hidden until
+   the pointer is over the panel, stronger on its edge, accent and longer while dragged or focused; inset so the focus
+   ring is not cut by the panel's edge. The corner where
+   the two edges meet takes a drag both ways, with nothing drawn on it. */
+.edge-rz { position: absolute; z-index: 2; touch-action: none; outline: none; }
+.edge-rz.h { top: 0; left: 14px; right: 14px; height: 8px; cursor: ns-resize; }
+.edge-rz.w { top: 14px; bottom: 0; width: 8px; cursor: ew-resize; }
+.edge-rz.c { z-index: 3; top: 0; width: 14px; height: 14px; }
+.sq .edge-rz.w, .sq .edge-rz.c { left: 0; }
+.sq .edge-rz.c { cursor: nwse-resize; }
+.tm .edge-rz.w, .tm .edge-rz.c { right: 0; }
+.tm .edge-rz.c { cursor: nesw-resize; }
+.edge-rz:not(.c)::after { content: ''; position: absolute; border-radius: var(--radius-full); background: transparent; transition: background var(--dur-fast) var(--ease-standard), width var(--dur-fast) var(--ease-out), height var(--dur-fast) var(--ease-out); }
+.edge-rz.h::after { top: 4px; left: 50%; width: 36px; height: 4px; translate: -50% 0; }
+.edge-rz.w::after { top: 50%; width: 4px; height: 36px; translate: 0 -50%; }
+.sq .edge-rz.w::after { left: 4px; }
+/* The terminal's side edge is over its output's scrollbar: a narrower band leaves the bar most of its gutter. */
+.tm .edge-rz.w { width: 5px; }
+.tm .edge-rz.w::after { right: 4px; }
+:is(.sq, .tm):hover .edge-rz::after { background: var(--border-default); }
+.edge-rz:hover::after { background: var(--border-strong); }
+/* Over the panel-hover rule above: a dragged or focused capsule stays accent with the pointer on the panel. */
+:is(.sq, .tm) .edge-rz:is(.active, :focus-visible)::after { background: var(--accent); }
+.edge-rz.h.active::after, .edge-rz.h:focus-visible::after { width: 56px; }
+.edge-rz.w.active::after, .edge-rz.w:focus-visible::after { height: 56px; }
+.edge-rz:focus-visible::after { outline: var(--focus-outline); outline-offset: 2px; }
 .sq.sizing { animation: none; user-select: none; }
 .win.ins-min .sq { right: calc(var(--panel-inset) + var(--space-10) + var(--control-lg) + var(--space-8)); }
 .sq > header { flex: none; display: flex; align-items: center; gap: var(--space-8); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); box-shadow: inset 0 -.5px 0 var(--border-subtle); }
@@ -1563,10 +1580,7 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .tm-tb { flex: none; height: 20px; padding: 0 var(--space-8); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font: inherit; font-size: var(--fs-caption2); font-weight: 600; cursor: pointer; }
 .tm-tb:hover { background: var(--surface-hover); color: var(--text-primary); }
 .tm-tb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
-.tm-grip { position: absolute; top: 0; right: 0; z-index: 1; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 0 var(--radius-xl) 0 var(--radius-sm); background: none; cursor: nesw-resize; touch-action: none; }
-.tm-grip::after { content: ''; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-top: 1.5px solid var(--text-tertiary); border-right: 1.5px solid var(--text-tertiary); border-top-right-radius: 2px; }
-.tm-grip:hover::after { border-color: var(--text-secondary); }
-.tm-grip:focus-visible { outline: var(--focus-outline); outline-offset: calc(-1 * var(--focus-offset)); }
+.tm.sizing { user-select: none; }
 .tm-t { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-10); padding: var(--space-10) var(--space-12); background: var(--surface-code); }
 .tm-empty { margin: auto 0; font-size: var(--fs-caption); color: var(--text-tertiary); text-align: center; }
 .tm-run { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
@@ -1591,6 +1605,8 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .tip { position: fixed; z-index: var(--z-tooltip); left: 0; top: 0; display: flex; align-items: baseline; gap: var(--space-8); box-sizing: border-box; max-width: min(280px, calc(100vw - 16px)); padding: var(--space-4) var(--space-8); border-radius: var(--radius-sm); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-4); font-size: var(--fs-caption); line-height: var(--lh-ui); color: var(--text-primary); user-select: none; -webkit-app-region: no-drag; opacity: 0; translate: 0 2px; transition: opacity var(--dur-fast) var(--ease-standard), translate var(--dur-fast) var(--ease-standard); }
 .tip[data-side="below"] { translate: 0 -2px; }
 .tip.on { opacity: 1; translate: 0 0; }
+/* Going away, it lets the pointer through: a resize handle moved by its keys can be under it. */
+.tip:not(.on) { pointer-events: none; }
 .tip > span { min-width: 0; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 14; overflow: hidden; }
 .tip > kbd { flex: none; padding: 0; background: none; font-size: var(--fs-caption2); font-weight: var(--fw-medium); color: var(--text-secondary); white-space: nowrap; }
 @media (forced-colors: active) { .tip { border: 1px solid CanvasText; } }
