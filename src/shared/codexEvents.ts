@@ -1,6 +1,7 @@
 // What Codex (app-server) reports, turned into what the app shows and counts.
 // Shapes follow the protocol Codex 0.167 generates with `codex app-server generate-ts`; only the fields used are typed.
 
+import type { Shell } from './shellWords';
 import type { Spend } from './spend';
 
 export interface CodexItem {
@@ -37,6 +38,11 @@ export interface CodexRateLimits {
 export function plainCommand(command: string): string {
   const m = /^"?[^"']*?(?:powershell|pwsh|bash|zsh|sh)(?:\.exe)?"?\s+(?:-NoProfile\s+)?(?:-Command|-lc|-c)\s+(['"])([\s\S]*)\1$/i.exec(command.trim());
   return m ? m[2] : command.trim();
+}
+
+/** The shell that wrapper starts, so the command inside is read the way it will run (shellWords.ts). Bash when there is none. */
+export function commandShell(command: string): Shell {
+  return /^(?:"[^"]*(?:powershell|pwsh)(?:\.exe)?"|[^"'\s]*(?:powershell|pwsh)(?:\.exe)?)\s/i.test(command.trim()) ? 'powershell' : 'bash';
 }
 
 const base = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;

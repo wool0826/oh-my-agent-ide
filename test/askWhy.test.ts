@@ -19,6 +19,9 @@ test('askWhy: a task is named by id and a clipped title', () => {
 test('askWhy: tool calls read as a short action', () => {
   assert.equal(toolAction(en, 'Bash', { command: 'rm -rf build' }), 'run `rm -rf build`');
   assert.equal(toolAction(en, 'Bash', { command: 'rm -rf build', description: 'Remove the build folder' }), 'run `rm -rf build` (Remove the build folder)');
+  // A PowerShell command reads the same way: the command, then the model's own description of it.
+  assert.equal(toolAction(en, 'PowerShell', { command: 'Remove-Item build -Recurse' }), 'run `Remove-Item build -Recurse`');
+  assert.equal(toolAction(en, 'PowerShell', { command: 'Remove-Item build -Recurse', description: 'Remove the build folder' }), 'run `Remove-Item build -Recurse` (Remove the build folder)');
   assert.equal(toolAction(en, 'Edit', { file_path: 'C:\\repo\\src\\main\\index.ts' }), 'change …/main/index.ts');
   assert.equal(toolAction(en, 'Write', { file_path: 'notes.md' }), 'change notes.md');
   assert.equal(toolAction(en, 'Read', { file_path: '/home/me/.ssh/id_rsa' }), 'read …/.ssh/id_rsa');
@@ -91,6 +94,14 @@ test('askWhy: the rule found for a command is the one the reason uses', () => {
   assert.equal(alwaysAskRule('Bash', { command: 'git push --force origin feature' }), 'ask.forcePush');
   assert.equal(alwaysAskRule('Bash', { command: 'gh pr merge 12 --squash' }), 'ask.merge');
   assert.equal(alwaysAskRule('Bash', { command: 'npm test' }), null);
+  // In PowerShell too, and the reason names the command and the rule's risk.
+  const input = { command: 'git push --force origin feature' };
+  const rule = alwaysAskRule('PowerShell', input);
+  assert.equal(rule, 'ask.forcePush');
+  assert.deepEqual(permissionReason(en, { who: 'W-01', task, tool: 'PowerShell', input, rule }), {
+    what: 'W-01 wants to run `git push --force origin feature` for T-0031 "Explain why a request needs the user".',
+    why: 'The app always asks before this (force push). It rewrites the branch on the remote, so commits others pushed can be lost.',
+  });
   assert.equal(alwaysAskRule('Edit', { file_path: 'x' }), null);
 });
 
