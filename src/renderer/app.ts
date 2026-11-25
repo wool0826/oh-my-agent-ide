@@ -31,6 +31,7 @@ import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira
 import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
+import { initSwipe } from './ui/swipe';
 import { initTip } from './ui/tip';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
 import { bindDock } from './ui/dock';
@@ -918,6 +919,7 @@ export function init() {
   // Before the first paint, so a sidebar that was put away does not animate shut at launch.
   applyPanels();
   initResize();
+  initSwipe($('#chat-ins'), (nav) => void clearOne(nav.startsWith('aa:') ? 'auto' : 'result', nav.slice(nav.indexOf(':') + 1)));
   initTip();
   watchPanes();
   document.addEventListener('click', (e) => {

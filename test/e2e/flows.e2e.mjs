@@ -1453,6 +1453,68 @@ flow('a result is cleared on its own by its ✕ or Delete and comes back with Un
   assert.equal(await focused(), await app.evaluate("document.querySelector('#chat-ins .pk.sel > .pk-c > .memo').dataset.nav"));
 });
 
+flow('a Notifications row swiped sideways is cleared with Undo; a short swipe, a scroll or a decision comes back', {}, async (app) => {
+  await app.say('@fake task - First one\n@@fake result One.\n@fake task - Second one\n@@fake result Two.\n@fake task - Third one\n@@fake result Three.\n@fake task - Ask one\n@@fake permission npm install a\n@@fake result Installed.');
+  await app.until("document.querySelectorAll('#chat-ins .res').length === 3 && !!document.querySelector('#chat-ins .dec[data-dec]')", 'three results and a decision');
+  // The list settles before each press (a decision's card grows as its parts arrive), so it lands on the row measured.
+  const steady = async () => {
+    let last = '', same = 0;
+    for (let i = 0; i < 80 && same < 4; i++) {
+      await new Promise((r) => setTimeout(r, 150));
+      const now = await app.evaluate("return [...document.querySelectorAll('#chat-ins .res, #chat-ins .dec')].map((x) => x.getBoundingClientRect().top).join();");
+      same = now === last ? same + 1 : 0;
+      last = now;
+    }
+  };
+  await steady();
+  const ids = await app.evaluate("return [...document.querySelectorAll('#chat-ins .res')].map((x) => x.dataset.nav);");
+  const w = await app.evaluate("document.querySelector('#chat-ins .res').offsetWidth");
+  const row = (nav) => `#chat-ins .res[data-nav="${nav}"]`;
+  const look = (nav) => app.evaluate(`const r = document.querySelector('${row(nav)}'); const u = document.querySelector('#chat-ins .swipe-under'); return { x: r ? new DOMMatrix(getComputedStyle(r).transform).m41 : null, under: u ? (u.classList.contains('armed') ? 'armed' : 'shown') : 'none', side: u?.classList.contains('right') ? 'right' : 'left' };`);
+  const settled = (n) => app.until(`document.querySelectorAll('#chat-ins .res').length === ${n} && !document.querySelector('#chat-ins .swiping, #chat-ins .swipe-under')`, `${n} results at rest`);
+  // A short drag: the row follows and shows the red side it leaves, not yet armed; let go, it slides back.
+  let at = await app.drag(`${row(ids[0])} .tile`, Math.round(w * 0.2), { hold: true });
+  let seen = await look(ids[0]);
+  assert.ok(Math.abs(seen.x - Math.round(w * 0.2)) <= 1, JSON.stringify(seen));
+  assert.equal(seen.under, 'shown');
+  await app.release(at);
+  await settled(3);
+  assert.equal((await look(ids[0])).x, 0);
+  // Past 35%: armed, and letting go clears it with the same toast and Undo as its ✕.
+  await steady();
+  at = await app.drag(`${row(ids[0])} .tile`, Math.round(w * 0.5), { hold: true });
+  assert.equal((await look(ids[0])).under, 'armed');
+  await app.release(at);
+  await settled(2);
+  assert.match(await app.evaluate("document.querySelector('.toast')?.innerText ?? ''"), /Cleared 1 result/);
+  await app.click('.toast .linkbtn');
+  await settled(3);
+  // To the left works the same; the red side is on the right then.
+  await steady();
+  at = await app.drag(`${row(ids[1])} .tile`, -Math.round(w * 0.5), { hold: true });
+  assert.deepEqual(await look(ids[1]), { x: -Math.round(w * 0.5), under: 'armed', side: 'right' });
+  await app.release(at);
+  await settled(2);
+  assert.deepEqual(await app.evaluate("return [...document.querySelectorAll('#chat-ins .res')].map((x) => x.dataset.nav);"), [ids[0], ids[2]]);
+  // (A quick flick clears before a third of the width too; the hidden test window hands moves over too slowly for a
+  // speed, so test/swipe.test.ts covers it.)
+  // A drag more down than sideways is a scroll: the row never moves.
+  await steady();
+  at = await app.drag(`${row(ids[0])} .tile`, 10, { dy: 40, hold: true });
+  assert.deepEqual(await look(ids[0]), { x: 0, under: 'none', side: 'left' });
+  await app.release(at);
+  // A decision cannot be cleared: it gives a little, with no red side, comes back, and the drag does not select it.
+  await steady();
+  at = await app.drag('#chat-ins .dec[data-dec] .src', 200, { hold: true });
+  const dx = await app.evaluate("new DOMMatrix(getComputedStyle(document.querySelector('#chat-ins .dec[data-dec]')).transform).m41");
+  assert.ok(dx > 0 && dx <= 14, String(dx));
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-ins .swipe-under').length"), 0);
+  await app.release(at);
+  await app.until("!document.querySelector('#chat-ins .swiping') && getComputedStyle(document.querySelector('#chat-ins .dec[data-dec]')).transform === 'none'", 'the decision back in place');
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-ins .dec.sel, #chat-ins .dec[aria-current=\"true\"]').length"), 0);
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-ins .res').length"), 2);
+});
+
 flow('without an account the empty chat lists the steps to get started, and the composer waits for one', { env: { OMA_E2E_NO_ACCOUNT: '1' } }, async (app) => {
   // The first run opens Settings on Accounts; behind it, the chat has the steps.
   await app.until("!!document.querySelector('[data-action=\"close-settings\"]')", 'Settings at the first run');
