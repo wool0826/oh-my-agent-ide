@@ -7,6 +7,7 @@ import { normalizeQuickKey, quickKeyLabel } from '../../shared/quickKey';
 import { THEMES, cleanTheme } from '../../shared/theme';
 import { typedTime } from '../../shared/notifyRules';
 import { focusSelector } from '../../shared/focusKey';
+import { midPath } from '../../shared/pathText';
 import { layerClose, layerFocus, layerOpen } from './layer';
 import { DECISION_SOUNDS, DONE_SOUNDS } from '../../shared/sounds';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clampWaitSlot } from '../../shared/slots';
@@ -322,7 +323,7 @@ export function settingsHtml() {
 
   const general = `${grp(`<div id="pre-rows">${preflightRows()}</div>`, `${t('pre.title')}<button class="btn btn-icon btn-sm clear-x always" data-action="preflight-run" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`)}${grp(`
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
-      ${row(t('set.home'), 'set-home', `<input class="inp w" id="set-home" value="${esc(st.home)}"><button class="btn btn-lg" data-action="pick-home">${t('choose')}</button>`)}
+      ${row(t('set.home'), 'set-home-v', `<input type="hidden" id="set-home" value="${esc(st.home)}"><span class="sval path" id="set-home-v" tabindex="0" data-tip="${esc(st.home)}">${esc(midPath(st.home))}</span><button class="btn btn-lg" data-action="pick-home">${t('choose')}</button>`)}
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
       ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 0, 90, t('set.archive'), 'set.unitDays'))}
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
@@ -445,7 +446,6 @@ export function openSettings(pane?: Pane) {
     if (el.type === 'checkbox') el.checked = v as boolean; else el.value = v as string;
   });
   syncSegs(root);
-  requestAnimationFrame(pathEnds);
   const vol = document.getElementById('set-vol') as HTMLInputElement | null;
   if (vol) syncSlider(vol);
   const ren = document.getElementById('acc-rename') as HTMLInputElement | null;
@@ -561,14 +561,7 @@ export function showPane(id: Pane) {
   });
   const sp = document.querySelector('.spanes');
   if (sp instanceof HTMLElement) scrollQuietly(sp, 0);
-  pathEnds();
   if (id === 'models') void loadModels('fresh');
-}
-
-/** Long folder paths in Settings show their end, which is the part that differs. Runs once the pane is visible. */
-export function pathEnds() {
-  const home = document.querySelector<HTMLInputElement>('#set-home');
-  if (home && document.activeElement !== home) home.scrollLeft = home.scrollWidth;
 }
 
 export function closeSettings() {

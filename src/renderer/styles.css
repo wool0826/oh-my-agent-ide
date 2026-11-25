@@ -86,6 +86,11 @@ body { --lights-end: 0px; }
 .row:hover { background: var(--surface-hover); }
 .row .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .row .t b { font-weight: 500; font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/*
+ * Malgun Gothic, which draws Hangul on Windows, has no 500: a title at 500 falls to 400 and reads like body text,
+ * where the Latin of the same row is medium (J1). In Korean on Windows those titles take 600, which Malgun draws bold.
+ */
+.platform-win32:lang(ko) :is(.row .t b, .hrow .t b, .cmdk-it b, #views button) { font-weight: 600; }
 .row .t small { font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row.sel { box-shadow: inset 0 0 0 2px var(--accent); }
 .row .badge { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
@@ -493,6 +498,8 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .ins-h b { font-size: var(--fs-body); font-weight: 600; }
 .ins-h small { font-size: var(--fs-caption2); color: var(--text-secondary); }
 .ins-h .gap { flex: 1; }
+/* A field's own name above it, the same for every field of a form; "(optional)" is part of the name (B1). */
+.fld-l { display: block; padding: 0 var(--space-4); margin-bottom: calc(-1 * var(--space-4)); font-size: var(--fs-caption); font-weight: 600; color: var(--text-secondary); }
 .count { background: var(--state-ask); color: var(--text-on-ask); font-weight: 600; font-size: var(--fs-caption2); border-radius: var(--radius-full); padding: 0 var(--space-6); min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .pulse { animation: pulse var(--dur-attention) var(--ease-in-out) 3; }
 .group { background: var(--surface-card); border-radius: var(--radius-lg); box-shadow: var(--rim); overflow: hidden; }
@@ -710,6 +717,21 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .li .m span { font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .li .r { display: flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lst-h { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); padding: var(--space-12) var(--space-10) var(--space-4); }
+/* The repository list as columns (B2): name, default branch, path, then the pills; the narrow list drops path, then branch. */
+#repo-main .lst { container-type: inline-size; }
+.li.repo, .li-cols.repo { grid-template-columns: 22px minmax(0, 1.3fr) minmax(0, .6fr) minmax(0, 1fr) auto; }
+.li-cols { display: grid; gap: var(--space-10); padding: var(--space-8) var(--space-12) var(--space-4); font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); }
+.li-cols > span, .li .c-br, .li .c-path { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.li .c-br, .li .c-path { font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--text-secondary); }
+.li-cols + .li:not(.sel) { box-shadow: none; }
+@container (max-width: 560px) {
+  .li.repo, .li-cols.repo { grid-template-columns: 22px minmax(0, 1fr) minmax(0, .5fr) auto; }
+  .li.repo .c-path, .li-cols.repo .c-path { display: none; }
+}
+@container (max-width: 400px) {
+  .li.repo, .li-cols.repo { grid-template-columns: 22px minmax(0, 1fr) auto; }
+  .li.repo .c-br, .li-cols.repo .c-br { display: none; }
+}
 .pill { font-size: var(--fs-caption2); font-weight: 600; display: inline-flex; align-items: center; gap: var(--space-4); min-height: 18px; padding: 0 var(--space-8); border-radius: var(--radius-full); background: var(--neutral-soft); color: var(--text-secondary); white-space: nowrap; flex-shrink: 0; }
 .pill[data-tone="accent"] { background: var(--accent-soft); color: var(--accent-text); }
 .pill[data-tone="danger"] { background: var(--danger-soft); color: var(--danger-text); }
@@ -772,6 +794,18 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .empty-view svg { width: var(--icon-hero); height: var(--icon-hero); color: var(--text-tertiary); margin-bottom: var(--space-8); }
 .empty-view b { font-size: var(--fs-headline); color: var(--text-primary); }
 .empty-view span { font-size: var(--fs-caption); max-width: 26em; line-height: var(--lh-body); }
+/* The first run before an account (A1): numbered steps, each with its one button; the open one carries the ring. */
+.empty-view.setup { gap: var(--space-12); }
+.setup-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-8); width: min(380px, 100%); }
+.setup-step { display: flex; align-items: center; gap: var(--space-10); min-height: calc(var(--control-lg) + 2 * var(--space-8)); padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); text-align: left; }
+.setup-step.cur { box-shadow: 0 0 0 2px var(--accent); }
+.setup-step .num { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-caption); font-weight: 600; font-variant-numeric: tabular-nums; background: var(--surface-raised); color: var(--text-secondary); max-width: none; }
+.setup-step.done .num { background: var(--success-solid); color: #fff; }
+.setup-step .num svg { width: 10px; height: 10px; margin: 0; color: inherit; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.setup-step .lbl { flex: 1; min-width: 0; max-width: none; font-size: var(--fs-body); color: var(--text-primary); }
+.setup-step.done .lbl { color: var(--text-secondary); }
+.setup-step .ok { flex: none; padding-right: var(--space-8); color: var(--text-tertiary); }
+.empty-view .setup-step .btn { margin-top: 0; flex: none; }
 .searchbar { margin: 0 var(--space-20) var(--space-10); display: flex; align-items: center; gap: var(--space-6); background: var(--surface-sunken); box-shadow: var(--well); border-radius: var(--radius-full); padding: var(--space-6) var(--space-12); color: var(--text-secondary); flex: none; }
 .searchbar input { flex: 1; border: 0; background: none; color: var(--text-primary); font: inherit; outline: none; user-select: text; }
 .hit { padding: var(--space-8) var(--space-12); border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: var(--space-2); cursor: default; }
@@ -789,10 +823,11 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 
 /* settings: a full window — top bar, section list on the left, the chosen section centered on the right */
 .settings-win { position: fixed; inset: 0; z-index: var(--z-settings); background: var(--bg-backdrop); display: flex; flex-direction: column; }
-.stopbar { flex: none; height: var(--toolbar-h); display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-12); padding: 0 var(--space-16); }
-.platform-win32 .stopbar, .platform-linux .stopbar { padding-right: 150px; }
-.platform-darwin .stopbar { padding-left: max(var(--space-16), var(--lights-end)); }
-.stopbar h1 { margin: 0; font-size: var(--fs-headline); font-weight: 600; }
+/* The title sits over the panes, on the axis of what they show; Back keeps the column of the nav (H1). */
+.stopbar { flex: none; height: var(--toolbar-h); display: grid; grid-template-columns: calc(var(--panel-inset) + var(--settings-nav-w)) minmax(0, 1fr); align-items: center; padding: 0; }
+.stopbar > .sback { margin-left: var(--space-16); }
+.platform-darwin .stopbar > .sback { margin-left: max(var(--space-16), var(--lights-end)); }
+.stopbar h1 { margin: 0; justify-self: center; min-width: 0; font-size: var(--fs-headline); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stopbar .sback { justify-self: start; padding-left: 6px; }
 .stopbar .sback svg { width: var(--icon-md); height: var(--icon-md); }
 .stop-r { justify-self: end; display: flex; align-items: center; gap: var(--space-8); min-width: 0; }
@@ -810,7 +845,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .snav-i:focus-visible { outline: var(--focus-outline); outline-offset: 0; }
 .snav-i .dot { position: absolute; right: var(--space-10); width: 7px; height: 7px; border-radius: 50%; background: var(--danger); }
 .snav .ver { margin: auto var(--space-8) 0; padding-top: var(--space-12); font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.spanes { flex: 1; min-width: 0; overflow-y: auto; padding: var(--space-32) var(--space-32) var(--space-48); }
+.spanes { flex: 1; min-width: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; padding: var(--space-32) var(--space-32) var(--space-48); }
 .sinner { max-width: var(--settings-max); margin: 0 auto; }
 .pane { display: flex; flex-direction: column; gap: var(--space-24); }
 .pane h2 { margin: 0; font-size: var(--fs-display); font-weight: 700; line-height: var(--lh-title); }
@@ -830,6 +865,8 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .srow .sval { min-width: 0; max-width: 320px; font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srow .sval.muted { color: var(--text-tertiary); }
 .srow .sval.bad { color: var(--warning-text); }
+.srow .sval.path { font-family: var(--font-mono); }
+.srow.pre-all > .lbl { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srow.vol > .lbl { flex: 0 0 auto; margin-right: var(--space-16); }
 .srow.vol .slider-wrap { flex: 1; }
 .inp.bad { box-shadow: var(--well), 0 0 0 1px var(--warning); }

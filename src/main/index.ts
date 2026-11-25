@@ -110,8 +110,8 @@ function snapshot(): AppState {
   const d = store.data;
   return {
     ready: true,
-    // Fake agents need no account.
-    setupNeeded: !fakeMode() && accounts.list().length === 0,
+    // Fake agents need no account; an end-to-end test of the first run asks for the account screen (OMA_E2E_NO_ACCOUNT).
+    setupNeeded: (!fakeMode() || process.env.OMA_E2E_NO_ACCOUNT === '1') && accounts.list().length === 0,
     settings: settingsView(),
     accounts: accounts.views(),
     usageClock: accounts.clock,

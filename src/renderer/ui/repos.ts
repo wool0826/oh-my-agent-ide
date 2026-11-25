@@ -62,8 +62,14 @@ export async function loadPreflight() {
 /** The rows of the Status group: each check with what was found, and for a failed one what to do about it. */
 export function preflightRows() {
   if (preflight === undefined || preflight === 'loading') return `<div class="srow" role="status" aria-label="${t('pre.checking')}"><span class="skel pre"><i></i></span></div>`;
+  const nameOf = (c: Check) => (c.id === 'ghAuth' ? t('pre.ghAuth', { host: c.host ?? '' }) : t(`pre.${c.id}` as Key));
+  // Everything fine is one line; the rows open up only when something needs doing (H1).
+  if (preflight.length && preflight.every((c) => c.ok)) {
+    const names = preflight.map(nameOf).join(', ');
+    return `<div class="srow pre-all"><span class="lbl" data-tip="${esc(names)}">${esc(names)}</span><span class="pre-r"><i class="pill" data-tone="success">${t('pre.allOk', { n: preflight.length })}</i></span></div>`;
+  }
   return failedFirst(preflight).map((c) => {
-    const name = c.id === 'ghAuth' ? t('pre.ghAuth', { host: c.host ?? '' }) : t(`pre.${c.id}` as Key);
+    const name = nameOf(c);
     // The main process names the command for this OS (c.cmd); fixCommand covers results from before it did.
     const cmd = c.ok ? null : (c.cmd ?? fixCommand(c));
     // A missing tool and a tool that is there but not signed in read differently (gh: not installed vs `gh auth login`).
@@ -85,19 +91,28 @@ export function renderRepos() {
   if (!s.repos.length) {
     main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('btn-primary')}</div>${jiraHtml()}`;
   } else keepScroll(main, () => {
-    main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${s.repos.map((r) => {
+    // Columns for what tells repositories apart (B2): the default branch and where it is, which narrow widths drop.
+    const cols = `<div class="li-cols repo" aria-hidden="true"><span></span><span>${t('repo.colName')}</span><span class="c-br">${t('kv.defaultBranch')}</span><span class="c-path">${t('kv.path')}</span><span></span></div>`;
+    main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${cols}${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
       const local = r.local ? `<span class="pill" data-tip="${esc(t('repo.localNote'))}">${t('repo.local')}</span>` : '';
-      return `<div tabindex="0" role="button" class="li${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="r">${local}${run ? `<span class="pill" data-tone="accent">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill" data-tone="pr-open">PR ${pr}</span>` : ''}</span></div>`;
+      return `<div tabindex="0" role="button" class="li repo${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="c-br">${esc(r.defaultBranch)}</span><span class="c-path" data-tip="${esc(r.path)}">${esc(shortPath(r.path, 2))}</span><span class="r">${local}${run ? `<span class="pill" data-tone="accent">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill" data-tone="pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}${jiraHtml()}</div>`;
   });
   const ins = $('#repo-ins');
   if (ui.repoAdd) { keepInputs(ins, () => { ins.innerHTML = repoAddHtml(); }); return; }
   const r = s.repos.find((x) => x.name === ui.repoSel) ?? null;
   if (!r) {
-    ins.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-box"/></svg><b>${t('repo.pick')}</b></div>`;
+    // Before a pick, the sidebar sums up every repository rather than standing empty (B2).
+    if (!s.repos.length) { ins.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-box"/></svg><b>${t('repo.pick')}</b></div>`; return; }
+    const mine = s.tasks.filter((x) => x.repo && s.repos.some((y) => y.name === x.repo));
+    const running = mine.filter((x) => x.status === 'running' || x.status === 'waiting').length;
+    const local = s.repos.filter((y) => y.local).length;
+    const kv = (k: string, v: number) => `<span>${k}</span><span>${v}</span>`;
+    ins.innerHTML = `<div class="ins-h"><b role="heading" aria-level="2">${t('repo.sum')}</b></div>
+      <div class="group kv">${kv(t('repo.sumRepos'), s.repos.length)}${kv(t('repo.sumRunning'), running)}${kv(t('repo.sumPrs'), prsInReview(mine).length)}${local ? kv(t('repo.sumLocal'), local) : ''}</div>`;
     return;
   }
   keepInputs(ins, () => {
@@ -153,9 +168,10 @@ export function repoAddHtml() {
   // While it clones: git's last progress line, and Cancel stops the clone (nothing is registered).
   const progress = ui.repoAdding ? S!.repoAdding?.progress || t('repo.adding') : '';
   return `<div class="ins-h"><b role="heading" aria-level="2">${t('repo.add')}</b></div>
-    <div class="repo-add-row"><input class="inp" id="repo-add-url" data-keep="repo-add-url" data-enter="repo-add" placeholder="${esc(t('repo.addUrl'))}" aria-label="${esc(t('repo.addUrl'))}" spellcheck="false"${off}><button class="btn" data-action="repo-add-pick"${off}>${t('repo.pickFolder')}</button></div>
-    <div class="ins-h"><b role="heading" aria-level="2">${t('repo.desc')}</b></div>
-    <textarea class="inp" id="repo-add-desc" data-keep="repo-add-desc" placeholder="${esc(t('repo.addDescPh'))}"${off}></textarea>
+    <label class="fld-l" for="repo-add-url">${t('repo.addUrlLabel')}</label>
+    <div class="repo-add-row"><input class="inp" id="repo-add-url" data-keep="repo-add-url" data-enter="repo-add" placeholder="${esc(t('repo.addUrl'))}" spellcheck="false"${off}><button class="btn" data-action="repo-add-pick"${off}>${t('repo.pickFolder')}</button></div>
+    <label class="fld-l" for="repo-add-desc">${t('repo.descOpt')}</label>
+    <textarea class="inp" id="repo-add-desc" data-keep="repo-add-desc"${off}></textarea>
     ${progress ? `<div class="repo-add-progress" role="status">${esc(progress)}</div>` : ''}
     ${!ui.repoAdding && ui.repoAddError ? `<div class="repo-add-error" role="alert">${esc(ui.repoAddError)}</div>` : ''}
     <div class="ins-act"><button class="btn" data-action="repo-add-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="repo-add"${off}>${t(ui.repoAdding ? 'repo.adding' : 'repo.addGo')}</button></div>`;

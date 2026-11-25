@@ -332,7 +332,7 @@ export function renderChat(force = false, older = false) {
   if (ui.chatOlder.length && from >= ui.chatOlder.length) ui.chatOlder = [];
   const earlier = from > 0 || chatHasEarlier(all);
   runs = handoutRuns(all.slice(from));
-  const key = `${lang()}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${shellKey(all.slice(from))}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
+  const key = `${lang()}:${s.setupNeeded}:${s.preflightFailed}:${s.repos.length > 0}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${shellKey(all.slice(from))}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
   // The hand-out blocks follow their tasks: a step done or a decision answered draws them again.
   const hands = `${handoutKey()}:${[...ui.handToggled].join()}:${ui.thread}`;
   renderThreadPanel();
@@ -382,7 +382,8 @@ export function renderChat(force = false, older = false) {
   }
   threadsPrimed = true;
   // A first start: a few starts that fill the composer for the user to finish. Nothing is sent.
-  if (!all.length) html = `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><div class="starts">${STARTS.map((key) => `<button type="button" class="btn" data-action="chat-start" data-text="${esc(t(key))}">${t(key)}</button>`).join('')}</div></div>`;
+  // With no account nothing can be handed out yet: the steps that get there instead (A1).
+  if (!all.length) html = s.setupNeeded ? setupHtml() : `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><div class="starts">${STARTS.map((key) => `<button type="button" class="btn" data-action="chat-start" data-text="${esc(t(key))}">${t(key)}</button>`).join('')}</div></div>`;
   ui.chatSeen = tail;
   setThread(th, html, nearBottom || force, older);
   markReplyTarget('chat');
@@ -392,6 +393,22 @@ export function renderChat(force = false, older = false) {
 }
 
 const STARTS: Key[] = ['chat.start1', 'chat.start2', 'chat.start3'];
+
+/**
+ * The first run before an account: git and gh, the account, a repository. Each step is one button and is ticked
+ * once done; the first open one is ringed and its button is the primary one.
+ */
+export function setupHtml() {
+  const s = S!;
+  const steps = [
+    { label: t('setup.tools'), done: !s.preflightFailed, btn: `<button type="button" class="btn" data-action="open-settings" data-v="general">${t('setup.toolsSee')}</button>` },
+    { label: t('setup.account'), done: !s.setupNeeded, btn: `<button type="button" class="btn" data-action="open-settings" data-v="accounts">${t('usage.addAccount')}</button>` },
+    { label: t('setup.repo'), done: s.repos.length > 0, btn: `<button type="button" class="btn" data-action="setup-repo">${t('repo.add')}</button>` },
+  ];
+  const cur = steps.findIndex((x) => !x.done);
+  const check = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.8 5.3l2.1 2.1 4.2-4.6"/></svg>';
+  return `<div class="empty-view setup"><b role="heading" aria-level="2">${t('setup.title')}</b><ol class="setup-steps">${steps.map((x, i) => `<li class="setup-step${x.done ? ' done' : ''}${i === cur ? ' cur' : ''}"><span class="num">${x.done ? check : i + 1}</span><span class="lbl">${x.label}</span>${x.done ? `<span class="ok">${t('pre.ok')}</span>` : i === cur ? x.btn.replace('class="btn"', 'class="btn btn-primary"') : x.btn}</li>`).join('')}</ol></div>`;
+}
 
 /**
  * The Dispatcher's context in the composer: the ring alone under half the window, the numbers from there, and in
@@ -428,8 +445,11 @@ export function renderDispatcherStatus() {
   const busy = !!d.busy;
   document.querySelector('#views button[data-v="chat"]')?.classList.toggle('busy', busy);
   const input = $<HTMLTextAreaElement>('#chat-input');
-  const ph = t(busy ? 'chat.phBusy' : 'chat.ph');
+  // Without an account there is no one to send to: the box waits, saying what it needs (A1).
+  const noAcc = !!S!.setupNeeded;
+  const ph = t(noAcc ? 'chat.phNoAccount' : busy ? 'chat.phBusy' : 'chat.ph');
   if (input.placeholder !== ph) input.placeholder = ph;
+  if (input.disabled !== noAcc) input.disabled = noAcc;
   const el = $('#chat-dstat');
   const key = `${lang()}:${busy}:${d.busySince ?? ''}:${d.statusText}`;
   if (key === dstatKey) return;

@@ -23,6 +23,7 @@ import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
 import { $, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
+import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closePalette, Cmd, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
@@ -625,6 +626,12 @@ export async function act(el: HTMLElement, e: Event) {
     case 'worker-msg': openWorker(id); setTimeout(() => $('#ws-input').focus(), 30); break;
     case 'repo-select': if (!ui.repoAdding) ui.repoAdd = false; go({ repoSel: id }); renderRepos(); break;
     case 'repo-add-open': ui.repoAdd = true; ui.repoAddError = ''; renderRepos(); $('#repo-add-url').focus(); break;
+    // The first-run step: the Repositories view with its add form open, in a right sidebar that shows.
+    case 'setup-repo':
+      ui.repoAdd = true; ui.repoAddError = '';
+      go({ view: 'repo' });
+      if (ui.insMin) togglePanel('ins');
+      renderRepos(); $('#repo-add-url').focus(); break;
     case 'repo-add-cancel':
       // During a clone, Cancel stops it; the form stays with what was typed.
       if (ui.repoAdding) { await call('repo:addCancel'); break; }
@@ -688,7 +695,13 @@ export async function act(el: HTMLElement, e: Event) {
     case 'acc-remove-ok': ui.accRemove = null; openSettings(); await call('account:remove', id); break;
     case 'pick-home': {
       const p = await call<string | null>('settings:pickHome');
-      if (p) { $<HTMLInputElement>('#set-home').value = p; void saveSettingsNow(); }
+      if (p) {
+        $<HTMLInputElement>('#set-home').value = p;
+        const v = $('#set-home-v');
+        v.textContent = midPath(p);
+        v.dataset.tip = p;
+        void saveSettingsNow();
+      }
       break;
     }
     case 'pick-sound': {

@@ -1411,3 +1411,39 @@ flow('a result is cleared on its own by its ✕ or Delete and comes back with Un
   await app.until(`!!document.querySelector('#chat-ins .pk.sel') && document.querySelector('#chat-ins .pk.sel > .pk-c > .memo')?.dataset.nav !== '${first}'`, 'the next memo selected');
   assert.equal(await focused(), await app.evaluate("document.querySelector('#chat-ins .pk.sel > .pk-c > .memo').dataset.nav"));
 });
+
+flow('without an account the empty chat lists the steps to get started, and the composer waits for one', { env: { OMA_E2E_NO_ACCOUNT: '1' } }, async (app) => {
+  // The first run opens Settings on Accounts; behind it, the chat has the steps.
+  await app.until("!!document.querySelector('[data-action=\"close-settings\"]')", 'Settings at the first run');
+  await app.click('[data-action="close-settings"]');
+  await app.until("document.querySelectorAll('#chat-thread .setup-step').length === 3", 'the three steps');
+  const steps = await app.evaluate("[...document.querySelectorAll('.setup-step')].map((s) => s.className.replace('setup-step', '').trim() + ': ' + s.innerText.replace(/\\s+/g, ' ').trim())");
+  // git and gh are fine here; the account is the step to take, with the primary button; the repository comes after.
+  assert.deepEqual(steps, ['done: Check git and gh OK', 'cur: 2 Add a Claude account Add an account', ': 3 Add a repository Add repository']);
+  assert.equal(await app.evaluate("document.querySelector('.setup-step.cur .btn').classList.contains('btn-primary')"), true);
+  assert.deepEqual(await app.evaluate("const i = document.querySelector('#chat-input'); return [i.disabled, i.placeholder];"), [true, 'Add an account to hand work to the Dispatcher']);
+  // The account step opens Settings on Accounts.
+  await app.click('.setup-step.cur [data-action="open-settings"]');
+  await app.until("document.querySelector('.snav-i.on')?.dataset.id === 'accounts'", 'the Accounts pane');
+  await app.click('[data-action="close-settings"]');
+  // The repository step opens the add form in the Repositories view; each field has its name above it.
+  await app.click('[data-action="setup-repo"]');
+  await app.until("document.activeElement?.id === 'repo-add-url'", 'the address field');
+  assert.deepEqual(await app.evaluate("['repo-add-url', 'repo-add-desc'].map((id) => document.querySelector('label[for=\"' + id + '\"]')?.textContent)"), ['Address', 'Description (optional)']);
+});
+
+flow('the repository list has columns, the sidebar sums up before a pick, and Settings folds what is fine', { repos: ['demo', 'web'] }, async (app) => {
+  await app.click('button[data-v="repo"]');
+  await app.until("document.querySelectorAll('#repo-main .li.repo').length === 2", 'the two repositories');
+  assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#repo-main .li.repo')].map((r) => [r.querySelector('.c-br').textContent, r.querySelector('.c-path').textContent.endsWith('demo') || r.querySelector('.c-path').textContent.endsWith('web')])"), [['main', true], ['main', true]]);
+  assert.equal(await app.evaluate("document.querySelector('#repo-main .li-cols').innerText.replace(/\\s+/g, ' ').trim()"), 'Name Default branch Path');
+  // Nothing picked: a summary, not an empty sidebar.
+  assert.equal(await app.evaluate("document.querySelector('#repo-ins .kv').innerText.replace(/\\s+/g, ' ').trim()"), 'Repositories 2 Running tasks 0 PRs in review 0');
+  // Settings: every check is fine, so the status is one line; the home folder shows both of its ends.
+  await app.click('[data-action="open-settings"]');
+  await app.click('[data-action="pane"][data-id="general"]');
+  await app.until("!!document.querySelector('#pre-rows .pre-all')", 'the status on one line');
+  assert.match(await app.evaluate("document.querySelector('#pre-rows .pre-all .pill').textContent"), /^All \d OK$/);
+  const home = await app.evaluate("[document.querySelector('#set-home').value, document.querySelector('#set-home-v').textContent]");
+  assert.ok(home[1].includes('…') && home[0].endsWith(home[1].split('…').pop()), `home shown as ${home[1]}`);
+});
