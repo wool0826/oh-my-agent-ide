@@ -46,6 +46,7 @@ import { addSpend, hasSpend, spendVars } from '../../shared/spend';
 import { COMPACT_AT, WORKER_IDLE_COMPACT, kTokens } from '../../shared/context';
 import { WORKER_COMPACT } from '../../shared/compactInstructions';
 import { needsPlan, parseResult, taskStarted, workerPrompt } from './workerPrompt';
+import { linkUrl } from '../../shared/linkify';
 import { clip, GO_ON_MSG, LIMIT_RESET_MSG, MAX_REQUEST_WAKES, planApproved, planNudge, planSummaryRule, question, QUESTION_TAG, REPLY_NOTE, RESUME_MSG, SHELL_OUTPUT_CHARS, SLOT_FREE_MSG, stallMsg, TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
 import { workerCodexTools, workerMemoryDir, workerTools, type StepsOp } from './workerTools';
 import { markDone, mergeProgress, reopenSteps, setSteps, stepsLine, stepView } from '../../shared/steps';
@@ -761,6 +762,13 @@ class WorkerManager {
     task.summary = summary;
     task.prUrl = prUrl ?? task.prUrl;
     task.files = files.length ? files : task.files;
+    // Links add up over the task's turns, once each and without its own PR ("[title](url)" is matched by its URL).
+    const own = prUrl ?? task.prUrl;
+    if (parsed.links.length) {
+      const byUrl = new Map<string, string>();
+      for (const l of [...(task.links ?? []), ...parsed.links]) if (linkUrl(l) !== own) byUrl.set(linkUrl(l), l);
+      task.links = [...byUrl.values()];
+    }
     setStatus(task, task.prUrl ? 'pr_open' : 'done');
     task.stopped = false;
     task.prState = task.prUrl ? (task.prState ?? 'OPEN') : null;
@@ -768,8 +776,8 @@ class WorkerManager {
     if (task.prUrl && !task.reviewSyncedAt) task.reviewSyncedAt = nowIso();
     const label = wasReview ? t('res.reviewLabel') : wasCi ? t('res.ciFixLabel') : wasFollowup ? t('res.followupLabel') : t('res.doneLabel');
     store.chat('result', wasReview ? t('res.review', { s: summary }) : wasCi ? t('res.ciFix', { s: summary }) : wasFollowup ? t('res.followup', { s: summary }) : summary, task.id);
-    store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}`, true, task.id);
-    if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
+    store.pushUpdate(`${w.id} ${task.id} "${task.title}" ${wasReview ? 'review fixed' : wasCi ? 'CI fixed' : wasFollowup ? 'follow-up done' : 'done'}: ${summary}${task.prUrl ? ` (PR ${task.prUrl})` : ''}${task.files.length ? `, ${task.files.length} file(s)` : ''}${task.links?.length ? `. Links: ${task.links.join(' ')}` : ''}`, true, task.id);
+    if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${task.links?.length ? ` ${task.links.join(' ')}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
     const n = doneNotice(t, { who: w.id, title: task.title, summary, ok: true, label, code: task.kind === 'code', prUrl: task.prUrl });
     notifyTaskEnd(n.title, n.body, w.id, task.id);
     this.followUp(task);

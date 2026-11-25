@@ -86,6 +86,7 @@ function workerLine(id: string) {
     `\n  Tasks: ${tasks.map((x) => `${x.id} ${x.title} (${statusLine(x)}${x.prUrl ? ` ${x.prUrl}` : ''}${x.prState === 'MERGED' ? ' merged' : ''})`).join('; ') || 'none'}` +
     `${steps ? `\n  Steps: ${steps.done}/${steps.total} done${steps.allDone ? '' : `, now: ${steps.current}`}` : ''}` +
     `${last?.summary ? `\n  Latest result: ${oneLine(last.summary, 160)}` : ''}` +
+    `${last?.links?.length ? `\n  Links: ${last.links.join(' ')}` : ''}` +
     `${w.ask ? `\n  Has not answered your question yet (asked ${clock(w.ask.at)}): ${oneLine(w.ask.text, 200)}` : ''}` +
     `${w.request ? `\n  Waits for your answer (since ${clock(w.request.at)}): ${oneLine(w.request.text, 300)}` : ''}` +
     `\n  New work: ${reuseBlock(w, store.data.tasks) ?? 'can take it'}`;

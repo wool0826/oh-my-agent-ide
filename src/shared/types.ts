@@ -116,6 +116,8 @@ export interface Task {
   prState: 'OPEN' | 'MERGED' | 'CLOSED' | null;
   summary: string | null;
   files: string[];
+  /** URLs the final report named besides its PR (published artifacts, other PRs), as "url" or "[title](url)". Unset on tasks saved before this existed. */
+  links?: string[];
   createdAt: string;
   updatedAt: string;
   /** When the task message reached the Worker. Null while a usage limit has kept it from starting; unset on tasks saved before this existed. */
