@@ -80,14 +80,14 @@ class Automations {
     }
   }
 
-  private tick() {
-    const now = new Date();
-    for (const a of this.list()) if (isDue(a, now)) this.fire(a);
+  /** Fires what is due at `now` (the end-to-end tests pass a later time instead of waiting for it). */
+  tick(now = new Date()) {
+    for (const a of this.list()) if (isDue(a, now)) this.fire(a, '', now);
   }
 
-  private fire(a: Automation, context = '') {
+  private fire(a: Automation, context = '', now = new Date()) {
     a.lastRunAt = nowIso();
-    a.nextRunAt = nextRun(a.trigger, new Date())?.toISOString() ?? null;
+    a.nextRunAt = nextRun(a.trigger, now)?.toISOString() ?? null;
     log.info('automation fired', a.title);
     store.changed();
     try {
