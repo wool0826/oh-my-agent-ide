@@ -1433,6 +1433,8 @@ flow('without an account the empty chat lists the steps to get started, and the 
 });
 
 flow('the repository list has columns, the sidebar sums up before a pick, and Settings folds what is fine', { repos: ['demo', 'web'] }, async (app) => {
+  // Wide enough for every column (a narrow list drops the path, then the branch).
+  await app.size(1440);
   await app.click('button[data-v="repo"]');
   await app.until("document.querySelectorAll('#repo-main .li.repo').length === 2", 'the two repositories');
   assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#repo-main .li.repo')].map((r) => [r.querySelector('.c-br').textContent, r.querySelector('.c-path').textContent.endsWith('demo') || r.querySelector('.c-path').textContent.endsWith('web')])"), [['main', true], ['main', true]]);
