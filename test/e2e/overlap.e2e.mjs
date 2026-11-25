@@ -1,16 +1,8 @@
 // End-to-end flow for the file overlap warning (T-0107): a new task that names a file another task's branch already
 // changes is still created, the Dispatcher hears which task and files, and the Workers view shows it in one line.
 // Run with `npm run e2e`.
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './harness.mjs';
-
-function flow(name, opts, fn) {
-  test(name, { timeout: 120_000 }, async () => {
-    const app = await launch(opts);
-    try { await fn(app); } finally { await app.stop(); }
-  });
-}
+import { flow } from './harness.mjs';
 
 const said = (s, id) => s.chat.map((c) => c.text).find((t) => t.startsWith(`${id} assigned to`)) ?? '';
 

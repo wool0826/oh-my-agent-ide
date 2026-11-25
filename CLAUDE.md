@@ -43,8 +43,10 @@ The spec, tokens and component gallery are in `docs/design-system/` (start with 
 - **No fixed sleeps** to wait for the app. Wait for a condition with the harness helpers in `test/e2e/harness.mjs`:
   `app.until(js, 'what it waits for')`, `app.reconnect(ready)`, `app.drag(selector, dx, { ready })`. Give `until` a
   readable second argument; it is the failure message.
-- **New e2e flows go in a new file** `test/e2e/<area>.e2e.mjs`, not in `flows.e2e.mjs`. Start it with `launch()`
-  from the harness. Until the `e2e` script picks files up by pattern, the new file must be listed there.
+- **E2e flows live in one file per area**, `test/e2e/<area>.e2e.mjs`: add a flow to its area's file, or start a new
+  file for a new area. Write each with `flow(name, opts, fn)` from the harness; a failed one keeps a screenshot, the
+  page and the logs under `test-results/e2e/`. `npm run e2e` and the CI shards (`test/e2e/shard.mjs`) find files by
+  pattern.
 - Unit tests use `node:test` and `node:assert/strict`, one behaviour per `test(...)`, named `'<area>: what it does'`.
 
 ## Where things go
