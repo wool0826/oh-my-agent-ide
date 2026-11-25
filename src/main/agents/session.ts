@@ -7,6 +7,7 @@ import { SpendMeter, spendOf, type SessionSpend, type Spend } from '../../shared
 import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW } from '../../shared/context';
 import { compactCommand } from '../../shared/compactInstructions';
 import { artifactEnv, CONNECTOR_CHECK_MS, connectorChanges, connectorSettings, toReconnect } from './connectors';
+import { t } from '../i18n';
 
 /** Compaction as the owner sees it: Claude Code's own (mid-turn) and the app's /compact alike. */
 export type CompactEvent =
@@ -200,7 +201,7 @@ export class AgentSession {
   }
 
   send(text: string) {
-    if (this.closed) throw new Error('Session is closed.');
+    if (this.closed) throw new Error(t('err.sessionClosed'));
     if (!this.q) this.start();
     // A Stop that came after its turn had ended stops nothing later.
     if (!this.busy) this.interrupted = false;

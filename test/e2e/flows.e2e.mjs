@@ -484,6 +484,79 @@ flow('a merged PR fires the automation set for merges', { repos: ['demo'] }, asy
   await app.until("document.querySelector('#chat-thread').innerText.includes('The automation ran.')", "the automation's turn in the chat");
 });
 
+flow('an automation is changed from its card: the form opens filled in, Cancel keeps it, Save updates it', {}, async (app) => {
+  await app.evaluate("await window.ide.call('auto:add', 'Check the build\\nand say what broke', { kind: 'daily', time: '09:00', weekdays: false }); return 1;");
+  const auto = "return (await window.ide.call('state')).automations[0]";
+  const id = (await app.evaluate(auto)).id;
+  await app.evaluate("await window.ide.call('auto:toggle', '" + id + "', false); return 1;");
+  const before = await app.evaluate(auto);
+  await app.click('#chat-ins [data-action="ins-tab"][data-v="auto"]');
+  const slot = `#chat-ins .pk[data-pick="${id}"]`;
+  await app.until(`!!document.querySelector('${slot}')`, 'the automation in the list');
+  await app.click(`${slot} [data-action="pick"]`);
+  await app.click(`${slot} [data-action="auto-edit"]`);
+  // The form is the card, filled in with what the automation is, and the text has the focus.
+  const form = `const f = document.querySelector('${slot} .auto-add'); return f && [f.querySelector('#auto-prompt-e').value, f.querySelector('#auto-time-e').value, f.querySelector('#auto-kind-e').value, f.querySelector('#auto-wk-e').checked, document.activeElement?.id];`;
+  assert.deepEqual(await app.evaluate(form), ['Check the build\nand say what broke', '09:00', 'daily', false, 'auto-prompt-e']);
+  // The form that adds one is still there, empty, with its own fields.
+  assert.deepEqual(await app.evaluate("return [document.querySelectorAll('#auto-prompt').length, document.getElementById('auto-prompt').value, document.getElementById('auto-time').value]"), [1, '', '09:00']);
+  // Cancel: nothing is saved and the card is back.
+  await app.evaluate("document.getElementById('auto-prompt-e').value = 'Thrown away'; return 1;");
+  await app.click(`${slot} [data-action="auto-edit-cancel"]`);
+  await app.until(`!document.querySelector('${slot} .auto-add') && !!document.querySelector('${slot} [data-action="auto-edit"]')`, 'the card after Cancel');
+  assert.deepEqual(await app.evaluate(auto), before);
+  // A time that is not one is not saved, and what was typed stays.
+  await app.click(`${slot} [data-action="auto-edit"]`);
+  await app.evaluate("document.getElementById('auto-prompt-e').value = 'Check the tests\\nand the lint'; document.getElementById('auto-time-e').value = '25:00'; return 1;");
+  await app.click(`${slot} [data-action="auto-save"]`);
+  await app.until("[...document.querySelectorAll('#toasts .toast')].some((x) => x.innerText.includes('Write the time as 09:00.'))", 'the toast about the time');
+  assert.deepEqual((await app.evaluate(form)).slice(0, 2), ['Check the tests\nand the lint', '25:00']);
+  assert.deepEqual(await app.evaluate(auto), before);
+  // Save: the text, its name, the time and the weekdays change; it stays switched off and keeps its id.
+  await app.evaluate("document.getElementById('auto-time-e').value = '7:30'; return 1;");
+  await app.click('#auto-wk-e');
+  await app.click(`${slot} [data-action="auto-save"]`);
+  await app.until(`!document.querySelector('${slot} .auto-add') && (document.querySelector('${slot} .memo')?.innerText ?? '').includes('Weekdays 07:30')`, 'the card after Save');
+  const after = await app.evaluate(auto);
+  assert.deepEqual([after.id, after.title, after.prompt, after.trigger, after.enabled, after.createdAt],
+    [id, 'Check the tests', 'Check the tests\nand the lint', { kind: 'daily', time: '07:30', weekdays: true }, false, before.createdAt]);
+  assert.notEqual(after.nextRunAt, before.nextRunAt);
+  assert.match(await app.evaluate(`document.querySelector('${slot} .memo').innerText`), /Check the tests[\s\S]*Weekdays 07:30/);
+  // To "When a PR merges": the time fades out in place, and the saved trigger has none.
+  await app.click(`${slot} [data-action="auto-edit"]`);
+  await app.click(`${slot} [data-segc="auto-kind-e"][data-v="merged"]`);
+  assert.equal(await app.evaluate(`document.querySelector('${slot} .auto-add').classList.contains('merged')`), true);
+  await app.click(`${slot} [data-action="auto-save"]`);
+  await app.until("return (await window.ide.call('state')).automations[0].trigger.kind === 'merged'", 'the merged trigger');
+  assert.equal((await app.evaluate(auto)).nextRunAt, null);
+});
+
+// Hours that hold the moment the flow runs (and pass midnight when they must), and hours that do not.
+const hhmm = (h) => `${String((h + 24) % 24).padStart(2, '0')}:00`;
+const hour = new Date().getHours();
+
+flow('while do-not-disturb is on, a moon in the sidebar foot says until when and opens the alert settings', { settings: { quietFrom: hhmm(hour - 1), quietTo: hhmm(hour + 2) } }, async (app) => {
+  const mark = "const m = document.getElementById('dnd-mark'); return [m.hidden, m.offsetWidth > 0, m.dataset.tip ?? '', m.getAttribute('aria-label') ?? ''];";
+  const until = `Do not disturb until ${hhmm(hour + 2)}`;
+  assert.deepEqual(await app.evaluate(mark), [false, true, until, until]);
+  // Beside the gear, on the same line.
+  assert.deepEqual(await app.evaluate("const g = document.querySelector('.side-foot [data-action=\"open-settings\"]').getBoundingClientRect(), m = document.getElementById('dnd-mark').getBoundingClientRect(); return [m.top === g.top, m.left >= g.right, m.left - g.right < 8];"), [true, true, true]);
+  await app.click('#dnd-mark');
+  await app.until("!!document.getElementById('set-qto')", 'the do-not-disturb fields in Settings');
+  // Hours that are over: the mark goes when the settings are saved.
+  await app.evaluate(`await window.ide.call('settings:save', { quietFrom: '${hhmm(hour + 3)}', quietTo: '${hhmm(hour + 4)}' }); return 1;`);
+  await app.until("document.getElementById('dnd-mark').hidden", 'no mark outside the hours');
+  await app.evaluate("await window.ide.call('settings:save', { quietFrom: '', quietTo: '' }); return 1;");
+  assert.equal(await app.evaluate("document.getElementById('dnd-mark').hidden"), true);
+});
+
+flow('an error from the main process is said in the language of the window', { settings: { language: 'ko' } }, async (app) => {
+  const fails = (js) => app.evaluate(`try { ${js}; return ''; } catch (e) { return String(e.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }`);
+  assert.equal(await fails("await window.ide.call('auto:add', '  ', { kind: 'merged' })"), '자동화가 할 일을 적어 주세요.');
+  assert.equal(await fails("await window.ide.call('auto:add', 'x', { kind: 'daily', time: '99' })"), '시각은 09:00처럼 써 주세요.');
+  assert.equal(await fails("await window.ide.call('auto:update', 'gone', 'x', { kind: 'merged' })"), '없는 항목이에요.');
+});
+
 flow("a reply to a Worker's report becomes a row of its card, folds to a count, and a quote goes back to its message", {}, async (app) => {
   const send = (text) => app.evaluate(`const i = document.querySelector('#chat-input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#chat-form').requestSubmit(); return 1;`);
   // The Worker reports after the Dispatcher's turn has ended, so nothing comes between the card and the reply.

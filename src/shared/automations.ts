@@ -35,6 +35,25 @@ export function autoTitle(prompt: string, max = 48): string {
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 }
 
+/**
+ * An automation after the user changed its text or when it runs. It stays on or off, and keeps when it last ran.
+ * A name that was the text's first line follows the new text; one given by hand (by the Dispatcher) stays.
+ * The next run is worked out again only when the trigger changed, so saving the same time does not skip a run.
+ * `trigger` is a normalized one (a daily time as "HH:MM").
+ */
+export function editedAutomation(a: Automation, prompt: string, trigger: AutoTrigger, now: Date): Automation {
+  const text = prompt.trim();
+  const same = a.trigger.kind === trigger.kind
+    && (a.trigger.kind !== 'daily' || trigger.kind !== 'daily' || (a.trigger.time === trigger.time && !!a.trigger.weekdays === !!trigger.weekdays));
+  return {
+    ...a,
+    title: a.title === autoTitle(a.prompt) ? autoTitle(text) : a.title,
+    prompt: text,
+    trigger,
+    nextRunAt: same ? a.nextRunAt : nextRun(trigger, now)?.toISOString() ?? null,
+  };
+}
+
 /** What the Dispatcher is told when an automation fires. `context` says what set it off (the merged PR). */
 export function automationMessage(a: Pick<Automation, 'title' | 'prompt'>, context = ''): string {
   return `[Automation: ${a.title.replace(/[\]\n]/g, ' ')}]\n${context ? `${context}\n` : ''}${a.prompt.trim()}`;

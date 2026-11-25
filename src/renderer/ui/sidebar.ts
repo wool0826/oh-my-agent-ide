@@ -19,6 +19,7 @@ import { act } from '../app';
 import { applyWidths } from './resize';
 import { ageHtml, away, tickDecisions } from './chat';
 import { pop } from './controls';
+import { quietUntil } from '../../shared/notifyRules';
 import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, queuedLabel, ring, S, store, sym, t, task, ui, when, worker } from './core';
 import { setTip } from './tip';
 import { segc } from './settings';
@@ -35,8 +36,23 @@ export function workerIcon(w: Worker) {
   return ic(glyph[workerState(w, x)]);
 }
 
+/**
+ * A moon in the sidebar's foot while the do-not-disturb hours are on, so the missing sound has a reason on screen.
+ * Its tooltip says until when, as the time is written in Settings; it opens Settings on the alerts.
+ */
+export function renderDnd() {
+  const mark = document.getElementById('dnd-mark');
+  if (!mark || !S) return;
+  const until = quietUntil(S.settings.quietFrom, S.settings.quietTo, new Date());
+  mark.hidden = !until;
+  if (!until) return;
+  const label = t('dnd.until', { t: until });
+  if (mark.dataset.tip !== label) { mark.dataset.tip = label; mark.setAttribute('aria-label', label); }
+}
+
 export function renderSidebar() {
   const s = S!;
+  renderDnd();
   const pending = s.decisions.filter((d) => d.status === 'pending');
   const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
   // A Worker that waits for the Dispatcher's answer is listed too: its task is open and holds a slot.

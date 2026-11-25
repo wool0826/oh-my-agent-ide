@@ -4,6 +4,7 @@ import type { CodexLink, ThreadSink } from '../codex/client';
 import { SpendMeter, type SessionSpend } from '../../shared/spend';
 import { isUsageLimit, itemTool, plainCommand, usageSpend, type CodexItem, type CodexUsage } from '../../shared/codexEvents';
 import type { SessionEvents } from './session';
+import { t } from '../i18n';
 
 /** A tool of the app that a Codex session can call (the Dispatcher's and the Workers' own tools). */
 export interface CodexTool {
@@ -84,7 +85,7 @@ export class CodexSession {
   }
 
   send(text: string) {
-    if (this.closed) throw new Error('Session is closed.');
+    if (this.closed) throw new Error(t('err.sessionClosed'));
     this.busy = true;
     this.ev.onStatus?.('busy', '');
     this.queue.push(text);

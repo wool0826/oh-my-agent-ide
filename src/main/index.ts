@@ -336,6 +336,7 @@ function registerIpc() {
     return workers.send(picked.workerId, 'user', PICK_MESSAGE);
   });
   handle('auto:add', (prompt: string, trigger: AutoTrigger) => { automations.add({ prompt, trigger }); });
+  handle('auto:update', (id: string, prompt: string, trigger: AutoTrigger) => { automations.update(id, { prompt, trigger }); });
   handle('auto:toggle', (id: string, on: boolean) => automations.setEnabled(id, on));
   handle('auto:remove', (id: string) => { automations.remove(id); });
   // Refused while the Worker works; its dev server stops only once it may go.

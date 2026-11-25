@@ -173,6 +173,8 @@ export const ui = {
   /** The selected memo, and automation ('new': the add form), in the right sidebar (ui/panes.ts). */
   memoSel: null as string | null,
   autoSel: 'new' as string | null,
+  /** The automation being changed, with what its form's switches say; the text and the time keep themselves (data-keep). */
+  autoEdit: null as { id: string; kind: 'daily' | 'merged'; wk: boolean } | null,
   /** The selected saved script ('new': the add form), and the one being edited (ui/scripts.ts). */
   scriptSel: 'new' as string | null,
   scriptEdit: null as string | null,

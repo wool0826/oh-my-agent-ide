@@ -4,6 +4,7 @@ import path from 'node:path';
 import { run, uid } from './util';
 import { log } from './log';
 import { CHECKPOINT_FORMAT, checkpointPrefix, checkpointsToDrop, parseCheckpoints, type Checkpoint } from '../shared/checkpoints';
+import { t } from './i18n';
 
 /** Commits are made without touching the user's git identity or hooks. */
 const IDENT = ['-c', 'user.name=Oh My Agent IDE', '-c', 'user.email=checkpoints@oh-my-agent-ide.invalid'];
@@ -62,14 +63,14 @@ export function saveCheckpoint(dir: string, workerId: string, label: string): Pr
  * pushed stays valid; the restored files show as changes against the branch's last commit.
  */
 export async function restoreCheckpoint(dir: string, workerId: string, ref: string): Promise<void> {
-  if (!ref.startsWith(checkpointPrefix(workerId)) || /[\s~^:?*[\\]|\.\./.test(ref)) throw new Error('Not a checkpoint of this Worker.');
+  if (!ref.startsWith(checkpointPrefix(workerId)) || /[\s~^:?*[\\]|\.\./.test(ref)) throw new Error(t('ckpt.err.notMine'));
   const all = await listCheckpoints(dir, workerId);
   const target = all.find((c) => c.ref === ref);
-  if (!target) throw new Error('The checkpoint is gone.');
+  if (!target) throw new Error(t('ckpt.err.gone'));
   await saveCheckpoint(dir, workerId, `Before going back to: ${target.label}`.slice(0, 120));
   await inTurn(dir, async () => {
     const read = await run('git', ['read-tree', '-u', '--reset', target.tree], { cwd: dir, timeoutMs: 120_000 });
-    if (read.code !== 0) throw new Error(read.stderr.trim().split('\n')[0] || 'git read-tree failed');
+    if (read.code !== 0) throw new Error(read.stderr.trim().split('\n')[0] || t('ckpt.err.restore'));
     // Files made after the checkpoint and never committed are not in its tree; git leaves them, so they go here.
     // Ignored files (node_modules, .env) stay.
     const clean = await run('git', ['clean', '-fd'], { cwd: dir, timeoutMs: 120_000 });
