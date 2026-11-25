@@ -17,11 +17,12 @@ const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 
 /**
  * File paths a prompt names: repository paths (`src/shared/i18n.ts`) and bare file names (`gitwork.ts`), with
- * backslashes as slashes. Absolute paths (outside the repository), URLs and paths without an extension are left out.
+ * backslashes as slashes. Windows drive paths (outside the repository), URLs and paths without an extension are left
+ * out; a leading "/" or "./" is dropped, which leaves a POSIX absolute path too long to meet a repository file.
  */
 export function promptPaths(prompt: string): string[] {
   const out = new Set<string>();
-  for (const raw of prompt.split(/[\s`'"()<>[\]{},;|*]+/)) {
+  for (const raw of prompt.split(/[\s`'"()<>[\]{},;|*=]+/)) {
     if (!raw || /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || /^[a-z]:[\\/]/i.test(raw)) continue;
     // Trailing sentence marks and a ":12" line number are not part of the path.
     const p = raw.replace(/\\/g, '/').replace(/[.:!?]+$/, '').replace(/(:\d+)+$/, '').replace(/^(\.\/|\/)+/, '');

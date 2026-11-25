@@ -21,6 +21,15 @@ test('overlap: URLs, absolute paths, versions and folders are not file paths', (
   assert.deepEqual(paths, ['.gitignore']);
 });
 
+test('overlap: a path after "=" is named too', () => {
+  assert.deepEqual(promptPaths('file=src/a.ts'), ['src/a.ts']);
+});
+
+test('overlap: a bare name meets that name in any folder', () => {
+  const tasks = [task('T-0001', { changedFiles: ['src/main/index.ts', 'src/renderer/index.ts', 'src/index.tsx'] })];
+  assert.deepEqual(findOverlaps({ repo: 'app', paths: ['index.ts'] }, tasks), [{ taskId: 'T-0001', files: ['src/main/index.ts', 'src/renderer/index.ts'] }]);
+});
+
 test('overlap: a named path meets a changed file at a folder boundary', () => {
   assert.equal(pathMeets('src/shared/i18n.ts', 'src/shared/i18n.ts'), true);
   assert.equal(pathMeets('i18n.ts', 'src/shared/i18n.ts'), true);

@@ -47,19 +47,20 @@ export async function inspectBranch(repoPath: string, worktree: string | null, d
 
 /**
  * The branch checked out in a worktree and the files it changes against where it left the default branch: committed,
- * uncommitted and untracked (not ignored), a rename as both its paths. `branch` is '' on a detached HEAD. Null
- * without a common base.
+ * uncommitted and untracked (not ignored), a rename as both its paths. `branch` is '' on a detached HEAD, and
+ * `hintExists` says whether the branch `hint` exists locally. Null without a common base.
  */
-export async function changedFiles(worktree: string, defaultBranch: string, local = false): Promise<{ branch: string; files: string[] } | null> {
+export async function changedFiles(worktree: string, defaultBranch: string, local = false, hint: string | null = null): Promise<{ branch: string; hintExists: boolean; files: string[] } | null> {
   if (!fs.existsSync(path.join(worktree, '.git'))) return null;
   const branch = (await run('git', ['branch', '--show-current'], { cwd: worktree })).stdout.trim();
+  const hintExists = !!hint && await hasRef(worktree, `refs/heads/${hint}`);
   const mb = await run('git', ['merge-base', 'HEAD', local ? defaultBranch : `origin/${defaultBranch}`], { cwd: worktree });
   if (mb.code !== 0) return null;
   const diff = await run('git', ['diff', '--name-only', '--no-renames', '-z', mb.stdout.trim()], { cwd: worktree });
   if (diff.code !== 0) return null;
   const untracked = await run('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd: worktree });
   const files = new Set([...diff.stdout.split('\0'), ...untracked.stdout.split('\0')].filter(Boolean));
-  return { branch, files: [...files].sort().slice(0, 1000) };
+  return { branch, hintExists, files: [...files].sort().slice(0, 1000) };
 }
 
 /** No uncommitted changes in the worktree (ignored files don't count), so removing it loses nothing. */
