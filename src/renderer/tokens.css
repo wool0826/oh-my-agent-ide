@@ -146,6 +146,7 @@
   --blur-panel: blur(28px) saturate(180%);
   --blur-overlay: blur(32px) saturate(190%);
   --blur-scrim: blur(3px);
+  --mask-solid: #000;
   --z-raised: 1;
   --z-composer: 2;
   --z-resize: 3;

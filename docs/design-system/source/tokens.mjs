@@ -5,7 +5,7 @@
 // Three layers:
 //   1. ref.*      primitives (raw palette). Components never use these directly.
 //   2. themes.*   semantic roles per theme (dark default, light). Components use these.
-//   3. scale.*    theme-independent scales: type, space, radius, size, motion, blur, z-index.
+//   3. scale.*    theme-independent scales: type, space, radius, size, motion, blur, mask, z-index.
 // A value written as "{ref.blue.400}" is an alias; in CSS it becomes var(--ref-blue-400).
 
 export const ref = {
@@ -70,6 +70,7 @@ export const scale = {
     stretch: 'cubic-bezier(.3, .8, .4, 1)', // tab pill squash and stretch
   },
   blur: { panel: 'blur(28px) saturate(180%)', overlay: 'blur(32px) saturate(190%)', scrim: 'blur(3px)' },
+  mask: { solid: '#000' }, // opaque stop of a fade mask: only its alpha counts, so one value for both themes
   z: { raised: '1', composer: '2', resize: '3', drawer: '20', 'menu-catch': '30', menu: '31', settings: '40', scrim: '50', dialog: '51', toast: '60', popover: '80', ctxmenu: '90', tooltip: '100' },
 };
 
