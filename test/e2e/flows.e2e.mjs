@@ -1168,11 +1168,13 @@ flow('a state update that changes nothing in a panel leaves the panel as it is',
 flow('a Korean syllable being composed in a sidebar field is not split when the sidebar is drawn again', {}, async (app) => {
   await app.click('#chat-ins [data-action="ins-tab"][data-v="memo"]');
   await app.until("!!document.getElementById('memo-new')", 'the new memo field');
-  await app.evaluate("const i = document.getElementById('memo-new'); window.__field = i; window.__ends = 0; i.addEventListener('compositionend', () => window.__ends++); i.focus(); return 1;");
+  // The field is the one the composition starts in: a draw before that may still replace the field first focused.
+  await app.evaluate("window.__field = null; window.__ends = 0; document.addEventListener('compositionstart', (e) => { window.__field = e.target; }, true); document.addEventListener('compositionend', () => window.__ends++, true); document.getElementById('memo-new').focus(); return 1;");
   // A key first, so the draws that follow are real ones (skipSameHtml lets them through after user input).
   await app.key('ShiftLeft', 'Shift', 16);
   await app.cdp('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 });
   await app.cdp('Input.imeSetComposition', { text: '하', selectionStart: 1, selectionEnd: 1 });
+  await app.until("window.__field?.id === 'memo-new' && window.__field.isConnected", 'the syllable being composed in the new memo field', 20_000, "'in: ' + (window.__field?.outerHTML.slice(0, 120) ?? 'nothing') + ', focus: ' + document.activeElement?.id");
   // The sidebar has something new to draw while the syllable is half built.
   await app.say('@fake task - Something to list\n@@fake result Done.');
   await app.until("return (await window.ide.call('state')).results.length > 0", 'the result');
