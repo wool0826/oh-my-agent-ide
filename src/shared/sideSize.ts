@@ -28,13 +28,19 @@ export function parseSideSize(raw: string | null | undefined): SideSize {
 
 export const sideSizeText = (s: SideSize) => `${s.w ?? ''}x${s.h ?? ''}`;
 
+/** The edge a resize handle sits on: the height one (top) takes ↑ ↓, the width one (side) ← →. */
+export type ResizeEdge = 'w' | 'h';
+const AXIS: Record<string, ResizeEdge> = { ArrowLeft: 'w', ArrowRight: 'w', ArrowUp: 'h', ArrowDown: 'h' };
+/** Whether an arrow key belongs to the handle on `edge`. */
+export const edgeKey = (edge: ResizeEdge, key: string) => AXIS[key] === edge;
+
 /**
  * The panel sits in the chat's bottom-right corner and grows from its top-left one: ← and ↑ make it bigger,
- * → and ↓ smaller. `now` is its size on screen. Null for any other key.
+ * → and ↓ smaller. `now` is its size on screen. With `edge`, only that handle's keys count. Null for any other key.
  */
-export function keySideSize(key: string, shift: boolean, now: SideRoom, room: SideRoom): SideSize | null {
+export function keySideSize(key: string, shift: boolean, now: SideRoom, room: SideRoom, edge?: ResizeEdge): SideSize | null {
   const step = SIDE_STEP * (shift ? 4 : 1);
   const d = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[key];
-  if (!d) return null;
+  if (!d || (edge && !edgeKey(edge, key))) return null;
   return clampSideSize({ w: now.w + d[0], h: now.h + d[1] }, room);
 }

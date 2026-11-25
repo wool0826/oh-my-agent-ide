@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { clampTermSize, pushHistory, trimRuns, TERM_DEF, TERM_HISTORY, TERM_MIN, type TermRun, type TermView } from '../src/shared/terminal';
+import { clampTermSize, keyTermSize, pushHistory, trimRuns, TERM_DEF, TERM_HISTORY, TERM_MIN, TERM_STEP, type TermRun, type TermView } from '../src/shared/terminal';
 import { store } from '../src/main/store';
 import { terminal } from '../src/main/terminal';
 
@@ -69,4 +69,16 @@ test('a line runs in the terminal with its output, not in the chat; Clear keeps 
   for (let i = 0; i < 100 && terminal.state().runs[0]?.running; i++) await new Promise((r) => setTimeout(r, 50));
   assert.equal(terminal.state().runs[0].stopped, true);
   assert.equal(terminal.state().runs[0].code, null);
+});
+
+test('the edge handles: ↑ ↓ on the top one, → ← on the side one, Shift by four steps, within the room', () => {
+  const room = { w: 1000, h: 600 };
+  const now = { w: 560, h: 320 };
+  assert.deepEqual(keyTermSize('h', 'ArrowUp', false, now, room), { w: 560, h: 320 + TERM_STEP });
+  assert.deepEqual(keyTermSize('h', 'ArrowDown', true, now, room), { w: 560, h: 320 - 4 * TERM_STEP });
+  assert.deepEqual(keyTermSize('w', 'ArrowRight', true, now, room), { w: 560 + 4 * TERM_STEP, h: 320 });
+  assert.deepEqual(keyTermSize('w', 'ArrowLeft', false, { w: TERM_MIN.w + 4, h: 320 }, room), { w: TERM_MIN.w, h: 320 });
+  assert.deepEqual(keyTermSize('w', 'ArrowRight', false, { w: 995, h: 320 }, room), { w: 1000, h: 320 });
+  assert.equal(keyTermSize('h', 'ArrowLeft', false, now, room), null);
+  assert.equal(keyTermSize('w', 'ArrowUp', false, now, room), null);
 });
