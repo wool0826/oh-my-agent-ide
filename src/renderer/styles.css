@@ -720,7 +720,7 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 /* The repository list as columns (B2): name, default branch, path, then the pills; the narrow list drops path, then branch. */
 #repo-main .lst { container-type: inline-size; }
 .li.repo, .li-cols.repo { grid-template-columns: 22px minmax(0, 1.3fr) minmax(0, .6fr) minmax(0, 1fr) auto; }
-.li-cols { display: grid; gap: var(--space-10); padding: var(--space-8) var(--space-12) var(--space-4); font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); }
+.li-cols { display: grid; gap: var(--space-8); padding: var(--space-8) var(--space-10) var(--space-4); font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); }
 .li-cols > span, .li .c-br, .li .c-path { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .li .c-br, .li .c-path { font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--text-secondary); }
 .li-cols + .li:not(.sel) { box-shadow: none; }

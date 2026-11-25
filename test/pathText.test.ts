@@ -4,6 +4,7 @@ import { midPath } from '../src/shared/pathText';
 
 test('a long path keeps its first and last folders, with the middle left out', () => {
   assert.equal(midPath('C:\\Users\\me\\AppData\\Local\\Temp\\oma-e2e\\home'), 'C:\\Users\\…\\oma-e2e\\home');
+  assert.equal(midPath('\\\\server\\share\\team\\a\\b\\home'), '\\\\server\\share\\…\\b\\home');
   assert.equal(midPath('/Users/me/Library/Application Support/OhMyAgentIDE/home'), '/Users/me/…/OhMyAgentIDE/home');
 });
 

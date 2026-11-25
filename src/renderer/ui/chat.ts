@@ -402,7 +402,7 @@ export function setupHtml() {
   const s = S!;
   const steps = [
     { label: t('setup.tools'), done: !s.preflightFailed, btn: `<button type="button" class="btn" data-action="open-settings" data-v="general">${t('setup.toolsSee')}</button>` },
-    { label: t('setup.account'), done: !s.setupNeeded, btn: `<button type="button" class="btn" data-action="open-settings" data-v="accounts">${t('usage.addAccount')}</button>` },
+    { label: t('setup.account'), done: false, btn: `<button type="button" class="btn" data-action="open-settings" data-v="accounts">${t('usage.addAccount')}</button>` },
     { label: t('setup.repo'), done: s.repos.length > 0, btn: `<button type="button" class="btn" data-action="setup-repo">${t('repo.add')}</button>` },
   ];
   const cur = steps.findIndex((x) => !x.done);

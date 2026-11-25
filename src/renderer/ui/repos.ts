@@ -98,7 +98,7 @@ export function renderRepos() {
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
       const local = r.local ? `<span class="pill" data-tip="${esc(t('repo.localNote'))}">${t('repo.local')}</span>` : '';
-      return `<div tabindex="0" role="button" class="li repo${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="c-br">${esc(r.defaultBranch)}</span><span class="c-path" data-tip="${esc(r.path)}">${esc(shortPath(r.path, 2))}</span><span class="r">${local}${run ? `<span class="pill" data-tone="accent">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill" data-tone="pr-open">PR ${pr}</span>` : ''}</span></div>`;
+      return `<div tabindex="0" role="button" class="li repo${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="c-br">${esc(r.defaultBranch || '–')}</span><span class="c-path" data-tip="${esc(r.path)}">${esc(shortPath(r.path, 2))}</span><span class="r">${local}${run ? `<span class="pill" data-tone="accent">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill" data-tone="pr-open">PR ${pr}</span>` : ''}</span></div>`;
     }).join('')}${jiraHtml()}</div>`;
   });
   const ins = $('#repo-ins');

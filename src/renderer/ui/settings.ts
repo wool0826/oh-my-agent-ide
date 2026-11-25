@@ -323,7 +323,7 @@ export function settingsHtml() {
 
   const general = `${grp(`<div id="pre-rows">${preflightRows()}</div>`, `${t('pre.title')}<button class="btn btn-icon btn-sm clear-x always" data-action="preflight-run" data-tip="${t('diff.refresh')}" aria-label="${t('diff.refresh')}"><svg><use href="#s-refresh"/></svg></button>`)}${grp(`
       ${row(t('set.language'), 'set-lang', segc('set-lang', st.language, [{ value: 'en', label: 'English' }, { value: 'ko', label: '한국어' }], t('set.language')))}
-      ${row(t('set.home'), 'set-home-v', `<input type="hidden" id="set-home" value="${esc(st.home)}"><span class="sval path" id="set-home-v" tabindex="0" data-tip="${esc(st.home)}">${esc(midPath(st.home))}</span><button class="btn btn-lg" data-action="pick-home">${t('choose')}</button>`)}
+      ${row(t('set.home'), 'set-home-v', `<input type="hidden" id="set-home" value="${esc(st.home)}"><span class="sval path" id="set-home-v" tabindex="0" aria-label="${esc(`${t('set.home')}: ${st.home}`)}" data-tip="${esc(st.home)}">${esc(midPath(st.home))}</span><button class="btn btn-lg" data-action="pick-home">${t('choose')}</button>`)}
       ${row(t('set.ghHost'), 'set-gh', `<input class="inp w" id="set-gh" value="${esc(st.githubHost)}" placeholder="github.com">`)}
       ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 0, 90, t('set.archive'), 'set.unitDays'))}
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
