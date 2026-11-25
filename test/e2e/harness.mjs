@@ -213,21 +213,29 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     child.kill('SIGKILL');
     throw Object.assign(new Error(`${e.message}\nPage: ${page}\nApp log: ${fs.readFileSync(path.join(dir, 'app.log'), 'utf8').slice(-3000)}`), { dir, home });
   }
-  await evaluate(PROBE);
   // On a screen too small for the window's default size (a CI screen narrower than 1100), the page is made as wide
   // as that size, or the right sidebar would start as a closed drawer (I1). A wide screen keeps the real width.
-  // Its height stays the window's own, so the pointer still reaches the bottom of the page.
-  if (await evaluate('window.innerWidth') < 1100) {
-    await send('Emulation.setDeviceMetricsOverride', { width: 1320, height: await evaluate('window.innerHeight'), deviceScaleFactor: 1, mobile: false });
-    await until("document.querySelector('#win').clientWidth === 1320 && !document.querySelector('#win').classList.contains('ins-over')", 'the default width');
-    // The page gets its resize event only with an input after the change, and that event closes a tooltip and
-    // cancels one about to show: moves over an empty corner of the window until the event has come, so it cannot
-    // land in the middle of the flow.
-    for (let i = 0; !(await evaluate('window.__e2e.resized')); i++) {
-      if (i === 200) throw Object.assign(new Error('The page never got the resize event of the default width'), { dir, home });
-      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 3 + (i % 2) });
-      await sleep(50);
+  // Its height stays the window's own, so the pointer still reaches the bottom of the page. Here too, a failure
+  // stops the app before it is reported.
+  try {
+    await evaluate(PROBE);
+    if (await evaluate('window.innerWidth') < 1100) {
+      const before = await evaluate('__e2e.resized');
+      await send('Emulation.setDeviceMetricsOverride', { width: 1320, height: await evaluate('window.innerHeight'), deviceScaleFactor: 1, mobile: false });
+      await until("document.querySelector('#win').clientWidth === 1320 && !document.querySelector('#win').classList.contains('ins-over')", 'the default width');
+      // The page gets its resize event only with an input after the change, and that event closes a tooltip and
+      // cancels one about to show: moves over an empty corner of the window until the event has come, so it cannot
+      // land in the middle of the flow.
+      for (let i = 0; !(await evaluate(`__e2e.resized > ${before}`)); i++) {
+        if (i === 200) throw new Error('The page never got the resize event of the default width');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 3 + (i % 2) });
+        await sleep(50);
+      }
     }
+  } catch (e) {
+    try { ws.close(); } catch { /* closed */ }
+    child.kill('SIGKILL');
+    throw Object.assign(e, { dir, home });
   }
 
   return {
