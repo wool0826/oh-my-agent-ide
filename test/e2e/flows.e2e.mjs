@@ -1,18 +1,9 @@
 // End-to-end flows: the built app, fake agents (OMA_FAKE_AGENT), a stand-in for gh, and the real window.
 // Each test starts the app on its own empty profile. Run with `npm run e2e`.
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { launch } from './harness.mjs';
-
-/** Runs a flow against a fresh app and always stops it. */
-function flow(name, opts, fn) {
-  test(name, { timeout: 120_000 }, async () => {
-    const app = await launch(opts);
-    try { await fn(app); } finally { await app.stop(); }
-  });
-}
+import { flow } from './harness.mjs';
 
 const task = (state, title) => state.tasks.find((x) => x.title === title);
 const DEC = '#chat-ins .dec';
@@ -333,7 +324,10 @@ flow('the side terminal runs lines apart from the chat in the dock under it, rec
   assert.equal(await app.evaluate("return document.querySelectorAll('#tm-cwd > .sh-cwd-t').length;"), 1);
   await app.evaluate("document.querySelector('#tm-input').value = 'echo side-terminal-ok'; return 1;");
   await app.key('Enter', 'Enter', 13);
-  await app.until("[...document.querySelectorAll('#tm-thread .tm-run:not(.live) .tm-out')].some((o) => o.innerText.includes('side-terminal-ok'))", 'the output in the terminal');
+  // A real shell starts and ends each line: the wait is for the finished run, as long as a slow runner takes, and a
+  // failure shows what the terminal holds.
+  const TM = "(document.querySelector('#tm')?.innerText ?? 'no terminal').slice(-1500)";
+  await app.until("[...document.querySelectorAll('#tm-thread .tm-run:not(.live) .tm-out')].some((o) => o.innerText.includes('side-terminal-ok'))", 'the finished run with its output in the terminal', 60_000, TM);
   // Not in the chat.
   assert.equal(await app.evaluate("return document.querySelectorAll('#chat-thread .sh-run').length;"), 0);
   assert.equal(await app.evaluate("return document.querySelector('#tm-input').value;"), '');
@@ -344,7 +338,8 @@ flow('the side terminal runs lines apart from the chat in the dock under it, rec
   await app.evaluate(`document.querySelector('#tm-input').value = ${JSON.stringify(`node -e "console.error('bad one');console.error('bad two');console.error('bad three')"`)}; return 1;`);
   await app.key('Enter', 'Enter', 13);
   const errRun = "[...document.querySelectorAll('#tm-thread .tm-run:not(.live)')].find((r) => r.innerText.includes('bad one'))";
-  await app.until(`!!${errRun}?.querySelector('.o-more')`, 'the folded stderr');
+  await app.until(`!!${errRun}`, 'the finished run that wrote to stderr', 60_000, TM);
+  await app.until(`!!${errRun}?.querySelector('.o-more')`, 'its stderr folded', 5000, TM);
   assert.deepEqual(await app.evaluate(`const r = ${errRun}; return [r.querySelector('.o-err').textContent, r.querySelector('.o-more').textContent];`), ['bad one', '+2 lines']);
   await app.evaluate(`${errRun}.querySelector('.o-more').click(); return 1;`);
   await app.until(`${errRun}?.querySelector('.o-err')?.textContent === 'bad one\\nbad two\\nbad three'`, 'the stderr opened');
@@ -926,19 +921,22 @@ flow('the appearance follows the setting, at once and after a restart of the pag
 
 flow('the palette finds something said and shows the chat from that message', {}, async (app) => {
   await app.say('Please remember the pineapple rule\n@fake say Noted: no pineapple on Fridays.');
-  await app.until("document.querySelector('#chat-thread').innerText.includes('no pineapple on Fridays')", "the Dispatcher's answer");
+  // The user's own bubble holds the words of the answer too (its @fake line): the wait is for the Dispatcher's message.
+  const answered = (words) => `const s = await window.ide.call('state'); return s.chat.some((c) => c.kind === 'dispatcher' && c.text.includes(${JSON.stringify(words)}))`;
+  await app.until(answered('no pineapple on Fridays'), "the Dispatcher's answer");
   // Enough later messages that the first is not what the chat opens on.
   for (let i = 0; i < 3; i++) await app.say(`Filler ${i}\n@fake say Filler answer ${i}.`);
-  await app.until("document.querySelector('#chat-thread').innerText.includes('Filler answer 2.')", 'the later messages');
+  // Every answer in and the turn over, so no message is still being written when the chat jumps to one.
+  await app.until(`${answered('Filler answer 2.')} && !s.dispatcher.busy;`, 'the later answers, with the Dispatcher at rest');
+  // The blink is for a screen that allows motion (a CI runner may ask for less).
+  await app.cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   // Ctrl+F opens the palette to find something said.
   await app.evaluate("document.querySelector('#chat-input').focus(); return 1;");
   await app.key('KeyF', 'f', 70, 2);
   await app.until("document.activeElement?.id === 'cmdk-q'", 'the palette opened by Ctrl+F');
   await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'pineapple fridays'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
-  const row = await app.until("[...document.querySelectorAll('.cmdk-it')].findIndex((el) => el.innerText.includes('no pineapple on Fridays')) + 1", 'the message among the results');
-  // The blink is for a screen that allows motion (a CI runner may ask for less).
-  await app.cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
-  await app.click(`#cmdk-${row - 1}`);
+  // The row is picked by its words and clicked in the same look, so it cannot be another row drawn in its place.
+  await app.until("const el = [...document.querySelectorAll('.cmdk-it')].find((x) => x.innerText.includes('no pineapple on Fridays')); el?.click(); return !!el;", 'the message among the results', 20_000, "[...document.querySelectorAll('.cmdk-it')].map((x) => x.innerText.replace(/\s+/g, ' ')).join(' / ')");
   // Read in the same look that finds it: the bubble blinks, and the mark is taken off again a moment later.
   const found = await app.until("const f = document.querySelector('#chat-thread .found'); return f && JSON.stringify({ text: f.innerText, bub: f.matches('.bub'), blink: f.getAnimations().some((a) => a.animationName === 'found') });", 'the message marked in the chat');
   const mark = JSON.parse(found);
@@ -1094,6 +1092,10 @@ flow('every control on the main screens has a name, and the keyboard keeps its p
 
 flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard focus, and cut text in full', {}, async (app) => {
   await app.evaluate("window.__tip = () => { const el = document.querySelector('#tip'); if (el.hidden || !el.classList.contains('on')) return null; const r = el.getBoundingClientRect(); return { text: el.querySelector('span').textContent, key: el.querySelector('kbd')?.textContent ?? '', top: r.top, bottom: r.bottom, left: r.left, right: r.right }; }; return 1;");
+  // What takes a tooltip away (or stops one about to show), kept for the message of a wait that fails.
+  await app.evaluate("window.__tipEv = []; const at = () => Math.round(performance.now()); addEventListener('resize', () => __tipEv.push('resize ' + at())); addEventListener('blur', () => __tipEv.push('blur ' + at())); for (const t of ['keydown', 'pointerdown', 'scroll', 'mouseover']) addEventListener(t, (e) => __tipEv.push(t + ' ' + (e.target?.id || e.target?.tagName || '') + ' ' + at()), true); return 1;");
+  const TIP = "'tip ' + JSON.stringify({ hidden: document.querySelector('#tip').hidden, on: document.querySelector('#tip').classList.contains('on'), text: document.querySelector('#tip').textContent }) + ' at ' + Math.round(performance.now()) + ' | events ' + __tipEv.slice(-12).join(', ')";
+  const tipOn = (what) => app.until('!!window.__tip()', what, 20_000, TIP);
   const tip = () => app.evaluate('return window.__tip();');
   const box = (sel) => app.evaluate(`const r = document.querySelector('${sel}').getBoundingClientRect(); return { top: r.top, bottom: r.bottom };`);
   const mod = process.platform === 'darwin' ? '⌘' : 'Ctrl+';
@@ -1102,7 +1104,7 @@ flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard 
   assert.ok(!(await tip()));
   // Hover: after the delay, above the control, with the shortcut as a key and not in the sentence.
   await app.hover('#side-toggle');
-  await app.until('!!window.__tip()', 'the tooltip on hover');
+  await tipOn('the tooltip on hover');
   const shown = await tip();
   assert.equal(shown.text, 'Collapse the sidebar');
   assert.equal(shown.key, `${mod}B`);
@@ -1112,16 +1114,16 @@ flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard 
   assert.equal(await app.evaluate("return document.querySelector('#side-toggle').getAttribute('aria-keyshortcuts');"), process.platform === 'darwin' ? 'Meta+B' : 'Control+B');
   // A key takes it away.
   await app.key('Escape', 'Escape', 27);
-  await app.until('!window.__tip()', 'the tooltip gone after a key');
+  await app.until('!window.__tip()', 'the tooltip gone after a key', 20_000, TIP);
   // Keyboard focus shows it at once; in the toolbar it sits below.
   await app.hover(AWAY);
   await app.evaluate("document.querySelector('#cmdk-btn').focus({ focusVisible: true }); return 1;");
-  await app.until("window.__tip()?.text === 'Search and go'", 'the tooltip on focus');
+  await app.until("window.__tip()?.text === 'Search and go'", 'the tooltip on focus', 20_000, TIP);
   const below = await tip();
   assert.equal(below.key, `${mod}K`);
   assert.ok(below.top > (await box('#cmdk-btn')).bottom, 'below a toolbar control');
   await app.evaluate("document.querySelector('#chat-input').focus(); return 1;");
-  await app.until('!window.__tip()', 'the tooltip gone on blur');
+  await app.until('!window.__tip()', 'the tooltip gone on blur', 20_000, TIP);
   // Cut text: a long title in the sidebar shows in full; a short one has nothing to add.
   const long = 'A task with a title that is far too long to fit in one line of the sidebar row';
   await app.say(`@fake task - ${long}\n@@fake result Done.\n@fake task - Short\n@@fake result Done.`);
@@ -1130,14 +1132,16 @@ flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard 
   await app.until("[...document.querySelectorAll('#side .row .t b')].filter((x) => x.textContent.includes('far too long') || x.textContent.trim() === 'Short').length >= 2", 'two rows in the sidebar');
   await app.evaluate("const all = [...document.querySelectorAll('#side .row .t b')]; all.find((x) => x.textContent.includes('far too long')).id = 'e2e-long'; all.find((x) => x.textContent.trim() === 'Short').id = 'e2e-short'; return 1;");
   await app.hover('#e2e-long');
-  await app.until('!!window.__tip()', 'the tooltip on cut text');
+  await tipOn('the tooltip on cut text');
   const cut = await tip();
   assert.match(cut.text, /far too long to fit in one line of the sidebar row/);
   assert.ok(cut.left >= 8 && cut.right <= (await app.evaluate('window.innerWidth')) - 8, 'inside the window');
   await app.hover(AWAY);
-  await app.until('!window.__tip()', 'the tooltip gone when the pointer leaves');
+  await app.until('!window.__tip()', 'the tooltip gone when the pointer leaves', 20_000, TIP);
+  // hover() returns once the page has handed the row its mouseover; the hover delay (500 ms) is then let pass in the
+  // page's own time, so a late page cannot make the check come early.
   await app.hover('#e2e-short');
-  await new Promise((r) => setTimeout(r, 900));
+  await app.until("performance.now() - __e2e.overAt >= 800", 'the hover delay passed on the short title', 20_000, TIP);
   assert.ok(!(await tip()), 'no tooltip for text that fits');
 });
 
@@ -1164,11 +1168,13 @@ flow('a state update that changes nothing in a panel leaves the panel as it is',
 flow('a Korean syllable being composed in a sidebar field is not split when the sidebar is drawn again', {}, async (app) => {
   await app.click('#chat-ins [data-action="ins-tab"][data-v="memo"]');
   await app.until("!!document.getElementById('memo-new')", 'the new memo field');
-  await app.evaluate("const i = document.getElementById('memo-new'); window.__field = i; window.__ends = 0; i.addEventListener('compositionend', () => window.__ends++); i.focus(); return 1;");
+  // The field is the one the composition starts in: a draw before that may still replace the field first focused.
+  await app.evaluate("window.__field = null; window.__ends = 0; document.addEventListener('compositionstart', (e) => { window.__field = e.target; }, true); document.addEventListener('compositionend', () => window.__ends++, true); document.getElementById('memo-new').focus(); return 1;");
   // A key first, so the draws that follow are real ones (skipSameHtml lets them through after user input).
   await app.key('ShiftLeft', 'Shift', 16);
   await app.cdp('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 });
   await app.cdp('Input.imeSetComposition', { text: '하', selectionStart: 1, selectionEnd: 1 });
+  await app.until("window.__field?.id === 'memo-new' && window.__field.isConnected", 'the syllable being composed in the new memo field', 20_000, "'in: ' + (window.__field?.outerHTML.slice(0, 120) ?? 'nothing') + ', focus: ' + document.activeElement?.id");
   // The sidebar has something new to draw while the syllable is half built.
   await app.say('@fake task - Something to list\n@@fake result Done.');
   await app.until("return (await window.ide.call('state')).results.length > 0", 'the result');
@@ -1502,16 +1508,16 @@ flow('a result is cleared on its own by its ✕ or Delete and comes back with Un
 flow('a Notifications row swiped sideways is cleared with Undo; a short swipe, a scroll or a decision comes back', {}, async (app) => {
   await app.say('@fake task - First one\n@@fake result One.\n@fake task - Second one\n@@fake result Two.\n@fake task - Third one\n@@fake result Three.\n@fake task - Ask one\n@@fake permission npm install a\n@@fake result Installed.');
   await app.until("document.querySelectorAll('#chat-ins .res').length === 3 && !!document.querySelector('#chat-ins .dec[data-dec]')", 'three results and a decision');
-  // The list settles before each press (a decision's card grows as its parts arrive), so it lands on the row measured.
-  const steady = async () => {
-    let last = '', same = 0;
-    for (let i = 0; i < 80 && same < 4; i++) {
-      await new Promise((r) => setTimeout(r, 150));
-      const now = await app.evaluate("return [...document.querySelectorAll('#chat-ins .res, #chat-ins .dec')].map((x) => x.getBoundingClientRect().top).join();");
-      same = now === last ? same + 1 : 0;
-      last = now;
-    }
-  };
+  // The list settles before each press, so it lands on the row measured: the decision's card is whole (its slot clock
+  // shows once its task waits, and moved the rows under it by a line), nothing in the list is moving, and the rows
+  // stood still over four looks in a row.
+  const steady = async () => app.evaluate('window.__rows = null; return 1;').then(() => app.until(`const card = document.querySelector('#chat-ins .dec[data-dec]'); const clock = card?.querySelector('.dhold');
+    if (card && clock?.hidden) return false;
+    // A move or fade that ends (an endless one, such as a pulse, never would).
+    if (document.getAnimations().some((a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity && document.querySelector('#chat-ins')?.contains(a.effect?.target))) { window.__rows = null; return false; }
+    const now = [...document.querySelectorAll('#chat-ins .res, #chat-ins .dec')].map((x) => x.getBoundingClientRect().top).join();
+    if (!window.__rows || window.__rows.at !== now) { window.__rows = { at: now, same: 0 }; return false; }
+    return ++window.__rows.same >= 3;`, 'the Notifications list at rest', 20_000, "[...document.querySelectorAll('#chat-ins .res, #chat-ins .dec')].map((x) => x.className + ' ' + Math.round(x.getBoundingClientRect().top)).join(' / ') + ' | clock hidden ' + document.querySelector('#chat-ins .dec[data-dec] .dhold')?.hidden"));
   await steady();
   const ids = await app.evaluate("return [...document.querySelectorAll('#chat-ins .res')].map((x) => x.dataset.nav);");
   const w = await app.evaluate("document.querySelector('#chat-ins .res').offsetWidth");

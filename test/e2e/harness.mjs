@@ -5,13 +5,67 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { test } from 'node:test';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..', '..');
 const electron = createRequire(import.meta.url)('electron'); // the path of the Electron executable
+// Only for the pause between two looks at a condition, or between the moves of a gesture: never as the wait itself.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** A promise that gives up after `ms`, so a window that no longer answers cannot hold a test. */
+const within = (p, ms, what) => {
+  let timer;
+  return Promise.race([p, new Promise((_, j) => { timer = setTimeout(() => j(new Error(`${what}: no answer in ${ms} ms`)), ms); })]).finally(() => clearTimeout(timer));
+};
+
+/**
+ * What the helpers wait on, kept by the page: the last element it got a mouseover for (the event the tooltip listens
+ * to) and when, when it got its last pointer move, and how many resize events it got. Put in again after a reload.
+ */
+const PROBE = "if (!window.__e2e) { window.__e2e = { over: null, overAt: 0, movedAt: 0, resized: 0 }; addEventListener('mouseover', (e) => { __e2e.over = e.target; __e2e.overAt = performance.now(); }, true); addEventListener('pointermove', () => { __e2e.movedAt = performance.now(); }, true); addEventListener('resize', () => { __e2e.resized++; }); } return 1;";
+
+/** Where a failed flow leaves its picture, page and logs (uploaded by CI): OMA_E2E_OUT, or test-results/e2e. */
+export const failuresDir = process.env.OMA_E2E_OUT || path.join(root, 'test-results', 'e2e');
+const slug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'flow';
+
+/** The logs of a launch: the app's own log and what Electron printed. */
+function copyLogs(dir, home, out) {
+  for (const [from, to] of [[path.join(home, 'data', 'app.log'), 'app.log'], [path.join(dir, 'app.log'), 'electron.log']]) {
+    try { fs.copyFileSync(from, path.join(out, to)); } catch { /* not written */ }
+  }
+}
+
+/**
+ * Runs a flow against a fresh app and always stops it. When it fails, a picture of the window, the page's DOM and
+ * the app's logs are saved under failuresDir/<flow name>, and the test output says where.
+ */
+export function flow(name, opts, fn) {
+  test(name, { timeout: 120_000 }, async () => {
+    let app;
+    try {
+      app = await launch(opts);
+    } catch (e) {
+      if (e.dir) {
+        const out = path.join(failuresDir, slug(name));
+        fs.mkdirSync(out, { recursive: true });
+        fs.writeFileSync(path.join(out, 'error.txt'), String(e.stack ?? e));
+        copyLogs(e.dir, e.home, out);
+        console.error(`e2e: the app's logs for "${name}" are in ${out}`);
+      }
+      throw e;
+    }
+    try {
+      await fn(app);
+    } catch (e) {
+      await app.keep(path.join(failuresDir, slug(name)), e).then((out) => console.error(`e2e: what "${name}" showed is in ${out}`), (x) => console.error(`e2e: could not keep what "${name}" showed: ${x.message}`));
+      throw e;
+    } finally {
+      await app.stop();
+    }
+  });
+}
 
 const freePort = () => new Promise((resolve, reject) => {
   const s = net.createServer();
@@ -81,7 +135,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
       const page = pages.find((p) => p.type === 'page' && p.url.endsWith('index.html'));
       if (page) { ws = new WebSocket(page.webSocketDebuggerUrl); await new Promise((r, j) => { ws.addEventListener('open', r); ws.addEventListener('error', j); }); break; }
     } catch { /* not up yet */ }
-    if (Date.now() > deadline) { child.kill(); throw new Error(`The app did not start. Log: ${fs.readFileSync(path.join(dir, 'app.log'), 'utf8').slice(-2000)}`); }
+    if (Date.now() > deadline) { child.kill(); throw Object.assign(new Error(`The app did not start. Log: ${fs.readFileSync(path.join(dir, 'app.log'), 'utf8').slice(-2000)}`), { dir, home }); }
     await sleep(250);
   }
   let id = 0;
@@ -98,15 +152,18 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     return m.result?.result?.value;
   }
 
-  /** Waits until the expression is truthy in the page and returns its value. */
-  async function until(js, what = js, timeoutMs = 20_000) {
+  /**
+   * Waits until the expression is truthy in the page and returns its value. `show`, a page expression, says what the
+   * failure message shows of the page (the sidebars by default).
+   */
+  async function until(js, what = js, timeoutMs = 20_000, show = "document.querySelector('#side')?.innerText + ' | ' + (document.querySelector('.inspector:not([hidden])')?.innerText ?? '').slice(0, 600)") {
     const end = Date.now() + timeoutMs;
     for (;;) {
       const v = await evaluate(js);
       if (v) return v;
       if (Date.now() > end) {
-        const state = await evaluate("document.querySelector('#side')?.innerText + ' | ' + (document.querySelector('.inspector:not([hidden])')?.innerText ?? '').slice(0, 600)").catch(() => '');
-        throw new Error(`Timed out waiting for: ${what}\nOn screen: ${state}`);
+        const state = await evaluate(show).catch((x) => `(could not read: ${x.message})`);
+        throw new Error(`Timed out after ${timeoutMs} ms waiting for: ${what}\nOn screen: ${state}`);
       }
       await sleep(150);
     }
@@ -154,18 +211,31 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     const page = await evaluate("document.readyState + ' | ' + location.href + ' | ide=' + typeof window.ide + ' | body=' + document.body.innerText.slice(0, 300)").catch((x) => String(x));
     try { ws.close(); } catch { /* closed */ }
     child.kill('SIGKILL');
-    throw new Error(`${e.message}\nPage: ${page}\nApp log: ${fs.readFileSync(path.join(dir, 'app.log'), 'utf8').slice(-3000)}`);
+    throw Object.assign(new Error(`${e.message}\nPage: ${page}\nApp log: ${fs.readFileSync(path.join(dir, 'app.log'), 'utf8').slice(-3000)}`), { dir, home });
   }
   // On a screen too small for the window's default size (a CI screen narrower than 1100), the page is made as wide
   // as that size, or the right sidebar would start as a closed drawer (I1). A wide screen keeps the real width.
-  // Its height stays the window's own, so the pointer still reaches the bottom of the page.
-  if (await evaluate('window.innerWidth') < 1100) {
-    await send('Emulation.setDeviceMetricsOverride', { width: 1320, height: await evaluate('window.innerHeight'), deviceScaleFactor: 1, mobile: false });
-    await until("document.querySelector('#win').clientWidth === 1320 && !document.querySelector('#win').classList.contains('ins-over')", 'the default width');
-    // The page gets its resize event only with the first input after the change, and that closes a tooltip: a move
-    // to an empty corner of the window lets it pass before the flow starts.
-    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 3 });
-    await sleep(300);
+  // Its height stays the window's own, so the pointer still reaches the bottom of the page. Here too, a failure
+  // stops the app before it is reported.
+  try {
+    await evaluate(PROBE);
+    if (await evaluate('window.innerWidth') < 1100) {
+      const before = await evaluate('__e2e.resized');
+      await send('Emulation.setDeviceMetricsOverride', { width: 1320, height: await evaluate('window.innerHeight'), deviceScaleFactor: 1, mobile: false });
+      // A window off screen may lay the page out and send its resize event only with an input after the change, and
+      // that event closes a tooltip and cancels one about to show: moves over an empty corner of the window until the
+      // page is at that width and has had the event, so it cannot land in the middle of the flow.
+      const ready = `document.querySelector('#win').clientWidth === 1320 && !document.querySelector('#win').classList.contains('ins-over') && __e2e.resized > ${before}`;
+      for (let i = 0; !(await evaluate(ready)); i++) {
+        if (i === 400) throw new Error(`The page never reached the default width with its resize event: ${await evaluate("document.querySelector('#win').clientWidth + ' wide, ' + document.querySelector('#win').className + ', resize events: ' + __e2e.resized")}`);
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 3 + (i % 2) });
+        await sleep(50);
+      }
+    }
+  } catch (e) {
+    try { ws.close(); } catch { /* closed */ }
+    child.kill('SIGKILL');
+    throw Object.assign(e, { dir, home });
   }
 
   return {
@@ -185,18 +255,23 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     async hover(selector) {
       const p = typeof selector !== 'string' ? selector : await evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
       const x = Math.round(p.x), y = Math.round(p.y);
-      // A window that has just opened takes a move late or not at all: send it until the page has the pointer there.
+      await evaluate(PROBE);
+      // A window that has just opened takes a move late or not at all: send it until the page has the pointer there
+      // and has handed the element its mouseover (what the tooltip starts from).
       for (let i = 0; ; i++) {
         await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
         const end = Date.now() + 1500;
         while (Date.now() < end) {
           // The innermost hovered element is the one at the point: an ancestor of where the pointer was is hovered too.
-          if (await evaluate(`const el = document.elementFromPoint(${x}, ${y}); return !!el && el.matches(':hover') && !el.querySelector(':hover');`)) return;
+          if (await evaluate(`const el = document.elementFromPoint(${x}, ${y}); return !!el && el.matches(':hover') && !el.querySelector(':hover') && __e2e.over === el;`)) return;
           await sleep(50);
         }
-        if (i === 5) throw new Error(`The pointer did not reach ${JSON.stringify(selector)}`);
+        if (i === 5) {
+          const seen = await evaluate(`const el = document.elementFromPoint(${x}, ${y}); const d = (n) => n ? n.tagName + (n.id ? '#' + n.id : '') + '.' + String(n.className?.baseVal ?? n.className ?? '').split(' ').join('.') : 'none'; return 'at the point ' + d(el) + (el?.matches(':hover') ? ' (hovered)' : '') + ', last mouseover on ' + d(__e2e.over);`).catch(() => '');
+          throw new Error(`The pointer did not reach ${JSON.stringify(selector)} at ${x},${y}: ${seen}`);
+        }
+        // A move a pixel aside, so the next one is a change the page cannot drop.
         await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x > 1 ? x - 1 : x + 1, y });
-        await sleep(100);
       }
     },
     /**
@@ -209,6 +284,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
       // The pointer rests on the element first, and the press waits until the element stays where it was measured and
       // is the one at that point: a list can still shift as the pointer arrives (a macOS runner moved a row by 15px).
       const where = () => evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); const r = el.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2); return { x, y, hit: !!document.elementFromPoint(x, y)?.closest(${JSON.stringify(selector)}) };`);
+      await evaluate(PROBE);
       let p = await where();
       for (let i = 0; ; i++) {
         await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y });
@@ -239,15 +315,22 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
       }
       if (!hold) await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', buttons: 0, clickCount: 1 });
       // A held drag rests before it is let go, so the last moves (the ones made again above, a pixel apart in a
-      // moment) are not taken for a flick.
-      else await sleep(150);
+      // moment) are not taken for a flick: it returns once 150 ms have passed in the page since the page got the last
+      // move, however late the moves reached it.
+      else await until('performance.now() - __e2e.movedAt >= 150', `the drag on ${selector} at rest`, 10_000);
       return at;
     },
     release: (at) => send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', buttons: 0, clickCount: 1 }),
     /** Sets the page's size, as resizing the window does. */
     async size(width, height = 900) {
+      await evaluate(PROBE);
+      const before = await evaluate("return { n: __e2e.resized, same: innerWidth === " + width + " && innerHeight === " + height + " };");
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-      await sleep(100);
+      await until(`window.innerWidth === ${width} && window.innerHeight === ${height}`, `the page at ${width}×${height}`);
+      // The layout follows the resize event, which comes with the page's next frame. A window off screen may draw
+      // that frame only at its next input (which brings the event); the wait for it is then given up without a
+      // failure, as no input is made here (it would move the pointer under the test).
+      if (!before.same) await until(`__e2e.resized > ${before.n}`, 'the resize event', 3000).catch(() => {});
     },
     workerLog: (wid) => evaluate(`return (await window.ide.call('worker:log', ${JSON.stringify(wid)})).items.map((x) => x.text).join('\\n');`),
     gh: () => JSON.parse(fs.readFileSync(ghFile, 'utf8')),
@@ -268,9 +351,26 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     /** Saves a picture of the window, for looking at a screen while writing a test. */
     async shot(file, width = 1440, height = 900) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-      await sleep(400);
+      await until(`window.innerWidth === ${width} && window.innerHeight === ${height}`, `the page at ${width}×${height}`);
       const m = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(file, Buffer.from(m.result.data, 'base64'));
+    },
+    /**
+     * Keeps what the window shows in `out` after a failure: a picture, the page's DOM, the error and the app's logs.
+     * Each part is on its own, with a time limit, so a window that stopped answering still leaves its logs.
+     */
+    async keep(out, err) {
+      fs.mkdirSync(out, { recursive: true });
+      fs.writeFileSync(path.join(out, 'error.txt'), String(err?.stack ?? err));
+      try {
+        const m = await within(send('Page.captureScreenshot', { format: 'png' }), 10_000, 'the screenshot');
+        if (m.result?.data) fs.writeFileSync(path.join(out, 'screenshot.png'), Buffer.from(m.result.data, 'base64'));
+      } catch (e) { fs.writeFileSync(path.join(out, 'screenshot.txt'), String(e.message)); }
+      try {
+        fs.writeFileSync(path.join(out, 'page.html'), await within(evaluate('document.documentElement.outerHTML'), 10_000, 'the page'));
+      } catch (e) { fs.writeFileSync(path.join(out, 'page.txt'), String(e.message)); }
+      copyLogs(dir, home, out);
+      return out;
     },
     /**
      * Opens the quick message box the way a launcher would: a second launch with --quick, which the running app

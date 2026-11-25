@@ -10,13 +10,27 @@ import { handOver } from '../src/shared/shell';
 import { store } from '../src/main/store';
 import { addScript, removeScript, runScript, updateScript } from '../src/main/scripts';
 import { shell } from '../src/main/shell';
-import type { ShellScript } from '../src/shared/types';
+import type { ShellRun, ShellScript } from '../src/shared/types';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-scripts-'));
 process.env.OMA_DATA_DIR = tmp;
 const home = path.join(tmp, 'home');
 fs.mkdirSync(home, { recursive: true });
 fs.writeFileSync(path.join(tmp, 'settings.json'), JSON.stringify({ home, language: 'en', claudeRules: false, claudeMemory: false, accounts: [] }));
+
+/**
+ * Waits until `ok` holds for the run of chat item `id` (a real shell process, which a slow runner starts in seconds),
+ * checking it every 50 ms, and fails with `what` and the run as it is after 60 s.
+ */
+async function runUntil(id: string, ok: (run: ShellRun) => boolean, what: string): Promise<ShellRun> {
+  const item = store.data.chat.find((c) => c.id === id)!;
+  for (const end = Date.now() + 60_000; !ok(item.shell!); ) {
+    if (Date.now() > end) assert.fail(`Timed out after 60 s waiting for ${what}. The run: ${JSON.stringify(item.shell)}`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return item.shell!;
+}
+const ended = (id: string) => runUntil(id, (r) => !r.running, `the run of chat item ${id} to end`);
 
 test('a script keeps its name on one line and its command with its lines, and needs both', () => {
   const r = cleanScript({ name: '  Deploy \n preview  ', cmd: '\r\n  npm run build\r\nnpm run deploy -- --preview  \r\n\r\n', repo: ' shop ' });
@@ -60,7 +74,7 @@ test('a script is added, edited, run as it is stored, and deleted; the state kee
   assert.equal(item.shell?.ask, true);
   assert.equal(item.shell?.script, 'Hello');
   assert.equal(item.shell?.cmd, 'echo script-ok');
-  for (let i = 0; i < 300 && item.shell?.running; i++) await new Promise((r) => setTimeout(r, 50));
+  await ended(chatId);
   assert.equal(item.shell?.code, 0);
   assert.match(item.shell?.out ?? '', /script-ok/);
   assert.ok(store.data.scripts?.find((s) => s.id === id)?.lastRunAt);
@@ -78,17 +92,13 @@ test('a run hands its result over for a turn only when asked to, and never when 
   let handed = 0;
   const count = () => { handed++; };
   store.on('shell-done', count);
-  const ended = async (id: string) => {
-    const item = store.data.chat.find((c) => c.id === id)!;
-    for (let i = 0; i < 300 && item.shell?.running; i++) await new Promise((r) => setTimeout(r, 50));
-    return item.shell!;
-  };
   // Not asked: the result waits for the user's next message.
   const quiet = await ended(shell.run('echo quiet', null));
   assert.deepEqual([quiet.code, quiet.sent, quiet.ask, handed], [0, 'queued', undefined, 0]);
-  // Asked, then stopped by the user: nothing is handed over.
-  const long = shell.run('node -e "setTimeout(() => {}, 20000)"', null, { ask: true });
-  await new Promise((r) => setTimeout(r, 300));
+  // Asked, then stopped by the user: nothing is handed over. It is stopped once it has printed its first line, so the
+  // stop finds the command itself running (not the shell still starting) and ends it with what it started.
+  const long = shell.run(`node -e "console.log('long-started'); setTimeout(() => {}, 20000)"`, null, { ask: true });
+  await runUntil(long, (r) => !r.running || r.out.includes('long-started'), 'the long run to print its first line');
   shell.stop(long);
   const stopped = await ended(long);
   assert.deepEqual([stopped.stopped, stopped.sent, handed], [true, 'off', 0]);

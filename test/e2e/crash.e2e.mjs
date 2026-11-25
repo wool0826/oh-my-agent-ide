@@ -1,17 +1,9 @@
 // End-to-end flows for crashes (T-0098): the window's page dying and coming back, and what a run that did not quit
 // leaves for the next start. Run with `npm run e2e`.
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { launch } from './harness.mjs';
-
-function flow(name, opts, fn) {
-  test(name, { timeout: 120_000 }, async () => {
-    const app = await launch(opts);
-    try { await fn(app); } finally { await app.stop(); }
-  });
-}
+import { flow } from './harness.mjs';
 
 flow('the window comes back with the same state after its page dies', {}, async (app) => {
   const marker = JSON.parse(fs.readFileSync(path.join(app.home, 'data', 'running.json'), 'utf8'));
