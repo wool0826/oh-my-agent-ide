@@ -14,6 +14,7 @@ import { lastPreflight, runPreflight } from './preflight';
 import { diagnosticsText, tailLines } from '../shared/diagnostics';
 
 const LOG_LINES = 400;
+const CRASH_LINES = 200;
 
 const tally = (list: { status: string }[]) => list.reduce<Record<string, number>>((m, x) => { m[x.status] = (m[x.status] ?? 0) + 1; return m; }, {});
 
@@ -38,6 +39,8 @@ export async function diagnostics(): Promise<string> {
   const checks = lastPreflight() ?? await runPreflight();
   let log = '';
   try { log = tailLines(fs.readFileSync(paths().appLog, 'utf8'), LOG_LINES); } catch { /* no log yet */ }
+  let crashes = '';
+  try { crashes = tailLines(fs.readFileSync(paths().crashLog, 'utf8'), CRASH_LINES); } catch { /* no crash yet */ }
   return diagnosticsText({
     app: { version: app.getVersion(), platform: process.platform, arch: process.arch, electron: process.versions.electron ?? '', node: process.versions.node, fake: fakeMode() },
     settings: settingsView() as unknown as Record<string, unknown>,
@@ -49,6 +52,7 @@ export async function diagnostics(): Promise<string> {
       repos: store.data.repos.length, automations: automations.list().length,
     },
     log,
+    crashes,
     hide: hidden(),
     now: new Date().toISOString(),
   });

@@ -86,7 +86,8 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
   }
   let id = 0;
   const waiting = new Map();
-  ws.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
+  const onMessage = (e) => { const m = JSON.parse(e.data); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } };
+  ws.addEventListener('message', onMessage);
   const send = (method, params = {}) => new Promise((r) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 
   /** Evaluates an expression (or the body of an async function when it has `await` or `return`) in the page. */
@@ -289,6 +290,32 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
       }
       await quick.until("!!document.getElementById('q') && document.getElementById('q').placeholder !== ''", 'the quick box with its texts');
       return quick;
+    },
+    /**
+     * Drives the window's page again after it was replaced (it died and the app loaded it again): connects to the
+     * page that answers and waits until `ready` is true there (by default, until it has drawn the window).
+     */
+    async reconnect(ready = "!!document.querySelector('#chat-ins .seg')", timeoutMs = 20_000) {
+      for (const p of waiting.values()) p({});
+      waiting.clear();
+      try { ws.close(); } catch { /* closed */ }
+      const end = Date.now() + timeoutMs;
+      for (;;) {
+        try {
+          const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+          const page = pages.find((p) => p.type === 'page' && p.url.endsWith('index.html'));
+          if (page) {
+            try { ws.close(); } catch { /* closed */ }
+            // Held as `ws` at once, so a socket that never opens is closed by the next try or by stop().
+            const next = ws = new WebSocket(page.webSocketDebuggerUrl);
+            await new Promise((r, j) => { next.addEventListener('open', r); next.addEventListener('error', j); });
+            next.addEventListener('message', onMessage);
+            if (await Promise.race([evaluate(`return !!(${ready});`), sleep(2000).then(() => false)]).catch(() => false)) return;
+          }
+        } catch { /* not back yet */ }
+        if (Date.now() > end) throw new Error('The window did not come back.');
+        await sleep(250);
+      }
     },
     async stop() {
       try { quick?.close(); } catch { /* closed */ }
