@@ -467,7 +467,7 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **What counts** (`shared/update.ts`): a published release (not a draft or pre-release) whose tag is three plain numbers greater than the running version.
     - **What the user sees:** a dot on the gear, "Get 0.5.0" beside the version in Settings, and one notification. The link opens the release page in the browser.
     - **No automatic install.** The installer is unsigned, and an app that downloads and runs an unsigned installer by itself is a worse habit than a link. Auto-update can follow code signing.
-    - **Publishing:** `npm run release` uploads the installer of the current version from `release/` as a GitHub release with `gh`. It is run by hand after `npm run dist:win`.
+    - **Publishing:** a pushed tag builds the installers and makes a draft release (decision 207, docs/RELEASING.md).
     - **Off switch:** "Check for new versions" in Settings → General.
 121. **The palette finds past tasks.**
     - **Why:** a task from last week, or "the PR about the cache", could only be found by scrolling. Search existed in the Memory view only.
@@ -912,3 +912,12 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
    - **No new fields change meaning.** `waitingOn` is set only by `setStatus` and cleared on any other status.
    - **Rule uses give way first.** Past 200 permission marks on a task, the oldest rule use is dropped before any answer the user gave.
    - **Known limits.** A task counts its whole time in the week it finished, while decisions count by when they were asked. Marks carry the time of the `changed()` that saw them, so a flip shorter than one store change is not seen. Time the app was closed while a task was open counts toward the state it was in. Rejected for now: clipping spans to the week and a last-seen mark at startup, more machinery than the numbers need yet.
+
+207. **Installers are built from a tag by GitHub Actions and attached to a draft release; signing is used only when its secrets exist** (T-0104, E1 of the T-0093 plan).
+   - **Why:** releasing was `npm run dist:win` and `npm run release` by hand on the user's PC, so 76 commits went unreleased, and there was never a macOS build.
+   - **What** (`.github/workflows/release.yml`): a pushed `v*` tag builds the NSIS installer on `windows-latest` and the dmg on `macos-latest`, then makes a draft release with both and generated notes. The user publishes the draft; the update check (decision 120) ignores drafts, so nothing reaches running apps before that.
+   - **Tag check:** the first job fails when the tag is not `v` + `version` in package.json, before anything is built.
+   - **Dry run:** a manual run, or a pull request that changes `release.yml`, keeps the installers as workflow artifacts and makes no release.
+   - **Signing hooks:** `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` for Windows; `MAC_CSC_LINK`/`MAC_CSC_KEY_PASSWORD`, `APPLE_TEAM_ID` and either an app-specific password or an App Store Connect API key for macOS. Missing secrets build unsigned. The unsigned dmg gets an ad-hoc signature without hardened runtime, since Apple silicon refuses an app whose signature broke when the bundle was changed, and the job checks it with `codesign --verify`. docs/RELEASING.md lists how to make each secret.
+   - **arm64 only on macOS:** the agent SDK installs its native binary for the build machine's architecture, so a universal or x64 dmg built on an Apple silicon runner would carry the wrong binary.
+   - **`scripts/release.mjs` stays** as the local fallback and now makes a draft for an existing tag, matching the workflow. The dmg is named `OhMyAgentIDE-<version>-<arch>.dmg`.

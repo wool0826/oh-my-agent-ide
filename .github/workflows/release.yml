@@ -1,0 +1,180 @@
+# Builds the Windows installer and the macOS dmg and attaches them to a draft GitHub release. See docs/RELEASING.md.
+#  - A pushed v* tag (v0.7.0) makes the draft. The tag must match "version" in package.json.
+#  - Run by hand (Actions → Release → Run workflow), or a pull request that changes this file, is a dry run: the
+#    installers become workflow artifacts and no release is made.
+# Each installer is signed only when its secrets exist; without them it is built unsigned.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/release.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        name: Check the tag against package.json
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version (expected v$version)."
+              exit 1
+            fi
+            echo "Releasing v$version."
+          else
+            echo "Dry run of $version: installers become workflow artifacts, no release is made."
+          fi
+
+  build:
+    name: build (${{ matrix.os }})
+    needs: version
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            files: release/*.exe
+          # Apple silicon runner: the dmg is for arm64 Macs (the agent SDK ships its binary per architecture).
+          - os: macos-latest
+            platform: mac
+            files: release/*.dmg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # Signing hooks. A secret that is not set reads as empty, so each block below does nothing until it exists.
+      - name: Set up Windows signing
+        if: matrix.platform == 'win'
+        shell: bash
+        env:
+          CERT: ${{ secrets.WIN_CSC_LINK }}
+          PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [ -z "$CERT" ]; then echo "WIN_CSC_LINK is not set: the installer is built unsigned."; exit 0; fi
+          # NAME<<delimiter form, so a value with a line break cannot add variables. Secret values are masked in logs.
+          put() { local d="EOF_$RANDOM$RANDOM"; printf '%s<<%s\n%s\n%s\n' "$1" "$d" "$2" "$d" >> "$GITHUB_ENV"; }
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/win-cert.pfx"
+          put WIN_CSC_LINK "$RUNNER_TEMP/win-cert.pfx"
+          put WIN_CSC_KEY_PASSWORD "$PASSWORD"
+          echo "Signing with the certificate from WIN_CSC_LINK."
+
+      - name: Set up macOS signing and notarization
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          CERT: ${{ secrets.MAC_CSC_LINK }}
+          PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APP_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          API_KEY: ${{ secrets.APPLE_API_KEY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ -z "$CERT" ]; then
+            # Ad-hoc signature: an Apple silicon Mac refuses to start an app with no signature at all ("damaged").
+            echo "MAC_CSC_LINK is not set: the app is built unsigned (ad-hoc) and not notarized."
+            echo "MAC_SIGN_ARGS=-c.mac.identity=- -c.mac.hardenedRuntime=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # NAME<<delimiter form, so a value with a line break cannot add variables. Secret values are masked in logs.
+          put() { local d="EOF_$RANDOM$RANDOM"; printf '%s<<%s\n%s\n%s\n' "$1" "$d" "$2" "$d" >> "$GITHUB_ENV"; }
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/mac-cert.p12"
+          put CSC_LINK "$RUNNER_TEMP/mac-cert.p12"
+          put CSC_KEY_PASSWORD "$PASSWORD"
+          echo "Signing with the Developer ID certificate from MAC_CSC_LINK."
+          # electron-builder notarizes when one of these sets of variables is present. They are passed only with a
+          # certificate: an ad-hoc signed app cannot be notarized.
+          if [ -n "$APPLE_ID" ] && [ -n "$APP_PASSWORD" ] && [ -n "$TEAM_ID" ]; then
+            put APPLE_ID "$APPLE_ID"; put APPLE_APP_SPECIFIC_PASSWORD "$APP_PASSWORD"; put APPLE_TEAM_ID "$TEAM_ID"
+            echo "Notarizing with the Apple ID."
+          elif [ -n "$API_KEY" ] && [ -n "$API_KEY_ID" ] && [ -n "$API_ISSUER" ]; then
+            echo "$API_KEY" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
+            put APPLE_API_KEY "$RUNNER_TEMP/notary-key.p8"; put APPLE_API_KEY_ID "$API_KEY_ID"; put APPLE_API_ISSUER "$API_ISSUER"
+            echo "Notarizing with the App Store Connect API key."
+          else
+            echo "::warning::No notarization credentials: the app is signed but not notarized, so Gatekeeper still warns."
+          fi
+
+      - name: Build the installer
+        shell: bash
+        # Never let electron-builder publish on its own: the release job below attaches the files.
+        env:
+          # electron-builder skips signing on pull_request events. Sign there too, so a PR dry run builds exactly what a
+          # tag would. Fork PRs get no secrets, so they still build unsigned (ad-hoc).
+          CSC_FOR_PULL_REQUEST: 'true'
+        run: npx electron-builder --${{ matrix.platform }} --publish never $MAC_SIGN_ARGS
+
+      # A broken signature is what makes macOS call a downloaded app "damaged"; catch it here, not on a user's Mac.
+      - name: Check the app's signature
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          app=$(ls -d release/mac*/*.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=2 "$app" 2>&1 | grep -E 'Authority|Signature|TeamIdentifier' || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.platform }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: draft release
+    if: github.ref_type == 'tag'
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          merge-multiple: true
+          path: installers
+      - name: Attach the installers to a draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l installers
+          # Listed, not looked up by tag: the API's tag lookup does not return drafts.
+          if [ -n "$(gh release list --limit 100 --json tagName --jq ".[] | select(.tagName == \"$TAG\") | .tagName")" ]; then
+            # A re-run: replace the files on the release that already exists, and leave its notes alone.
+            gh release upload "$TAG" installers/* --clobber
+          else
+            gh release create "$TAG" installers/* --draft --verify-tag --title "$TAG" --generate-notes
+          fi
+          echo "Draft release $TAG is ready. Publish it on GitHub after checking it."

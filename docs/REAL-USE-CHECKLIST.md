@@ -155,7 +155,7 @@ The original 45 rows with their tag, and where each one is run: a pass order abo
 | # | Do | Expect | Tag | Where |
 |---|---|---|---|---|
 | 8.1 | Install the new build over the old one. | Settings, tasks and conversations are kept. | win | A1 |
-| 8.2 | Publish a release with `npm run release`, then start an older build. | Within a minute the gear has a dot, and Settings shows "Get <version>" linking to the release. | real | G1 |
+| 8.2 | Publish a release (docs/RELEASING.md: push the tag, publish the draft), then start an older build. | Within a minute the gear has a dot, and Settings shows "Get <version>" linking to the release. | real | G1 |
 | 8.3 | On a Mac: `npm run dist:mac`, install, and repeat 1.1, 3.1, 3.2, 3.4 and 3.7 (⌘⇧Space). | The same results. CI builds the app on macOS; it has never been used there. | mac | H1 |
 
 ### 9. What only eyes and ears can check
@@ -339,7 +339,7 @@ For every hands-on row: what to do, what to look at, and what counts as pass. "T
 ### G. With the release
 
 **8.2 The update check** (real) — run when the next version (0.7.0) is actually released, not as a test release
-1. `npm run dist:win`, then `npm run release` (publishes v<version> on GitHub with the installer).
+1. Release it as docs/RELEASING.md says: push the tag `v<version>`, wait for the Release workflow, and publish the draft release it made.
 2. Start the older build (0.6.2).
 - Pass: within a minute the gear has a dot, and Settings shows "Get <version>" linking to that release.
 
