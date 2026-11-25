@@ -6,7 +6,7 @@ import { PushQueue } from '../util';
 import { SpendMeter, spendOf, type SessionSpend, type Spend } from '../../shared/spend';
 import { COMPACT_AT, COMPACT_MIN_GROWTH, CONTEXT_WINDOW } from '../../shared/context';
 import { compactCommand } from '../../shared/compactInstructions';
-import { CONNECTOR_CHECK_MS, connectorChanges, connectorSettings, toReconnect } from './connectors';
+import { artifactEnv, CONNECTOR_CHECK_MS, connectorChanges, connectorSettings, toReconnect } from './connectors';
 
 /** Compaction as the owner sees it: Claude Code's own (mid-turn) and the app's /compact alike. */
 export type CompactEvent =
@@ -175,7 +175,7 @@ export class AgentSession {
     const options: Options = {
       model: this.cfg.model,
       cwd: this.cfg.cwd,
-      env: { ...accounts.env(this.cfg.accountId), ...this.cfg.env },
+      env: artifactEnv({ ...accounts.env(this.cfg.accountId), ...this.cfg.env }, this.cfg.connectors),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: this.cfg.systemAppend },
       permissionMode: this.cfg.permissionMode ?? 'auto',
       canUseTool: this.cfg.canUseTool,
