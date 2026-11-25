@@ -13,7 +13,7 @@ const OWN = 'button, a, input, textarea, select, label, [contenteditable], .fix'
 const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Calls `clear` with the row's key (`res:…` or `aa:…`) once a row is swiped away. */
-export function initSwipe(root: HTMLElement, clear: (nav: string) => void) {
+export function initSwipe(root: HTMLElement, clear: (nav: string) => Promise<unknown>) {
   root.addEventListener('pointerdown', (e) => {
     if (!e.isPrimary || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     const at = e.target as Element | null;
@@ -23,7 +23,7 @@ export function initSwipe(root: HTMLElement, clear: (nav: string) => void) {
   });
 }
 
-function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => void) {
+function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => Promise<unknown>) {
   const nav = row.dataset.nav ?? '';
   const clears = CLEARS.test(nav);
   const x0 = down.clientX, y0 = down.clientY, id = down.pointerId;
@@ -64,7 +64,7 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => voi
 
   const move = (e: PointerEvent) => {
     if (e.pointerId !== id) return;
-    if (!row.isConnected) return end(e, true);
+    if (!row.isConnected) return end(true);
     dx = e.clientX - x0;
     if (mode === 'wait') {
       mode = swipeIntent(dx, e.clientY - y0);
@@ -80,30 +80,44 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => voi
     draw();
   };
 
-  const up = (e: PointerEvent) => { if (e.pointerId === id) end(e, e.type === 'pointercancel'); };
+  const up = (e: PointerEvent) => { if (e.pointerId === id) end(e.type === 'pointercancel'); };
 
   const stop = () => {
     window.removeEventListener('pointermove', move, true);
     window.removeEventListener('pointerup', up, true);
     window.removeEventListener('pointercancel', up, true);
+    window.removeEventListener('keydown', esc, true);
     document.body.classList.remove('swipe-drag');
+  };
+
+  // Escape puts a row being dragged back.
+  const esc = (k: KeyboardEvent) => {
+    if (k.key !== 'Escape' || mode !== 'swipe') return;
+    k.preventDefault();
+    k.stopPropagation();
+    end(true);
   };
 
   const tidy = () => {
     under?.remove();
     under = null;
     row.parentElement?.classList.remove('swipe-host');
-    row.classList.remove('swiping', 'swipe-out');
+    row.classList.remove('swiping', 'swipe-out', 'swipe-close');
     row.style.transform = '';
+    row.style.height = '';
   };
 
-  const end = (e: PointerEvent, cancel: boolean) => {
+  const end = (cancel: boolean) => {
     stop();
     if (mode !== 'swipe') return;
-    // The click that follows a drag is not a click on the row (a decision would be selected by it).
-    const eat = (c: Event) => { c.stopPropagation(); c.preventDefault(); };
-    window.addEventListener('click', eat, { capture: true, once: true });
-    setTimeout(() => window.removeEventListener('click', eat, true), 0);
+    // The click that follows a drag on the row is not a click on it (a decision would be selected by it). Only that
+    // one: a click elsewhere, or a later one, goes through.
+    const eat = (c: Event) => {
+      window.removeEventListener('click', eat, true);
+      if (c.target instanceof Node && row.contains(c.target)) { c.stopPropagation(); c.preventDefault(); }
+    };
+    window.addEventListener('click', eat, true);
+    setTimeout(() => window.removeEventListener('click', eat, true), 300);
     if (!row.isConnected) return tidy();
     const first = trail[0], last = trail[trail.length - 1];
     const v = first && last && last.t > first.t ? (last.x - first.x) / (last.t - first.t) : 0;
@@ -118,7 +132,7 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => voi
    * window) or the user wants less motion.
    */
   const glide = (dur: string, set: () => void, then: () => void) => {
-    const from = [row, under].map((el) => { if (!el) return null; const cs = getComputedStyle(el); return { el, t: el.style.transform, w: cs.width, h: cs.height, p: cs.paddingBlock }; });
+    const from = [row, under].map((el) => { if (!el) return null; const cs = getComputedStyle(el); return { el, t: el.style.transform, w: cs.width, h: cs.height, pt: cs.paddingTop, pb: cs.paddingBottom }; });
     set();
     if (still()) return then();
     const ms = parseFloat(getComputedStyle(row).getPropertyValue(dur)) || 180;
@@ -126,7 +140,7 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => voi
     const runs = from.flatMap((f) => {
       if (!f) return [];
       const to = getComputedStyle(f.el);
-      return [f.el.animate([{ transform: f.t || 'none', width: f.w, height: f.h, paddingBlock: f.p }, { transform: f.el.style.transform || 'none', width: to.width, height: to.height, paddingBlock: to.paddingBlock }], { duration: ms, easing: ease })];
+      return [f.el.animate([{ transform: f.t || 'none', width: f.w, height: f.h, paddingTop: f.pt, paddingBottom: f.pb }, { transform: f.el.style.transform || 'none', width: to.width, height: to.height, paddingTop: to.paddingTop, paddingBottom: to.paddingBottom }], { duration: ms, easing: ease })];
     });
     let done = false;
     const go = () => { if (done) return; done = true; runs.forEach((a) => a.cancel()); then(); };
@@ -156,10 +170,13 @@ function track(row: HTMLElement, down: PointerEvent, clear: (nav: string) => voi
     under?.remove();
     under = null;
     row.parentElement?.classList.remove('swipe-host');
-    clear(nav);
+    // The list drops the row once it is cleared. If clearing fails, or the row is somehow still drawn, it comes back.
+    const restore = () => { if (row.isConnected) tidy(); };
+    clear(nav).then(() => setTimeout(restore, 1000), restore);
   };
 
   window.addEventListener('pointermove', move, true);
   window.addEventListener('pointerup', up, true);
   window.addEventListener('pointercancel', up, true);
+  window.addEventListener('keydown', esc, true);
 }

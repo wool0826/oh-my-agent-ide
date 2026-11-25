@@ -919,7 +919,7 @@ export function init() {
   // Before the first paint, so a sidebar that was put away does not animate shut at launch.
   applyPanels();
   initResize();
-  initSwipe($('#chat-ins'), (nav) => void clearOne(nav.startsWith('aa:') ? 'auto' : 'result', nav.slice(nav.indexOf(':') + 1)));
+  initSwipe($('#chat-ins'), (nav) => clearOne(nav.startsWith('aa:') ? 'auto' : 'result', nav.slice(nav.indexOf(':') + 1)));
   initTip();
   watchPanes();
   document.addEventListener('click', (e) => {
