@@ -27,6 +27,7 @@ import { hasSpend } from '../../shared/spend';
 import { threadTarget, turnReplyTo } from '../../shared/thread';
 import { sharedMemoDigest } from '../../shared/memos';
 import { describeCancel, isQueued } from '../../shared/queue';
+import { firstMarks } from '../../shared/retro';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { bundleName } from '../../shared/bundle';
 import { FakeSession } from './fakeSession';
@@ -141,6 +142,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     workerId: null, status: 'queued', branch: null, prUrl: null, prState: null, summary: null, files: [],
     createdAt: nowIso(), updatedAt: nowIso(), startedAt: null, finishedAt: null, reviewSyncedAt: null, seenCommentIds: [],
     afterTaskId: after, mergedAt: null,
+    history: firstMarks('queued', nowIso()),
     effort: s.effortPerTask && a.effort ? a.effort : null,
     planFirst: !!a.plan_first,
     ...(a.compare ? { compare: a.compare } : {}),

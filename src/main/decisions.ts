@@ -1,6 +1,7 @@
 import { store } from './store';
 import { nowIso, uid } from './util';
 import type { Decision } from '../shared/types';
+import { withPermission } from '../shared/retro';
 
 type Waiter = (answer: string) => void;
 const waiters = new Map<string, Waiter>();
@@ -45,6 +46,9 @@ export function answer(id: string, ans: string) {
   d.status = 'answered';
   d.answer = ans;
   d.answeredAt = nowIso();
+  // Answered decisions go after a day; the task keeps its permission decisions for the look back.
+  const task = d.source === 'permission' && d.taskId ? store.task(d.taskId) : null;
+  if (task) task.permissions = withPermission(task.permissions, { at: d.createdAt, answeredAt: d.answeredAt, code: d.code ?? d.title, answer: ans });
   store.changed();
   const w = waiters.get(id);
   waiters.delete(id);

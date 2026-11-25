@@ -8,6 +8,7 @@ import { patchLines } from '../../shared/diffComment';
 import { lastLines } from '../../shared/runOutput';
 import type { Checkpoint } from '../../shared/checkpoints';
 import { taskMinutes, workerTotals } from '../../shared/workerSummary';
+import { scopeHtml, taskPermsHtml, taskTimeHtml, weekHtml, workerRetroStats } from './retro';
 import { composerAnswers, workerDecisions } from '../../shared/inbox';
 import { canStop } from '../../shared/canStop';
 import { ALLOW, DENY } from '../../shared/types';
@@ -248,13 +249,15 @@ export function tookText(mins: number) {
 
 /**
  * The Summary tab: what the Worker has done without reading its conversation. Totals first (tasks, PRs, files,
- * spend), then each task, newest first: what was asked, where it stands, its report in full, its PR and files.
+ * spend, time, permissions), then each task, newest first: where its time went, what was asked, where it stands, its
+ * report in full, its PR and files, its permission decisions. A switch above turns it to the last seven days (ui/retro.ts).
  */
-
 export function renderSummary(w: Worker) {
   const root = $('#ws-sum');
+  const scope = scopeHtml(w.id);
+  if (ui.sumScope === 'week') { keepScroll(root, () => { root.innerHTML = `${scope}${weekHtml()}`; }); return; }
   const tasks = w.taskIds.map((id) => task(id)).filter((x): x is Task => !!x);
-  if (!tasks.length) { root.innerHTML = `<div class="empty-view"><b>${t('sum.none')}</b></div>`; return; }
+  if (!tasks.length) { root.innerHTML = `${scope}<div class="empty-view"><b>${t('sum.none')}</b></div>`; return; }
   const tot = workerTotals(tasks);
   const stat = (label: string, parts: string[]) => `<div class="sum-stat"><small>${label}</small><b>${parts.filter(Boolean).join(' · ') || '–'}</b></div>`;
   const stats = [
@@ -262,26 +265,30 @@ export function renderSummary(w: Worker) {
     stat(t('sum.prs'), [tot.prsOpen ? t('sum.prOpen', { n: tot.prsOpen }) : '', tot.prsMerged ? t('sum.prMerged', { n: tot.prsMerged }) : '']),
     stat(t('sum.files'), [tot.files ? String(tot.files) : '']),
     stat(t('sum.spend'), [hasSpend(tot.spend) ? t('spend.cost', spendVars(tot.spend)) : '']),
-  ].join('');
+  ].join('') + workerRetroStats(tasks);
   const cards = tasks.slice().reverse().map((x) => {
     const mins = taskMinutes(x);
     const sv = stepView(x);
     const meta = [x.finishedAt ? hhmm(x.finishedAt) : x.startedAt ? hhmm(x.startedAt) : '', mins !== null ? t('sum.took', { t: tookText(mins) }) : '', sv ? t('sum.steps', { done: sv.done, total: sv.total }) : ''].filter(Boolean).join(' · ');
     const links = resultLinks(x);
     const tn = x.status === 'failed' && !x.stopped ? 'danger' : x.status === 'running' ? 'accent' : x.status === 'pr_open' ? 'pr-open' : x.status === 'done' ? 'success' : '';
-    return `<article class="sum-task">
+    return `<article class="sum-task" data-task="${esc(x.id)}">
       <header><b>${esc(x.id)} ${esc(x.title)}</b><span class="pill"${pillTone(tn)}>${taskLabel(x)}</span></header>
       ${meta ? `<small class="sum-meta">${esc(meta)}</small>` : ''}
+      ${taskTimeHtml(x)}
       <details class="sum-ask"><summary><svg aria-hidden="true"><use href="#s-chev"/></svg>${t('sum.asked')}</summary><div class="sum-prompt">${esc(x.prompt.trim())}</div></details>
       ${x.summary ? `<div class="sum-report">${md(x.summary)}</div>` : ''}
       ${links.length ? `<div class="sum-links">${links.join('')}</div>` : ''}
+      ${taskPermsHtml(x)}
       ${spendHtml(x.spend)}
     </article>`;
   }).join('');
+  // Folds stay open over a re-render: each by its task and its place on the card.
+  const foldKey = (d: HTMLDetailsElement) => { const a = d.closest('article'); return `${a?.dataset.task}:${a ? [...a.querySelectorAll('details')].indexOf(d) : -1}`; };
   keepScroll(root, () => {
-    const open = new Set([...root.querySelectorAll<HTMLDetailsElement>('details[open]')].map((d) => d.closest('article')?.querySelector('header b')?.textContent ?? ''));
-    root.innerHTML = `<div class="sum-stats">${stats}</div>${cards}`;
-    root.querySelectorAll<HTMLDetailsElement>('details').forEach((d) => { if (open.has(d.closest('article')?.querySelector('header b')?.textContent ?? '')) d.open = true; });
+    const open = new Set([...root.querySelectorAll<HTMLDetailsElement>('details[open]')].map(foldKey));
+    root.innerHTML = `${scope}<div class="sum-stats">${stats}</div>${cards}`;
+    root.querySelectorAll<HTMLDetailsElement>('details').forEach((d) => { if (open.has(foldKey(d))) d.open = true; });
   });
 }
 

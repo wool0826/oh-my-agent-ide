@@ -10,6 +10,7 @@ import { PAGE, itemsBefore } from '../shared/paging';
 import { CHAIN, STATE_VERSION, migrate, preMigrationName, type MigrationChain } from '../shared/migrate';
 import { readLogPage, searchLog } from './logFile';
 import { stampQueued } from '../shared/queue';
+import { stampHistory } from '../shared/retro';
 import type { Memo, Automation, ShellScript } from '../shared/types';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
 
@@ -157,6 +158,7 @@ class Store extends EventEmitter {
 
   changed() {
     stampQueued(this.data.tasks);
+    stampHistory(this.data.tasks, nowIso());
     this.persist();
     this.emit('changed');
   }
