@@ -157,7 +157,7 @@ body { --lights-end: 0px; }
 .seg-fill { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .seg-fill > button { padding: 0 var(--space-6); }
 /* The toolbar's tab pill is glass, and its tabs keep one weight: they share a row, and a wider chosen tab would move the rest. */
-.seg-glass { background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); }
+.seg-glass { flex-wrap: nowrap; background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); }
 .seg-glass > button[aria-pressed="true"] { font-weight: 500; }
 
 /* Liquid Glass selection: one glass pill per segmented control slides to the chosen segment and

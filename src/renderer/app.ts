@@ -1089,7 +1089,7 @@ export function init() {
   });
   // The menu keeps the keyboard: arrows move between its items, Tab closes it (L14).
   $('#ctxmenu').addEventListener('keydown', (e) => {
-    const items = [...$('#ctxmenu').querySelectorAll<HTMLElement>('button')];
+    const items = [...$('#ctxmenu').querySelectorAll<HTMLElement>('.menu-item')];
     const at = items.indexOf(document.activeElement as HTMLElement);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); }
     else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeCtxMenu(true); }
