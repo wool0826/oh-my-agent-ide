@@ -362,6 +362,8 @@ export interface SettingsView {
   memorySuggest: boolean;
   /** A "!" run or a saved script the user ran hands its result to the Dispatcher, which takes a turn for it. */
   shellAsk: boolean;
+  /** "!" lines, saved scripts and the side terminal run in an interactive shell with the user's rc files or PowerShell profile (shared/shell.ts shellArgs). */
+  shellProfile: boolean;
   /** Closing the window leaves the app working, with an icon in the tray. */
   background: boolean;
   /** Start with the window hidden when the user signs in to the OS. */

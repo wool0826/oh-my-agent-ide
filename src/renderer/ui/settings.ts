@@ -327,6 +327,7 @@ export function settingsHtml() {
       ${row(t('set.archive'), 'set-arch', stepper('set-arch', st.archiveDays, 0, 90, t('set.archive'), 'set.unitDays'))}
       ${row(t('set.background'), 'set-bg', `<input class="switch" id="set-bg" type="checkbox" ${st.background ? 'checked' : ''}>`)}
       ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
+      ${row(t('set.shellProfile'), 'set-shprof', `<input class="switch" id="set-shprof" type="checkbox" ${st.shellProfile !== false ? 'checked' : ''}>`)}
       ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
       ${row(t('set.diag'), 'set-diag', `<button class="btn btn-lg" id="set-diag" data-action="diag-export">${t('set.diagExport')}</button>`)}
       ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}`)}${grp(
@@ -603,6 +604,7 @@ export function readSettingsForm() {
     quietTo: typedTime(v('set-qto'), S!.settings.quietTo),
     background: ($('#set-bg') as HTMLInputElement).checked,
     openAtLogin: ($('#set-login') as HTMLInputElement).checked,
+    shellProfile: ($('#set-shprof') as HTMLInputElement).checked,
     updateCheck: ($('#set-upd') as HTMLInputElement).checked,
     // An unreadable shortcut keeps the one in use; the field shows it is not taken.
     quickKey: normalizeQuickKey(($('#set-qkey') as HTMLInputElement).value) ?? S!.settings.quickKey,
