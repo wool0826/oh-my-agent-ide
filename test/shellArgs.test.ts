@@ -6,13 +6,13 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { dropRcNoise, psLine, RC_DONE, shellArgs } from '../src/shared/shell';
+import { dropRcNoise, psLine, RC_DONE, RC_NOISE_MAX, shellArgs } from '../src/shared/shell';
 
 test('macOS and Linux: -ilc through /bin/sh with the marker when the profile is on, -lc as before when off', () => {
   const on = shellArgs({ platform: 'darwin', shell: '/bin/zsh', cmd: 'gs', profile: true });
   assert.equal(on.file, '/bin/sh');
   assert.deepEqual(on.args.slice(0, 3), ['-c', 'exec "$0" -ilc "$1" 2>&1', '/bin/zsh']);
-  assert.equal(on.args[3], `printf '%s\\n' ${RC_DONE}\ngs`);
+  assert.equal(on.args[3], `command printf '%s\\n' ${RC_DONE}\ngs`);
   assert.equal(on.marked, true);
   for (const shell of ['/bin/bash', '/usr/local/bin/fish', '/bin/sh', '/bin/ksh', '/bin/dash']) {
     assert.equal(shellArgs({ platform: 'linux', shell, cmd: 'x', profile: true }).marked, true, shell);
@@ -46,6 +46,9 @@ test('what comes before the marker is dropped, also when the marker is split bet
   assert.deepEqual(dropRcNoise(null, `${RC_DONE}\nx`), { show: `${RC_DONE}\nx`, pending: null });
   // A shell that ended before the marker (rc failed, stopped while starting) shows what it printed.
   assert.deepEqual(dropRcNoise('zsh: no such file', '', true), { show: 'zsh: no such file', pending: null });
+  // No marker after a lot of output (an rc file that exec's another program): it all shows from then on.
+  const big = 'x'.repeat(RC_NOISE_MAX + 1);
+  assert.deepEqual(dropRcNoise('', big), { show: big, pending: null });
 });
 
 /** Runs a spawn plan with the given environment; Windows has no /bin/sh, so its Git `sh` stands in. */

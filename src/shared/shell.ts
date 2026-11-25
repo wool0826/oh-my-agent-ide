@@ -33,6 +33,8 @@ export const psLine = (line: string, profile = false) => `[Console]::OutputEncod
  * dropped (dropRcNoise).
  */
 export const RC_DONE = '__oma_rc_done__';
+/** Past this much without RC_DONE (an rc file that exec's another program, or broke the marker), all of it shows. */
+export const RC_NOISE_MAX = 64 * 1024;
 /** Shells that take -i, -l and -c together. Others (csh, tcsh, nu) run as before: a login shell, not interactive. */
 const SH_LIKE = /^-?(zsh|bash|ksh|mksh|dash|ash|sh|fish)$/;
 
@@ -54,7 +56,7 @@ export function shellArgs(o: { platform: string; shell: string; cmd: string; pro
   }
   const name = o.shell.split('/').pop() ?? '';
   if (!o.profile || !SH_LIKE.test(name)) return { file: o.shell, args: ['-lc', o.cmd], marked: false };
-  return { file: '/bin/sh', args: ['-c', 'exec "$0" -ilc "$1" 2>&1', o.shell, `printf '%s\\n' ${RC_DONE}\n${o.cmd}`], marked: true };
+  return { file: '/bin/sh', args: ['-c', 'exec "$0" -ilc "$1" 2>&1', o.shell, `command printf '%s\\n' ${RC_DONE}\n${o.cmd}`], marked: true };
 }
 
 /**
@@ -67,7 +69,7 @@ export function dropRcNoise(pending: string | null, chunk: string, done = false)
   const all = pending + chunk;
   const at = all.indexOf(`${RC_DONE}\n`);
   if (at >= 0) return { show: all.slice(at + RC_DONE.length + 1), pending: null };
-  return done ? { show: all, pending: null } : { show: '', pending: all };
+  return done || all.length > RC_NOISE_MAX ? { show: all, pending: null } : { show: '', pending: all };
 }
 
 /** The command in a composer line that starts with "!", or null for a message. */
