@@ -86,17 +86,17 @@ export function startLine(run: ShellRun, cwd: string, output: () => void, ended:
     output();
   };
   // One decoder for each stream, so a character split between chunks stays whole.
-  // A marked run's output starts with what the rc files print; it is dropped up to RC_DONE (stderr is on stdout then).
-  let rc: string | null = how.marked ? '' : null;
-  const fromShell = (text: string, last = false) => {
-    const r = dropRcNoise(rc, text, last);
-    rc = r.pending;
-    keep(r.show);
-  };
-  for (const [stream, shell] of [[proc.stdout, true], [proc.stderr, false]] as const) {
+  // A marked run's output starts with what the rc files print; each pipe drops it up to its own RC_DONE.
+  for (const [stream, err] of [[proc.stdout, false], [proc.stderr, true]] as const) {
     const dec = new StringDecoder('utf8');
-    stream?.on('data', (d: Buffer) => (shell ? fromShell(dec.write(d)) : keep(dec.write(d), true)));
-    stream?.on('end', () => (shell ? fromShell(dec.end(), true) : keep(dec.end(), true)));
+    let rc: string | null = how.marked ? '' : null;
+    const take = (text: string, last = false) => {
+      const r = dropRcNoise(rc, text, last);
+      rc = r.pending;
+      keep(r.show, err);
+    };
+    stream?.on('data', (d: Buffer) => take(dec.write(d)));
+    stream?.on('end', () => take(dec.end(), true));
   }
   const started = Date.now();
   let done = false;

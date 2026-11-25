@@ -11,8 +11,8 @@ import { dropRcNoise, psLine, RC_DONE, RC_NOISE_MAX, shellArgs } from '../src/sh
 test('macOS and Linux: -ilc through /bin/sh with the marker when the profile is on, -lc as before when off', () => {
   const on = shellArgs({ platform: 'darwin', shell: '/bin/zsh', cmd: 'gs', profile: true });
   assert.equal(on.file, '/bin/sh');
-  assert.deepEqual(on.args.slice(0, 3), ['-c', 'exec "$0" -ilc "$1" 2>&1', '/bin/zsh']);
-  assert.equal(on.args[3], `command printf '%s\\n' ${RC_DONE}\ngs`);
+  assert.deepEqual(on.args.slice(0, 3), ['-c', 'exec "$0" -ilc "$1"', '/bin/zsh']);
+  assert.equal(on.args[3], `command printf '%s\\n' ${RC_DONE}\ncommand printf '%s\\n' ${RC_DONE} >&2\ngs`);
   assert.equal(on.marked, true);
   for (const shell of ['/bin/bash', '/usr/local/bin/fish', '/bin/sh', '/bin/ksh', '/bin/dash']) {
     assert.equal(shellArgs({ platform: 'linux', shell, cmd: 'x', profile: true }).marked, true, shell);
@@ -68,10 +68,10 @@ test('an interactive bash reads ~/.bashrc: its alias works and what it prints at
   const plan = shellArgs({ platform: 'linux', shell: 'bash', cmd: 'gs; echo err >&2; (exit 3)', profile: true });
   const r = runPlan(plan, env);
   assert.equal(r.code, 3);
-  const shown = dropRcNoise('', r.out, true).show;
-  // stderr is on stdout: the command's own error is there, in order, and nothing from the rc files.
-  assert.equal(shown.replace(/\r/g, ''), 'alias-ok\nerr\n');
-  assert.equal(r.err, '');
+  // Each pipe drops what the rc files printed up to its own marker: the command's output on stdout, its error
+  // (and not the rc files' "noise") on stderr.
+  assert.equal(dropRcNoise('', r.out, true).show.replace(/\r/g, ''), 'alias-ok\n');
+  assert.equal(dropRcNoise('', r.err, true).show.replace(/\r/g, ''), 'err\n');
   // Off: a login shell that is not interactive has no alias.
   const off = runPlan(shellArgs({ platform: 'linux', shell: 'bash', cmd: 'gs', profile: false }), env);
   assert.notEqual(off.code, 0);

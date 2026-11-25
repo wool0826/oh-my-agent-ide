@@ -46,8 +46,8 @@ export interface ShellSpawn { file: string; args: string[]; /** Its output start
  * - `profile` off: `$SHELL -lc` (a login shell, which skips ~/.zshrc and ~/.bashrc), or Windows PowerShell 5.1 with
  *   -NoProfile.
  * - `profile` on: `$SHELL -ilc`, interactive as a terminal's shell is, so the aliases and functions of ~/.zshrc and
- *   ~/.bashrc work. /bin/sh starts it with its errors on the same pipe as its output, so what the rc files print,
- *   in order, is before RC_DONE. Input stays closed and the shell has no terminal, so an rc file that asks something
+ *   ~/.bashrc work. RC_DONE is printed on both stdout and stderr, so what the rc files print on either is before
+ *   it on that pipe and stderr stays apart (shown in the danger colour). Input stays closed and the shell has no terminal, so an rc file that asks something
  *   gets end-of-file instead of waiting. On Windows, PowerShell 7 (`pwsh`, when found) with the profile loaded.
  */
 export function shellArgs(o: { platform: string; shell: string; cmd: string; profile: boolean; pwsh?: string | null }): ShellSpawn {
@@ -56,7 +56,7 @@ export function shellArgs(o: { platform: string; shell: string; cmd: string; pro
   }
   const name = o.shell.split('/').pop() ?? '';
   if (!o.profile || !SH_LIKE.test(name)) return { file: o.shell, args: ['-lc', o.cmd], marked: false };
-  return { file: '/bin/sh', args: ['-c', 'exec "$0" -ilc "$1" 2>&1', o.shell, `command printf '%s\\n' ${RC_DONE}\n${o.cmd}`], marked: true };
+  return { file: '/bin/sh', args: ['-c', 'exec "$0" -ilc "$1"', o.shell, `command printf '%s\\n' ${RC_DONE}\ncommand printf '%s\\n' ${RC_DONE} >&2\n${o.cmd}`], marked: true };
 }
 
 /**
