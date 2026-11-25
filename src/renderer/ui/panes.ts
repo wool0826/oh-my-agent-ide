@@ -111,6 +111,13 @@ export function placeDetail(root: HTMLElement = $('#chat-ins')) {
     moveKeep(want, detail);
   }
   rove(root);
+  // The card in the detail pane is a stop of its own, with all of its controls in the Tab order.
+  detail.querySelectorAll<HTMLElement>('[data-rove]').forEach((c) => {
+    if (c.dataset.rove) c.setAttribute('tabindex', c.dataset.rove); else c.removeAttribute('tabindex');
+    delete c.dataset.rove;
+  });
+  const card = detail.querySelector<HTMLElement>(':scope > .pk-c > [data-nav]');
+  if (card && card.tabIndex !== 0) card.tabIndex = 0;
 }
 
 /** Selects slot `key` in place (rows and slots), then places its card. */

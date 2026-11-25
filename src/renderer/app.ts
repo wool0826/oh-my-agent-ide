@@ -154,9 +154,11 @@ function listKeys(e: KeyboardEvent, el: HTMLElement): boolean {
   const item = navItem(el);
   if (!item) return false;
   const detail = !!el.closest('.ins-detail');
-  if (el !== item && !(detail && el.matches('[data-nav]'))) return false;
   const nav = item.dataset.nav ?? '';
-  if ((e.key === 'Delete' || e.key === 'Backspace') && /^(res|aa):/.test(nav) && !detail) {
+  const del = (e.key === 'Delete' || e.key === 'Backspace') && /^(res|aa):/.test(nav) && !detail;
+  // On the row itself; Delete also on the row's own ✕.
+  if (el !== item && !(detail && el.matches('[data-nav]')) && !(del && el.matches('.row-x'))) return false;
+  if (del) {
     e.preventDefault();
     if (!e.repeat) void clearOne(nav.startsWith('aa:') ? 'auto' : 'result', nav.slice(nav.indexOf(':') + 1));
     return true;
@@ -182,10 +184,14 @@ function listKeys(e: KeyboardEvent, el: HTMLElement): boolean {
 /** Clears one result or auto-answer, with Undo; the focus on it goes to the next item (the one before it at the end). */
 async function clearOne(kind: 'result' | 'auto', id: string) {
   const key = `${kind === 'auto' ? 'aa' : 'res'}:${id}`;
-  if (navItem(document.activeElement)?.dataset.nav === key) focusNav(focusAfter(navItems().map((x) => x.dataset.nav ?? ''), key));
+  if (navItem(document.activeElement)?.dataset.nav === key) {
+    const next = focusAfter(navItems().map((x) => x.dataset.nav ?? ''), key);
+    // The last one gone: the focus waits on the sidebar's tab rather than being lost.
+    if (next) focusNav(next); else document.querySelector<HTMLElement>('#chat-ins [role="tab"][aria-selected="true"]')?.focus();
+  }
   const u = { kind, ids: [id] };
-  ui.undo.push(u);
   await call('chat:clear', kind, [id]);
+  ui.undo.push(u);
   toast(t(kind === 'auto' ? 'toast.clearedOneAuto' : 'toast.clearedOneResult'), false, { label: t('toast.undo'), run: () => undoClear(u) });
 }
 
