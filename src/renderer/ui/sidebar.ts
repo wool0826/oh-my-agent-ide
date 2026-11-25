@@ -537,6 +537,8 @@ export function applyNarrow(): boolean {
   let changed = false;
   if (n.drawer !== ui.drawer) {
     ui.drawer = n.drawer;
+    // A thread that opened the drawer did not open the sidebar the window now shows: closing it leaves that as it is.
+    ui.threadOpenedIns = false;
     const min = n.drawer || stored('oma.insMin');
     if (min && !ui.insMin) panelHooks.insAway?.();
     ui.insMin = min;
@@ -551,11 +553,14 @@ export function applyNarrow(): boolean {
   return changed;
 }
 
-/** Closes the right sidebar's drawer; from the keyboard the focus goes back to its button when it was inside. */
+/**
+ * Closes the right sidebar's drawer; from the keyboard the focus goes back to its button when it was inside. A reply
+ * thread in it stays, with its draft, for when the drawer opens again.
+ */
 export function closeDrawer(refocus = true): boolean {
   if (!ui.drawer || ui.insMin) return false;
   const inside = !!document.activeElement?.closest('.inspector');
-  togglePanel('ins');
+  togglePanel('ins', false);
   if (inside && refocus) $('#ins-toggle').focus();
   return true;
 }

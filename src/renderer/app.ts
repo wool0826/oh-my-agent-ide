@@ -43,10 +43,10 @@ import { canStop } from '../shared/canStop';
 
 /**
  * The message field of the view: the open Worker's in the Worker view, the Dispatcher's otherwise (the chat is shown
- * for it). A drawer the focus was in closes.
+ * for it). An open drawer closes, so it does not cover the field.
  */
 export function focusComposer() {
-  if (document.activeElement?.closest('.inspector')) closeDrawer(false);
+  closeDrawer(false);
   if (ui.view === 'worker' && ui.wOpen) { $('#ws-input').focus(); return; }
   if (ui.view !== 'chat') go({ view: 'chat' });
   $('#chat-input').focus();
