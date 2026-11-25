@@ -57,12 +57,13 @@ type FeedbackKind = 'review' | 'ci' | 'conflict';
 
 /**
  * Set a task's status. Starting or ending a wait forgets the last one's timer and released slot, so two short waits
- * never add up to the time after which a waiting task gives its slot back (sweepWaiting starts the new timer).
+ * never add up to the time after which a waiting task gives its slot back. The new timer starts here, so the card's
+ * slot clock shows from the start instead of after the next sweep (sweepWaiting starts one a task lacks).
  */
 function setStatus(task: Task, status: TaskStatus) {
   reopenSteps(task, status);
   if ((status === 'waiting') !== (task.status === 'waiting')) {
-    task.waitingSince = null;
+    task.waitingSince = status === 'waiting' ? new Date().toISOString() : null;
     task.slotReleased = false;
   }
   task.status = status;
