@@ -1325,15 +1325,15 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 /* The look back (T-0108 option A): the Worker / week switch, each task's time line, permission decisions, the week's lists. */
 #ws-sum { container-type: inline-size; }
 .seg-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); }
-.tl { display: flex; gap: 1px; height: 6px; border-radius: var(--radius-full); overflow: hidden; background: var(--surface-track); min-width: 0; }
-.tl > i { display: block; min-width: 2px; }
-.tl .q, .tl-k .q { background: var(--state-idle); }
-.tl .r, .tl-k .r { background: var(--state-run); }
-.tl .y, .tl-k .y { background: var(--state-wait); }
-.tl .p, .tl-k .p { background: var(--state-review); }
-.tl-k { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-12); font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.tl-k span { display: inline-flex; align-items: center; gap: var(--space-4); white-space: nowrap; }
-.tl-k i { width: 6px; height: 6px; border-radius: var(--radius-full); }
+.tline { display: flex; gap: 1px; height: 6px; border-radius: var(--radius-full); overflow: hidden; background: var(--surface-track); min-width: 0; }
+.tline > i { display: block; min-width: 2px; }
+.tline .q, .tline-k .q { background: var(--state-idle); }
+.tline .r, .tline-k .r { background: var(--state-run); }
+.tline .y, .tline-k .y { background: var(--state-wait); }
+.tline .p, .tline-k .p { background: var(--state-review); }
+.tline-k { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-12); font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.tline-k span { display: inline-flex; align-items: center; gap: var(--space-4); white-space: nowrap; }
+.tline-k i { width: 6px; height: 6px; border-radius: var(--radius-full); }
 .sec-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); margin-top: var(--space-6); min-width: 0; }
 .sec-h h5 { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-caption); font-weight: 600; color: var(--text-secondary); }
 .trow { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 64px; gap: var(--space-12); align-items: center; padding: var(--space-8) var(--space-12); box-shadow: inset 0 .5px 0 var(--border-subtle); }

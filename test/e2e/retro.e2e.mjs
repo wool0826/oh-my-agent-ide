@@ -39,10 +39,10 @@ flow('the Summary tab looks back: time and permissions per task, and the week ac
   await app.until("!!document.querySelector('#ws-tab-summary')", 'the Summary tab');
   await app.click('#ws-tab-summary');
   const CARD = `${SUM} .sum-task[data-task="${first.id}"]`;
-  await app.until(`!!document.querySelector('${CARD} .tl')`, 'the time line on the task card');
-  assert.match(await app.evaluate(`document.querySelector('${CARD} .tl-k').innerText`), /Ran \d+m/);
+  await app.until(`!!document.querySelector('${CARD} .tline')`, 'the time line on the task card');
+  assert.match(await app.evaluate(`document.querySelector('${CARD} .tline-k').innerText`), /Ran \d+m/);
   // A task of seconds still fills its bar.
-  assert.ok(await app.evaluate(`const b = document.querySelector('${CARD} .tl'); const w = [...b.children].reduce((a, i) => a + i.getBoundingClientRect().width + 1, 0); return w >= b.getBoundingClientRect().width - 1;`), 'the bar is filled');
+  assert.ok(await app.evaluate(`const b = document.querySelector('${CARD} .tline'); const w = [...b.children].reduce((a, i) => a + i.getBoundingClientRect().width + 1, 0); return w >= b.getBoundingClientRect().width - 1;`), 'the bar is filled');
   assert.equal(await app.evaluate(`document.querySelector('${CARD} .sum-perms summary').innerText.trim()`), 'Permissions · 2');
   assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${CARD} .perm-list .prow .pill')].map((p) => p.textContent.trim())`), ['By task rule', 'Allowed for task']);
   assert.ok(await app.evaluate(`[...document.querySelectorAll('${SUM} .sum-stat small')].some((x) => x.innerText === 'Permissions')`));
@@ -55,7 +55,7 @@ flow('the Summary tab looks back: time and permissions per task, and the week ac
   assert.equal(await tile('Succeeded'), '2 of 2 · 100%');
   assert.equal(await tile('Done again'), '0 of 2 · 0%');
   assert.equal(await tile('Permissions'), '1 allowed · 1 denied');
-  assert.equal(await app.evaluate("document.querySelectorAll('#week-tasks .trow .tl').length"), 2);
+  assert.equal(await app.evaluate("document.querySelectorAll('#week-tasks .trow .tline').length"), 2);
   assert.equal(await app.evaluate("document.querySelectorAll('#week-perms .prow').length"), 3);
   await app.click('#perm-filter [data-v="denied"]');
   await app.until("document.querySelectorAll('#week-perms .prow').length === 1", 'only the denial');
@@ -71,7 +71,7 @@ flow('the Summary tab looks back: time and permissions per task, and the week ac
     await app.evaluate(`document.documentElement.dataset.theme = '${theme}'; return 1;`);
     assert.equal(await app.evaluate(fits), true, `the week fits at 900px in ${theme}`);
     await app.click('#sum-scope [data-v="worker"]');
-    await app.until(`!!document.querySelector('${CARD} .tl')`, 'the Worker again');
+    await app.until(`!!document.querySelector('${CARD} .tline')`, 'the Worker again');
     assert.equal(await app.evaluate(fits), true, `the Worker fits at 900px in ${theme}`);
     await app.click('#sum-scope [data-v="week"]');
     await app.until("!!document.querySelector('#week-tasks')", 'the week again');

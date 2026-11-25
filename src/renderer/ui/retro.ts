@@ -23,10 +23,10 @@ function bar(tm: TaskTimes, width?: number) {
   // Shares out of 1000: flex-grow below 1 in all would leave the bar part empty.
   const all = totalMinutes(tm) || 1;
   const parts = PARTS.filter(([k]) => tm[k] > 0).map(([k, c]) => `<i class="${c}" style="flex:${Math.max(1, Math.round((tm[k] / all) * 1000))}"></i>`).join('');
-  return `<div class="tl"${width === undefined ? '' : ` style="width:${width.toFixed(1)}%"`} role="img" aria-label="${esc(label)}">${parts}</div>`;
+  return `<div class="tline"${width === undefined ? '' : ` style="width:${width.toFixed(1)}%"`} role="img" aria-label="${esc(label)}">${parts}</div>`;
 }
 
-const keyHtml = (tm: TaskTimes) => `<div class="tl-k">${shown(tm).map(([k, c, key]) => `<span><i class="${c}"></i>${esc(t(key, { t: dur(tm[k]) }))}</span>`).join('')}</div>`;
+const keyHtml = (tm: TaskTimes) => `<div class="tline-k">${shown(tm).map(([k, c, key]) => `<span><i class="${c}"></i>${esc(t(key, { t: dur(tm[k]) }))}</span>`).join('')}</div>`;
 
 /** A task card's time line and its key; nothing for a task that never started. */
 export function taskTimeHtml(x: Task) {

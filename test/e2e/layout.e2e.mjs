@@ -184,6 +184,17 @@ flow('the sidebar tab pill follows the sidebar width while it changes', {}, asyn
   }
 });
 
+flow('the sidebar tab labels show their text, not a bar from another screen\'s rule', {}, async (app) => {
+  await app.until("!!document.querySelector('#chat-ins .ins-tabs button[aria-selected=\"true\"] .tl')", 'the sidebar tabs');
+  // The chosen tab's label is text: no fixed bar height, no track behind it, the words inside its box.
+  const label = JSON.parse(await app.evaluate(`const l = document.querySelector('#chat-ins .ins-tabs button[aria-selected="true"] .tl'), s = getComputedStyle(l);
+    return JSON.stringify({ text: l.textContent.trim(), bg: s.backgroundColor, h: l.getBoundingClientRect().height, font: parseFloat(s.fontSize), fits: l.scrollWidth <= l.clientWidth + 1 });`));
+  assert.equal(label.text, 'Inbox');
+  assert.equal(label.bg, 'rgba(0, 0, 0, 0)');
+  assert.ok(label.h >= label.font, `a label ${label.h}px high for ${label.font}px text`);
+  assert.ok(label.fits, 'the label is not clipped');
+});
+
 flow('step rows grow with the text, link rows take a click 24px high, and a narrow card gives its title a line', { repos: ['billing'], settings: { fontSize: 20 } }, async (app) => {
   await app.size(1200, 760);
   await app.say(['Hello', '@fake task - First task with a rather long title that goes on', '@@fake steps Read the code | Write the change | Run the tests | Open the PR', '@@fake step 2',
