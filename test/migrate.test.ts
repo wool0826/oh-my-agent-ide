@@ -70,7 +70,7 @@ test('migrate: a newer state is never brought down; one without a version counts
   assert.deepEqual(migrate({ version: 2 }, CHAIN), { kind: 'newer', version: 2 });
   assert.equal(stateVersion({}), 1);
   assert.equal(stateVersion({ version: 'two' }), 1);
-  assert.equal(stateVersion({ version: 0 }), 0);
+  assert.equal(stateVersion({ version: 0 }), 1);
   assert.equal(preMigrationName(1, 2, 42), 'state-v1-before-v2-42.json');
 });
 
@@ -120,6 +120,26 @@ test('store: a state file a newer build saved is left alone and opened read-only
   assert.equal(flushNow(), false);
   await wait(400);
   assert.equal(onDisk(), NEWER);
+});
+
+test('store: an unreadable file goes back to a backup, which then migrates; the unreadable file is set aside', () => {
+  setUp('{ not json');
+  fs.mkdirSync(paths().backups, { recursive: true });
+  for (const f of fs.readdirSync(paths().backups)) fs.rmSync(path.join(paths().backups, f));
+  fs.writeFileSync(path.join(paths().backups, 'state-2026-11-20.json'), V1);
+  store.load(toV2);
+  assert.equal(store.restoredFrom, '2026-11-20');
+  assert.equal(store.readOnly, null);
+  assert.equal(store.migrated?.from, 1);
+  assert.equal(fs.readFileSync(store.migrated!.copy, 'utf8'), V1);
+  assert.equal(JSON.parse(onDisk()).version, 2);
+  assert.equal(fs.readdirSync(paths().data).filter((f) => f.startsWith('state-broken-')).length, 1);
+  // A backup whose step fails: the unreadable file stays as it was, read-only.
+  setUp('{ not json');
+  store.load(toV3Broken);
+  assert.deepEqual(store.readOnly, { why: 'failed', from: 1, error: 'step 2 broke' });
+  assert.equal(onDisk(), '{ not json');
+  fs.rmSync(paths().backups, { recursive: true, force: true });
 });
 
 test('store: a current state file loads as before, with no copy and writable', () => {

@@ -77,6 +77,7 @@ class Store extends EventEmitter {
   load(chain: MigrationChain = CHAIN) {
     const file = paths().state;
     let text: string | null = null;
+    this.restoredFrom = null;
     try { text = fs.readFileSync(file, 'utf8'); } catch { /* a first run */ }
     if (stateText(text) === 'broken') {
       const aside = path.join(paths().data, `state-broken-${Date.now()}.json`);
@@ -128,7 +129,8 @@ class Store extends EventEmitter {
       this.migrated = { from, copy };
       return r.state;
     }
-    try { fs.copyFileSync(copy, file); } catch { /* the file was not written yet, so it still holds the same text */ }
+    // A state restored from a backup leaves the unreadable file where it is (its copy aside may have failed).
+    if (!this.restoredFrom) try { fs.copyFileSync(copy, file); } catch { /* the file was not written yet, so it still holds the same text */ }
     this.readOnly = { why: 'failed', from, error: r.error };
     return raw;
   }

@@ -26,10 +26,10 @@ export type MigrationResult =
   /** The step from `at` to `at + 1` threw (or is missing); the state as read is untouched. */
   | { kind: 'failed'; from: number; at: number; error: string };
 
-/** The version a state says it has. One without a usable number counts as the first version. */
+/** The version a state says it has. One without a usable number (1 and up) counts as the first version. */
 export function stateVersion(state: Record<string, unknown>): number {
   const v = state.version;
-  return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : 1;
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 ? v : 1;
 }
 
 /**

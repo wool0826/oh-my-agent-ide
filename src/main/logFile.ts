@@ -1,7 +1,8 @@
 // Reading Worker logs (jsonl, appended to as Workers talk) without reading them whole. Each log gets an index of
 // where its lines start, built once per launch with a byte scan and extended by the bytes appended since; a page
 // or a search then reads only the lines it needs, from the end. All of it is async, so the main process stays
-// free for the window while a large log is read.
+// free for the window while a large log is read. Logs are only appended to (store.log); one rewritten in place to
+// the same size or longer would not be noticed, while one that shrank or was deleted and written anew is.
 
 import fs from 'node:fs/promises';
 import { pageBefore, scanLines } from '../shared/paging';
