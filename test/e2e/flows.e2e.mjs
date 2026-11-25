@@ -240,8 +240,9 @@ flow('the side terminal runs lines apart from the chat, recalls them with the up
   await app.key('ArrowUp', 'ArrowUp', 38);
   assert.equal(await app.evaluate("return document.querySelector('#tm-input').value;"), 'echo side-terminal-ok');
   // The grip's arrows resize it. The window is given a size first: the panel grows only into the room it has, and a
-  // runner's window can be too narrow for one more step.
+  // runner's window can be too narrow for one more step. It is back at its first width once the new size has reached it.
   await app.size(1400, 900);
+  await app.until("document.querySelector('#tm').offsetWidth === 560", 'the terminal at its first width in the wider window');
   const before = await app.evaluate("return document.querySelector('#tm').offsetWidth;");
   await app.evaluate("document.querySelector('#tm-grip').focus(); return 1;");
   await app.key('ArrowRight', 'ArrowRight', 39, 8);
