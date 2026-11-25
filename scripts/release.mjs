@@ -10,4 +10,9 @@ if (!files.length) {
   console.error(`No installer for ${version} in release/. Build it first: npm run dist:win (or dist:mac).`);
   process.exit(1);
 }
-execFileSync('gh', ['release', 'create', `v${version}`, ...files, '--title', `v${version}`, '--generate-notes', '--draft', '--verify-tag'], { stdio: 'inherit' });
+const tag = `v${version}`;
+// Listed, not looked up by tag: the API's tag lookup does not return drafts. A second machine (the dmg after the exe)
+// adds its file to the draft the first one made.
+const known = execFileSync('gh', ['release', 'list', '--limit', '100', '--json', 'tagName', '--jq', '.[].tagName'], { encoding: 'utf8' });
+if (known.split(/\r?\n/).includes(tag)) execFileSync('gh', ['release', 'upload', tag, ...files, '--clobber'], { stdio: 'inherit' });
+else execFileSync('gh', ['release', 'create', tag, ...files, '--title', tag, '--generate-notes', '--draft', '--verify-tag'], { stdio: 'inherit' });

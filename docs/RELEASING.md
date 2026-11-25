@@ -23,7 +23,7 @@ Re-running the workflow for the same tag replaces the files on the draft and kee
 
 ### Dry run
 
-Actions → Release → Run workflow builds both installers and keeps them as workflow artifacts (`installer-win`, `installer-mac`, 14 days) without making a release. A pull request that changes `release.yml` does the same.
+Actions → Release → Run workflow builds both installers and keeps them as workflow artifacts (`installer-win`, `installer-mac`, 14 days) without making a release. A pull request that changes `release.yml` does the same. Both use the signing secrets when they exist, so a dry run is also how to try new secrets before a tag.
 
 ### Local fallback
 
@@ -31,8 +31,10 @@ If Actions is not available, build on your own machine and attach the files to a
 
 ```sh
 npm run dist:win            # or dist:mac on a Mac
-npm run release             # scripts/release.mjs: gh release create v<version> --draft --verify-tag ...
+npm run release             # scripts/release.mjs: a draft for v<version>, or adds to the draft if it exists
 ```
+
+Run it on a Windows PC and again on a Mac to get both files onto one draft.
 
 A local build is signed only if the signing variables below are set in your shell (`WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` on Windows; `CSC_LINK`, `CSC_KEY_PASSWORD` and the `APPLE_*` notarization variables on a Mac). On a Mac without them, run `npm run dist:mac -- -c.mac.identity=- -c.mac.hardenedRuntime=false` so the app gets the same ad-hoc signature CI gives it.
 

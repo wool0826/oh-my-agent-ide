@@ -78,10 +78,11 @@ jobs:
           PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
           if [ -z "$CERT" ]; then echo "WIN_CSC_LINK is not set: the installer is built unsigned."; exit 0; fi
+          # NAME<<delimiter form, so a value with a line break cannot add variables. Secret values are masked in logs.
+          put() { local d="EOF_$RANDOM$RANDOM"; printf '%s<<%s\n%s\n%s\n' "$1" "$d" "$2" "$d" >> "$GITHUB_ENV"; }
           echo "$CERT" | base64 --decode > "$RUNNER_TEMP/win-cert.pfx"
-          echo "WIN_CSC_LINK=$RUNNER_TEMP/win-cert.pfx" >> "$GITHUB_ENV"
-          echo "::add-mask::$PASSWORD"
-          echo "WIN_CSC_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          put WIN_CSC_LINK "$RUNNER_TEMP/win-cert.pfx"
+          put WIN_CSC_KEY_PASSWORD "$PASSWORD"
           echo "Signing with the certificate from WIN_CSC_LINK."
 
       - name: Set up macOS signing and notarization
@@ -103,19 +104,20 @@ jobs:
             echo "MAC_SIGN_ARGS=-c.mac.identity=- -c.mac.hardenedRuntime=false" >> "$GITHUB_ENV"
             exit 0
           fi
+          # NAME<<delimiter form, so a value with a line break cannot add variables. Secret values are masked in logs.
+          put() { local d="EOF_$RANDOM$RANDOM"; printf '%s<<%s\n%s\n%s\n' "$1" "$d" "$2" "$d" >> "$GITHUB_ENV"; }
           echo "$CERT" | base64 --decode > "$RUNNER_TEMP/mac-cert.p12"
-          echo "CSC_LINK=$RUNNER_TEMP/mac-cert.p12" >> "$GITHUB_ENV"
-          echo "::add-mask::$PASSWORD"
-          echo "CSC_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          put CSC_LINK "$RUNNER_TEMP/mac-cert.p12"
+          put CSC_KEY_PASSWORD "$PASSWORD"
           echo "Signing with the Developer ID certificate from MAC_CSC_LINK."
-          # electron-builder notarizes when one of these sets of variables is present.
+          # electron-builder notarizes when one of these sets of variables is present. They are passed only with a
+          # certificate: an ad-hoc signed app cannot be notarized.
           if [ -n "$APPLE_ID" ] && [ -n "$APP_PASSWORD" ] && [ -n "$TEAM_ID" ]; then
-            echo "::add-mask::$APP_PASSWORD"
-            { echo "APPLE_ID=$APPLE_ID"; echo "APPLE_APP_SPECIFIC_PASSWORD=$APP_PASSWORD"; echo "APPLE_TEAM_ID=$TEAM_ID"; } >> "$GITHUB_ENV"
+            put APPLE_ID "$APPLE_ID"; put APPLE_APP_SPECIFIC_PASSWORD "$APP_PASSWORD"; put APPLE_TEAM_ID "$TEAM_ID"
             echo "Notarizing with the Apple ID."
           elif [ -n "$API_KEY" ] && [ -n "$API_KEY_ID" ] && [ -n "$API_ISSUER" ]; then
             echo "$API_KEY" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
-            { echo "APPLE_API_KEY=$RUNNER_TEMP/notary-key.p8"; echo "APPLE_API_KEY_ID=$API_KEY_ID"; echo "APPLE_API_ISSUER=$API_ISSUER"; } >> "$GITHUB_ENV"
+            put APPLE_API_KEY "$RUNNER_TEMP/notary-key.p8"; put APPLE_API_KEY_ID "$API_KEY_ID"; put APPLE_API_ISSUER "$API_ISSUER"
             echo "Notarizing with the App Store Connect API key."
           else
             echo "::warning::No notarization credentials: the app is signed but not notarized, so Gatekeeper still warns."
@@ -124,6 +126,10 @@ jobs:
       - name: Build the installer
         shell: bash
         # Never let electron-builder publish on its own: the release job below attaches the files.
+        env:
+          # electron-builder skips signing on pull_request events. Sign there too, so a PR dry run builds exactly what a
+          # tag would. Fork PRs get no secrets, so they still build unsigned (ad-hoc).
+          CSC_FOR_PULL_REQUEST: 'true'
         run: npx electron-builder --${{ matrix.platform }} --publish never $MAC_SIGN_ARGS
 
       # A broken signature is what makes macOS call a downloaded app "damaged"; catch it here, not on a user's Mac.
@@ -164,7 +170,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           ls -l installers
-          if gh release view "$TAG" > /dev/null 2>&1; then
+          # Listed, not looked up by tag: the API's tag lookup does not return drafts.
+          if [ -n "$(gh release list --limit 100 --json tagName --jq ".[] | select(.tagName == \"$TAG\") | .tagName")" ]; then
             # A re-run: replace the files on the release that already exists, and leave its notes alone.
             gh release upload "$TAG" installers/* --clobber
           else
