@@ -3,6 +3,7 @@ import type { DiffView, LogPage, Task, Worker, WorkerLogItem } from '../../share
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars } from '../../shared/spend';
 import { cancelSet, followersOf, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
+import { overlapLine } from '../../shared/overlap';
 import { queueLine, queueWhy, type QueueCtx } from '../../shared/queueWhy';
 import { patchLines } from '../../shared/diffComment';
 import { lastLines } from '../../shared/runOutput';
@@ -526,6 +527,7 @@ export function renderWorkerInspector() {
       <span>${t('kv.repo')}</span><span>${esc(w.repo ?? t('general'))}</span>
       ${cur?.branch ? `<span>${t('kv.branch')}</span><span>${esc(cur.branch)}</span>` : ''}
       ${cur?.status === 'blocked' ? `<span>${t('kv.startsAfter')}</span><span>${esc(cur.afterTaskId ?? '')} ${t('pr.merged')}</span>` : ''}
+      ${cur && overlapLine(cur) ? `<span>${t('kv.overlap')}</span><span class="warn" data-tip="${esc(cur.overlaps!.map((o) => `${o.taskId}: ${o.files.join(', ')}`).join('\n'))}">${esc(overlapLine(cur))}</span>` : ''}
       <span>${t('kv.folder')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(w.cwd)}" data-tip="${esc(w.cwd)}">${esc(base(w.cwd))}</a></span>
       <span>${t('kv.model')}</span><span>${modelLabel(w.model)} · ${t(`effort.${(S!.settings.effortPerTask && cur?.effort) || S!.settings.workerEffort}` as Key)}</span>
       <span>${t('kv.account')}</span><span>${esc(acctLabel(w.accountId))}</span>

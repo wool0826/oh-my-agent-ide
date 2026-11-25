@@ -20,7 +20,7 @@ import { loadSettings, claudeHelperModel } from '../settings';
 import { cachedModels } from '../models';
 import { modelLabel as labelFor } from '../../shared/models';
 import { ensureWorktree, removeWorktree, ghEnv } from '../repos';
-import { dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork';
+import { changedFiles, dropBranch, holdsWork, inspectBranch, worktreeClean } from '../gitwork';
 import { worktreeDiff } from '../gitdiff';
 import { listCheckpoints, restoreCheckpoint, saveCheckpoint } from '../checkpoints';
 import { checkpointLabel } from '../../shared/checkpoints';
@@ -86,6 +86,8 @@ class WorkerManager {
   private reviewing = new Set<string>();
   /** Workers whose files were put back to a checkpoint since their last message. */
   private restored = new Set<string>();
+  /** The latest read of each Worker's changed files (recordChanged): an older read finishing later is dropped. */
+  private changedSeq = new Map<string, number>();
   private ciFixing = new Set<string>();
   private followups = new Set<string>();
   /** Plan-first tasks whose Worker was reminded to present its plan, until it presents one. */
@@ -303,6 +305,7 @@ class WorkerManager {
         if (st === 'idle') this.fillSlots();
       },
       onTurnEnd: (r) => {
+        void this.recordChanged(w);
         // With more input queued, the turn that follows settles the task.
         if (r.internal || r.queued) return;
         this.turnEnded(w, r.text, r.isError, !!r.background);
@@ -549,6 +552,27 @@ class WorkerManager {
     const repo = w?.repo ? store.repo(w.repo) : null;
     if (!w || !repo) return null;
     return worktreeDiff(repo.defaultBranch, w.cwd, isLocalRepo(repo));
+  }
+
+  /**
+   * Record on the task whose branch the Worker's worktree has checked out which files that branch changes, so a new
+   * task naming one of them is flagged (shared/overlap.ts). Read from git each time a turn ends; a later read wins.
+   * Detached with the task in progress's branch never made (a fake Worker), the files are that task's, taken before
+   * the turn settles it. Detached otherwise (mid-rebase, back at the base) nothing is recorded.
+   */
+  private async recordChanged(w: Worker) {
+    const repo = w.repo ? store.repo(w.repo) : null;
+    if (!repo) return;
+    const seq = (this.changedSeq.get(w.id) ?? 0) + 1;
+    this.changedSeq.set(w.id, seq);
+    const cur = this.currentTask(w);
+    const r = await changedFiles(w.cwd, repo.defaultBranch, isLocalRepo(repo), cur?.kind === 'code' ? cur.branch : null).catch(() => null);
+    if (!r || this.changedSeq.get(w.id) !== seq) return;
+    const task = r.branch ? w.taskIds.map((id) => store.task(id)).find((x) => x?.kind === 'code' && x.branch === r.branch)
+      : cur?.kind === 'code' && !r.hintExists ? cur : null;
+    if (!task || task.status === 'cancelled' || !store.task(task.id) || task.changedFiles?.join('\0') === r.files.join('\0')) return;
+    task.changedFiles = r.files;
+    store.changed();
   }
 
   private async answerQuestions(w: Worker, input: Record<string, unknown>, signal: AbortSignal) {
