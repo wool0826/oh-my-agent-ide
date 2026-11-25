@@ -921,3 +921,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
    - **Signing hooks:** `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` for Windows; `MAC_CSC_LINK`/`MAC_CSC_KEY_PASSWORD`, `APPLE_TEAM_ID` and either an app-specific password or an App Store Connect API key for macOS. Missing secrets build unsigned. The unsigned dmg gets an ad-hoc signature without hardened runtime, since Apple silicon refuses an app whose signature broke when the bundle was changed, and the job checks it with `codesign --verify`. docs/RELEASING.md lists how to make each secret.
    - **arm64 only on macOS:** the agent SDK installs its native binary for the build machine's architecture, so a universal or x64 dmg built on an Apple silicon runner would carry the wrong binary.
    - **`scripts/release.mjs` stays** as the local fallback and now makes a draft for an existing tag, matching the workflow. The dmg is named `OhMyAgentIDE-<version>-<arch>.dmg`.
+
+208. **The look-back time line uses its own class, `.tline` / `.tline-k`, not the sidebar tabs' `.tl`** (T-0113, follows 206).
+   - 206 added a bare `.tl` rule for the time line, which turned the sidebar tab labels (`.ins-tabs .tl`) into 6px grey bars. The time line was renamed; the labels keep `.tl`.
+   - Renaming beat scoping the rule to `#ws-sum`: the same bar may be reused outside the Summary tab, and no other class 206 added is used anywhere else.
+   - `test/e2e/layout.e2e.mjs` now checks that the chosen tab's label is text: no track colour behind it, as high as its font, not clipped.
