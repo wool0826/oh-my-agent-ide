@@ -282,7 +282,7 @@ export interface ChatItem {
   text: string;
   /** result card: task id, auto: auto-answer id */
   ref?: string;
-  /** The task whose report this message answers: drawn one step in under that report's card (shared/thread.ts). */
+  /** The thread this message is a reply in: its root's chat id, or a task id for that task's report (shared/thread.ts). */
   replyTo?: string;
   /** kind 'shell': the run. */
   shell?: ShellRun;

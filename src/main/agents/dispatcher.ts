@@ -23,7 +23,7 @@ import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today, uid } from '../util';
 import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
 import { hasSpend } from '../../shared/spend';
-import { turnReplyTo } from '../../shared/thread';
+import { threadTarget, turnReplyTo } from '../../shared/thread';
 import { sharedMemoDigest } from '../../shared/memos';
 import { describeCancel, isQueued } from '../../shared/queue';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
@@ -682,8 +682,9 @@ class Dispatcher {
   send(text: string, files: string[] = [], replyTo: string | null = null): string {
     const attached = registerAttachments(files);
     const full = text + attachmentBlock(attached);
-    // Only a report still in the chat can be answered; anything else is a plain message.
-    const to = replyTo && store.data.chat.some((c) => c.ref === replyTo && (c.kind === 'result' || c.kind === 'error')) ? replyTo : null;
+    // A reply is filed under a report or a Dispatcher message still in the chat (a reply to a reply, under its root);
+    // anything else is a plain message.
+    const to = threadTarget(store.data.chat, replyTo);
     const { id } = store.chat('user', full, undefined, to);
     this.userSpoke();
     const s = this.open();
