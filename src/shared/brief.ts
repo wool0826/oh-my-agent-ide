@@ -1,4 +1,4 @@
-// The one-line fields a decision card shows above its long text (decision 223): what is asked, why, what it risks and
+// The one-line fields a decision card shows above its long text (decision 226): what is asked, why, what it risks and
 // what comes of it, each clipped to BRIEF_MAX. A shell call also gets plain words for what it does and risk badges,
 // read from the command itself (shellWords.ts), so a PowerShell call without Claude Code's description still says
 // what it does. Pure: main builds them when it asks, the renderer only shows them.

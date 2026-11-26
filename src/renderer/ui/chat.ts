@@ -662,7 +662,7 @@ const TAG_LOOK: Record<RiskTag, [string, string]> = {
   rule: ['danger', 's-alert'], delete: ['danger', 's-alert'], network: ['accent', 's-open'], write: ['warning', 's-edit'], read: ['success', 's-doc'], unknown: ['', 's-alert'],
 };
 
-/** A fold of a decision card (decision 223): its details, its whole command, or its free-text field. */
+/** A fold of a decision card (decision 226): its details, its whole command, or its free-text field. */
 const foldOpen = (fold: string, id: string) => ui.decOpen.has(`${fold}:${id}`);
 const foldBtn = (fold: string, d: Decision, label: string) => {
   const open = foldOpen(fold, d.id);
@@ -672,7 +672,7 @@ const foldBtn = (fold: string, d: Decision, label: string) => {
 /**
  * inWorker: in its Worker's panel, where the Worker's composer is the text field (decision 93).
  * A permission reads action, reason, risk badges and scope above its folded command; any other decision reads what,
- * why, risk and result in one line each, its long text behind the details button (decision 223).
+ * why, risk and result in one line each, its long text behind the details button (decision 226).
  */
 export function decisionHtml(d: Decision, inWorker = false) {
   const x = task(d.taskId);

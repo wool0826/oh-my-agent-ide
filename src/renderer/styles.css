@@ -633,7 +633,7 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .dec .reason span { color: var(--text-primary); }
 .dec code { display: block; font-size: var(--fs-caption2); padding: var(--space-6) var(--space-8); word-break: break-all; user-select: text; }
 .dec .opt-d { font-size: var(--fs-caption2); color: var(--text-secondary); }
-/* One line per summary field (decision 223); the tooltip has the rest. A decision: what, why, risk and result in a table,
+/* One line per summary field (decision 226); the tooltip has the rest. A decision: what, why, risk and result in a table,
    its long text in a well behind the details button. A permission: action, reason, risk badges and scope, then its
    command folded to one line. */
 .dec .qrow { display: flex; align-items: center; gap: var(--space-8); }
