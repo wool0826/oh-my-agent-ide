@@ -265,8 +265,11 @@ function evRowHtml(c: ChatItem, then = false) {
   const chip = e.task ? `<span class="evid">${esc(e.task)}</span>` : '';
   const name = w ? `<button type="button" class="evt" data-action="open-worker" data-id="${esc(w.id)}" data-tip="${esc(c.text)}">${esc(title)}</button>` : `<span class="evt" data-tip="${esc(c.text)}">${esc(title)}</span>`;
   const who = e.worker || x?.workerId ? `<span class="evw">${esc(e.worker ?? x?.workerId ?? '')}</span>` : '';
-  return `<div class="evrow" role="listitem" data-ev="${esc(e.k)}">${pre}${evIcon(info.icon, info.tone, t(`evk.${e.k}` as Key))}${chip}${name}${times}${who}<span class="pill"${pillTone(info.tone)}>${esc(t(b.key as Key, b.vars))}</span>${go}${time}</div>`;
+  return `<div class="evrow${evFresh.has(c.id) ? ' fresh' : ''}" role="listitem" data-ev="${esc(e.k)}">${pre}${evIcon(info.icon, info.tone, t(`evk.${e.k}` as Key))}${chip}${name}${times}${who}<span class="pill"${pillTone(info.tone)}>${esc(t(b.key as Key, b.vars))}</span>${go}${time}</div>`;
 }
+
+/** Lines new since the last draw that joined a block already on screen: they rise in on their own (or its summary row does). */
+let evFresh = new Set<string>();
 
 /** A row with the events it caused hanging under it, in one box (a merge, then the task that waited on it). */
 const evPairHtml = (r: EvRow<ChatItem>) => (r.then.length ? `<div class="evpair" role="group">${evRowHtml(r.c)}${r.then.map((x) => evRowHtml(x, true)).join('')}</div>` : evRowHtml(r.c));
@@ -285,7 +288,8 @@ function evBlockHtml(b: EvBlock<ChatItem>) {
     const what = n.kinds.length ? n.kinds.map((k) => t(`evk.${k}` as Key)).join(', ') : t('evs.list');
     return `<span class="evn" data-tip="${esc(what)}">${evIcon(n.icon, n.tone, what)}${n.n}</span>`;
   }).join('');
-  const head = `<button type="button" class="evs-h" data-action="evs-fold" data-id="${esc(b.id)}" aria-expanded="${open}" aria-label="${esc(`${label} ${span}`)}">${sym('e-stack', 'c-gray')}<b>${esc(label)}</b><span class="evs-at">${span}</span><span class="evs-n">${counts}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
+  const fresh = !open && b.rows.some((r) => [r.c, ...r.then].some((x) => evFresh.has(x.id)));
+  const head = `<button type="button" class="evs-h${fresh ? ' fresh' : ''}" data-action="evs-fold" data-id="${esc(b.id)}" aria-expanded="${open}" aria-label="${esc(`${label} ${span}`)}">${sym('e-stack', 'c-gray')}<b>${esc(label)}</b><span class="evs-at">${span}</span><span class="evs-n">${counts}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
   const body = open ? `<div class="evs-rows" role="list" aria-label="${esc(t('evs.list'))}">${rows}</div>` : '';
   const pinned = b.pinned.length ? `<div class="evs pin" role="list" aria-label="${esc(t('evs.pinned'))}">${b.pinned.map((c) => evRowHtml(c)).join('')}</div>` : '';
   return `<div class="evblk"><div class="evs fold${open ? ' open' : ''}" role="group" aria-label="${esc(label)}">${head}${body}</div>${pinned}</div>`;
@@ -475,6 +479,7 @@ export function renderChat(force = false, older = false) {
   const next = seenAt >= 0 ? listed[seenAt + 1]?.c.id : undefined;
   const nextHead = next ? headOf.get(next) ?? next : null;
   const mark = nextHead && listed.findIndex(({ c }) => c.id === nextHead) > seenAt ? items.findIndex(({ c }) => c.id === nextHead) : -1;
+  evFresh = new Set(mark < 0 && next ? listed.slice(seenAt + 1).map(({ c }) => c.id).filter((id) => headOf.has(id)) : []);
   // Replies hang off what they answer (A-1 of T-0086): a run of replies right under their root is one branch from it;
   // a reply after other messages keeps its place in time, on a branch that starts from a tag naming the root.
   const ix = threadIndex(items.map(({ c }) => c));

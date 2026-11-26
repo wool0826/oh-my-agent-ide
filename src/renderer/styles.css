@@ -1282,6 +1282,7 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .new-from ~ :not(.typing) { animation: rise-in var(--dur-slow) var(--ease-out) backwards; }
 /* The marker inside a reply card: what follows the card is new too. */
 .br:has(.new-from) ~ :not(.typing) { animation: rise-in var(--dur-slow) var(--ease-out) backwards; }
+.evrow.fresh, .evs-h.fresh { animation: rise-in var(--dur-slow) var(--ease-out) backwards; }
 /* What a message is a reply to, as it is picked */
 .rchip { animation: rise-in var(--dur-base) var(--ease-out); }
 /* Menus, the confirm dialog, the toast */
