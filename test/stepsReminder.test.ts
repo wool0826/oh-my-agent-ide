@@ -1,7 +1,7 @@
 // The one-time reminder to declare progress steps (agents/stepsReminder.ts).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { REMIND_AFTER, STEPS_REMINDER, stepsReminder, stepsReminderHook } from '../src/main/agents/stepsReminder';
+import { REMIND_AFTER, STEPS_REMINDER, STEPS_TASK_LINE, followUpStepsLine, stepsReminder, stepsReminderHook } from '../src/main/agents/stepsReminder';
 import type { Task } from '../src/shared/types';
 
 const T = (over: Partial<Task> = {}) => ({ id: 'T-1', status: 'running', steps: null, ...over }) as Task;
@@ -25,6 +25,15 @@ test('stepsReminder: never for a task with steps, a task not running, no task, o
     assert.equal(stepsReminder(counts, T({ id: 'T-3' }), 'mcp__oma__set_steps'), null);
   }
   assert.equal(counts.size, 0);
+});
+
+test('followUpStepsLine: a finished task reopened by a follow-up is asked for steps; one cut short revises its plan (T-0131 cause E)', () => {
+  const steps = [{ title: 'a', doneAt: 'x' }, { title: 'b', doneAt: null }];
+  assert.equal(followUpStepsLine(T({ status: 'pr_open', steps })), STEPS_TASK_LINE);
+  assert.equal(followUpStepsLine(T({ status: 'done', steps })), STEPS_TASK_LINE);
+  assert.equal(followUpStepsLine(T({ status: 'failed', steps: null })), STEPS_TASK_LINE);
+  assert.equal(followUpStepsLine(T({ status: 'failed', steps: steps.map((s) => ({ ...s, doneAt: 'x' })) })), STEPS_TASK_LINE);
+  assert.match(followUpStepsLine(T({ status: 'failed', steps })), /^Progress: this task keeps its plan \(1\/2 done\)\. Revise it/);
 });
 
 test('stepsReminderHook: adds the reminder as context to a PostToolUse result only', async () => {

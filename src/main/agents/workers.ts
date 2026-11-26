@@ -151,6 +151,16 @@ export class WorkerManager {
     if (!acc) return null;
     const memDir = workerMemoryDir(w);
     const events = this.sessionEvents(w);
+    // Codex has no tool hooks: the steps reminder is added to the turn in progress instead (Claude: stepsReminderHook).
+    const codexEvents: SessionEvents = {
+      ...events,
+      onTool: (name, summary) => {
+        events.onTool?.(name, summary);
+        const text = stepsReminder(this.stepless, this.currentTask(w), name);
+        const cs = this.sessions.get(w.id);
+        if (text && cs instanceof CodexSession) cs.steer(text);
+      },
+    };
     const s: WorkerSession = provider === 'chatgpt' ? new CodexSession({
       label: w.id,
       model: w.model,
@@ -165,7 +175,7 @@ export class WorkerManager {
       sandbox: 'workspace-write',
       approvalPolicy: 'on-request',
       approve: permissions.codexApproval(this, w),
-    }, events, codexClient()) : new AgentSession({
+    }, codexEvents, codexClient()) : new AgentSession({
       label: w.id,
       model: w.model,
       cwd: w.cwd,
