@@ -27,7 +27,7 @@ import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
-import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker, workerTask } from './core';
 import { setTip } from './tip';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
@@ -146,7 +146,7 @@ function failureHtml(c: ChatItem) {
   const v = still ? stepView(x) : null;
   const at = v && !v.allDone ? stepText(t, v, true) : '';
   const why = still ? plainStatus(x.summary) : c.text;
-  const last = w.taskIds[w.taskIds.length - 1] === x.id;
+  const last = workerTask(w)?.id === x.id;
   const go = still && last && lastFailed(w, x) ? `<button type="button" class="btn" data-action="worker-continue" data-id="${esc(w.id)}" aria-label="${esc(t('wk.continueWho', { id: w.id }))}">${t('wk.continue')}</button>` : '';
   return `<div class="attach fail" data-task="${esc(x.id)}" data-src="card:${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill" data-tone="danger">${t('st.failed')}</span></b><span class="sm">${esc([w.id, w.repo ?? t('general'), at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why, c.id)}</span></span></div>`;
 }
@@ -556,7 +556,7 @@ export function updateSendButton() {
   // Nothing to send: the button is not ready either. As Stop it always is.
   send.disabled = empty('chat');
   const w = worker(ui.wSel);
-  const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+  const cur = w ? workerTask(w) : null;
   const ws = $<HTMLButtonElement>('#ws-send');
   const stop = !!w && canStop(w, cur) && empty('ws');
   set(ws, stop, t('wk.stop'));

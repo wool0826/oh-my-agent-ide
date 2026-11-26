@@ -1026,3 +1026,18 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Old lines** have no source, so `noiseLine` matches the permission, plan and CI titles the app wrote, in English and Korean. At launch each `memory/decisions/*.md` with something to take out is copied to `data/backups/memory-decisions-<month>-<time>.md`, then rewritten and committed. A file with nothing to remove is left alone.
     - **The allow-list is unaffected:** the look back reads `task.permissions` and the task's grants, which `decisions.answer` keeps. Nothing reads these memory lines.
     - **Rejected:** filtering only in the digest and recall, which would leave the files growing; and a one-time flag, because memory synced from a PC on an older version can bring the lines back.
+
+222. **A Worker's current task is its last open task (running, waiting, queued), otherwise its last task; main and every screen pick it with `src/shared/currentTask.ts`** (T-0133, from the T-0131 investigation).
+    - **Why:** main wrote set_steps and step_done to the last open task, while the window drew the last of `taskIds`. A follow-up chained after the running task on the same Worker (after_task_id) is last but blocked, so the row showed its title and no Stepper (W-08 T-0117 to T-0119, W-05 T-0096 then T-0099).
+    - **How:** `openTask` is main's `currentTask`; `currentTask` (open, otherwise last) is the window's `workerTask` in `ui/core.ts`. The sidebar row and icon, Stop, the context menu, the palette, the Worker view with its Plan card and the failed card's Continue all use it.
+    - **Rejected:** keeping the last task on screen and moving the steps to it, which would put a plan on a task that has not started.
+
+223. **create_task with worker_id refuses a Worker that still has an open task, unless the new task waits for it with after_task_id** (T-0133, follows 222).
+    - **Why:** `canStart` is always true for a Worker that holds a slot, so the new task started at once beside the first one and took over its step reports and result.
+    - **How:** `busyWith` is the open task unless `after` is that task or one already chained after it. The error tells the Dispatcher to use after_task_id, send_to_worker or another Worker. It is checked before the task is made, so no failed task is left behind. The tool description and the Dispatcher's rule 2 say so.
+    - **Rejected:** holding the task as queued with a "Worker busy" reason: `queued` counts as open, so the waiting task would become the current one and take the steps anyway, and a new queue reason needs new window text. Also rejected: chaining it to the open task without asking, which changes what the Dispatcher asked for (after_task_id waits for the merge, and a failed first task cancels it).
+    - **Left:** a blocked task waiting on another Worker's task can still start while its Worker runs a newer one. It sits earlier in `taskIds`, so the steps stay on the newer task until that one ends.
+
+224. **Steps and task statuses leave a trace: the task id on step events, every status change in the app log, reopen and window mismatches** (T-0133, from section 5 of the T-0131 report).
+    - **How:** set_steps and step_done Worker log items carry `task`. `store.changed()` logs each status change as `task T-1 running -> failed (PR: no) via fail < finalize`; the cause is the functions on the stack, outside the store. `reopenLast` logs whether the plan was kept or cleared. The window logs once (`app:warn`) when it draws a Worker with another open task than `openTasks`, which main sends in the same state.
+    - **Rejected:** the task id in the visible `log.steps` text (UI text), and a cause argument at each of the 20 places that set a status, where one is easy to miss.

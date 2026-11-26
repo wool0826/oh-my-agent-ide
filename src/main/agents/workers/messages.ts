@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { t } from '../../i18n';
 import { loadSettings } from '../../settings';
+import { log } from '../../log';
 import { store } from '../../store';
 import { nowIso, oneLine } from '../../util';
 import { selfReviewLine } from '../selfReview';
@@ -8,8 +9,10 @@ import { STEPS_TASK_LINE } from '../stepsReminder';
 import { needsPlan, taskStarted } from '../workerPrompt';
 import { LIMIT_RESET_MSG, QUESTION_TAG, SLOT_FREE_MSG, planSummaryRule } from '../workerText';
 import type { FeedbackKind, WorkerManager, WorkerSession } from '../workers';
+import { lastTask } from '../../../shared/currentTask';
 import { isLocalRepo, localTaskLines } from '../../../shared/localRepo';
 import { waitsForSlot } from '../../../shared/slots';
+import { reopenNote, stepView } from '../../../shared/steps';
 import { canReopen, setStatus } from '../../../shared/taskStatus';
 import type { Task, Worker } from '../../../shared/types';
 import { restoreWorker } from './archive';
@@ -202,15 +205,18 @@ export function reopenLast(m: WorkerManager, w: Worker): Task | null {
   if (!last) return null;
   // A task that failed before finishing just continues; its report is not a follow-up.
   if (last.finishedAt) m.followups.add(last.id);
+  const from = last.status;
+  const was = stepView(last);
   setStatus(last, 'running');
   last.stopped = false;
   last.updatedAt = nowIso();
+  log.info(`reopen ${last.id} (${w.id}): ${from} -> running, ${reopenNote(was, stepView(last))}`);
   return last;
 }
 
 /** The Worker's last task, when a follow-up would reopen it (reopenLast). */
 export function reopenable(m: WorkerManager, w: Worker): Task | null {
   if (m.currentTask(w)) return null;
-  const last = w.taskIds.length ? store.task(w.taskIds[w.taskIds.length - 1]) : null;
+  const last = lastTask(w, (id) => store.task(id));
   return last && canReopen(last) ? last : null;
 }

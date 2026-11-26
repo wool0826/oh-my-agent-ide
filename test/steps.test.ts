@@ -1,7 +1,7 @@
 // A task's planned steps (shared/steps.ts): declared and revised by its Worker, marked done, drawn in the sidebar.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { markDone, mergeProgress, reopenSteps, doneMask, setSteps, stepper, stepsLine, stepView, MAX_STEPS } from '../src/shared/steps';
+import { markDone, mergeProgress, reopenNote, reopenSteps, doneMask, setSteps, stepper, stepsLine, stepView, MAX_STEPS } from '../src/shared/steps';
 import type { Task } from '../src/shared/types';
 
 const T = (over: Partial<Task> = {}) => ({ status: 'running', steps: null, ...over }) as Task;
@@ -170,4 +170,12 @@ test('stepper: the window on a long plan keeps the current step in view and coun
   assert.deepEqual(shape(), ['3:done 4:cur 5:todo', 2, 3, 3]);
   markDone(x, 4, AT); markDone(x, 5, AT);
   assert.deepEqual(shape(), ['6:done 7:done 8:done', 5, 0, 0]);
+});
+
+test('reopenNote: whether a reopened task kept its plan, and how far it was', () => {
+  const t = T({ status: 'failed' });
+  assert.equal(reopenNote(stepView(t), stepView(t)), 'no plan');
+  setSteps(t, ['a', 'b', 'c']); markDone(t, 1, AT);
+  assert.equal(reopenNote(stepView(t), stepView(t)), 'plan kept at 1/3');
+  assert.equal(reopenNote(stepView(t), null), 'plan cleared at 1/3');
 });

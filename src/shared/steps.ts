@@ -62,6 +62,12 @@ export function reopenSteps(task: Task, to: Task['status']) {
   if (to === 'running' && (task.status === 'pr_open' || task.status === 'done')) task.steps = null;
 }
 
+/** The plan of a reopened task, for the app log: kept, cleared or none, with how far it was. */
+export function reopenNote(was: StepView | null, now: StepView | null): string {
+  if (!was) return 'no plan';
+  return `plan ${now ? 'kept' : 'cleared'} at ${was.done}/${was.total}`;
+}
+
 /** The tool's reply and the Dispatcher's line after a change. */
 export function stepsLine(steps: TaskStep[]) {
   const v = stepView({ steps })!;

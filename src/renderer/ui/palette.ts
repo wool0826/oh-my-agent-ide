@@ -8,7 +8,7 @@ import { type View } from '../../shared/history';
 import { act, openWorker } from '../app';
 import { chatAll, renderChat, renderChatInspector } from './chat';
 import { closePop } from './controls';
-import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, task, taskLabel, toast, ui, when, worker } from './core';
+import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, taskLabel, toast, ui, when, worker, workerTask } from './core';
 import { go } from './history';
 import { layerClose, layerOpen } from './layer';
 import { closeSettings, openSettings } from './settings';
@@ -43,7 +43,7 @@ export function paletteItems(): Cmd[] {
   const live = s.workers.filter((w) => w.status !== 'archived').sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   const arch = s.workers.filter((w) => w.status === 'archived').sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   for (const w of [...live, ...arch]) {
-    const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+    const x = workerTask(w);
     out.push({ id: `w:${w.id}`, group: w.status === 'archived' ? t('side.archived') : 'Worker', title: `${w.id} ${x?.title ?? w.title}`,
       hint: [w.repo ?? t('general'), modelLabel(w.model)].join(' · '), icon: workerIcon(w), run: () => openWorker(w.id) });
   }

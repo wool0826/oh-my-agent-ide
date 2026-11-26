@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, shell } from 'electron';
 import { handle } from './handle';
+import { log } from '../log';
 import { paths } from '../paths';
 import { opensSafely } from '../../shared/openSafe';
 import { savePastedImage } from '../attachments';
@@ -29,6 +30,8 @@ export function registerAppIpc() {
   handle('attach:pasteImage', (type: string, bytes: Uint8Array) => savePastedImage(path.join(paths().data, 'pasted'), type, bytes));
   handle('reveal:path', (p: string) => shell.showItemInFolder(p));
   handle('app:version', () => app.getVersion());
+  // Something the window noticed that belongs in the app log (a Worker drawn with another task than main's).
+  handle('app:warn', (text: unknown) => log.warn(`window: ${String(text).slice(0, 500)}`));
   handle('app:relaunch', () => { if (restartIntoUpdate(updateBlockers())) return; app.relaunch(); app.quit(); });
   // Restart into the downloaded update; refused (false) while a Worker, a queued task or the Dispatcher is working.
   handle('update:apply', () => applyUpdate(updateBlockers()));

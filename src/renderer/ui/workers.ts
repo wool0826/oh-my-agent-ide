@@ -24,18 +24,17 @@ import { linkUrl, linkify, reportLinks, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
 import { shotsOf } from './shotview';
-import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, worker } from './core';
+import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, worker, workerTask } from './core';
 import { grantsHtml } from './repos';
 import { workerIcon } from './sidebar';
 
-const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
 
 /**
  * The pill of a Worker: its state in a word, with how long beside it, outside the pill (shared/workerState.ts). The
  * list and the inspector header share it, so a queued Worker reads "Queued" in both and a failed one is never "Idle".
  */
 export function statusPill(w: Worker) {
-  const x = lastTask(w);
+  const x = workerTask(w);
   const pill = (tn: string, label: string, age = '') => `<span class="pstat"><span class="pill"${pillTone(tn)}>${esc(label)}</span>${age ? `<span class="age">${esc(age)}</span>` : ''}</span>`;
   switch (workerState(w, x)) {
     case 'run': return pill('accent', t(w.status === 'starting' ? 'st.starting' : 'st.running'), x ? ago(x.updatedAt) : '');
@@ -98,18 +97,18 @@ export function renderWorkerList() {
   const shown = filterWorkers(s.workers, f);
   const active = shown.filter((w) => w.status !== 'archived');
   const arch = shown.filter((w) => w.status === 'archived');
-  const stateOf = (w: Worker) => workerState(w, lastTask(w));
+  const stateOf = (w: Worker) => workerState(w, workerTask(w));
   // Who needs the user comes first, then what stopped, then what runs.
   const rank: Record<WorkerState, number> = { ask: 0, stalled: 1, failed: 1, run: 2, asked: 3, queued: 3, pr: 4, done: 4, stopped: 4, idle: 4, archived: 5 };
   const order = (w: Worker) => rank[stateOf(w)];
   const qctx = queueCtx();
   // Queued Workers are in the order they will start; ones held by something else come after them.
-  const place = (w: Worker) => { const x = lastTask(w); return (stateOf(w) === 'queued' && x ? queueLine(t, x, qctx)?.pos : null) ?? Infinity; };
+  const place = (w: Worker) => { const x = workerTask(w); return (stateOf(w) === 'queued' && x ? queueLine(t, x, qctx)?.pos : null) ?? Infinity; };
   const byPlace = (a: Worker, b: Worker) => { const pa = place(a), pb = place(b); return pa === pb ? 0 : pa < pb ? -1 : 1; };
   active.sort((a, b) => order(a) - order(b) || byPlace(a, b) || b.lastActiveAt.localeCompare(a.lastActiveAt));
   arch.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   const li = (w: Worker) => {
-    const x = lastTask(w);
+    const x = workerTask(w);
     const st = stateOf(w);
     const dec = st === 'ask' ? workerDecisions(s.decisions, w.id)[0] : null;
     const about = [w.repo ?? t('general'), modelLabel(w.model), w.accountId && s.accounts.some((a) => a.id === w.accountId) ? acctLabel(w.accountId) : ''].filter(Boolean).join(', ');
@@ -202,7 +201,7 @@ export function renderSession(force = false, older = false) {
   $('#wk-list').hidden = ui.wOpen && !!w;
   $('#wk-session').hidden = !(ui.wOpen && w);
   if (!ui.wOpen || !w) return;
-  const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+  const x = workerTask(w);
   $('#ws-title').textContent = `${w.id} ${x?.title ?? w.title}`;
   $('#ws-sub').textContent = [w.repo ?? t('general'), x?.branch, modelLabel(w.model)].filter(Boolean).join(' · ');
   const tabs = w.repo ? (['chat', 'changes', 'summary'] as const) : (['chat', 'summary'] as const);
@@ -530,7 +529,7 @@ export function renderWorkerInspector() {
     return;
   }
   const tasks = w.taskIds.map((id) => task(id)).filter(Boolean).reverse() as Task[];
-  const cur = tasks[0];
+  const cur = workerTask(w) ?? undefined;
   const open = workerDecisions(S!.decisions, w.id);
   renderComposerDecision();
   const failed = workerState(w, cur) === 'failed';
