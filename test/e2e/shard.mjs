@@ -1,6 +1,7 @@
 // Runs one shard of the end-to-end flows: `node test/e2e/shard.mjs 2/3`. Every test/e2e/*.e2e.mjs file is weighed by
 // its number of flows and dealt, largest first, to the lightest shard, so the shards take about as long and a new
-// file joins one without a change to CI. Needs the built app (`npm run build`). `--list` prints the shards only.
+// file joins one without a change to CI. The screen comparison (visual.e2e.mjs) has a job of its own and is left out.
+// Needs the built app (`npm run build`). `--list` prints the shards only; `npm run e2e` runs them all as `1/1`.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +15,7 @@ if (!m || +m[1] < 1 || +m[1] > +m[2]) {
 }
 const [index, total] = [+m[1], +m[2]];
 
-const files = fs.readdirSync(here).filter((f) => f.endsWith('.e2e.mjs'))
+const files = fs.readdirSync(here).filter((f) => f.endsWith('.e2e.mjs') && f !== 'visual.e2e.mjs')
   .map((f) => ({ f, flows: (fs.readFileSync(path.join(here, f), 'utf8').match(/^\s*flow\(/gm) ?? []).length }))
   .sort((a, b) => b.flows - a.flows || a.f.localeCompare(b.f));
 const shards = Array.from({ length: total }, () => ({ flows: 0, files: [] }));
