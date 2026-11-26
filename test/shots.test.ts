@@ -116,3 +116,9 @@ test('shots: an address that is not a reported image reads as nothing', () => {
   assert.equal(shotPath('oma-shot://file/%E0%A4%A.png'), null);
   assert.equal(shotPath('not a url'), null);
 });
+
+test('shots: names made only of the part words are one untitled pair', () => {
+  const { sets, rest } = shotSets(['/r/after.png', '/r/before.png']);
+  assert.deepEqual(rest, []);
+  assert.deepEqual(sets.map((s) => [s.screen, s.roles, s.shots.map((x) => x.path)]), [['', ['before', 'after'], ['/r/before.png', '/r/after.png']]]);
+});

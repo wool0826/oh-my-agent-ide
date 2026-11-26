@@ -17,9 +17,15 @@ const label = (s: Shot) => [s.role ? t(ROLE_KEY[s.role]) : '', s.screen.replace(
 
 /** The sets each place drew, by its key, so a switch or the opened view finds them without reading the report again. */
 const placed = new Map<string, ShotSet[]>();
-/** The switches of each set, by place and set: they stay as they were when the card is drawn again. */
+/** The switches of each set, by place and screen: they stay as they were when the card is drawn again. */
 const picks = new Map<string, ShotPick>();
-const pickOf = (key: string, i: number, set: ShotSet): ShotPick => ({ ...firstPick(set), ...picks.get(`${key}|${i}`) });
+const pickId = (key: string, set: ShotSet) => `${key}|${set.screen}`;
+/** The kept switches, less a value the set no longer has. */
+function pickOf(key: string, set: ShotSet): ShotPick {
+  const pick = firstPick(set), kept = picks.get(pickId(key, set)) ?? {};
+  for (const a of AXES) if (kept[a] && set.axes[a]?.includes(kept[a]!)) pick[a] = kept[a];
+  return pick;
+}
 
 /**
  * A report's files split into its screenshots, as thumbnails, and the rest, which stay files. `key` names the place
@@ -27,11 +33,15 @@ const pickOf = (key: string, i: number, set: ShotSet): ShotPick => ({ ...firstPi
  */
 export function shotsOf(files: string[], key: string) {
   const { sets, rest } = shotSets(files);
-  if (!sets.length) return { html: '', rest };
   placed.delete(key);
+  if (!sets.length) return { html: '', rest };
   placed.set(key, sets);
-  // Places drawn long ago and gone from the screen are forgotten first.
-  if (placed.size > 400) placed.delete(placed.keys().next().value!);
+  // Places drawn long ago and gone from the screen are forgotten first, with their switches.
+  if (placed.size > 400) {
+    const old = placed.keys().next().value!;
+    placed.delete(old);
+    for (const p of picks.keys()) if (p.startsWith(`${old}|`)) picks.delete(p);
+  }
   return { html: `<div class="shots" data-key="${esc(key)}">${sets.map((s, i) => setHtml(key, i, s)).join('')}</div>`, rest };
 }
 
@@ -42,7 +52,7 @@ export function fileChips(files: string[]) {
 }
 
 function setHtml(key: string, i: number, set: ShotSet) {
-  const pick = pickOf(key, i, set);
+  const pick = pickOf(key, set);
   const v = setView(set, pick);
   const sw = AXES.filter((a) => set.axes[a]).map((a) => `<span class="seg" role="group" aria-label="${esc(t(AXIS_KEY[a]))}">${set.axes[a]!.map((val) => `<button type="button" data-action="shot-axis" data-key="${esc(key)}" data-i="${i}" data-axis="${a}" data-v="${val}" aria-pressed="${pick[a] === val}">${t(VALUE_KEY[val])}</button>`).join('')}</span>`);
   const count = v.hidden ? `<span class="gap"></span><span class="shot-n" data-tip="${esc(t('shot.count', { n: set.shots.length }))}">${sym('s-image')}${set.shots.length}</span>` : '';
@@ -81,7 +91,7 @@ export function pickAxis(el: HTMLElement) {
   const set = placed.get(key)?.[i];
   const box = el.closest<HTMLElement>('.shot-set');
   if (!set || !box || !set.axes[axis]) return;
-  picks.set(`${key}|${i}`, { ...pickOf(key, i, set), [axis]: el.dataset.v });
+  picks.set(pickId(key, set), { ...pickOf(key, set), [axis]: el.dataset.v });
   box.outerHTML = setHtml(key, i, set);
   document.querySelector<HTMLElement>(`.shots[data-key="${CSS.escape(key)}"] > .shot-set[data-i="${i}"] [data-action="shot-axis"][data-axis="${axis}"][data-v="${CSS.escape(el.dataset.v ?? '')}"]`)?.focus();
 }
