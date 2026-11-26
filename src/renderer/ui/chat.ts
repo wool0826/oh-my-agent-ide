@@ -1,6 +1,6 @@
 // The chat with the Dispatcher and its right sidebar: decisions, comparisons, bundles, results, memos, automations, and attachments.
 import type { Automation, Memo } from '../../shared/types';
-import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, Task } from '../../shared/types';
+import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, RiskTag, Task } from '../../shared/types';
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
 import { stepView } from '../../shared/steps';
 import { taskMinutes } from '../../shared/workerSummary';
@@ -25,6 +25,7 @@ import { canStop } from '../../shared/canStop';
 import { branchLayout, canRoot, isReport, threadIndex } from '../../shared/thread';
 import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, slotClock, type DecisionKind } from '../../shared/decisionView';
+import { cardBrief } from '../../shared/brief';
 import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
 import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker, workerTask } from './core';
@@ -656,7 +657,23 @@ export function tickDecisions(root: ParentNode = document) {
   });
 }
 
-/** inWorker: in its Worker's panel, where the Worker's composer is the text field (decision 93). */
+/** The risk badge of each class: its tone and icon; the label is its i18n key, or the always-ask rule's own name. */
+const TAG_LOOK: Record<RiskTag, [string, string]> = {
+  rule: ['danger', 's-alert'], delete: ['danger', 's-alert'], network: ['accent', 's-open'], write: ['warning', 's-edit'], read: ['success', 's-doc'], unknown: ['', 's-alert'],
+};
+
+/** A fold of a decision card (decision 226): its details, its whole command, or its free-text field. */
+const foldOpen = (fold: string, id: string) => ui.decOpen.has(`${fold}:${id}`);
+const foldBtn = (fold: string, d: Decision, label: string) => {
+  const open = foldOpen(fold, d.id);
+  return `<button type="button" class="btn btn-icon btn-sm${fold === 'reply' ? '' : ' btn-ghost'} tog" data-action="dec-fold" data-fold="${fold}" data-id="${d.id}" aria-expanded="${open}" aria-label="${esc(label)}" data-tip="${esc(label)}">${sym(fold === 'reply' ? 's-reply' : 's-chev')}</button>`;
+};
+
+/**
+ * inWorker: in its Worker's panel, where the Worker's composer is the text field (decision 93).
+ * A permission reads action, reason, risk badges and scope above its folded command; any other decision reads what,
+ * why, risk and result in one line each, its long text behind the details button (decision 226).
+ */
 export function decisionHtml(d: Decision, inWorker = false) {
   const x = task(d.taskId);
   const who = d.workerId ?? 'Dispatcher';
@@ -665,34 +682,58 @@ export function decisionHtml(d: Decision, inWorker = false) {
   const sel = !inWorker && ui.decSel === d.id;
   const keys = decisionKeys(d);
   const kbd = (val: string) => !inWorker && keys.has(val) ? `<kbd aria-hidden="true">${esc(keys.get(val)!)}</kbd>` : '';
-  let buttons: string;
-  if (d.source === 'plan') {
-    buttons = `<div class="btns"><button class="btn btn-primary" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('plan.approve')}${kbd(ALLOW)}</button></div>`;
-  } else if (d.source === 'permission') {
-    // "Allow for this task" is there when the action's kind can be named; the line just above the buttons says what
-    // that yes covers, so it is read before the button is pressed.
-    const scope = d.options.find((o) => o.label === ALLOW_TASK);
-    const [pre, post] = t('dec.scopeLine', { what: '\u0000' }).split('\u0000');
-    const scopeLine = scope?.description ? `<div class="scope"><span>${esc(pre)}</span><code>${esc(scope.description)}</code><span>${esc(post ?? '')}</span></div>` : '';
-    buttons = `${scopeLine}<div class="btns perm" data-fit="stack"><button class="btn" data-action="answer" data-id="${d.id}" data-val="${DENY}">${t('deny')}${kbd(DENY)}</button>${scope ? `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${ALLOW_TASK}">${t('allowTask')}${kbd(ALLOW_TASK)}</button>` : ''}<button class="btn btn-primary" data-action="answer" data-id="${d.id}" data-val="${ALLOW}">${t('allow')}${kbd(ALLOW)}</button></div>`;
-  } else {
-    const col = d.options.length > 2 || d.options.some((o) => o.description);
-    buttons = `<div class="btns${col ? ' col' : ''}"${col ? '' : ' data-fit="stack"'}>${d.options.map((o) => `<button class="btn" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description && col ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('')}</div>`;
-  }
-  const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${decisionHint(d)}" aria-label="${decisionHint(d)}">`;
-  const sum = d.source === 'plan' ? d.summary : null;
+  const b = cardBrief(t, d);
+  const tip = (s: string | null | undefined) => s ? ` data-tip="${esc(s)}"` : '';
   const label = t('dec.card', { kind: t(`dec.kind.${decisionKind(d)}` as Key), who });
   // A click on the card (not on one of its controls) selects it.
   const card = inWorker ? '' : ` data-dec="${d.id}" data-nav="inbox:${esc(d.id)}" data-action="pick" data-tab="inbox" data-id="${d.id}" role="group" aria-label="${esc(label)}" tabindex="${sel ? 0 : -1}"${sel ? ' aria-current="true"' : ''}`;
-  return `<div class="dec${sel ? ' sel' : ''}" id="${inWorker ? 'wdec' : 'dec'}-${d.id}"${card}>
-    <div class="src">${kindChip(d)}<span class="who">${esc(src)}</span>${ageHtml(d)}</div>
-    <div class="q">${esc(d.title)}</div>
-    ${d.reason ? `<div class="reason"><span>${esc(d.reason.what)}</span> ${esc(d.reason.why)}</div>` : ''}
-    ${d.detail ? `<div class="d">${esc(d.detail)}</div>` : ''}
-    ${d.source === 'permission' && d.purpose ? `<div class="purpose">${esc(oneLine(d.purpose, 240))}</div>` : ''}
-    ${sum ? planSummaryHtml(d, sum, inWorker) : d.code ? (d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : `<code>${esc(d.code)}</code>`) : ''}
-    ${d.taskId ? `<div class="dhold" data-task="${esc(d.taskId)}" hidden><i><b></b></i><span></span></div>` : ''}
-    ${buttons}${custom}
+  const head = `<div class="src">${kindChip(d)}<span class="who">${esc(src)}</span>${ageHtml(d)}</div>`;
+  const hold = d.taskId ? `<div class="dhold" data-task="${esc(d.taskId)}" hidden><i><b></b></i><span></span></div>` : '';
+  const btn = (val: string, text: string, cls = '') => `<button class="btn${cls}" data-action="answer" data-id="${d.id}" data-val="${esc(val)}">${text}${kbd(val)}</button>`;
+  const id = `${inWorker ? 'wdec' : 'dec'}-${d.id}`;
+  if (d.source === 'permission') {
+    // "Allow for this task" is there when the action's kind can be named and it is neither a delete nor an always-ask
+    // rule; the scope row says what that yes covers.
+    const tags = b.tags?.length ? b.tags : [{ kind: 'unknown' as RiskTag }];
+    const danger = tags.some((g) => g.kind === 'delete' || g.kind === 'rule');
+    const scope = danger ? undefined : d.options.find((o) => o.label === ALLOW_TASK);
+    const pills = tags.map((g) => { const [tone, icon] = TAG_LOOK[g.kind]; return `<span class="pill"${pillTone(tone)}>${sym(icon)}${esc(g.label ?? t(`risk.tag.${g.kind}` as Key))}</span>`; }).join('');
+    const row = (key: Key, v: string, full: string | null | undefined, cls = '') => v ? `<dt>${t(key)}</dt><dd${cls ? ` class="${cls}"` : ''}${tip(full)}>${v}</dd>` : '';
+    const open = foldOpen('cmd', d.id);
+    return `<div class="dec perm${sel ? ' sel' : ''}" id="${id}"${card}>
+    ${head}
+    <dl class="kv">${row('brief.action', esc(b.what), d.reason?.what ?? b.what, 'w')}${row('brief.reason', esc(b.why), d.purpose ?? b.why)}${row('brief.risk', `<span class="risks">${pills}</span>`, d.reason?.why)}${row('brief.scope', scope?.description ? `<code>${esc(scope.description)}</code>` : esc(t('brief.everyTime')), null)}</dl>
+    ${d.code ? `<div class="cmd${open ? ' open' : ''}"><code${tip(d.code)}>${esc(d.code)}</code>${foldBtn('cmd', d, t('dec.cmdOpen'))}</div>` : ''}
+    ${hold}
+    <div class="btns perm" data-fit="stack">${btn(DENY, t('deny'))}${scope ? btn(ALLOW_TASK, t('allowTask')) : ''}${btn(ALLOW, t('allowOnce'), danger ? ' btn-danger' : ' btn-primary')}</div>
+  </div>`;
+  }
+  const sum = d.source === 'plan' ? d.summary : null;
+  const title = d.source === 'plan' && d.taskId ? t('brief.planTitle', { id: d.taskId }) : d.title;
+  // Each row is one line; its tooltip is the whole text it was cut from.
+  const row = (key: Key, v: string | undefined, full: string | null | undefined, cls = '') => v ? `<tr><th scope="row">${t(key)}</th><td${cls ? ` class="${cls}"` : ''}${tip(full || v)}>${esc(v)}</td></tr>` : '';
+  const rows = `${row('brief.what', b.what, sum?.what ?? (d.brief ? null : d.detail || d.reason?.what))}${row('brief.why', b.why, d.source === 'plan' || d.brief ? null : d.reason?.why)}${row('brief.risk', b.risk, sum?.risk, 'risk')}${row('brief.out', b.out, sum?.output)}`;
+  // Everything longer than a line: the reason's sentences, the detail, a plan's lines and the plan itself.
+  const more = [
+    d.reason ? `<div class="reason"><span>${esc(d.reason.what)}</span> ${esc(d.reason.why)}</div>` : '',
+    d.detail ? `<div class="d">${esc(d.detail)}</div>` : '',
+    sum ? planSummaryHtml(d, sum, inWorker) : d.code && d.source === 'plan' ? `<div class="plan-md" data-scroll="plan-${esc(d.id)}">${md(d.code)}</div>` : d.code ? `<code>${esc(d.code)}</code>` : '',
+  ].join('');
+  const col = d.options.some((o) => o.description);
+  const buttons = d.source === 'plan'
+    ? btn(ALLOW, t('plan.approve'), ' btn-primary')
+    : d.options.map((o, i) => `<button class="btn${i === 0 ? ' btn-primary' : ''}" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('');
+  // The free-text answer (another answer, or what to change in a plan) opens from its button; in the Worker's panel it is the composer.
+  const hint = decisionHint(d);
+  const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${esc(hint)}" aria-label="${esc(hint)}"${foldOpen('reply', d.id) ? '' : ' hidden'}>`;
+  return `<div class="dec brief${sel ? ' sel' : ''}" id="${id}"${card}>
+    ${head}
+    <div class="qrow"><div class="q"${tip(title)}>${esc(title)}</div>${more ? foldBtn('more', d, t('dec.more')) : ''}</div>
+    ${rows ? `<table class="kvt">${rows}</table>` : ''}
+    ${more ? `<div class="more"${foldOpen('more', d.id) ? '' : ' hidden'}>${more}</div>` : ''}
+    ${hold}
+    <div class="btns stack${col ? ' col' : ''}">${buttons}${inWorker ? '' : foldBtn('reply', d, hint)}</div>
+    ${custom}
   </div>`;
 }
 

@@ -192,6 +192,8 @@ export const ui = {
   mergeAsk: null as string | null,
   /** Plan cards whose full plan is unfolded below the summary, by decision id. */
   planOpen: new Set<string>(),
+  /** Open folds of decision cards, as "<fold>:<decision id>": more (details), cmd (the whole command), reply (the text field). */
+  decOpen: new Set<string>(),
   /** Queued tasks whose request is shown in full on the Worker view's waiting card. */
   qOpen: new Set<string>(),
   models: { models: [], fetchedAt: null, error: null } as ModelList,

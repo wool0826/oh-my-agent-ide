@@ -547,6 +547,22 @@ export async function act(el: HTMLElement, e: Event) {
       document.querySelector<HTMLButtonElement>(`[data-action="plan-toggle"][data-id="${CSS.escape(id)}"]`)?.focus();
       break;
     }
+    case 'dec-fold': {
+      // In place, without a redraw: the card's details, its whole command, or its text field (then focused).
+      const fold = el.dataset.fold ?? '';
+      const key = `${fold}:${id}`;
+      const open = !ui.decOpen.delete(key);
+      if (open) ui.decOpen.add(key);
+      el.setAttribute('aria-expanded', String(open));
+      const card = el.closest('.dec');
+      if (fold === 'more') { const more = card?.querySelector<HTMLElement>(':scope > .more'); if (more) more.hidden = !open; }
+      if (fold === 'cmd') card?.querySelector(':scope > .cmd')?.classList.toggle('open', open);
+      if (fold === 'reply') {
+        const inp = card?.querySelector<HTMLInputElement>(':scope > input.inp');
+        if (inp) { inp.hidden = !open; if (open) inp.focus(); }
+      }
+      break;
+    }
     case 'open-url': e.preventDefault();
       // A drag that selected text and ended on the link copies it; it does not open it.
       if (String(getSelection() ?? '')) break;

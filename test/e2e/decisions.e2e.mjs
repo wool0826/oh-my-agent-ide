@@ -19,12 +19,11 @@ flow('a permission is asked once, allowed for the task, and the result card has 
     '@@fake write out/note.md hello', '@@fake file out/note.md', '@@fake result Wrote the note.'].join('\n'));
   await app.until(`!!document.querySelector('${DEC}')`, 'the permission card');
   assert.match(await app.evaluate(`document.querySelector('${DEC}').innerText`), /npm install left-pad/);
-  // What "Allow for this task" covers is the line just above the buttons, and the slot clock shows from the start.
-  const scope = await app.evaluate(`const sc = document.querySelector('${DEC} .scope'); return { next: sc?.nextElementSibling?.matches('.btns.perm'), text: sc?.textContent };`);
-  assert.equal(scope.next, true);
-  assert.match(scope.text, /npm install/);
-  // Nothing says what this install is for (no plan step, no words before it): no purpose line, and no gap for one.
-  assert.equal(await app.evaluate(`!!document.querySelector('${DEC} .purpose')`), false);
+  // Plain words and risk badges above the command; the scope row says what "Allow for this task" covers. Nothing says
+  // what this install is for (no plan step, no words before it): no reason row, and no gap for one.
+  const card = await app.evaluate(`const c = document.querySelector('${DEC}'); return { rows: [...c.querySelectorAll('.kv dt')].map((x) => x.textContent), what: c.querySelector('.kv dd.w').textContent, risk: [...c.querySelectorAll('.risks .pill')].map((x) => x.textContent), scope: c.querySelector('.kv dd > code')?.textContent };`);
+  assert.deepEqual(card, { rows: ['Action', 'Risk', 'Scope'], what: 'Install dependencies', risk: ['Network', 'Changes files'], scope: 'npm install' });
+  // The slot clock shows from the start.
   await app.until(`!document.querySelector('${DEC} .dhold').hidden`, 'the slot clock', 5000);
   await app.click(answer('allow-task'));
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
@@ -48,10 +47,11 @@ flow('an always-ask rule offers no "Allow for this task", and a denial reaches t
   await app.until(`!!document.querySelector('${DEC}')`, 'the permission card');
   assert.equal(await app.evaluate(`!!document.querySelector('${answer('allow-task')}')`), false);
   assert.match(await app.evaluate(`document.querySelector('${DEC}').innerText`), /force push/i);
-  // What the push is for: the current plan step and the Worker's words just before it asked, just above the command.
-  const purpose = await app.evaluate(`const p = document.querySelector('${DEC} .purpose'); return { text: p?.textContent, next: p?.nextElementSibling?.tagName };`);
-  assert.equal(purpose.text, 'Needed for step 2 of 2 of this task, “Push the branch”. Pushing the rebased branch so the PR shows the fix.');
-  assert.equal(purpose.next, 'CODE');
+  // Why the push is needed: the current plan step in one line, with the step and the Worker's words in its tooltip. The
+  // always-ask rule is the first risk badge, the scope is asked each time, and allowing once is the red button.
+  const purpose = { text: 'Needed for step 2 of 2 of this task, “Push the branch”. Pushing the rebased branch so the PR shows the fix.' };
+  const look = await app.evaluate(`const c = document.querySelector('${DEC}'); const dd = [...c.querySelectorAll('.kv dt')].find((x) => x.textContent === 'Reason').nextElementSibling; return { why: dd.textContent, tip: dd.dataset.tip, risk: c.querySelector('.risks .pill').textContent, scope: c.querySelector('.kv dd:last-of-type').textContent, allow: c.querySelector('[data-val="allow"]').className };`);
+  assert.deepEqual(look, { why: 'Step 2/2 · Push the branch', tip: purpose.text, risk: 'force push', scope: 'Ask each time', allow: 'btn btn-danger' });
   // The Worker's conversation names the command on the line above its composer, and Deny there answers.
   const wid = (await app.state()).workers[0].id;
   await app.click(`#side [data-action="open-worker"][data-id="${wid}"]`);
@@ -151,6 +151,66 @@ flow('a plan waits for approval before the work goes on', {}, async (app) => {
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
   const t = task(await app.state(), 'Plan the change');
   assert.match(await app.workerLog(t.workerId), /Plan approved\./);
+});
+
+flow('a plan card reads what, why, risk and result in one line each, with its long text behind Details and the text field behind its button', {}, async (app) => {
+  const long = 'Remove the inner list and detail split from the right panel so that every tab is one column at any width';
+  await app.say(`@fake task - Plan the panel\n@@fake plan WHAT: ${long}\\nHOW: drop the split mode\\nRISK: visual baselines change\\nOUTPUT: one merged PR\\n\\n## Details\\nMore text.\n@@fake result Done.`);
+  const CARD = `${DEC}.brief`;
+  await app.until(`!!document.querySelector('${CARD}')`, 'the plan card');
+  const look = () => app.evaluate(`const c = document.querySelector('${CARD}'); const rows = [...c.querySelectorAll('.kvt tr')]; const inp = c.querySelector('input.inp'); return {
+    title: c.querySelector('.q').textContent,
+    rows: rows.map((r) => [r.querySelector('th').textContent, r.querySelector('td').textContent]),
+    tip: rows[0].querySelector('td').dataset.tip,
+    oneLine: rows.every((r) => { const td = r.querySelector('td'); return getComputedStyle(td).whiteSpace === 'nowrap' && td.scrollHeight < 2 * parseFloat(getComputedStyle(td).fontSize) * 1.6; }),
+    fits: c.scrollWidth <= c.clientWidth,
+    more: c.querySelector('.more').hidden, moreText: c.querySelector('.more').textContent,
+    open: c.querySelector('[data-fold="more"]').getAttribute('aria-expanded'),
+    inp: inp.hidden, focus: document.activeElement === inp, cut: getComputedStyle(inp).textOverflow,
+    btns: getComputedStyle(c.querySelector('.btns')).flexDirection,
+  };`);
+  let c = await look();
+  assert.match(c.title, /^Approve the T-\d+ plan$/);
+  assert.deepEqual(c.rows.map((r) => r[0]), ['What', 'Why', 'Risk', 'Result']);
+  assert.ok(c.rows[0][1].length <= 60 && c.rows[0][1].endsWith('…') && long.startsWith(c.rows[0][1].slice(0, -1).trimEnd()), c.rows[0][1]);
+  assert.deepEqual(c.rows.slice(1), [['Why', 'Plan-first · nothing changes before approval'], ['Risk', 'visual baselines change'], ['Result', 'one merged PR']]);
+  assert.equal(c.tip, long);
+  assert.deepEqual([c.oneLine, c.fits, c.more, c.open, c.inp, c.btns, c.cut], [true, true, true, 'false', true, 'column', 'ellipsis']);
+  // Details opens the plan's own lines in place; the reply button opens the text field and gives it the focus.
+  await app.click(`${CARD} [data-fold="more"]`);
+  await app.click(`${CARD} [data-fold="reply"]`);
+  c = await look();
+  assert.deepEqual([c.more, c.open, c.inp, c.focus], [false, 'true', false, true]);
+  assert.match(c.moreText, /drop the split mode/);
+  await app.cdp('Input.insertText', { text: 'Make it two PRs' });
+  await app.key('Enter', 'Enter', 13);
+  await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
+  assert.match(await app.workerLog(task(await app.state(), 'Plan the panel').workerId), /Plan sent back: .*Make it two PRs/);
+});
+
+flow('a PowerShell delete without a description says what it does, is red, has no "Allow for this task", and folds its command', {}, async (app) => {
+  await app.say('@fake task - Clean the build\n@@fake pspermission Remove-Item -Recurse -Force .\\dist, .\\node_modules\\.cache\n@@fake result Cleaned.');
+  await app.until(`!!document.querySelector('${DEC}.perm')`, 'the permission card');
+  const look = () => app.evaluate(`const c = document.querySelector('${DEC}.perm'); const code = c.querySelector('.cmd > code'); return {
+    kind: c.querySelector('.dkind').textContent, what: c.querySelector('.kv dd.w').textContent,
+    risk: [...c.querySelectorAll('.risks .pill')].map((x) => [x.textContent, x.dataset.tone]),
+    scope: c.querySelector('.kv dd:last-of-type').textContent,
+    btns: [...c.querySelectorAll('.btns .btn')].map((b) => b.dataset.val + ' ' + b.className),
+    folded: getComputedStyle(code).whiteSpace === 'nowrap', fits: c.scrollWidth <= c.clientWidth,
+    open: c.querySelector('[data-fold="cmd"]').getAttribute('aria-expanded'),
+  };`);
+  let c = await look();
+  assert.deepEqual(c, {
+    kind: 'Command', what: 'Delete dist · node_modules/.cache', risk: [['Deletes', 'danger']], scope: 'Ask each time',
+    btns: ['deny btn', 'allow btn btn-danger'], folded: true, fits: true, open: 'false',
+  });
+  await app.click(`${DEC}.perm [data-fold="cmd"]`);
+  c = await look();
+  assert.deepEqual([c.folded, c.open], [false, 'true']);
+  // The answer reaches the Worker: denied, the command does not run.
+  await app.click(answer('deny'));
+  await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
+  assert.match(await app.workerLog(task(await app.state(), 'Clean the build').workerId), /Not allowed: Remove-Item/);
 });
 
 flow('an allowance for a task is kept on the task and can be taken back', {}, async (app) => {

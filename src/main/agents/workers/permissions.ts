@@ -11,6 +11,7 @@ import { ALWAYS_ASK_PREFIX, alwaysAskRule } from '../permissions';
 import { summarizeTool } from '../session';
 import type { WorkerManager } from '../workers';
 import { permissionPurpose, permissionReason } from '../../../shared/askWhy';
+import { permissionBrief, shellBrief } from '../../../shared/brief';
 import { type GrantScope, answerLabel, grantScope, hasGrant, permissionOptions, withGrant, withoutGrant } from '../../../shared/grants';
 import { workerDecisions } from '../../../shared/inbox';
 import { withPermission } from '../../../shared/retro';
@@ -36,10 +37,11 @@ export function revokeGrant(m: WorkerManager, taskId: string, key: string) {
 
 /**
  * What "Allow for this task" would cover for this call, or null when it is not offered: an always-ask
- * rule is asked every time, and so is a call whose kind cannot be named.
+ * rule is asked every time, and so are a shell line that deletes (brief.ts) and a call whose kind cannot be named.
  */
 export function taskScope(m: WorkerManager, task: Task | null, tool: string, input: unknown): GrantScope | null {
   if (!task || alwaysAskRule(tool, input, loadSettings().askOff)) return null;
+  if (shellOf(tool) && shellBrief(t, tool, input).tags.includes('delete')) return null;
   return grantScope(tool, input);
 }
 
@@ -70,6 +72,7 @@ export function codexApproval(m: WorkerManager, w: Worker) {
         questionKey: null,
         reason: permissionReason(t, { who: w.id, task, tool, input, rule: alwaysAskRule(tool, input, loadSettings().askOff), decisionReason: req.reason }),
         purpose: permissionPurpose(t, { steps: task?.steps, said: m.said.get(w.id), input }),
+        brief: permissionBrief(t, { tool, input, rule: alwaysAskRule(tool, input, loadSettings().askOff), steps: task?.steps, said: m.said.get(w.id) }),
       }, signal);
       store.log(w.id, 'user', `${oneLine(code, 140)} → ${answerLabel(t, ans)}`);
       if (ans === ALLOW_TASK && task && scope) task.grants = withGrant(task.grants, scope);
@@ -131,6 +134,7 @@ export function permissionHandler(m: WorkerManager, w: Worker): CanUseTool {
         questionKey: null,
         reason: permissionReason(t, { who: w.id, task, tool: toolName, input, rule: alwaysAskRule(toolName, input, loadSettings().askOff), blockedPath: opts.blockedPath, decisionReason: cc, impact: opts.description }),
         purpose: permissionPurpose(t, { steps: task?.steps, said: m.said.get(w.id), input }),
+        brief: permissionBrief(t, { tool: toolName, input, rule: alwaysAskRule(toolName, input, loadSettings().askOff), steps: task?.steps, said: m.said.get(w.id) }),
       }, opts.signal);
       store.log(w.id, 'user', `${summarizeTool(toolName, input)} → ${answerLabel(t, ans)}`);
       if (ans === ALLOW_TASK && task && scope) task.grants = withGrant(task.grants, scope);
