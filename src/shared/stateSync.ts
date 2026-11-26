@@ -1,4 +1,4 @@
-// What the main process sends the window when the state changes (decision 214): the whole state when the window
+// What the main process sends the window when the state changes (decision 215): the whole state when the window
 // loads and when it is out of step, otherwise only the parts that changed. Each message is numbered, so the window
 // notices one it missed and asks for the whole state again.
 import type { AppState } from './types';

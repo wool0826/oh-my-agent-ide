@@ -168,7 +168,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
 
   /**
    * A picture of the window. A capture waits for the window's next frame, and a hidden window with nothing new to
-   * show makes none (a state update draws only the panels that changed, decision 214): the page changes for two
+   * show makes none (a state update draws only the panels that changed, decision 215): the page changes for two
    * frames after the request, so one comes.
    */
   async function capture(params = {}) {
