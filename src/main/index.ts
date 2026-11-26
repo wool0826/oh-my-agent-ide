@@ -32,6 +32,7 @@ import { claudeHome, ruleFiles } from './claudeContext';
 import { listModels, setSessionModelSource } from './models';
 import { log } from './log';
 import { windowIconFile } from '../shared/appIcon';
+import { trafficLightPosition } from '../shared/trafficLights';
 import { month, nowIso, oneLine, uid } from './util';
 import { cleanMemo } from '../shared/memos';
 import { CHAT_SNAPSHOT, PAGE } from '../shared/paging';
@@ -198,8 +199,8 @@ function createWindow() {
     // Matches --bg-canvas, so nothing flashes before the page paints its backdrop.
     backgroundColor: look.background,
     titleBarStyle: mac ? 'hiddenInset' : 'hidden',
-    // Inside the floating sidebar panel. Keep x in step with --lights-x in tokens.css.
-    trafficLightPosition: mac ? { x: 22, y: 22 } : undefined,
+    // Inside the floating sidebar panel, where --lights-x/-w in tokens.css expect them (test/trafficLights.test.ts).
+    trafficLightPosition: mac ? trafficLightPosition(process.getSystemVersion()) : undefined,
     titleBarOverlay: mac ? undefined : { color: '#00000000', symbolColor: look.symbol, height: 44 },
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
