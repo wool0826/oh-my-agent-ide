@@ -38,7 +38,7 @@ import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript }
 import { bindDock } from './ui/dock';
 import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
-import { navItem, navItems, noteNav, rove, watchPanes } from './ui/panes';
+import { navItem, navItems, noteNav, rove } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 import { canStop } from '../shared/canStop';
 
@@ -125,8 +125,8 @@ export function gotoResult(taskId: string) {
 }
 
 /**
- * Selects an item of the right sidebar's Inbox, Memos or Automations: from its list row (two panes) or a click on its
- * card (one column). A switch, a link or a button inside a card does its own thing.
+ * Selects an item of the right sidebar's Inbox, Memos, Automations or Scripts: a click on its card, or on the row of
+ * "New automation" / "New script". A switch, a link or a button inside a card does its own thing.
  */
 async function pick(el: HTMLElement, e: Event) {
   const tgt = e.target as HTMLElement;
@@ -148,31 +148,29 @@ async function pick(el: HTMLElement, e: Event) {
   ui.memoDel = null;
   renderChatInspector();
   const slot = document.querySelector<HTMLElement>(`#chat-ins .pk[data-pick="${CSS.escape(id)}"]`);
-  const card = document.querySelector<HTMLElement>(`#chat-ins .pk-c[data-from="${CSS.escape(id)}"]`) ?? slot?.querySelector<HTMLElement>('.pk-c');
+  const card = slot?.querySelector<HTMLElement>(':scope > .pk-c');
   (row ? slot?.querySelector<HTMLElement>(':scope > .li') : card?.querySelector<HTMLElement>('textarea, input, button, a'))?.focus({ preventScroll: !row });
 }
 
-/** Focuses the list item with key `nav`, or in the detail pane its card when `detail`. */
-function focusNav(nav: string | null, detail = false) {
-  const el = detail ? document.querySelector<HTMLElement>('#chat-ins .ins-detail [data-nav]') : navItems().find((x) => x.dataset.nav === nav);
+/** Focuses the list item with key `nav`. */
+function focusNav(nav: string | null) {
+  const el = navItems().find((x) => x.dataset.nav === nav);
   el?.focus();
   el?.scrollIntoView({ block: 'nearest' });
 }
 
 /**
- * Keys on an item of the right sidebar's list (the item itself, or its card in the detail pane): ↑/↓, Home and End go
- * to another item, which is selected when it can be; on one that can be and is not selected yet, ↑/↓ select it
+ * Keys on an item of the right sidebar's list: ↑/↓, Home and End go to another item, which is selected when it can be; on one that can be and is not selected yet, ↑/↓ select it
  * first. Delete or Backspace clears a result or an auto-answer. True when the key was used.
  */
 function listKeys(e: KeyboardEvent, el: HTMLElement): boolean {
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return false;
   const item = navItem(el);
   if (!item) return false;
-  const detail = !!el.closest('.ins-detail');
   const nav = item.dataset.nav ?? '';
-  const del = (e.key === 'Delete' || e.key === 'Backspace') && /^(res|aa):/.test(nav) && !detail;
+  const del = (e.key === 'Delete' || e.key === 'Backspace') && /^(res|aa):/.test(nav);
   // On the row itself; Delete also on the row's own ✕.
-  if (el !== item && !(detail && el.matches('[data-nav]')) && !(del && el.matches('.row-x'))) return false;
+  if (el !== item && !(del && el.matches('.row-x'))) return false;
   if (del) {
     e.preventDefault();
     if (!e.repeat) void clearOne(nav.startsWith('aa:') ? 'auto' : 'result', nav.slice(nav.indexOf(':') + 1));
@@ -185,14 +183,14 @@ function listKeys(e: KeyboardEvent, el: HTMLElement): boolean {
   e.preventDefault();
   const can = (x: HTMLElement) => x.matches('[data-action="pick"], [data-dec]');
   const chosen = (x: HTMLElement) => x.classList.contains('sel') || x.getAttribute('aria-current') === 'true' || !!x.closest('.pk.sel');
-  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && can(item) && !chosen(item) && !detail) to = at;
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && can(item) && !chosen(item)) to = at;
   const next = items[to];
   if (!can(next)) { if (next !== item) focusNav(next.dataset.nav ?? null); return true; }
   if (!chosen(next)) {
     if (next.matches('[data-dec]')) markDecision(next.dataset.dec ?? null);
     else void act(next, e);
   }
-  focusNav(next.dataset.nav ?? null, detail && !!document.querySelector('#chat-ins .ins-cols.split'));
+  focusNav(next.dataset.nav ?? null);
   return true;
 }
 
@@ -900,7 +898,6 @@ export function init() {
   initResize();
   initSwipe($('#chat-ins'), (nav) => clearOne(nav.startsWith('aa:') ? 'auto' : 'result', nav.slice(nav.indexOf(':') + 1)));
   initTip();
-  watchPanes();
   // An image that fails to load does not bubble its error: listen while it goes down.
   document.addEventListener('error', markBrokenShot, true);
   document.addEventListener('click', (e) => {
@@ -1025,7 +1022,7 @@ export function init() {
   // The focus in the right sidebar's list selects nothing; it only makes that item the list's Tab stop.
   document.addEventListener('focusin', (e) => {
     const item = navItem(e.target as HTMLElement);
-    if (!item || item.closest('.ins-detail')) return;
+    if (!item) return;
     noteNav(item.dataset.nav ?? null);
     if (item.tabIndex !== 0) rove();
   });

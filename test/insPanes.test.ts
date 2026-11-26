@@ -1,18 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dayWord, focusAfter, keepPick, listStep, LIST_W, paneMode, SPLIT_AT } from '../src/shared/insPanes';
-import { PANELS } from '../src/shared/panelWidth';
-
-test('paneMode splits from 560 and only with something selected', () => {
-  assert.equal(paneMode(PANELS.ins.min, true), 'one');
-  assert.equal(paneMode(PANELS.ins.def, true), 'one');
-  assert.equal(paneMode(SPLIT_AT - 1, true), 'one');
-  assert.equal(paneMode(SPLIT_AT, true), 'split');
-  assert.equal(paneMode(PANELS.ins.max, true), 'split');
-  assert.equal(paneMode(PANELS.ins.max, false), 'one');
-  // The detail pane has room for a card next to the list, inside the sidebar's limits.
-  assert.ok(SPLIT_AT - LIST_W >= 272 && SPLIT_AT <= PANELS.ins.max);
-});
+import { dayWord, focusAfter, keepPick, listStep } from '../src/shared/insPanes';
 
 test('keepPick keeps the selection while it exists', () => {
   assert.equal(keepPick(['a', 'b'], 'b', 'a'), 'b');

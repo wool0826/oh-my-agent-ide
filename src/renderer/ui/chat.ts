@@ -34,7 +34,7 @@ import { go } from './history';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
 import { tookText } from './workers';
-import { colsHtml, markPick, navItems, placeDetail, rove, rowHtml, rowText, slotHtml } from './panes';
+import { colsHtml, markPick, navItems, rove, rowHtml, slotHtml } from './panes';
 
 export const CI_BADGE: Record<string, [string, Key]> = { passing: ['ok', 'pr.ciPassing'], failing: ['bad', 'pr.ciFailing'], pending: ['run', 'pr.ciPending'] };
 
@@ -696,12 +696,9 @@ export function decisionHtml(d: Decision, inWorker = false) {
   </div>`;
 }
 
-/** A pending decision in the inbox: its list row (what is asked, who, the kind, the age) and its card. */
+/** A pending decision in the inbox as a slot holding its card. */
 function decisionSlot(d: Decision) {
-  const kind = decisionKind(d);
-  const sel = ui.decSel === d.id;
-  const row = `${sym(KIND_ICON[kind])}${rowText(oneLine(askLine(d), 160), `${d.workerId ?? 'Dispatcher'} · ${t(`dec.kind.${kind}` as Key)}`)}${ageHtml(d)}`;
-  return slotHtml(d.id, sel, rowHtml('inbox', d.id, sel, row), decisionHtml(d));
+  return slotHtml(d.id, ui.decSel === d.id, decisionHtml(d));
 }
 
 /** A plan card's WHAT / HOW / OUTPUT lines, with the full plan folded below them and a way to the Worker's conversation. */
@@ -841,7 +838,7 @@ export function renderChatInspector() {
     // The inbox tab counts what waits for the user, so a decision is seen from the Memos tab too.
     const tabs = `<div class="seg ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}${tab('script', t('ins.tabScript'), 's-term')}</div>`;
     // The selected card is placed inside the draw, so the typed text and the focus go back to where it ends up.
-    const draw = (list: string) => { root.innerHTML = tabs + colsHtml(list, ` role="tabpanel" id="ins-panel" aria-labelledby="ins-tab-${ui.insTab}"`); placeDetail(root); };
+    const draw = (list: string) => { root.innerHTML = tabs + colsHtml(list, ` role="tabpanel" id="ins-panel" aria-labelledby="ins-tab-${ui.insTab}"`); rove(root); };
     if (ui.insTab === 'memo') return draw(memosHtml());
     if (ui.insTab === 'auto') return draw(autosHtml());
     if (ui.insTab === 'script') return draw(scriptsHtml());
@@ -878,15 +875,12 @@ export function renderChatInspector() {
 }
 
 /**
- * One memo as a slot: its list row, and its card. The selected card shows all of the text and Share / Edit / Delete;
- * the others show two lines and are selected by a click.
+ * One memo as a slot holding its card. The selected card opens in place with all of the text and Share / Edit /
+ * Delete; the others show two lines and are selected by a click.
  */
 function memoSlot(m: Memo) {
   const sel = ui.memoSel === m.id;
-  const edit = ui.memoEdit === m.id;
-  const small = edit ? `${when(m.updatedAt)} · ${t('memo.editing')}` : when(m.updatedAt);
-  const row = rowHtml('memo', m.id, sel, `${m.shared ? sym('s-pin') : ''}${rowText(oneLine(m.text, 160), small)}`);
-  return slotHtml(m.id, sel, row, memoHtml(m, sel));
+  return slotHtml(m.id, sel, memoHtml(m, sel));
 }
 
 export function memoHtml(m: Memo, sel = true) {
@@ -973,12 +967,11 @@ function autoSlot(a: Automation) {
   const next = a.enabled && a.nextRunAt ? runWords(a.nextRunAt, true) : '';
   const sw = `<input class="switch" type="checkbox" data-change="auto-toggle" data-id="${a.id}"${a.enabled ? ' checked' : ''} aria-label="${esc(`${t('auto.on')}: ${a.title}`)}">`;
   const edit = ui.autoEdit?.id === a.id;
-  const row = rowHtml('auto', a.id, sel, rowText(a.title, edit ? `${triggerLabel(a)} · ${t('memo.editing')}` : a.enabled ? triggerLabel(a) : `${triggerLabel(a)} · ${t('auto.off')}`));
   // Being changed, its card is the form, filled in; it stays open with what was typed when another one is picked.
-  if (edit) return slotHtml(a.id, sel, row, `<div class="memo auto open${off}">${autoFormHtml(a)}</div>`);
+  if (edit) return slotHtml(a.id, sel, `<div class="memo auto open${off}">${autoFormHtml(a)}</div>`);
   if (!sel) {
     const card = `<div class="memo auto${off}" data-action="pick" data-tab="auto" data-id="${a.id}" data-focus="card-auto-${a.id}" data-nav="auto:${a.id}" tabindex="-1"><p>${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${next ? esc(` · ${t('auto.next', { t: next })}`) : ''}</span><span class="acts">${sw}</span></span></div>`;
-    return slotHtml(a.id, false, row, card);
+    return slotHtml(a.id, false, card);
   }
   const sure = ui.memoDel === a.id;
   const last = !a.lastRunAt ? esc(t('auto.never'))
@@ -987,7 +980,7 @@ function autoSlot(a: Automation) {
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
   const pen = `<button class="mact" data-action="auto-edit" data-id="${a.id}" data-tip="${t('memo.edit')}" aria-label="${t('memo.edit')}"><svg aria-hidden="true"><use href="#s-pencil"/></svg></button>`;
   const card = `<div class="memo auto open${off}" data-nav="auto:${a.id}" tabindex="-1"><p>${esc(a.prompt)}</p>${facts}<span class="meta"><span class="gap"></span><span class="acts">${sw}${pen}${del}</span></span></div>`;
-  return slotHtml(a.id, true, row, card);
+  return slotHtml(a.id, true, card);
 }
 
 /**
@@ -1019,7 +1012,7 @@ export function autosHtml() {
   if (!list.length) { ui.autoSel ??= 'new'; return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`; }
   ui.autoSel = keepPick(['new', ...list.map((a) => a.id)], ui.autoSel, null);
   const isNew = ui.autoSel === 'new';
-  const head = slotHtml('new', isNew, rowHtml('auto', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('auto.new')}</b></span>`), add, ' new');
+  const head = slotHtml('new', isNew, add, rowHtml('auto', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('auto.new')}</b></span>`), ' new');
   return `${head}<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${list.map(autoSlot).join('')}</div></div>`;
 }
 

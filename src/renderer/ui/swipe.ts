@@ -18,7 +18,7 @@ const held = new WeakSet<HTMLElement>();
 /** The row a pointer or wheel event at `at` would swipe, if any. */
 function rowAt(root: HTMLElement, at: Element | null, own: boolean): HTMLElement | null {
   const row = at?.closest<HTMLElement>(ROW);
-  if (!row || !root.contains(row) || row.closest('.ins-detail') || (own && at!.closest(OWN)) || row.matches('.editing, .swipe-out') || held.has(row)) return null;
+  if (!row || !root.contains(row) || (own && at!.closest(OWN)) || row.matches('.editing, .swipe-out') || held.has(row)) return null;
   return row;
 }
 
