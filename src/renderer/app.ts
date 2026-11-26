@@ -2,7 +2,7 @@
 import type { AppState, Worker } from '../shared/types';
 import { hasSpend } from '../shared/spend';
 import { reviewMessage } from '../shared/diffComment';
-import { readyToMerge } from '../shared/prMerge';
+import { readyToQueue } from '../shared/mergeQueue';
 import { issueMessage } from '../shared/issues';
 import { jiraMessage } from '../shared/jira';
 import { bundleMergeOrder, openBundles } from '../shared/bundle';
@@ -443,10 +443,8 @@ export async function act(el: HTMLElement, e: Event) {
       if (!id) break;
       if (ui.mergeAsk !== id) { ui.mergeAsk = id; renderAll(true); break; }
       ui.mergeAsk = null;
-      ui.merging.add(id);
-      renderAll(true);
-      await call('pr:merge', id);
-      ui.merging.delete(id);
+      // Into the merge queue: with nothing ahead of it and the base in its branch, it is merged at once.
+      await call('mq:add', [id]);
       renderAll(true);
       break;
     }
@@ -456,39 +454,21 @@ export async function act(el: HTMLElement, e: Event) {
       const key = `b:${b.name}`;
       if (ui.mergeAsk !== key) { ui.mergeAsk = key; renderAll(true); break; }
       ui.mergeAsk = null;
-      ui.merging.add(key);
-      renderAll(true);
-      // In the order the tasks were made, and no further once one fails: a later PR may depend on it.
-      const list = bundleMergeOrder(b);
-      let merged = 0;
-      for (const x of list) {
-        try { await ide.call('pr:merge', x.id); merged++; } catch (e) { toast((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), true); break; }
-      }
-      ui.merging.delete(key);
-      if (merged === list.length) toast(t('pr.mergedAll', { n: merged }));
-      else if (merged) toast(t('bundle.stopped', { n: merged, m: list.length - merged }), true);
+      // In the order the tasks were made; once one leaves the queue, the later ones leave with it.
+      await call('mq:add', bundleMergeOrder(b).map((x) => x.id));
       renderAll(true);
       break;
     }
     case 'pr-merge-all': {
       if (ui.mergeAsk !== '*') { ui.mergeAsk = '*'; renderAll(true); break; }
       ui.mergeAsk = null;
-      const list = readyToMerge(S!.tasks);
-      ui.merging.add('*');
-      for (const x of list) ui.merging.add(x.id);
-      renderAll(true);
-      // One after another: each merge can change whether the next is still ready, and the app checks again before each.
-      let merged = 0;
-      for (const x of list) {
-        try { await ide.call('pr:merge', x.id); merged++; } catch { /* counted below */ }
-        ui.merging.delete(x.id);
-        renderAll(true);
-      }
-      ui.merging.delete('*');
-      toast(merged === list.length ? t('pr.mergedAll', { n: merged }) : t('pr.mergedSome', { n: merged, m: list.length - merged }), merged !== list.length);
+      // One after another, each on the base the one before it left (shared/mergeQueue.ts).
+      await call('mq:add', readyToQueue(S!.tasks, S!.mergeQueue).map((x) => x.id));
       renderAll(true);
       break;
     }
+    case 'mq-remove': if (id) await call('mq:remove', id); break;
+    case 'mq-again': if (id) await call('mq:add', [id]); break;
     case 'diff-note': {
       // Selecting text in the diff is not a click on its line.
       if (String(getSelection() ?? '')) break;

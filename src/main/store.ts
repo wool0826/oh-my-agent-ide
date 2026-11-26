@@ -11,7 +11,7 @@ import { CHAIN, STATE_VERSION, migrate, preMigrationName, type MigrationChain } 
 import { readLogPage, searchLog } from './logFile';
 import { stampQueued } from '../shared/queue';
 import { stampHistory } from '../shared/retro';
-import type { Memo, Automation, ShellScript } from '../shared/types';
+import type { Memo, Automation, MergeQueueEntry, ShellScript } from '../shared/types';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
 
 export interface DispatcherState {
@@ -45,6 +45,8 @@ export interface Data {
   scripts?: ShellScript[];
   /** Paths the user attached to messages (see attachments.ts) */
   attachments?: string[];
+  /** The merge queue (shared/mergeQueue.ts). Unset in state files saved before it existed. */
+  mergeQueue?: MergeQueueEntry[];
 }
 
 const empty = (): Data => ({

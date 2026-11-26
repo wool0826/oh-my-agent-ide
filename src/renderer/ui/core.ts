@@ -154,7 +154,6 @@ export const ui = {
   /** The checkpoint the Changes tab is asking about before it puts the files back. */
   ckptAsk: null as { wid: string; ref: string; at: string; label: string } | null,
   mergeAsk: null as string | null,
-  merging: new Set<string>(),
   /** Plan cards whose full plan is unfolded below the summary, by decision id. */
   planOpen: new Set<string>(),
   /** Queued tasks whose request is shown in full on the Worker view's waiting card. */
