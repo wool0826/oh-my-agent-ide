@@ -2,6 +2,7 @@
 // then why it is not decided without them and what it risks. The decision card, the sidebar row and the
 // OS notification all show it. Built from rules; the only agent-written parts are text the agents already
 // produce: a Bash call's own description, the advisor's reason it did not answer, and the Dispatcher's `why`.
+/* eslint-disable @typescript-eslint/no-explicit-any -- tool input is whatever the model sent, read field by field. */
 
 import type { Key } from './i18n';
 import type { Decision, DecisionReason, Task } from './types';

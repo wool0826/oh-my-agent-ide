@@ -1,5 +1,6 @@
 // Starting a task from an issue of a registered repository: the issues come from `gh issue list`, and picking one
 // is a message to the Dispatcher, so the task is made the way every other task is.
+/* eslint-disable @typescript-eslint/no-explicit-any -- gh answers untyped JSON, read field by field. */
 
 export interface Issue { number: number; title: string; url: string; labels: string[]; updatedAt: string }
 

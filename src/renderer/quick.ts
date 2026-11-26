@@ -116,7 +116,7 @@ input.addEventListener('paste', (e) => {
 });
 chip.addEventListener('click', () => { files = []; draw(); input.focus(); });
 
-form.addEventListener('submit', async (e) => {
+form.addEventListener('submit', (e) => void (async () => {
   e.preventDefault();
   const v = input.value.trim();
   if (!v || busy) return;
@@ -148,6 +148,6 @@ form.addEventListener('submit', async (e) => {
       draw();
     }, 2400);
   }
-});
+})());
 
 void load();

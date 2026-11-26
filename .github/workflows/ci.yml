@@ -31,6 +31,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # ESLint (tools/lint) on one system: what it finds does not depend on the system.
+      - if: matrix.os == 'windows-latest'
+        run: npm run lint
       - run: npm test
       - run: npm run build
       # Packages the app without making an installer or signing it: proves the bundle can be put together here.

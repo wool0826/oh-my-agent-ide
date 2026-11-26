@@ -7,9 +7,9 @@ import { planPaste, pastedImageName, PASTE_IMAGE_MAX } from '../src/shared/paste
 import { savePastedImage } from '../src/main/attachments';
 
 test('planPaste: copied files attach by path, like a drop, even with their names as text', () => {
-  const files = [{ path: 'C:\w\a.md', type: 'text/markdown' }, { path: 'C:\w\b.png', type: 'image/png' }, { path: 'C:\w\a.md', type: '' }];
-  assert.deepEqual(planPaste(files, false), { kind: 'paths', paths: ['C:\w\a.md', 'C:\w\b.png'] });
-  assert.deepEqual(planPaste(files, true), { kind: 'paths', paths: ['C:\w\a.md', 'C:\w\b.png'] });
+  const files = [{ path: 'C:\\w\\a.md', type: 'text/markdown' }, { path: 'C:\\w\\b.png', type: 'image/png' }, { path: 'C:\\w\\a.md', type: '' }];
+  assert.deepEqual(planPaste(files, false), { kind: 'paths', paths: ['C:\\w\\a.md', 'C:\\w\\b.png'] });
+  assert.deepEqual(planPaste(files, true), { kind: 'paths', paths: ['C:\\w\\a.md', 'C:\\w\\b.png'] });
 });
 
 test('planPaste: a bare screenshot is saved; text with an image of itself, or other data, pastes as text', () => {

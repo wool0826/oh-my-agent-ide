@@ -1,6 +1,6 @@
 // The chat with the Dispatcher and its right sidebar: decisions, comparisons, bundles, results, memos, automations, and attachments.
 import type { Automation, Memo } from '../../shared/types';
-import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, Task, Worker } from '../../shared/types';
+import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, Task } from '../../shared/types';
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
 import { stepView } from '../../shared/steps';
 import { taskMinutes } from '../../shared/workerSummary';
@@ -27,10 +27,8 @@ import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { shellBlockHtml, shellKey } from './shell';
 import { planPaste } from '../../shared/paste';
-import { act } from '../app';
-import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, store, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
+import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
 import { setTip } from './tip';
-import { go } from './history';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
 import { tookText } from './workers';

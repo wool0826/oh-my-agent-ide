@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { flow } from './harness.mjs';
+import { flow, waitFor } from './harness.mjs';
 
 const task = (n) => ({
   id: `T-${String(n).padStart(4, '0')}`, title: `Old task ${n}`, prompt: '', kind: 'other', repo: null, workerId: null, status: 'done', branch: null, prUrl: null,
@@ -54,10 +54,7 @@ flow('a state saved as one file is split at the first start, and the lists, the 
   await app.until(`const s = await window.ide.call('state'); return s.tasks.some((t) => t.id === 'T-0041' && t.status === 'done');`, 'the new task finished as T-0041');
   await app.until(`return (await window.ide.call('state')).chat.some((c) => c.kind === 'result' && c.text.includes('Done after the split.'));`, 'its result in the chat');
   // What the app finds after a restart is what it saved: wait for the new task on disk.
-  for (const end = Date.now() + 20_000; !savedNow(app)?.tasks.some((t) => t.id === 'T-0041' && t.status === 'done');) {
-    if (Date.now() > end) throw new Error('The new task was never saved.');
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  await waitFor(() => savedNow(app)?.tasks.some((t) => t.id === 'T-0041' && t.status === 'done'), 'The new task was never saved');
   assert.equal(saved(app).tasks.length, 1, 'a task that just ended stays in state.json for now');
   await app.restart();
   s = await app.state();
@@ -83,10 +80,7 @@ flow('started with --state-v1 the app writes the state back as one file and quit
   assert.equal(saved(app).version, 2);
   assert.deepEqual(named(app, 'state-v2-before-v1-'), []);
   // What the way back writes is what the app saved: wait for that notice on disk.
-  for (const end = Date.now() + 20_000; !savedNow(app)?.chat.some(refused);) {
-    if (Date.now() > end) throw new Error('The notice was never saved.');
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  await waitFor(() => savedNow(app)?.chat.some(refused), 'The notice was never saved');
   // With the app closed, one file holds everything again, what was said since the split too, and the files it came from are kept.
   assert.equal(await app.once(['--state-v1']), 0);
   const back = saved(app);
@@ -136,10 +130,7 @@ flow('a file beside state.json that lost records gets them back from a backup, a
   assert.equal(named(app, 'chat-broken-').length, 1);
   assert.deepEqual(saved(app).sealed, { chat: 2, tasks: 2 });
   // It is said once. What the app finds after a restart is what it saved: wait for the two notices on disk.
-  for (const end = Date.now() + 20_000; !(savedNow(app)?.chat.filter((c) => c.kind === 'error').length >= 2);) {
-    if (Date.now() > end) throw new Error('The notices were never saved.');
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  await waitFor(() => savedNow(app)?.chat.filter((c) => c.kind === 'error').length >= 2, 'The notices were never saved');
   await app.restart();
   assert.equal((await app.state()).chat.filter((c) => c.kind === 'error').length, 2);
 });

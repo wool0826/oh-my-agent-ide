@@ -1,0 +1,12 @@
+{
+  "name": "oh-my-agent-ide-lint",
+  "private": true,
+  "description": "ESLint and typescript-eslint, kept apart from the app: typescript-eslint reads types through the TypeScript JS API, which TypeScript 7 (the app's compiler) no longer ships, so this folder has its own TypeScript 6.",
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.74.0"
+  }
+}

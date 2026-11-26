@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Codex app-server messages are untyped JSON-RPC, read field by field. */
 import { accounts } from '../accounts';
 import { log } from '../log';
 import type { CodexLink, ThreadSink } from '../codex/client';

@@ -51,7 +51,7 @@ export function foldLines<T extends Rec>(text: string): Fold<T> {
   const at = new Map<string, number>();
   const open = new Set<string>();
   let bad = 0;
-  for (const raw of text.replace(/^﻿/, '').split('\n')) {
+  for (const raw of text.replace(/^\uFEFF/, '').split('\n')) {
     const line = raw.trim();
     if (!line) continue;
     let v: unknown;

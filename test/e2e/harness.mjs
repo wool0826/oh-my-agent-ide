@@ -14,6 +14,13 @@ const root = path.resolve(here, '..', '..');
 const electron = createRequire(import.meta.url)('electron'); // the path of the Electron executable
 // Only for the pause between two looks at a condition, or between the moves of a gesture: never as the wait itself.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Waits in this process until `check()` is true (a file on disk, a stand-in's calls), or throws after `ms`. */
+export async function waitFor(check, what, ms = 20_000) {
+  for (const end = Date.now() + ms; !(await check());) {
+    if (Date.now() > end) throw new Error(`${what}: not within ${ms} ms`);
+    await sleep(100);
+  }
+}
 /** A promise that gives up after `ms`, so a window that no longer answers cannot hold a test. */
 const within = (p, ms, what) => {
   let timer;

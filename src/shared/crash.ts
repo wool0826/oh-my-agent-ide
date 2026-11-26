@@ -74,7 +74,7 @@ export function markerText(m: RunMarker): string {
 export function previousRun(text: string | null): RunMarker | null {
   if (text == null) return null;
   try {
-    const o = JSON.parse(text.replace(/^﻿/, '')) as Partial<RunMarker>;
+    const o = JSON.parse(text.replace(/^\uFEFF/, '')) as Partial<RunMarker>;
     if (o && typeof o === 'object') {
       return {
         pid: typeof o.pid === 'number' ? o.pid : 0,

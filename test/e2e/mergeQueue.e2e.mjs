@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { flow } from './harness.mjs';
+import { flow, waitFor } from './harness.mjs';
 
 const pr = (n) => `https://github.com/o/demo/pull/${n}`;
 const one = (n) => `@fake task demo Change ${n}\n@@fake write file${n}.txt ${n}\n@@fake commit Change ${n}\n@@fake pr ${pr(n)}\n@@fake result Changed ${n}.`;
@@ -13,13 +13,11 @@ const one = (n) => `@fake task demo Change ${n}\n@@fake write file${n}.txt ${n}\
 const check = (conclusion) => [conclusion ? { name: 'test', status: 'COMPLETED', conclusion } : { name: 'test', status: 'IN_PROGRESS' }];
 const open = (fields = {}) => ({ state: 'OPEN', mergeable: 'MERGEABLE', reviewDecision: 'APPROVED', checks: check('SUCCESS'), ...fields });
 const task = (state, title) => state.tasks.find((x) => x.title === title);
-const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** One round of the queue's runner now, not at its next tick. */
 const RUN = "await window.ide.call('mq:run');";
 /** The queue's rows in the Workers view, each as one line of text. */
 const ROWS = "[...document.querySelectorAll('#wk-list .mq-row')].map((r) => r.innerText.replace(/\\s+/g, ' ').trim())";
-const rows = (app) => app.evaluate(`return ${ROWS};`);
 /** What the queue asked of GitHub, in order: "merge 1", "update 2". */
 const asked = (app) => app.gh().calls.map((c) => {
   const m = /^pr merge \S+\/pull\/(\d+)/.exec(c);
@@ -122,10 +120,7 @@ flow('a queue that was at work when the app quit goes on at the next start', {
   // What the app finds after a restart is what it saved: wait for the queue on disk.
   const file = path.join(app.home, 'data', 'state.json');
   const onDisk = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')).mergeQueue?.[0]?.phase; } catch { return null; } };
-  for (const end = Date.now() + 20_000; onDisk() !== 'checks';) {
-    if (Date.now() > end) throw new Error('The queue was never saved.');
-    await pause(100);
-  }
+  await waitFor(() => onDisk() === 'checks', 'The queue was never saved');
   // Its checks pass while the app is closed; the new run reads the PR and merges it, with nothing asked twice.
   await app.ghPr(pr(2), { checks: check('SUCCESS') });
   await app.restart();

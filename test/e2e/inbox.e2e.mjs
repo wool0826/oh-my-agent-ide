@@ -160,6 +160,7 @@ flow('a two-finger touchpad swipe over a Notifications row clears it like the dr
   const x = (nav) => app.evaluate(`const r = document.querySelector('${row(nav)}'); return r ? Math.round(new DOMMatrix(getComputedStyle(r).transform).m41) : null;`);
   const rest = (n) => app.until(`document.querySelectorAll('#chat-ins .res').length === ${n} && !document.querySelector('#chat-ins .swiping, #chat-ins .swipe-under')`, `${n} results at rest`);
   // Fingers lifted between two gestures: wheel events right after one (its momentum) start nothing.
+  // eslint-disable-next-line no-restricted-syntax -- the gap between two gestures is what is tested: wheel events right after one count as its momentum.
   const lift = () => app.evaluate('await new Promise((r) => setTimeout(r, 300)); return 1;');
   // A short swipe: the row follows the fingers (content scrolled right moves the row left), then comes back.
   assert.equal(await wheel(ids[0], Math.round(w * 0.2)), 6);

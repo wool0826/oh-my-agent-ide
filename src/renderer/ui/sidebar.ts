@@ -14,19 +14,14 @@ import { RING, ringArc, untilReset } from '../../shared/usageRing';
 import { USAGE_INTERVALS, limitWindow, usageFoot, usedUp, type UsageFoot } from '../../shared/usage';
 import { queuedPrs, readyToQueue } from '../../shared/mergeQueue';
 import { groupByRepo, recentlyFinished } from '../../shared/sidebar';
-import { History, type WorkerFilter } from '../../shared/history';
-import { act } from '../app';
+import { type WorkerFilter } from '../../shared/history';
 import { applyWidths } from './resize';
 import { narrowLayout } from '../../shared/panelWidth';
-import { ageHtml, away, tickDecisions } from './chat';
-import { pop } from './controls';
+import { ageHtml, tickDecisions } from './chat';
 import { quietUntil } from '../../shared/notifyRules';
-import { $, ago, awaitsDispatcher, bars, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, queuedLabel, ring, S, store, stored, sym, t, task, ui, when, worker } from './core';
+import { $, ago, awaitsDispatcher, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, S, store, stored, sym, t, task, ui, when } from './core';
 import { setTip } from './tip';
 import { segc } from './settings';
-import { screen } from './history';
-import { cmdk } from './palette';
-import { glide } from './settings';
 import { queueCtx } from './workers';
 import { shownStalled } from '../../shared/stall';
 
@@ -76,7 +71,6 @@ export function renderSidebar() {
 
   const sec = (title: string, rows: string, cls = '') => rows ? `<section class="side-sec ${cls}"><h4 aria-level="3">${title}</h4>${rows}</section>` : '';
   const decRows = pending.map((d) => {
-    const x = task(d.taskId);
     // The title names the command or the question itself (two lines at most); the second line says who and what
     // kind, beside the age. Why it is asked is on the card and in the tooltip: here it was cut after a few letters.
     const kind = t(`dec.kind.${decisionKind(d)}` as Key);

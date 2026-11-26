@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc -p .",
+    "lint": "node scripts/lint.mjs",
     "test": "esbuild \"test/*.test.ts\" --bundle --platform=node --format=esm --outdir=dist/test --out-extension:.js=.mjs --alias:electron=./test/stubs/electron.ts --external:@anthropic-ai/claude-agent-sdk --external:zod --log-level=warning && node --test \"dist/test/*.test.mjs\"",
     "start": "node build.mjs && electron .",
     "dev": "node build.mjs && electron .",

@@ -48,7 +48,7 @@ flow('the palette finds something said and shows the chat from that message', {}
   await app.until("document.activeElement?.id === 'cmdk-q'", 'the palette opened by Ctrl+F');
   await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'pineapple fridays'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
   // The row is picked by its words and clicked in the same look, so it cannot be another row drawn in its place.
-  await app.until("const el = [...document.querySelectorAll('.cmdk-it')].find((x) => x.innerText.includes('no pineapple on Fridays')); el?.click(); return !!el;", 'the message among the results', 20_000, "[...document.querySelectorAll('.cmdk-it')].map((x) => x.innerText.replace(/\s+/g, ' ')).join(' / ')");
+  await app.until("const el = [...document.querySelectorAll('.cmdk-it')].find((x) => x.innerText.includes('no pineapple on Fridays')); el?.click(); return !!el;", 'the message among the results', 20_000, "[...document.querySelectorAll('.cmdk-it')].map((x) => x.innerText.replace(/\\s+/g, ' ')).join(' / ')");
   // Read in the same look that finds it: the bubble blinks, and the mark is taken off again a moment later.
   const found = await app.until("const f = document.querySelector('#chat-thread .found'); return f && JSON.stringify({ text: f.innerText, bub: f.matches('.bub'), blink: f.getAnimations().some((a) => a.animationName === 'found') });", 'the message marked in the chat');
   const mark = JSON.parse(found);

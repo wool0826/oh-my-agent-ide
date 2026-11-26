@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- child_process errors carry an untyped code, and the generic helpers take any function. */
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -60,7 +61,7 @@ export function ensureDir(p: string) {
 
 export function readJson<T>(file: string, fallback: T): T {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, '')) as T;
+    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')) as T;
   } catch {
     return fallback;
   }

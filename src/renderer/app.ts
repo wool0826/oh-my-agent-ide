@@ -1,5 +1,4 @@
 // The window's entry: drawing every screen, what each control does, and start-up.
-import type { Worker } from '../shared/types';
 import { panelsFor, type Panel, type Part, type StateMsg } from '../shared/stateSync';
 import { hasSpend } from '../shared/spend';
 import { reviewMessage } from '../shared/diffComment';
@@ -18,19 +17,19 @@ import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { Drafts } from '../shared/drafts';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
-import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, away, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
+import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { closeShot, markBrokenShot, openShot, shotOpen, showShot, stepShot } from './ui/shotview';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
-import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, moreBtn, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
+import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, worker, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
-import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
+import { go, navKey, navStep, readMemFile } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
-import { closePalette, Cmd, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
-import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
-import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
+import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
+import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira } from './ui/repos';
+import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
@@ -828,7 +827,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
       form.requestSubmit();
     }
   });
-  form.addEventListener('submit', async (e) => {
+  form.addEventListener('submit', (e) => void (async () => {
     e.preventDefault();
     // The Worker composer is shared: what comes after the send belongs to the Worker it went to.
     const target = box === 'ws' ? ui.wSel : null;
@@ -865,7 +864,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     autosize(input);
     updateSendButton();
     if (box === 'ws') renderComposerDecision();
-  });
+  })());
 }
 
 /** Files dropped anywhere go to the visible composer; never let the window navigate to them. */
@@ -933,7 +932,7 @@ export function init() {
     if (el) void act(el, e);
     if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
   });
-  document.addEventListener('change', async (e) => {
+  document.addEventListener('change', (e) => void (async () => {
     const el = e.target as HTMLSelectElement;
     if (el.dataset.change === 'sound-kind') syncSoundRows();
     if (el.classList?.contains('step-v')) syncStep(el as unknown as HTMLInputElement, true);
@@ -962,7 +961,7 @@ export function init() {
     if ((el.id === 'set-qfrom' || el.id === 'set-qto') && S) { el.value = typedTime(el.value, el.id === 'set-qfrom' ? S.settings.quietFrom : S.settings.quietTo); markBad(el, false); markQuiet(); }
     if (el.id === 'set-nres') syncSoundRows();
     if (el.closest?.('#sheet')) void saveSettingsNow();
-  });
+  })());
   document.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
     if (el.id === 'cmdk-q') { renderPalette(el.value); return; }

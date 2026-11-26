@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { flow } from './harness.mjs';
+import { flow, waitFor } from './harness.mjs';
 
 const task = (state, title) => state.tasks.find((x) => x.title === title);
 const DEC = '#chat-ins .dec';
@@ -23,8 +23,6 @@ const worktreeTree = (app, cwd) => {
 };
 /** Waits until the task with this title has one of these statuses, and returns the state. */
 const settled = (app, title, statuses = ['done']) => app.until(`const s = await window.ide.call('state'); return s.tasks.some((x) => x.title === ${JSON.stringify(title)} && ${JSON.stringify(statuses)}.includes(x.status)) && s;`, `"${title}" ${statuses.join(' or ')}`);
-// Only for the pause between two looks at a file on disk, never as the wait itself.
-const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Runs the half-minute checks as if `ms` had passed (a test hook of the main process). */
 const later = (app, ms) => app.evaluate(`await window.ide.call('e2e:clock', ${ms}); return 1;`);
 /**
@@ -214,10 +212,7 @@ flow('row 9.8: an "Allow for this task" outlives a restart of the app, listed un
   // What the app finds after a restart is what it saved: wait for the allowance on disk.
   const saved = path.join(app.home, 'data', 'state.json');
   const grants = () => { try { return JSON.parse(fs.readFileSync(saved, 'utf8')).tasks.find((x) => x.title === 'Install across a restart')?.grants ?? []; } catch { return []; } };
-  for (const end = Date.now() + 20_000; !grants().length;) {
-    if (Date.now() > end) throw new Error('The allowance was never saved.');
-    await pause(100);
-  }
+  await waitFor(() => grants().length, 'The allowance was never saved');
   assert.equal(task(await app.state(), 'Install across a restart').status, 'running');
   await app.restart();
   // The interrupted turn is resumed and ends; the allowance stays on the task.

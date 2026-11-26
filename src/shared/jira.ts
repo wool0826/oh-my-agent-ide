@@ -1,5 +1,6 @@
 // Jira issues assigned to the user, handed to the Dispatcher as tasks (decision 125).
 // Works with Jira Cloud (email + API token) and Jira Data Center (personal access token).
+/* eslint-disable @typescript-eslint/no-explicit-any -- Jira answers untyped JSON, read field by field. */
 
 export interface JiraIssue {
   key: string;

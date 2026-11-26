@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- SDK message fields the SDK types leave out (usage, is_error, terminal_reason, queued_turn_count) and untyped tool input. */
 import { query, type CanUseTool, type McpServerConfig, type Options, type PermissionMode, type Query, type SDKMessage, type SDKStatusMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { accounts } from '../accounts';
 import { claudeExecutable, pluginPath } from '../runtime';

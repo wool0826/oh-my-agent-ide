@@ -10,7 +10,7 @@ const DOCUMENTS = new Set([
 /** Open with the default program (a folder, or a document type); anything else is revealed in its folder. */
 export function opensSafely(p: string, isDir: boolean): boolean {
   if (isDir) return true;
-  const name = p.split(/[\/]/).pop() ?? '';
+  const name = p.split(/[\\/]/).pop() ?? '';
   const dot = name.lastIndexOf('.');
   return dot > 0 && DOCUMENTS.has(name.slice(dot + 1).toLowerCase());
 }

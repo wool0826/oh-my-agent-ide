@@ -7,9 +7,8 @@ import { ghRepoRef, type Issue } from '../../shared/issues';
 import { jiraBase, type JiraIssue } from '../../shared/jira';
 import { failedFirst, fixCommand, type Check } from '../../shared/preflight';
 import { PAGE } from '../../shared/paging';
-import { act } from '../app';
-import { $, call, esc, ic, ide, keepInputs, keepScroll, paged, prNum, S, shortPath, skel, sym, t, task, taskLabel, toast, tryCall, ui, when } from './core';
-import { go, nav } from './history';
+import { $, call, esc, ic, ide, keepInputs, keepScroll, paged, prNum, S, shortPath, skel, sym, t, taskLabel, toast, tryCall, ui, when } from './core';
+import { go } from './history';
 
 export let jira: undefined | 'loading' | JiraIssue[] | { error: string };
 
@@ -186,7 +185,7 @@ export async function addRepo() {
   ui.repoAddError = '';
   renderRepos();
   // The form leaves "Adding…" however the add ends; a failure is said in the form, where it can be fixed (T-0027).
-  let r: { ok: true; v: Repo | undefined } | { ok: false; error: string } = { ok: false, error: t('repo.err.unknown') };
+  let r: { ok: true; v: Repo | undefined } | { ok: false; error: string };
   try {
     r = await tryCall<Repo>('repo:add', url, undefined, $<HTMLTextAreaElement>('#repo-add-desc').value);
   } catch (e) {

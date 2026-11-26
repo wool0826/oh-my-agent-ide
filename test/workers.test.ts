@@ -89,7 +89,7 @@ test('a usage limit pauses the task: the Worker is idle and the task waits in th
 test('send_to_worker on a paused task runs the task again, and the periodic retry does not nudge it twice', () => {
   const { w, x } = pausedWorker();
   limit(false);
-  workers.send(w.id, 'dispatcher', 'Continue now.');
+  void workers.send(w.id, 'dispatcher', 'Continue now.');
   assert.equal(w.status, 'running');
   assert.equal(x.status, 'running');
   assert.equal(w.statusText, '');
@@ -111,11 +111,11 @@ test('a message held during the limit pauses the running task and goes out befor
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w);
   limit(true);
-  workers.send(w.id, 'user', 'First.');
+  void workers.send(w.id, 'user', 'First.');
   assert.equal(x.status, 'queued');
   assert.equal(sent.get(w.id), undefined);
   limit(false);
-  workers.send(w.id, 'dispatcher', 'Second.');
+  void workers.send(w.id, 'dispatcher', 'Second.');
   assert.equal(x.status, 'running');
   assert.deepEqual(sent.get(w.id), ['[User message] First.', '[Dispatcher] Second.']);
 });
@@ -129,7 +129,7 @@ test('a task assigned while every account was limited starts with its task messa
   assert.equal(x.status, 'queued');
   assert.equal(x.startedAt, null);
   limit(false);
-  workers.send(w.id, 'dispatcher', 'Start it now.');
+  void workers.send(w.id, 'dispatcher', 'Start it now.');
   await tick();
   assert.equal(x.status, 'running');
   assert.ok(x.startedAt);
@@ -147,7 +147,7 @@ test('a session that dies mid-task fails the task with it; told to continue, the
   assert.equal(x.status, 'failed');
   assert.match(x.summary!, /failed to launch/);
   assert.equal(store.data.chat.filter((c) => c.kind === 'error' && c.ref === x.id).length, 1);
-  workers.send(w.id, 'dispatcher', 'Try again.');
+  void workers.send(w.id, 'dispatcher', 'Try again.');
   assert.equal(w.status, 'running');
   assert.equal(x.status, 'running');
 });
@@ -232,7 +232,7 @@ test('a task that never started is cancelled without a note to its Worker', asyn
   await workers.cancelTask(x.id, 'dispatcher');
   assert.equal(x.status, 'cancelled');
   assert.equal(w.status, 'idle');
-  workers.send(w.id, 'dispatcher', 'Next.');
+  void workers.send(w.id, 'dispatcher', 'Next.');
   assert.deepEqual(sent.get(w.id), ['[Dispatcher] Next.']);
   assert.equal(store.data.pendingUpdates.length, 0);
 });
@@ -558,9 +558,9 @@ test('a Worker waiting for an answer keeps its slot; messages to it go out, and 
   const x = fresh();
   await workers.assign(x, b.id, b.model);
   assert.equal(x.status, 'queued');
-  workers.send(a.id, 'user', 'Here is more context.');
+  void workers.send(a.id, 'user', 'Here is more context.');
   assert.deepEqual(sent.get(a.id), ['[User message] Here is more context.']);
-  workers.send(b.id, 'dispatcher', 'Also check the docs.');
+  void workers.send(b.id, 'dispatcher', 'Also check the docs.');
   assert.equal(sent.get(b.id), undefined);
   assert.equal(x.status, 'queued');
   ask.status = 'running';
@@ -679,7 +679,7 @@ test('a message to a Worker paused by a usage limit waits for a slot when every 
   addTask(a);
   workers.ensureSession(a);
   const before = sent.get(w.id)?.length ?? 0;
-  workers.send(w.id, 'user', 'Go on with this.');
+  void workers.send(w.id, 'user', 'Go on with this.');
   assert.deepEqual([x.status, x.queueReason], ['queued', 'slot']);
   assert.equal(sent.get(w.id)?.length ?? 0, before);
   report(a);
@@ -737,7 +737,7 @@ test('a question to an idle Worker reopens no task, and what its turn says reach
 
 test('mid-task, tell_dispatcher answers the question and the task goes on to its own report', async () => {
   const { w, x, s } = talking();
-  workers.ask(w.id, 'How far along are you?');
+  void workers.ask(w.id, 'How far along are you?');
   assert.match(workers.fromWorker(w, 'answer', 'Half way: the parser is done.'), /^Delivered/);
   assert.equal(w.ask, null);
   assert.equal(x.status, 'running');
@@ -757,7 +757,7 @@ test('mid-task, tell_dispatcher answers the question and the task goes on to its
 
 test('a Worker that answers in plain text mid-task and stops is told to go on; the answer is no task result', () => {
   const { w, x, s } = talking();
-  workers.ask(w.id, 'How far along are you?');
+  void workers.ask(w.id, 'How far along are you?');
   turn(s, 'Half way.');
   assert.equal(x.status, 'running');
   assert.equal(w.ask, null);
@@ -769,7 +769,7 @@ test('a Worker that answers in plain text mid-task and stops is told to go on; t
 
 test('a Worker that answers with the tool and ends its turn there is told to go on too, once', () => {
   const { w, x, s } = talking();
-  workers.ask(w.id, 'How far along are you?');
+  void workers.ask(w.id, 'How far along are you?');
   workers.fromWorker(w, 'answer', 'Half way.');
   turn(s, 'Answered.');
   assert.equal(x.status, 'running', 'the turn that answered a question says nothing about the task');
@@ -783,7 +783,7 @@ test('a Worker that answers with the tool and ends its turn there is told to go 
 
 test('a question whose turn fails or says nothing is reported as unanswered, so no later text is taken for the answer', () => {
   const { w, s } = talking(finished);
-  workers.ask(w.id, 'Which file?');
+  void workers.ask(w.id, 'Which file?');
   s.ev.onTurnEnd!({ text: 'It broke.', isError: true, internal: false });
   assert.equal(w.ask, null);
   assert.deepEqual(store.data.pendingUpdates, [`${w.id} did not answer your question "Which file?" (It broke.). Ask again if you still need the answer.`]);
@@ -819,7 +819,7 @@ test('steps: a Codex Worker has the same tools, with their input checked', () =>
 test('steps: a follow-up on a finished task starts without the old plan, even one left half marked', () => {
   const { w, x } = talking(finished);
   x.steps = [{ title: 'Code', doneAt: now }, { title: 'Test', doneAt: null }];
-  workers.send(w.id, 'dispatcher', 'Also fix the README.');
+  void workers.send(w.id, 'dispatcher', 'Also fix the README.');
   assert.equal(x.status, 'running');
   assert.equal(x.steps, null);
 });
@@ -892,7 +892,7 @@ test('a BLOCKED report keeps the task open with its slot and tells the Dispatche
   const y = fresh();
   return workers.assign(y, b.id, b.model).then(() => {
     assert.equal(y.status, 'queued');
-    workers.send(w.id, 'user', 'It is stage-eu.');
+    void workers.send(w.id, 'user', 'It is stage-eu.');
     assert.equal(x.status, 'running');
     workers.fromWorker(w, 'request', 'Is W-9 done?');
     turn(s, 'RESULT: Done');
@@ -912,7 +912,7 @@ test('with no task open the same holds per Worker, and the count starts over whe
   const { w } = talking({ status: 'done', finishedAt: now, prUrl: 'https://github.com/o/r/pull/1', prState: 'MERGED' });
   for (let i = 1; i <= 7; i++) workers.fromWorker(w, 'request', `Request ${i}`);
   assert.equal(wakes, 5);
-  workers.send(w.id, 'dispatcher', 'Here is what you asked for.');
+  void workers.send(w.id, 'dispatcher', 'Here is what you asked for.');
   assert.equal(w.request, null);
   workers.fromWorker(w, 'request', 'One more thing.');
   assert.equal(wakes, 6);
@@ -1077,7 +1077,7 @@ test('a Worker the user stops is idle, not in error, and its task shows as stopp
   assert.ok(store.data.chat.some((c) => c.kind === 'result' && c.ref === x.id && c.text === `Stopped by user (${w.id})`));
   assert.ok(store.data.pendingUpdates.some((u) => u.startsWith(`The user stopped ${w.id} on ${x.id}`)));
   // Told to go on, it picks the task up again and it is no longer marked stopped.
-  workers.send(w.id, 'user', 'Go on.');
+  void workers.send(w.id, 'user', 'Go on.');
   assert.deepEqual([x.status, x.stopped], ['running', false]);
 });
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- the usage endpoint answers untyped JSON, read field by field. */
 import { fakeMode } from './fake';
 import { EventEmitter } from 'node:events';
 import { loadSettings, saveSettings, encryptToken, decryptToken, type StoredAccount } from './settings';
@@ -69,13 +70,13 @@ class Accounts extends EventEmitter {
     const s = loadSettings();
     if (s.accounts.length >= MAX_ACCOUNTS) throw new Error(t('acc.err.max', { n: MAX_ACCOUNTS }));
     if (s.accounts.some((a) => a.provider === 'chatgpt')) throw new Error(t('acc.err.oneChatgpt'));
-    let signedIn = false;
+    let signedIn: boolean;
     try {
       const r = await codexClient().request<{ account: unknown | null }>('account/read', { refreshToken: false }, 30_000);
       signedIn = !!r?.account;
     } catch (e) {
       log.warn('codex account', (e as Error).message);
-      throw new Error(t('acc.err.codexMissing'));
+      throw new Error(t('acc.err.codexMissing'), { cause: e });
     }
     if (!signedIn) throw new Error(t('acc.err.codexLogin'));
     const acc: StoredAccount = {

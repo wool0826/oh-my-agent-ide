@@ -1,4 +1,5 @@
 // JSON-RPC over lines of JSON, as `codex app-server` speaks it on stdio: requests and notifications go both ways.
+/* eslint-disable @typescript-eslint/no-explicit-any -- Codex app-server messages are untyped JSON-RPC. */
 
 export interface RpcError { code: number; message: string; data?: unknown }
 

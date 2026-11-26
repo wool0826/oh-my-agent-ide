@@ -49,7 +49,7 @@ test('the marker: none means the last run quit, any other means it did not', () 
   assert.equal(previousRun(null), null);
   const m = { pid: 42, startedAt: '2026-11-25T01:00:00.000Z', version: '0.9.0', crash: { at: '2026-11-25T01:02:00.000Z', message: 'Error: boom' } };
   assert.deepEqual(previousRun(markerText(m)), m);
-  assert.deepEqual(previousRun(`﻿${markerText({ pid: 7, startedAt: 'a', version: 'b' })}`), { pid: 7, startedAt: 'a', version: 'b' });
+  assert.deepEqual(previousRun(`\uFEFF${markerText({ pid: 7, startedAt: 'a', version: 'b' })}`), { pid: 7, startedAt: 'a', version: 'b' });
   // Cut off mid-write, or empty: still a run that did not quit.
   assert.deepEqual(previousRun('{"pid": 4'), { pid: 0, startedAt: '', version: '' });
   assert.deepEqual(previousRun(''), { pid: 0, startedAt: '', version: '' });

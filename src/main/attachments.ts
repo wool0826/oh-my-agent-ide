@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- tool input is whatever the model sent, read field by field. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { store } from './store';

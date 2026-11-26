@@ -19,16 +19,14 @@ import { stepView, type StepView } from '../../shared/steps';
 import { askLine, plainStatus, stateCounts, workerLine, workerState, type WorkerState } from '../../shared/workerState';
 import { PAGE, threadStart } from '../../shared/paging';
 import { type WorkerFilter } from '../../shared/history';
-import { act } from '../app';
-import { decisionHint, decisionHtml, olderChat, prBadges, reportLinkHtml, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
+import { decisionHint, decisionHtml, prBadges, reportLinkHtml, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
 import { linkUrl, linkify, reportLinks, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
 import { shotsOf } from './shotview';
-import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, when, worker } from './core';
-import { go, show } from './history';
+import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, worker } from './core';
 import { grantsHtml } from './repos';
-import { ms, workerIcon } from './sidebar';
+import { workerIcon } from './sidebar';
 
 const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
 
