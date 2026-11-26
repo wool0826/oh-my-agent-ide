@@ -157,6 +157,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: docs/release-notes
       - uses: actions/download-artifact@v4
         with:
           pattern: installer-*
@@ -175,6 +178,8 @@ jobs:
             # A re-run: replace the files on the release that already exists, and leave its notes alone.
             gh release upload "$TAG" installers/* --clobber
           else
-            gh release create "$TAG" installers/* --draft --verify-tag --title "$TAG" --generate-notes
+            # Notes written for this tag in docs/release-notes/ win over the generated list of PR titles.
+            if [ -f "docs/release-notes/$TAG.md" ]; then notes=(--notes-file "docs/release-notes/$TAG.md"); else notes=(--generate-notes); fi
+            gh release create "$TAG" installers/* --draft --verify-tag --title "$TAG" "${notes[@]}"
           fi
           echo "Draft release $TAG is ready. Publish it on GitHub after checking it."
