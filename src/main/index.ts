@@ -23,7 +23,7 @@ import { t } from './i18n';
 import { listModels, setSessionModelSource } from './models';
 import { log } from './log';
 import { windowIconFile } from '../shared/appIcon';
-import { trafficLightPosition } from '../shared/trafficLights';
+import { LIGHTS_POSITION } from '../shared/trafficLights';
 import { notifyText } from '../shared/askWhy';
 import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
 import { hasTray, showWindow, updateTray } from './tray';
@@ -133,9 +133,10 @@ function createWindow() {
     // Matches --bg-canvas, so nothing flashes before the page paints its backdrop.
     backgroundColor: look.background,
     titleBarStyle: mac ? 'hiddenInset' : 'hidden',
-    // Inside the floating sidebar panel, where --lights-x/-w in tokens.css expect them (test/trafficLights.test.ts).
-    trafficLightPosition: mac ? trafficLightPosition(process.getSystemVersion()) : undefined,
-    titleBarOverlay: mac ? undefined : { color: '#00000000', symbolColor: look.symbol, height: 44 },
+    // Inside the floating sidebar panel (--lights-x in tokens.css, test/trafficLights.test.ts).
+    trafficLightPosition: mac ? { ...LIGHTS_POSITION } : undefined,
+    // macOS: `true` only reports the lights' box to the page (env(titlebar-area-*)); a height would move them (electron#49183).
+    titleBarOverlay: mac ? true : { color: '#00000000', symbolColor: look.symbol, height: 44 },
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       contextIsolation: true,
@@ -169,7 +170,8 @@ function createWindow() {
   // macOS hides the traffic lights in full screen, so the page drops the room it keeps for them.
   const sendFullScreen = () => win?.webContents.send('fullscreen', win.isFullScreen());
   win.on('enter-full-screen', sendFullScreen);
-  win.on('leave-full-screen', sendFullScreen);
+  // Setting the position again makes Electron send the lights' box to the page now, not at the next resize.
+  win.on('leave-full-screen', () => { if (mac) win?.setWindowButtonPosition({ ...LIGHTS_POSITION }); sendFullScreen(); });
   win.webContents.on('did-finish-load', sendFullScreen);
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);

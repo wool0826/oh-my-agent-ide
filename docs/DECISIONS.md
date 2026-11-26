@@ -1105,3 +1105,15 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Cause: `.fchip` had `padding: 2px 4px 2px 10px`, sized for the composer chip whose round remove button sits at its end. A result card's file chips (`.rfiles`, 232) have no button, so their name stopped 4px from the pill's rounded end and looked cut off.
     - Now 10px on both sides, and `.fchip:has(> button)` sets the right to 4px. The sent-message chip keeps its own 8px on both sides.
     - Rejected: a separate class per place, because the markup decides whether there is a button and `:has` follows it on its own.
+236. **On macOS the page lays out from the box the window reports around the traffic lights, not from token guesses** (T-0145, follows 199 and 214).
+    - Cause: Settings' back button sat at `--lights-x + --lights-w + --lights-gap` (88pt). AppKit draws the buttons from `trafficLightPosition` plus its own frames, and 214 moved x from 22 to 27 on macOS 26, so the zoom button ended about 1pt from the button. The rail centred a 52pt guess, not the frames.
+    - Now: `titleBarOverlay: true` on macOS makes Electron report the button box: x margin + frames + x margin wide (`env(titlebar-area-x)`), and the buttons' height plus the y margin twice (`env(titlebar-area-height)`). `styles.css` reads it as `--lights-box-w/-h`:
+      - the Settings back button and a toolbar after the rail start at `box-w − x + 14`
+      - the rail's panel is centred on the box (`--rail-w: box-w − inset`)
+      - the toolbar and Settings bars get `box-h − 52` (0–12) top padding, so their middle line is the lights' middle
+    - The window puts the lights at x 22 on every version again. With the layout following the frames, the macOS 26 pad of 214 had no job left, and it cost the room in Settings. The tokens stay only as the fallback when nothing is reported. Full screen keeps no clearance and the 60px rail.
+    - `true`, not an object: a height centres the lights in it and moves them (electron#49183). Leaving full screen sets the position again so the box is sent at once.
+    - Checked by `test/trafficLights.test.ts` (rules, formula) and `test/e2e/lights.e2e.mjs`: stand-in boxes on every runner, plus the real reported box on the macOS runner.
+    - Rejected:
+      - Measuring in the main process: Electron has no API for the button frames.
+      - Moving the back button below the lights strip: it changes the Settings layout to dodge the numbers.
