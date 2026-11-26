@@ -1,6 +1,6 @@
 # Releasing
 
-Installers are built by `.github/workflows/release.yml` on GitHub's runners: the Windows installer on Windows, the macOS dmg on an Apple silicon Mac. A pushed tag makes a **draft** release with both files and generated notes. Nothing is public until you publish the draft, and the app's update check only sees published releases.
+Installers are built by `.github/workflows/release.yml` on GitHub's runners: the Windows installer on Windows, the macOS dmg on an Apple silicon Mac. A pushed tag makes a **draft** release with both files and the release notes. Nothing is public until you publish the draft, and the app's update check only sees published releases.
 
 ## Make a release
 
@@ -8,6 +8,7 @@ Installers are built by `.github/workflows/release.yml` on GitHub's runners: the
    ```sh
    npm version 0.7.0 --no-git-tag-version   # changes package.json and package-lock.json
    ```
+   In the same change, write the release notes for users in `docs/release-notes/v0.7.0.md`. The draft uses that file; without it, GitHub's generated list of PR titles is used.
 2. **Tag the merged commit** on `main` and push the tag:
    ```sh
    git fetch origin
@@ -16,7 +17,7 @@ Installers are built by `.github/workflows/release.yml` on GitHub's runners: the
    ```
    The tag must be `v` + the `version` in package.json at that commit. If it is not, the workflow's first job fails and nothing is built. Delete a wrong tag with `git push origin :refs/tags/v0.7.0` and `git tag -d v0.7.0`.
 3. **Wait for the Release workflow** (Actions → Release, about 15 minutes). It builds both installers and attaches them to a draft release named after the tag.
-4. **Check the draft** on the Releases page: both files are there (`OhMyAgentIDE-Setup-0.7.0.exe`, `OhMyAgentIDE-0.7.0-arm64.dmg`), install at least one, and edit the generated notes (known issues, what was not tried on a Mac).
+4. **Check the draft** on the Releases page: both files are there (`OhMyAgentIDE-Setup-0.7.0.exe`, `OhMyAgentIDE-0.7.0-arm64.dmg`), install at least one, and check the notes (known issues, what was not tried on a Mac).
 5. **Publish** the draft. Running apps see it within six hours (or at their next launch).
 
 Re-running the workflow for the same tag replaces the files on the draft and keeps its notes.
