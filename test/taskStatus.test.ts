@@ -66,6 +66,8 @@ test('taskStatus: statusMoves lists each status change once, with whether the ta
   b.prUrl = 'https://github.com/o/r/pull/1';
   assert.deepEqual(statusMoves(seen, [a, b]), [{ id: 'T-1', from: 'running', to: 'done', pr: false }, { id: 'T-2', from: 'blocked', to: 'running', pr: true }]);
   assert.deepEqual(statusMoves(seen, [a, b]), []);
+  statusMoves(seen, [b]);
+  assert.deepEqual([...seen.keys()], ['T-2'], 'a task gone from the list is forgotten');
   assert.equal(moveLine({ id: 'T-1', from: 'running', to: 'done', pr: false }, 'finish < onResult'), 'task T-1 running -> done (PR: no) via finish < onResult');
 });
 

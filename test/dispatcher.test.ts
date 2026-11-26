@@ -257,6 +257,10 @@ test('create_task: a Worker still on a task takes a new one only after it, never
   store.data.tasks.push({ id: 'T-1', title: 'First', prompt: '', kind: 'other', repo: null, workerId: 'W-8', status: 'running', branch: null, prUrl: null, prState: null, summary: null, files: [], createdAt: at, updatedAt: at, startedAt: at, finishedAt: null, reviewSyncedAt: null, seenCommentIds: [] } as Task);
   await assert.rejects(createTask({ title: 'Second', prompt: 'Do it.', kind: 'other', worker_id: 'W-8' }), /W-8 is still on T-1 \(running\)\. Give it the new task with after_task_id: T-1/);
   assert.deepEqual(store.data.tasks.map((x) => x.id), ['T-1'], 'no task was made');
+  // Its PR already merged: after_task_id waits for nothing, so the advice is not to use it again.
+  Object.assign(store.data.tasks[0], { prUrl: 'https://github.com/o/r/pull/1', prState: 'MERGED' });
+  await assert.rejects(createTask({ title: 'Second', prompt: 'Do it.', kind: 'other', worker_id: 'W-8', after_task_id: 'T-1' }), /PR of T-1 is already merged, so there is nothing to wait for\. Send more instructions/);
+  Object.assign(store.data.tasks[0], { prUrl: null, prState: null });
   const { task } = await createTask({ title: 'Second', prompt: 'Do it.', kind: 'other', worker_id: 'W-8', after_task_id: 'T-1' });
   assert.equal(task.status, 'blocked');
   assert.deepEqual(store.data.workers[0].taskIds, ['T-1', task.id]);

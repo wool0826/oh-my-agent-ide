@@ -31,7 +31,9 @@ export function registerAppIpc() {
   handle('reveal:path', (p: string) => shell.showItemInFolder(p));
   handle('app:version', () => app.getVersion());
   // Something the window noticed that belongs in the app log (a Worker drawn with another task than main's).
-  handle('app:warn', (text: unknown) => log.warn(`window: ${String(text).slice(0, 500)}`));
+  // At most 50 a run, so a window stuck in a loop cannot fill the log.
+  let warns = 0;
+  handle('app:warn', (text: unknown) => { if (warns++ < 50) log.warn(`window: ${String(text).slice(0, 500)}`); });
   handle('app:relaunch', () => { if (restartIntoUpdate(updateBlockers())) return; app.relaunch(); app.quit(); });
   // Restart into the downloaded update; refused (false) while a Worker, a queued task or the Dispatcher is working.
   handle('update:apply', () => applyUpdate(updateBlockers()));

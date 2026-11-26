@@ -139,6 +139,10 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
   // A Worker still on a task takes a new one only after it: started now, the new task would take over its steps and result.
   const named = a.worker_id ? store.worker(a.worker_id) : null;
   const busy = named ? busyWith(named, (id) => store.task(id), after) : null;
+  if (named && busy && a.after_task_id && !after) {
+    // Its PR is merged, so after_task_id waits for nothing and the same call would be refused again.
+    throw new Error(`${named.id} is still on ${busy.id} (${busy.status}), and the PR of ${a.after_task_id} is already merged, so there is nothing to wait for. Send more instructions for the current work with send_to_worker, or leave out worker_id to use another Worker.`);
+  }
   if (named && busy) {
     throw new Error(`${named.id} is still on ${busy.id} (${busy.status}). Give it the new task with after_task_id: ${busy.id} (or a task already chained after it) so it starts once that one is done, send more instructions for the current work with send_to_worker, or leave out worker_id to use another Worker.`);
   }

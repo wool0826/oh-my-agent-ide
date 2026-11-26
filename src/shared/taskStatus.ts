@@ -37,7 +37,7 @@ export interface StatusMove { id: string; from: TaskStatus; to: TaskStatus; pr: 
 
 /**
  * The tasks whose status changed since `seen` was last brought up to date, which this does. A task seen for the
- * first time is not a move.
+ * first time is not a move; one no longer in the list is forgotten.
  */
 export function statusMoves(seen: Map<string, TaskStatus>, tasks: readonly Pick<Task, 'id' | 'status' | 'prUrl'>[]): StatusMove[] {
   const out: StatusMove[] = [];
@@ -45,6 +45,10 @@ export function statusMoves(seen: Map<string, TaskStatus>, tasks: readonly Pick<
     const from = seen.get(x.id);
     if (from && from !== x.status) out.push({ id: x.id, from, to: x.status, pr: !!x.prUrl });
     seen.set(x.id, x.status);
+  }
+  if (seen.size > tasks.length) {
+    const ids = new Set(tasks.map((x) => x.id));
+    for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
   }
   return out;
 }
