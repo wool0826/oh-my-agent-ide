@@ -1,5 +1,5 @@
 // The Settings window.
-import type { ClaudeInfo, ModelList, Worker, AccountView, SoundName, Lang } from '../../shared/types';
+import type { ClaudeInfo, ModelList, AccountView, SoundName, Lang } from '../../shared/types';
 import { EFFORTS, MAX_ACCOUNTS, type Effort } from '../../shared/types';
 import { ASK_RULES } from '../../shared/grants';
 import { type Key } from '../../shared/i18n';
@@ -14,12 +14,10 @@ import { DECISION_SOUNDS, DONE_SOUNDS } from '../../shared/sounds';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clampWaitSlot } from '../../shared/slots';
 import { fitAll } from './fit';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, clampFontSize, fontStack, normalizeFontFamily } from '../../shared/font';
-import { away } from './chat';
 import { closePop, installedFonts, markFont, openPop, Opt, pop, stepNum } from './controls';
-import { $, applyStaticText, call, cap1, esc, holdWhileComposing, ic, isMac, k, lang, meterLevel, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
-import { nav, show } from './history';
+import { $, applyStaticText, call, cap1, esc, holdWhileComposing, isMac, meterLevel, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
 import { renderMemSync } from './memory';
-import { jira, loadPreflight, preflight, preflightRows } from './repos';
+import { loadPreflight, preflightRows } from './repos';
 import { ms, usageWindows } from './sidebar';
 
 /** Apply the UI font and text size as CSS variables. Also used for the live preview in Settings. */

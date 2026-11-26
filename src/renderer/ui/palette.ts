@@ -1,5 +1,5 @@
 // The command palette (Ctrl/Cmd+K).
-import type { ChatItem, Worker } from '../../shared/types';
+import type { ChatItem } from '../../shared/types';
 import { type Key } from '../../shared/i18n';
 import { matchItems, stepIndex, type PaletteItem } from '../../shared/palette';
 import { SEARCH_MIN, type TextHit } from '../../shared/textSearch';
@@ -9,7 +9,7 @@ import { act, openWorker } from '../app';
 import { chatAll, renderChat, renderChatInspector } from './chat';
 import { closePop } from './controls';
 import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, task, taskLabel, toast, ui, when, worker } from './core';
-import { go, nav } from './history';
+import { go } from './history';
 import { layerClose, layerOpen } from './layer';
 import { closeSettings, openSettings } from './settings';
 import { openShortcuts } from './shortcuts';
@@ -120,7 +120,7 @@ export function searchSaid(q: string) {
   const query = q.trim();
   if (query.length < SEARCH_MIN) { cmdk.said = []; cmdk.saidFor = ''; return; }
   if (cmdk.saidFor === query) return;
-  cmdk.timer = window.setTimeout(async () => {
+  cmdk.timer = window.setTimeout(() => void (async () => {
     const hits = (await call<TextHit[]>('search:text', query)) ?? [];
     // Typed on, or closed, while it was read: this answer is for an older question.
     if (!cmdk.open || cmdk.q.trim() !== query) return;
@@ -130,7 +130,7 @@ export function searchSaid(q: string) {
       run: () => (h.where === 'chat' ? void jumpToChat(h.id) : openWorker(h.where)),
     }));
     renderPalette(cmdk.q, true);
-  }, 180);
+  })(), 180);
 }
 
 /** How long a message found by a search blinks (styles.css, .found: three blinks of 600 ms). */

@@ -1,15 +1,11 @@
 // A Worker's standing instructions, and how its last message is read as a report.
 import fs from 'node:fs';
 import path from 'node:path';
-import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { ask } from '../decisions';
-import { paths } from '../paths';
 import { loadSettings } from '../settings';
 import { langName } from '../i18n';
 import { oneLine } from '../util';
 import { store } from '../store';
 import { type Task, type Worker } from '../../shared/types';
-import { question } from './workerText';
 import { connectorPrompt } from './connectors';
 import { resultLinkList } from '../../shared/linkify';
 

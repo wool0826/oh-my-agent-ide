@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- tool input is whatever the model sent, read field by field. */
 import type { HookCallbackMatcher } from '@anthropic-ai/claude-agent-sdk';
 import { t } from '../i18n';
 import type { Key } from '../../shared/i18n';

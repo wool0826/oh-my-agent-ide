@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- IPC handlers take what the window sends; each checks its own arguments. */
 import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme, net, protocol, powerSaveBlocker } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -224,7 +225,7 @@ function createWindow() {
   win.on('session-end', holdInstallOnQuit);
   // The AppUserModelID has no Start-menu shortcut when run with `electron .`, so the taskbar gets the icon and name from the window.
   if (process.platform === 'win32') win.setAppDetails({ appId: APP_ID, appIconPath: windowIconFile({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }, 'win32'), relaunchDisplayName: 'Oh My Agent IDE' });
-  win.loadFile(path.join(here, 'renderer', 'index.html'));
+  void win.loadFile(path.join(here, 'renderer', 'index.html'));
   win.on('focus', () => { win?.flashFrame(false); checkPrsSoon(); });
   // With "keep running" on, closing the window hides it and the work goes on; the tray icon brings it back.
   win.on('close', (e) => {
@@ -674,7 +675,7 @@ else {
     if (argv.includes(V1_ARG) && store.loaded) store.chat('error', t('state.v1Running'));
     showWindow(win);
   });
-  app.whenReady().then(async () => {
+  void app.whenReady().then(async () => {
     registerIpc();
     serveShots();
     beginRun();

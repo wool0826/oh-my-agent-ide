@@ -169,6 +169,7 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
     await app.until("const s = await window.ide.call('state'); return s.settings.usageRefreshMins === 0 && s.usageClock.nextAt === null;", 'only by hand');
     // A refresh by hand runs a round.
     const before = await app.evaluate("return (await window.ide.call('state')).usageClock.checkedAt;");
+    // eslint-disable-next-line no-restricted-syntax -- a round in the same millisecond as the last would leave checkedAt the same, so the wait below could not see it.
     await app.evaluate("await new Promise((r) => setTimeout(r, 20)); document.querySelector('#usage-pop .ubtn').click(); return 1;");
     await app.until(`return (await window.ide.call('state')).usageClock.checkedAt !== ${JSON.stringify(before)};`, 'a new round');
     // The popover's buttons are reached with the keyboard from the rings, and Escape brings the focus back.

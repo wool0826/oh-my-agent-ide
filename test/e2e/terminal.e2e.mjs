@@ -200,6 +200,7 @@ flow('a line run with ! hands its result to the Dispatcher, which replies withou
   assert.equal(st.chat.filter((c) => c.kind === 'user').length, 0, 'the user typed nothing');
   assert.equal(st.chat.find((c) => c.kind === 'shell')?.shell?.ask, true);
   // One turn, not more: the Dispatcher cannot run "!" itself, so nothing starts another.
+  // eslint-disable-next-line no-restricted-syntax -- checks that no second turn starts: a while for one that must not come.
   await new Promise((r) => setTimeout(r, 1500));
   assert.equal(await app.evaluate("document.querySelectorAll('#chat-thread .bub.ai').length"), 1);
 });

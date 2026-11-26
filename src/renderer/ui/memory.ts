@@ -2,8 +2,7 @@
 import type { MemoryFile, MemoryHits } from '../../shared/types';
 import { type Key } from '../../shared/i18n';
 import { PAGE } from '../../shared/paging';
-import { act } from '../app';
-import { $, ago, call, esc, hhmm, ic, moreBtn, pillTone, S, scrollQuietly, sym, t, tone, ui } from './core';
+import { $, ago, call, esc, hhmm, ic, moreBtn, pillTone, S, scrollQuietly, sym, t, ui } from './core';
 
 /** What the last sync with the remote did: "Synced, 2m, 3 in · 1 out", or the failure and the commits that wait. */
 export function memSyncDetail() {

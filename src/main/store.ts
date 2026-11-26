@@ -116,7 +116,7 @@ class Store extends EventEmitter {
       let names: string[] = [];
       try { names = fs.readdirSync(paths().backups); } catch { /* no backups yet */ }
       for (const name of backupsNewestFirst(names)) {
-        let candidate: string | null = null;
+        let candidate: string;
         try { candidate = fs.readFileSync(path.join(paths().backups, name), 'utf8'); } catch { continue; }
         if (stateText(candidate) !== 'ok') continue;
         text = candidate;

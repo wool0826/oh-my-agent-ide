@@ -1,5 +1,4 @@
 // Screen history: every navigation goes through go(), so Back and Forward can retrace it.
-import type { Worker } from '../../shared/types';
 import { History, NavInput, sameScreen, type NavDir, type NavSource, type Screen } from '../../shared/history';
 import { autosize, setView, swapDraft } from '../app';
 import { closePop } from './controls';

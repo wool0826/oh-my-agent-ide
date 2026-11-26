@@ -103,7 +103,7 @@ export function rollbackToV1(p: StatePaths, now = Date.now()): Rollback {
   const what = stateText(text);
   if (what === 'empty') return { kind: 'none', why: 'missing' };
   if (what === 'broken') return { kind: 'none', why: 'broken' };
-  const main = JSON.parse(text!.replace(/^﻿/, '')) as Record<string, unknown>;
+  const main = JSON.parse(text!.replace(/^\uFEFF/, '')) as Record<string, unknown>;
   const version = stateVersion(main);
   if (version === 1) return { kind: 'none', why: 'v1' };
   if (version > 2) return { kind: 'none', why: 'newer', version };

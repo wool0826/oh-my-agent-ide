@@ -21,7 +21,7 @@ test('without a login shell PATH the common folders are still added; empty parts
 });
 
 test('Windows keeps its PATH as it is', () => {
-  assert.equal(augmentedPath({ platform: 'win32', current: 'C:\Windows;C:\Program Files\GitHub CLI', shellPath: '/x', home: 'C:\Users\me' }), 'C:\Windows;C:\Program Files\GitHub CLI');
+  assert.equal(augmentedPath({ platform: 'win32', current: 'C:\\Windows;C:\\Program Files\\GitHub CLI', shellPath: '/x', home: 'C:\\Users\\me' }), 'C:\\Windows;C:\\Program Files\\GitHub CLI');
   assert.equal(findTool('gh', { platform: 'win32', path: '', exists: () => true }), null);
 });
 

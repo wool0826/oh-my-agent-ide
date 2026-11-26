@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- SDK result fields the SDK types leave out (structured_output, rate_limit_info). */
 import { fakeMode } from '../fake';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { accounts } from '../accounts';

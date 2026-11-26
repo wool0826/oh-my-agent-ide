@@ -34,7 +34,7 @@ function oldSearchText(query: string, limit = 24): TextHit[] {
   const workers = [...store.data.workers].sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived') || b.lastActiveAt.localeCompare(a.lastActiveAt));
   for (const w of workers) {
     if (out.length >= limit) break;
-    let items: WorkerLogItem[] = [];
+    let items: WorkerLogItem[];
     try {
       items = fs.readFileSync(logPath(w.id), 'utf8').split('\n').filter(Boolean)
         .map((l) => { try { return JSON.parse(l) as WorkerLogItem; } catch { return { ts: '', from: 'event' as const, text: '' }; } });

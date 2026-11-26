@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- AskUserQuestion input is whatever the model sent, read field by field. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { tool, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
+import { type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
 import { AgentSession, summarizeTool, type SessionEvents } from './session';
 import { connectorAllowedTools, connectorToolLabel } from './connectors';
 import { CodexSession, type CodexApproval, type CodexDecision } from './codexSession';

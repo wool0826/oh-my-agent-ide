@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- the models endpoint answers untyped JSON, read field by field. */
 import { fakeMode } from './fake';
 import fs from 'node:fs';
 import path from 'node:path';

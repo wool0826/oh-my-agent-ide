@@ -112,6 +112,7 @@ flow('a state update that changes nothing in a panel leaves the panel as it is',
   const kept = "['side', 'chat-ins'].map((id) => document.getElementById(id).firstElementChild?.dataset.kept === '1')";
   await app.evaluate(mark);
   // A state update with nothing new for these panels: the launch checks are run again, which pushes the state.
+  // eslint-disable-next-line no-restricted-syntax -- checks that nothing is drawn again: a while for a draw that must not come.
   await app.evaluate("await window.ide.call('preflight:run'); await new Promise((r) => setTimeout(r, 500)); return 1;");
   assert.deepEqual(await app.evaluate(kept), [true, true]);
   // Something new for both: they are drawn again.
@@ -120,6 +121,7 @@ flow('a state update that changes nothing in a panel leaves the panel as it is',
   assert.deepEqual(await app.evaluate(kept), [false, false]);
   // After the user does something, the next draw is a real one even with the same HTML.
   await app.evaluate(mark);
+  // eslint-disable-next-line no-restricted-syntax -- checks that a draw is not skipped: a while for any draw to land, as there is no event for "none came".
   await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })); await window.ide.call('preflight:run'); await new Promise((r) => setTimeout(r, 500)); return 1;");
   assert.deepEqual(await app.evaluate(kept), [false, false]);
 });
@@ -137,6 +139,7 @@ flow('a Korean syllable being composed in a sidebar field is not split when the 
   // The sidebar has something new to draw while the syllable is half built.
   await app.say('@fake task - Something to list\n@@fake result Done.');
   await app.until("return (await window.ide.call('state')).results.length > 0", 'the result');
+  // eslint-disable-next-line no-restricted-syntax -- checks that nothing ends the composition: there is no event to wait for, only a while without one.
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(await app.evaluate('window.__ends'), 0, 'the composition went on');
   assert.equal(await app.evaluate("document.getElementById('memo-new') === window.__field"), true, 'the field was not replaced mid-syllable');

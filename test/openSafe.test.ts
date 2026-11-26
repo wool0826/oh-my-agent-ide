@@ -4,9 +4,11 @@ import { opensSafely } from '../src/shared/openSafe';
 import { recapChat } from '../src/shared/recap';
 
 test('only folders and documents open with their program; programs, scripts and shortcuts are revealed (L9)', () => {
-  for (const p of ['C:\w\report.md', '/w/shot.PNG', '/w/data.json', '/w/page.html', 'C:\w\doc.pdf']) assert.ok(opensSafely(p, false), p);
-  for (const p of ['C:\w\setup.exe', 'C:\w\run.bat', 'C:\w\run.cmd', '/w/x.ps1', '/w/tool.js', '/w/a.sh', 'C:\w\l.lnk', '/w/Makefile', '/w/.env']) assert.ok(!opensSafely(p, false), p);
-  assert.ok(opensSafely('C:\w\folder.exe', true));
+  for (const p of ['C:\\w\\report.md', '/w/shot.PNG', '/w/data.json', '/w/page.html', 'C:\\w\\doc.pdf']) assert.ok(opensSafely(p, false), p);
+  for (const p of ['C:\\w\\setup.exe', 'C:\\w\\run.bat', 'C:\\w\\run.cmd', '/w/x.ps1', '/w/tool.js', '/w/a.sh', 'C:\\w\\l.lnk', '/w/Makefile', '/w/.env']) assert.ok(!opensSafely(p, false), p);
+  assert.ok(opensSafely('C:\\w\\folder.exe', true));
+  // A Windows path is split at its backslashes too: a file named only '.md' is a dotfile, not a document.
+  assert.ok(!opensSafely('C:\\w\\.md', false));
 });
 
 test('recapChat: what the user and the Dispatcher said, oldest first, clipped and within the limit (M6)', () => {

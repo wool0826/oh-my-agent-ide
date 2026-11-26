@@ -16,6 +16,7 @@ Run all of these before you commit; CI runs the same.
 
 ```bash
 npm run typecheck   # tsc -p .
+npm run lint        # ESLint (eslint.config.mjs): bugs, not style; disable a line only with `-- reason`
 npm test            # unit tests in test/*.test.ts, including test/cssTokens.test.ts
 npm run e2e         # builds, then drives the real window with fake agents (no account or network)
 ```
@@ -42,7 +43,8 @@ The spec, tokens and component gallery are in `docs/design-system/` (start with 
 
 - **No fixed sleeps** to wait for the app. Wait for a condition with the harness helpers in `test/e2e/harness.mjs`:
   `app.until(js, 'what it waits for')`, `app.reconnect(ready)`, `app.drag(selector, dx, { ready })`. Give `until` a
-  readable second argument; it is the failure message.
+  readable second argument; it is the failure message. For files or a stand-in outside the page, use
+  `waitFor(check, what)`. `npm run lint` fails on a fixed sleep in an e2e flow outside the harness.
 - **E2e flows live in one file per area**, `test/e2e/<area>.e2e.mjs`: add a flow to its area's file, or start a new
   file for a new area. Write each with `flow(name, opts, fn)` from the harness; a failed one keeps a screenshot, the
   page and the logs under `test-results/e2e/`. `npm run e2e` and the CI shards (`test/e2e/shard.mjs`) find files by

@@ -15,7 +15,7 @@ function create(here: string) {
     fullscreenable: false, alwaysOnTop: true, skipTaskbar: true, hasShadow: false, title: 'Oh My Agent IDE',
     webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  box.loadFile(path.join(here, 'renderer', 'quick.html'));
+  void box.loadFile(path.join(here, 'renderer', 'quick.html'));
   // Clicking anywhere else puts it away, like a launcher.
   box.on('blur', () => box?.hide());
   box.on('closed', () => { box = null; });

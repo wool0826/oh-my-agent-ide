@@ -7,7 +7,7 @@ import { searchMemory } from '../memory';
 import { memoryDirFor, searchClaudeMemory } from '../claudeContext';
 import { paths } from '../paths';
 import { type Worker } from '../../shared/types';
-import { question, TellKind } from './workerText';
+import { TellKind } from './workerText';
 
 /** A change to the task's planned steps: declare or revise them, or mark one done. Returns the tool's reply. */
 export type StepsOp = { kind: 'set'; steps: unknown } | { kind: 'done'; step: unknown };

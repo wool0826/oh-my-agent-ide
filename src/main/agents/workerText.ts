@@ -1,8 +1,6 @@
 // What Workers are told in fixed words, and the limits that go with it: the messages that restart a task, the notes about plans and questions, and the tools and environment every Worker session gets.
-import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { ask } from '../decisions';
 import { langName } from '../i18n';
-import { type Task, type Worker } from '../../shared/types';
+import { type Task } from '../../shared/types';
 
 export const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
 

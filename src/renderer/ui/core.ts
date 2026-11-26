@@ -1,6 +1,7 @@
 // What every screen shares: the state the window holds, the bridge to the main process, text, small HTML helpers, scrolling, paging and sound.
+/* eslint-disable @typescript-eslint/no-explicit-any -- IPC answers are typed by the caller (call<T>), any by default. */
 import { NOTES } from '../../shared/sounds';
-import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
+import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, WorkerLogItem, SoundName, Lang } from '../../shared/types';
 import type { SideView } from '../../shared/side';
 import type { TermView } from '../../shared/terminal';
 import { tr, type Key } from '../../shared/i18n';
@@ -15,9 +16,7 @@ import { SIDE_WHO } from '../../shared/side';
 import { slotsUsed, waitsForSlot } from '../../shared/slots';
 import { restoreScroll, saveScroll } from '../../shared/scroll';
 import { firstPage } from '../../shared/paging';
-import { type NavDir, type Screen, type View, type WorkerFilter } from '../../shared/history';
-import { init } from '../app';
-import { go, screen, show } from './history';
+import { type NavDir, type View, type WorkerFilter } from '../../shared/history';
 import { ms } from './sidebar';
 import { keepThreadFocus } from './thread';
 import { countsAsAct, receive, type Held, type Part, type StateMsg } from '../../shared/stateSync';

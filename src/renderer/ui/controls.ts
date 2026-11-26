@@ -1,6 +1,7 @@
 // Controls built by hand: the popover list and the font picker.
+/* eslint-disable @typescript-eslint/no-explicit-any -- queryLocalFonts is not in the DOM types yet. */
 import { FONT_SUGGESTIONS, normalizeFontFamily } from '../../shared/font';
-import { esc, markBad, sym, t, when } from './core';
+import { esc, markBad, sym, t } from './core';
 import { setTip } from './tip';
 import { previewFont } from './settings';
 

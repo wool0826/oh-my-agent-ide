@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- tool arguments arrive as untyped JSON from the model. */
 import { z } from 'zod';
 import type { CodexTool } from './codexSession';
 
