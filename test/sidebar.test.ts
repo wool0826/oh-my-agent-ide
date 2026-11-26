@@ -18,10 +18,10 @@ test('no items, no groups', () => {
   assert.deepEqual(groupByRepo([], () => 'x'), []);
 });
 
-test('the five tasks finished last, newest first', () => {
-  const tasks = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: `T-${n}`, finishedAt: `2026-11-22T0${n}:00:00Z` }));
-  assert.deepEqual(recentlyFinished(tasks).map((x) => x.id), ['T-7', 'T-6', 'T-5', 'T-4', 'T-3']);
-  assert.deepEqual(recentlyFinished(tasks, 2).map((x) => x.id), ['T-7', 'T-6']);
+test('the eight tasks finished last, newest first', () => {
+  const tasks = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ id: `T-${n}`, finishedAt: `2026-11-22T0${n}:00:00Z` }));
+  assert.deepEqual(recentlyFinished(tasks).map((x) => x.id), ['T-9', 'T-8', 'T-7', 'T-6', 'T-5', 'T-4', 'T-3', 'T-2']);
+  assert.deepEqual(recentlyFinished(tasks, 2).map((x) => x.id), ['T-9', 'T-8']);
 });
 
 test('a task without a finish time is left out, and the input is not reordered', () => {

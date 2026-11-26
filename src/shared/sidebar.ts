@@ -18,7 +18,10 @@ export function groupByRepo<T>(items: readonly T[], repoOf: (x: T) => string | n
   return [...out.filter((g) => g.repo !== null), ...out.filter((g) => g.repo === null)];
 }
 
+/** How many finished tasks "Done today" lists under its heading. */
+export const DONE_SHOWN = 8;
+
 /** The `n` tasks that finished last, newest first. Tasks without a finish time are left out. */
-export function recentlyFinished<T extends { finishedAt: string | null }>(tasks: readonly T[], n = 5): T[] {
+export function recentlyFinished<T extends { finishedAt: string | null }>(tasks: readonly T[], n = DONE_SHOWN): T[] {
   return tasks.filter((x) => !!x.finishedAt).sort((a, b) => b.finishedAt!.localeCompare(a.finishedAt!)).slice(0, n);
 }

@@ -13,7 +13,7 @@ import { reasonText } from '../../shared/askWhy';
 import { RING, ringArc, untilReset } from '../../shared/usageRing';
 import { USAGE_INTERVALS, limitWindow, usageFoot, usedUp, type UsageFoot } from '../../shared/usage';
 import { queuedPrs, readyToQueue } from '../../shared/mergeQueue';
-import { groupByRepo, recentlyFinished } from '../../shared/sidebar';
+import { DONE_SHOWN, groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { type WorkerFilter } from '../../shared/history';
 import { applyWidths } from './resize';
 import { narrowLayout } from '../../shared/panelWidth';
@@ -168,14 +168,14 @@ export function doneLine(x: Task) {
   return x.summary ? `${pr} · ${oneLine(x.summary, 140)}` : pr;
 }
 
-/** Under "Done today": the five tasks finished last. A row opens its Worker; the heading row still lists them all. */
+/** Under "Done today": the DONE_SHOWN tasks finished last. A row opens its Worker; the heading row still lists them all. */
 export function doneList(done: Task[]) {
   const rows = recentlyFinished(done).map((x) => {
     const line = doneLine(x);
     const at = new Date(x.finishedAt!).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false });
     return `<div tabindex="0" role="button" class="row" data-action="open-worker" data-id="${esc(x.workerId ?? '')}"><span class="t"><b>${esc(x.title)}</b><small>${esc(line)}</small></span><time>${at}</time></div>`;
   }).join('');
-  const more = done.length > 5 ? `<button class="linkbtn" data-action="worker-filter" data-v="today">${t('side.doneAll', { n: done.length })}</button>` : '';
+  const more = done.length > DONE_SHOWN ? `<button class="linkbtn" data-action="worker-filter" data-v="today">${t('side.doneAll', { n: done.length })}</button>` : '';
   return `<div class="sub">${rows}${more}</div>`;
 }
 
