@@ -75,7 +75,7 @@ flow('row 3.5: a decision unanswered for longer than the setting gives its slot 
 
 // 4.1: a daily automation hands the Dispatcher its text at its time.
 flow('row 4.1: a daily automation added a minute or two ahead runs at its time', {}, async (app) => {
-  const at = new Date(Date.now() + 2 * 60_000);
+  const at = new Date(Date.now() + 5 * 60_000);
   const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   await app.click('#chat-ins [data-action="ins-tab"][data-v="auto"]');
   await app.until("!!document.getElementById('auto-prompt')", 'the form for a new automation');
@@ -86,7 +86,7 @@ flow('row 4.1: a daily automation added a minute or two ahead runs at its time',
   // Before its time nothing runs.
   await later(app, 0);
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('The morning check ran.')"), false);
-  await later(app, 3 * 60_000);
+  await later(app, 6 * 60_000);
   await app.until("document.querySelector('#chat-thread').innerText.includes('The morning check ran.')", "the automation's turn in the chat");
   const ran = await app.evaluate("return (await window.ide.call('state')).automations[0];");
   assert.ok(ran.lastRunAt);

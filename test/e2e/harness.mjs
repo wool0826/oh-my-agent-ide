@@ -132,10 +132,12 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
   let child = startApp();
   /** Ends the app and waits until it is gone; a quit that hangs is ended for good. */
   const endApp = () => new Promise((r) => {
-    if (child.exitCode !== null || child.signalCode !== null) { r(); return; }
-    child.once('exit', r);
-    child.kill();
-    setTimeout(() => { child.kill('SIGKILL'); r(); }, 3000);
+    // This app, not whichever one `child` names by the time the timer fires (restart() starts the next at once).
+    const c = child;
+    if (c.exitCode !== null || c.signalCode !== null) { r(); return; }
+    const hung = setTimeout(() => { c.kill('SIGKILL'); r(); }, 3000);
+    c.once('exit', () => { clearTimeout(hung); r(); });
+    c.kill();
   });
 
   let ws;
@@ -448,8 +450,14 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
       quick = null;
       await endApp();
       child = startApp();
-      await app.reconnect(undefined, 40_000);
-      await widen();
+      try {
+        await app.reconnect(undefined, 40_000);
+        await widen();
+      } catch (e) {
+        // As at launch: a new app that never came up is not left running.
+        child.kill('SIGKILL');
+        throw Object.assign(e, { dir, home });
+      }
     },
     async stop() {
       try { quick?.close(); } catch { /* closed */ }
