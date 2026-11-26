@@ -1,9 +1,16 @@
 // End-to-end flows: Decisions a Worker waits on: permissions, questions, plans, their keys and allowances.
 // Each flow starts the built app on its own empty profile with fake agents and a stand-in for gh. Run with `npm run e2e`.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { flow } from './harness.mjs';
 
 const task = (state, title) => state.tasks.find((x) => x.title === title);
+/** What IDE memory keeps of the answered decisions, all months together. */
+const remembered = (app) => {
+  const dir = path.join(app.home, 'memory', 'decisions');
+  return fs.existsSync(dir) ? fs.readdirSync(dir).map((n) => fs.readFileSync(path.join(dir, n), 'utf8')).join('\n') : '';
+};
 const DEC = '#chat-ins .dec';
 const answer = (val) => `${DEC} [data-action="answer"][data-val="${val}"]`;
 
@@ -31,6 +38,9 @@ flow('a permission is asked once, allowed for the task, and the result card has 
   const log = await app.workerLog(t.workerId);
   assert.match(log, /Allowed for this task: npm install/);
   assert.match(log, /Ran: npm install is-odd/);
+  // The task keeps the permission for the look back; memory keeps nothing of it.
+  assert.equal(t.permissions.length > 0, true);
+  assert.doesNotMatch(remembered(app), /Run this command|Allow for this task/);
 });
 
 flow('an always-ask rule offers no "Allow for this task", and a denial reaches the Worker', {}, async (app) => {
@@ -61,6 +71,31 @@ flow('a question is answered with one of its options', {}, async (app) => {
   await app.until("!!document.querySelector('#chat-ins .res')", 'the result card');
   const t = task(await app.state(), 'Split or not');
   assert.match(await app.workerLog(t.workerId), /Answer: Split/);
+  assert.match(remembered(app), /Split the PR in two\? → Split/, 'a real question and its answer are remembered');
+});
+
+flow('permission answers and repeats saved in memory before are taken out at launch, with the file kept in data/backups', {
+  files: {
+    'memory/decisions/2026-11.md': [
+      '# Decisions 2026-11', '',
+      '- W-06: Run this command? → Allow _(2026-11-24)_',
+      '- W-12: Allow recall? → Allow _(2026-11-24)_',
+      '- W-20: Review the plan → Approve plan _(2026-11-25)_',
+      '- Dispatcher: Push the v0.7.0 tag? → hold: test it first _(2026-11-25)_',
+      '- Dispatcher: Push the v0.7.0 tag? → hold: test it first _(2026-11-26)_', '',
+    ].join('\n'),
+  },
+}, async (app) => {
+  await app.state();
+  assert.equal(remembered(app), '# Decisions 2026-11\n\n- Dispatcher: Push the v0.7.0 tag? → hold: test it first _(2026-11-25)_\n');
+  const copies = fs.readdirSync(path.join(app.home, 'data', 'backups')).filter((n) => n.startsWith('memory-decisions-2026-11-'));
+  assert.equal(copies.length, 1);
+  assert.match(fs.readFileSync(path.join(app.home, 'data', 'backups', copies[0]), 'utf8'), /Run this command\?/);
+  // Recall finds the real decision and none of what was taken out.
+  const hits = await app.evaluate("return await window.ide.call('memory:search', 'Run this command tag');");
+  const texts = (hits.hits ?? hits).map((h) => h.text).join('\n');
+  assert.match(texts, /v0\.7\.0 tag/);
+  assert.doesNotMatch(texts, /Run this command/);
 });
 
 flow('decision cards take the keys: none is selected at first, Enter or ↓ selects, Enter allows, the next card gets the focus and a number picks', {}, async (app) => {

@@ -8,6 +8,7 @@ import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDe
 import { t } from '../i18n';
 import { nowIso, oneLine } from '../util';
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
+import { worthRemembering } from '../../shared/decisionMemory';
 
 /** The user's answer to a decision, from the inbox, a Worker's composer or a notification button. */
 export function userAnswer(id: string, ans: string) {
@@ -17,7 +18,8 @@ export function userAnswer(id: string, ans: string) {
   const who = d.workerId ? `${d.workerId}: ` : '';
   store.chat('decision', `${who}${oneLine(d.title, 80)} → ${shown}`);
   if (d.source === 'dispatcher') dispatcher.decisionAnswered(d.title, ans);
-  remember('decision', `${d.workerId ?? 'Dispatcher'}: ${oneLine(d.title, 160)} → ${shown}`);
+  // Permissions, plans approved as they were and other bare yes-or-no answers stay out of memory (decisionMemory.ts).
+  if (worthRemembering(d)) remember('decision', `${d.workerId ?? 'Dispatcher'}: ${oneLine(d.title, 160)} → ${shown}`);
   suggestFromDecision(d);
 }
 

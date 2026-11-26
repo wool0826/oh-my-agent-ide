@@ -7,6 +7,7 @@ import { debounce, ensureDir, month, nowIso, run, today } from './util';
 import { commitAll, syncRepo } from './memorySync';
 import { log } from './log';
 import { t } from './i18n';
+import { alreadySaved, cleanDecisionFile } from '../shared/decisionMemory';
 import type { MemoryFile, MemoryHit, MemoryHits, MemorySync } from '../shared/types';
 
 /**
@@ -29,6 +30,7 @@ export async function initMemory() {
     await run('git', ['add', '-A'], { cwd: root() });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'Start memory'], { cwd: root() });
   }
+  if (cleanDecisionFiles() > 0) await inTurn(() => commitAll(root(), 'Remove permission answers and repeats from decisions'));
   // What another PC saved comes in at launch; commits a failed push left behind go out.
   void syncMemory();
 }
@@ -103,10 +105,41 @@ export function remember(scope: 'preference' | 'repo' | 'decision' | 'task' | 'n
       : t('mem.notesTitle');
     fs.writeFileSync(f, `# ${title}\n\n`, 'utf8');
   }
+  // A decision already saved, on any day, is not saved again.
+  if (scope === 'decision' && alreadySaved(fs.readFileSync(f, 'utf8'), text)) return path.relative(root(), f).replace(/\\/g, '/');
   const body = text.trim().replace(/\n/g, '\n  ');
   fs.appendFileSync(f, `- ${body} _(${today()}${source ? `, source: ${source}` : ''})_\n`, 'utf8');
   commitSoon(`${scope}: ${text.slice(0, 60)}`);
   return path.relative(root(), f).replace(/\\/g, '/');
+}
+
+/**
+ * Take out of memory/decisions/*.md the permission answers and repeats saved before worthRemembering
+ * (shared/decisionMemory.ts) chose what goes there. Each file it changes is copied to data/backups first, as it was.
+ * Run at launch; a file with nothing to take out is not touched. Returns how many entries went.
+ */
+export function cleanDecisionFiles(): number {
+  const dir = path.join(root(), 'decisions');
+  let names: string[];
+  try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.md')); } catch { return 0; }
+  let total = 0;
+  const stamp = nowIso().replace(/[:.]/g, '-');
+  for (const name of names) {
+    const f = path.join(dir, name);
+    try {
+      const before = fs.readFileSync(f, 'utf8');
+      const r = cleanDecisionFile(before);
+      if (!r.removed) continue;
+      ensureDir(paths().backups);
+      fs.copyFileSync(f, path.join(paths().backups, `memory-decisions-${name.replace(/\.md$/, '')}-${stamp}.md`));
+      fs.writeFileSync(f, r.text, 'utf8');
+      total += r.removed;
+      log.info(`memory: decisions/${name}: removed ${r.noise} permission and approval answers and ${r.repeats} repeats`);
+    } catch (e) {
+      log.warn(`memory: could not clean decisions/${name}`, (e as Error).message);
+    }
+  }
+  return total;
 }
 
 /** Revise one preference line: replace the line holding the old text, or append. */

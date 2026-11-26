@@ -1020,3 +1020,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **To `src/shared` with tests:** `setStatus` and when a follow-up reopens a finished task (`taskStatus.ts`), the permission buttons and answer labels (`grants.ts`), how a task's links add up (`linkify.ts`) and why blocked tasks are cancelled (`queue.ts`).
     - **Rejected:** a chain of subclasses, one per area, which would hide which file a `this.` call lands in; and moving the state into module variables, which would leave two places to reset in tests.
 
+
+221. **IDE memory keeps an answered decision only when it says something that lasts: no permission answers, plans approved as they were, CI keep-fixing answers, empty or bare yes-or-no answers, or second copies; the lines saved before are taken out at launch** (T-0127).
+    - **How:** `worthRemembering` (`src/shared/decisionMemory.ts`) decides by the decision's source (`permission`, `plan` with Approve, `kind: 'ci'`), not its words. The Dispatcher's `request_decision`, a Worker's question and a plan sent back with a change are still saved. `remember('decision', ...)` skips an entry the file already holds on any day.
+    - **Old lines** have no source, so `noiseLine` matches the permission, plan and CI titles the app wrote, in English and Korean. At launch each `memory/decisions/*.md` with something to take out is copied to `data/backups/memory-decisions-<month>-<time>.md`, then rewritten and committed. A file with nothing to remove is left alone.
+    - **The allow-list is unaffected:** the look back reads `task.permissions` and the task's grants, which `decisions.answer` keeps. Nothing reads these memory lines.
+    - **Rejected:** filtering only in the digest and recall, which would leave the files growing; and a one-time flag, because memory synced from a PC on an older version can bring the lines back.
