@@ -27,6 +27,7 @@ import { shotsOf } from './shotview';
 import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, worker, workerTask } from './core';
 import { grantsHtml } from './repos';
 import { workerIcon } from './sidebar';
+import { refreshFind } from './find';
 
 
 /**
@@ -239,6 +240,7 @@ export function renderSession(force = false, older = false) {
   if (w.status === 'running' || w.status === 'starting') html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(oneLine(w.statusText, 90))}</div>`;
   ui.logSeen = { wid: w.id, n: start + log.length };
   setThread(th, html, nearBottom || force, older);
+  refreshFind('ws-thread');
   markReplyTarget('ws');
   watchTop(th, () => { if (ui.wSel) void olderLog(ui.wSel); });
 }

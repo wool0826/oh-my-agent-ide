@@ -1053,3 +1053,15 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Risk:** a delete (`rm`, `Remove-Item`, `find -delete`, `git clean`, `git reset --hard`, `git restore`, `git branch -D`, `push --delete`, `gh api -X DELETE`…) or an always-ask rule makes "Allow once" red and takes "Allow for this task" away, so one yes does not cover the next delete.
     - **Text fields:** the plan's "what to change" and a question's other answer open from a reply icon button, as in 3C; the inbox permission card has none, and a deny with a reason is typed in the Worker's composer (decision 93). Which folds are open is kept per card across redraws.
     - **Rejected:** showing the description in parentheses after the command (empty for PowerShell, the cause of the missing explanation); the app's reason for asking as the "why" (it said why the app asked, not why the Worker needs it); a model call to summarise each command (slow, and the card must show at once).
+
+227. **An attachment chip is one line at one height: its name is cut in the middle and keeps its extension** (T-0128, option 1A of the T-0125 mock-up).
+- `shared/middleName` cuts a name to 30 columns (Hangul counts two), about 60/40 between start and end, and keeps an extension of up to 5 characters. The full path stays in the chip's tooltip.
+- Sent chips (`core.ts`, `userText`) now hold the name in a `.fn` span with the file icon, like the composer's. Before, the name sat bare in the link, so the one-line rule never applied and the bubble's `pre-wrap` and `overflow-wrap: anywhere` broke it over two or three lines.
+- `.fchip` is 240px wide at most, `--control-sm` high and `nowrap`, whatever the bubble around it inherits.
+- Rejected: file tiles with type and size (1B: taller messages, sizes not stored); extension badges with a "+N" (1C: the rest hidden behind a click).
+
+228. **A search jump marks every match in the thread, rings and centres the current one, and shows a bar and scroll ticks** (T-0128, option 2B of the T-0125 mock-up, replaces the `.found` blink).
+- `ui/find.ts` keeps the search (thread, words, current match by message id and its place in it) and marks the thread again after every draw, so a redraw no longer takes the highlight away. `shared/findMarks` has the pure rules: match ranges, which match starts current, the count, the tick places.
+- Every match has the warning wash; the current one a 2px warning ring that pulses three times on arrival (white on the user's blue bubbles, where the blue focus ring did not show). It is scrolled to the middle of the thread, clear of the 14px fade at its top that hid the old ring.
+- The bar holds the words, "n/N", and icon-only Previous, Next and Close buttons with `aria-label` and `data-tip` (the app's tooltip in place of `title`). Escape closes it. A Worker's conversation found by a search opens with its matches marked, the newest one current.
+- Rejected: only the current match with a pulse (2A: no overview of where the others are); washing the whole message (2C: the word itself still not shown).

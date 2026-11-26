@@ -1040,8 +1040,10 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 /* attached files */
 .composer.drop { box-shadow: var(--rim-strong), 0 0 0 2px var(--accent), var(--shadow-3); background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface-composer); }
 .fchips { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: var(--space-6); padding: var(--space-4) 0 0; }
-.fchip { display: inline-flex; align-items: center; gap: var(--space-4); max-width: 260px; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10); border-radius: var(--radius-full); background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-primary); font-size: var(--fs-caption); }
-.fchip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* One line at one height: the name is cut in its middle (shared/middleName) and, past the chip's width, at its end.
+   Nothing is inherited from the bubble around it (pre-wrap, wrapping anywhere). */
+.fchip { display: inline-flex; align-items: center; gap: var(--space-4); max-width: 240px; height: var(--control-sm); box-sizing: border-box; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10); border-radius: var(--radius-full); background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-primary); font-size: var(--fs-caption); white-space: nowrap; overflow-wrap: normal; }
+.fchip > .fn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fchip .sym { font-size: var(--fs-body); color: var(--kind-doc); }
 .fchip button { width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; flex: none; }
 .fchip button:hover { background: var(--surface-pressed); color: var(--text-primary); }
@@ -1524,13 +1526,27 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .skel.pre i { width: 40%; }
 .btn.has-issue::after { content: ""; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg-canvas); }
 
-/* ---------- a message found by search ---------- */
-/* A ring, not a wash: the bubble keeps its fill, so its text keeps its contrast. */
-/* A message found by a search blinks three times with the focus ring (palette.ts, jumpToChat); with less motion it holds the ring still. */
-.thread .found { animation: found calc(var(--dur-slow) * 2) var(--ease-in-out) 3; }
-@keyframes found { 0%, 100% { box-shadow: 0 0 0 2px transparent; } 40%, 60% { box-shadow: 0 0 0 2px var(--focus-ring), 0 0 0 6px var(--accent-soft); } }
-@media (prefers-reduced-motion: reduce) { .thread .found { animation: none; box-shadow: 0 0 0 2px var(--focus-ring); } }
-:root[data-motion="reduced"] .thread .found { animation: none; box-shadow: 0 0 0 2px var(--focus-ring); }
+/* ---------- what a search found ---------- */
+/* Every match is washed; the current one is ringed and pulses three times when it is reached (find.ts). On the
+   user's blue bubbles the wash and the ring are white, so they show on the accent. */
+mark.find { background: var(--warning-soft); color: inherit; border-radius: var(--radius-xs); padding: 0 1px; }
+mark.find.cur { box-shadow: 0 0 0 2px var(--warning); }
+.bub.me mark.find { background: var(--surface-on-accent); }
+.bub.me mark.find.cur { box-shadow: 0 0 0 2px var(--text-on-accent); }
+mark.find.cur.arrive { animation: hit-pulse calc(var(--dur-slow) * 2) var(--ease-in-out) 3; }
+@keyframes hit-pulse { 40%, 60% { box-shadow: 0 0 0 2px var(--warning), 0 0 0 6px var(--warning-soft); } }
+.bub.me mark.find.cur.arrive { animation-name: hit-pulse-me; }
+@keyframes hit-pulse-me { 40%, 60% { box-shadow: 0 0 0 2px var(--text-on-accent), 0 0 0 6px var(--surface-on-accent); } }
+@media (prefers-reduced-motion: reduce) { mark.find.cur.arrive { animation: none; } }
+:root[data-motion="reduced"] mark.find.cur.arrive { animation: none; }
+.findbar { position: absolute; top: var(--space-8); right: var(--space-20); z-index: var(--z-composer); display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-10); border-radius: var(--radius-full); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-2); font-size: var(--fs-caption); max-width: calc(100% - var(--space-48)); }
+.findbar > .sym { font-size: var(--icon-sm); color: var(--text-secondary); }
+.findbar b { font-weight: var(--fw-semibold); margin: 0 var(--space-4); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.findbar .cnt { color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: var(--control-md); text-align: center; white-space: nowrap; }
+.findbar .flip svg { transform: rotate(180deg); }
+.find-ticks { position: absolute; right: var(--space-2); width: var(--space-4); pointer-events: none; z-index: var(--z-raised); }
+.find-ticks i { position: absolute; left: 0; width: var(--space-4); height: 3px; border-radius: var(--radius-xs); background: var(--warning); opacity: .55; }
+.find-ticks i.on { opacity: 1; height: 5px; }
 
 /* ---------- do-not-disturb hours ---------- */
 .srow .inp.time { width: 64px; flex: none; text-align: center; font-variant-numeric: tabular-nums; }

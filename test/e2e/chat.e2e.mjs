@@ -1,6 +1,9 @@
 // End-to-end flows: The chat with the Dispatcher: its status line, reply branches, a new conversation and the first run.
 // Each flow starts the built app on its own empty profile with fake agents and a stand-in for gh. Run with `npm run e2e`.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { flow } from './harness.mjs';
 
 flow('while the Dispatcher works, the composer has a status line with Stop and the Chat tab a dot', {}, async (app) => {
@@ -153,4 +156,27 @@ flow('without an account the empty chat lists the steps to get started, and the 
   await app.click('[data-action="setup-repo"]');
   await app.until("document.activeElement?.id === 'repo-add-url'", 'the address field');
   assert.deepEqual(await app.evaluate("['repo-add-url', 'repo-add-desc'].map((id) => document.querySelector('label[for=\"' + id + '\"]')?.textContent)"), ['Address', 'Description (optional)']);
+});
+
+flow('attached files with long names stay one-line chips that keep their extension', {}, async (app) => {
+  const names = ['KakaoTalk_20261126_154210123_attachment_button_wrap.png', '첨부버튼_두줄_깨짐_재현_화면_2026-11-26_오후_3시42분.png', 'Screenshot 2026-11-26 at 15.42.17 (2).png'];
+  // Real files: a message keeps only attachments that exist.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-att-'));
+  const files = names.map((n) => { const f = path.join(dir, n); fs.writeFileSync(f, 'x'); return f; });
+  await app.evaluate(`await window.ide.call('chat:send', 'Three screens', ${JSON.stringify(files)}); return 1;`);
+  await app.until("document.querySelectorAll('#chat-thread .bub.me .sent-files .fchip').length === 3", 'the three file chips');
+  const chips = JSON.parse(await app.evaluate(`return JSON.stringify([...document.querySelectorAll('#chat-thread .bub.me .sent-files .fchip')].map((c) => {
+    const fn = c.querySelector('.fn'), lh = parseFloat(getComputedStyle(fn).lineHeight);
+    return { h: c.getBoundingClientRect().height, w: c.getBoundingClientRect().width, oneLine: fn.getBoundingClientRect().height < lh * 1.5, text: fn.textContent, tip: c.dataset.tip, icon: !!c.querySelector('svg.sym') };
+  }));`));
+  const one = chips[0].h;
+  chips.forEach((c, i) => {
+    assert.equal(c.oneLine, true, `chip ${i} wraps: ${c.text}`);
+    assert.equal(c.h, one, `chip ${i} is ${c.h}px high, not ${one}px`);
+    assert.ok(c.w <= 240, `chip ${i} is ${c.w}px wide`);
+    assert.ok(c.text.endsWith('.png'), `chip ${i} lost its extension: ${c.text}`);
+    assert.equal(c.tip, files[i]);
+    assert.equal(c.icon, true);
+  });
+  assert.match(chips[0].text, /^KakaoTalk_.*….*\.png$/);
 });
