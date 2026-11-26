@@ -34,6 +34,9 @@ a:hover { text-decoration: underline; }
 button { font: inherit; }
 .drag { -webkit-app-region: drag; }
 .nodrag, .drag button, .drag input { -webkit-app-region: no-drag; }
+/* Layers over the window: Electron hit-tests drag regions before the page, so the toolbar and .lights under a scrim
+   would still drag (or maximize) the window. Each layer cancels them where it lies; a .drag inside one adds its own back. */
+#dlg, #cmdk, .settings-win, .dlg-back, .dlg, .cmdk, .pop, .ctxmenu, .upop, .click-catch, .tip, .win.ins-over .inspector { -webkit-app-region: no-drag; }
 [hidden] { display: none !important; }
 .c-red { color: var(--state-error); } .c-blue { color: var(--state-run); } .c-green { color: var(--state-done); } .c-orange { color: var(--state-wait); } .c-gray { color: var(--state-idle); } .c-purple { color: var(--state-review); } .c-indigo { color: var(--kind-repo); } .c-pink { color: var(--kind-pref); } .c-teal { color: var(--kind-doc); }
 /* PR state, as on GitHub: open green, merged purple, closed gray (the --pr-* tokens at the end of tokens.css) */
@@ -1203,7 +1206,7 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 .shot.broken img { visibility: hidden; }
 .shot.none { aspect-ratio: 16 / 10; background: var(--surface-track); box-shadow: none; }
 .shot-l, .res .body .shot-l { padding: 0 var(--space-2); font-size: var(--fs-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#dlg .dlg.shot-view { inset: var(--space-24); width: auto; max-width: none; transform: none; padding: var(--space-12); align-items: stretch; gap: var(--space-10); text-align: left; }
+#dlg .dlg.shot-view { inset: var(--toolbar-h) var(--space-24) var(--space-24); width: auto; max-width: none; transform: none; padding: var(--space-12); align-items: stretch; gap: var(--space-10); text-align: left; }
 .shot-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); min-width: 0; padding-left: var(--space-4); }
 .shot-bar b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .shot-bar .gap { flex: 1; }

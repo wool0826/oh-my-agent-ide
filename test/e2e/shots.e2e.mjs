@@ -8,6 +8,21 @@ import { flow } from './harness.mjs';
 const SHOT = '#ws-thread .bub.wk .shots .shot';
 const DLG = '#dlg:not([hidden]) .shot-view';
 
+/**
+ * What lies at the window's top bar under an open dialog (T-0147): every toolbar and sidebar-top button's centre and
+ * the bar's corners hit the dialog's layer, which cancels the drag regions there (Electron hit-tests those before the
+ * page), and the panel starts below the bar, clear of the caption buttons and the traffic lights.
+ */
+const COVERED = `const bar = document.querySelector('.toolbar').getBoundingClientRect(), w = innerWidth;
+  const pts = [[1, 1], [w - 2, 1], [1, bar.bottom - 2], [w - 2, bar.bottom - 2], [w / 2, bar.top + bar.height / 2]];
+  for (const el of document.querySelectorAll('.toolbar button, .lights, nav button')) {
+    const r = el.getBoundingClientRect();
+    if (r.width && r.height && r.top < bar.bottom) pts.push([r.left + r.width / 2, r.top + r.height / 2], [r.left + 1, r.top + 1], [r.right - 2, r.top + 1]);
+  }
+  const region = (el) => { for (let n = el; n; n = n.parentElement) { const v = getComputedStyle(n).getPropertyValue('-webkit-app-region') || getComputedStyle(n).getPropertyValue('app-region'); if (v === 'drag' || v === 'no-drag') return v; } return 'none'; };
+  const bad = pts.map(([x, y]) => [Math.round(x), Math.round(y)]).map(([x, y]) => { const el = document.elementFromPoint(x, y); return { x, y, el: el ? el.tagName + '.' + el.className : null, inside: !!el && document.querySelector('#dlg').contains(el), region: el ? region(el) : '' }; }).filter((p) => !p.inside || p.region !== 'no-drag');
+  return { bad, panelBelowBar: document.querySelector('#dlg .dlg').offsetTop >= bar.bottom };`;
+
 flow('a report\'s screenshots show as before/after thumbnails that open at full size', {}, async (app) => {
   // A real picture of the window as both shots, written where a Worker would leave them, and a note that stays a
   // file link. (A second capture of an unchanged page waits for a frame that never comes.)
@@ -52,6 +67,7 @@ flow('a report\'s screenshots show as before/after thumbnails that open at full 
   // Over the window and fitted inside it: nothing of the picture is cut off.
   const fit = await app.evaluate(`const b = document.querySelector('${DLG} .shot-img').getBoundingClientRect(), r = document.querySelector('${DLG} .shot-img img').getBoundingClientRect(); return { fixed: getComputedStyle(document.querySelector('${DLG}')).position, inside: r.width > 0 && r.left >= b.left - 1 && r.right <= b.right + 1 && r.top >= b.top - 1 && r.bottom <= b.bottom + 1 };`);
   assert.deepEqual(fit, { fixed: 'fixed', inside: true });
+  assert.deepEqual(await app.evaluate(COVERED), { bad: [], panelBelowBar: true });
 
   await app.key('ArrowLeft', 'ArrowLeft', 37);
   await app.until("document.querySelector('#shot-t')?.textContent === 'Before · card'", 'the before shot by the left arrow');
@@ -67,6 +83,17 @@ flow('a report\'s screenshots show as before/after thumbnails that open at full 
   await app.key('Escape', 'Escape', 27);
   await app.until("document.querySelector('#dlg').hidden", 'the picture closed');
   await app.until(`document.activeElement?.matches('${SHOT}') && document.activeElement.dataset.path.endsWith('card-after.png')`, 'the focus back on the thumbnail');
+
+  // A real click on a toolbar button behind the open picture lands on the backdrop: it closes the picture, and the
+  // button's own action (the command palette) does not run.
+  await app.click(AFTER);
+  await app.until(`!!document.querySelector('${DLG}')`, 'the picture open again');
+  const at = await app.evaluate("const r = document.querySelector('#cmdk-btn').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };");
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', ...at, button: 'left', buttons: 1, clickCount: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'left', buttons: 0, clickCount: 1 });
+  await app.until("document.querySelector('#dlg').hidden", 'the picture closed by the backdrop');
+  assert.equal(await app.evaluate("return document.querySelector('#cmdk').hidden;"), true, 'the command palette stays closed');
 });
 
 const CARD = '#chat-thread .attach[data-task]';

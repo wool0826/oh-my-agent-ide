@@ -1105,3 +1105,7 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Cause: `.fchip` had `padding: 2px 4px 2px 10px`, sized for the composer chip whose round remove button sits at its end. A result card's file chips (`.rfiles`, 232) have no button, so their name stopped 4px from the pill's rounded end and looked cut off.
     - Now 10px on both sides, and `.fchip:has(> button)` sets the right to 4px. The sent-message chip keeps its own 8px on both sides.
     - Rejected: a separate class per place, because the markup decides whether there is a button and `:has` follows it on its own.
+236. **Every layer over the window (dialog, scrim, palette, Settings sheet, menus, popovers, the narrow-window drawer) cancels the window's drag regions where it lies, and the picture viewer starts below the top bar** (T-0147).
+    - Cause: Electron hit-tests `-webkit-app-region: drag` before the page, so the toolbar and the sidebar's `.lights` strip kept dragging (and double-click maximizing) the window through a scrim. The picture viewer's 24px inset also put its top under the Windows caption buttons and the macOS traffic lights.
+    - Now those layers are `no-drag` in one rule next to `.drag`; a `.drag` inside one (the Settings sheet's bar) adds its own region back. The viewer's top inset is `--toolbar-h`. Native window controls stay usable.
+    - Rejected: `inert` on the window behind a dialog, because closing code gives the focus back to the opener in the same tick and an inert opener would refuse it; Tab is already kept inside a modal.
