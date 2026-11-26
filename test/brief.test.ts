@@ -40,6 +40,33 @@ test('brief: a here-document written with cat is a file write, its body not read
   assert.deepEqual(b.tags, ['write']);
 });
 
+test('brief: a > inside quotes is no write, a redirect on any line or without a space is', () => {
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'git commit -m "a > b"' }).tags, ['write']);
+  assert.equal(shellBrief(en, 'Bash', { command: 'git commit -m "a > b"' }).what, 'Commit changes');
+  assert.deepEqual(shellBrief(en, 'Bash', { command: "git log --format='%h > %s'" }).tags, ['read']);
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'git status 2>&1' }).tags, ['read']);
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'ls>out.txt' }).tags, ['write']);
+  assert.equal(shellBrief(en, 'Bash', { command: 'cd src\necho hi > ../d.txt' }).what, 'Write ../d.txt');
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'cd src\ngit diff > ../d.patch' }).tags, ['write']);
+});
+
+test('brief: find -delete, a hard reset, a restore and a dropped stash are deletes', () => {
+  for (const command of ['find . -name "*.log" -delete', 'find dist -exec rm -rf {} +', 'git reset --hard origin/main', 'git restore src/a.ts', 'git checkout -- .', 'git stash drop']) {
+    assert.deepEqual(shellBrief(en, 'Bash', { command }).tags, ['delete'], command);
+  }
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'git reset HEAD~1' }).tags, ['write']);
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'find . -name "*.ts"' }).tags, ['read']);
+});
+
+test('brief: sed -i, tee and a saved download write files; a bare git branch only lists', () => {
+  assert.deepEqual(shellBrief(en, 'Bash', { command: "sed -i 's/a/b/' src/a.ts" }), { what: 'Write src/a.ts', tags: ['write'], known: true });
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'echo hi | tee notes.md' }).tags, ['write']);
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'curl -o x.zip https://example.com/x.zip' }).tags, ['network', 'write']);
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'curl https://example.com/x' }).tags, ['network']);
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'git branch' }).tags, ['read']);
+  assert.deepEqual(shellBrief(en, 'Bash', { command: 'git branch feature' }).tags, ['write']);
+});
+
 test('brief: a command the table does not know uses Claude Code\'s description, else a warning to read it', () => {
   assert.equal(shellBrief(en, 'Bash', { command: 'frobnicate --all', description: 'Rebuild the frob index.' }).what, 'Rebuild the frob index');
   const none = shellBrief(ko, 'PowerShell', { command: 'Invoke-Frob -All' });

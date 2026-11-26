@@ -103,6 +103,11 @@ function readCmd(say: Say, c: ShellCmd): { what: string; tags: RiskTag[] } | nul
   if (c.prog === 'git') {
     if (sub === 'push' && c.args.some((a) => a === '--delete' || a === '-d' || /^:/.test(a))) return { what: say('sh.gitBranchDelete'), tags: ['delete', 'network'] };
     if (sub === 'branch' && c.args.some((a) => /^(-d|-D|--delete)$/.test(a))) return { what: say('sh.gitBranchDelete'), tags: ['delete'] };
+    if (sub === 'branch' && !c.args.slice(1).some((a) => !/^(-a|-r|-v|-vv|--list|--all|--show-current)$/.test(a))) return { what: say('sh.gitStatus'), tags: ['read'] };
+    // What throws away work that is not committed: a hard reset, a restore, a checkout of paths, a dropped stash.
+    const discards = (sub === 'reset' && c.args.includes('--hard')) || sub === 'restore' || (sub === 'checkout' && c.args.includes('--'))
+      || (sub === 'stash' && /^(drop|clear)$/.test(c.args[1] ?? ''));
+    if (discards) return { what: say('sh.gitReset'), tags: ['delete'] };
     const act = GIT[sub];
     return act ? { what: say(act.key), tags: [act.tag] } : null;
   }
@@ -125,20 +130,57 @@ function readCmd(say: Say, c: ShellCmd): { what: string; tags: RiskTag[] } | nul
     if (sub === 'run' || sub === 'test' || sub === 'start' || sub === 'exec') return { what: say('sh.runScript', { x: sub === 'run' || sub === 'exec' ? c.args[1] ?? sub : sub }), tags: ['write'] };
     return null;
   }
+  // `find` deletes with -delete or an -exec of rm; `sed -i` and `tee` write the files they name.
+  if (c.prog === 'find' && c.args.some((a, i) => a === '-delete' || (/^-(exec|execdir|ok)$/.test(a) && PROGS[(c.args[i + 1] ?? '').toLowerCase()] === DELETE))) {
+    return { what: say('sh.delete', { x: say('sh.someFiles') }), tags: ['delete'] };
+  }
+  if ((c.prog === 'sed' && c.args.some((a) => /^(-i|--in-place)/.test(a))) || c.prog === 'tee' || c.prog === 'tee-object') {
+    const files = c.args.filter((a) => !a.startsWith('-'));
+    return { what: say('sh.writeFile', { x: names(c.prog === 'sed' ? files.slice(1) : files, true) || say('sh.someFiles') }), tags: ['write'] };
+  }
   const act = PROGS[c.prog];
   if (!act) return null;
   if (act === QUIET) return { what: '', tags: ['read'] };
   const x = act.x === 'host' ? hostOf(c.args) : act.x === 'first' ? names(c.args, true) : act.x === 'args' ? names(c.args) : '';
-  return { what: say(act.key, { x: x || say(act.x === 'host' ? 'sh.someHost' : 'sh.someFiles') }), tags: [act.tag] };
+  // A download that is saved (wget always, curl and Invoke-WebRequest with an output file) also writes a file.
+  const saves = act === WEB && (c.prog === 'wget' || c.args.some((a) => /^(-o|-O|--output|--remote-name|-outfile)$/i.test(a)));
+  return { what: say(act.key, { x: x || say(act.x === 'host' ? 'sh.someHost' : 'sh.someFiles') }), tags: saves ? ['network', 'write'] : [act.tag] };
 }
 
-/** Files a line writes with `>` or `>>` (not a stream joined to another, not the null device); first line only, so a here-document's body is not read. */
+/**
+ * Files a command writes with `>` or `>>` on any of its lines: not a `>` inside quotes, not a stream joined to another
+ * (`2>&1`), not `=>` or `->`, not the null device, and not in a here-document's body.
+ */
 function written(command: string): string[] {
-  const head = String(command).split(/\r?\n/)[0];
   const out: string[] = [];
-  for (const m of head.matchAll(/(?:^|[^\d&<>=\w-])\d?>>?\s*(?!&)("[^"]*"|'[^']*'|[^\s;&|<>()]+)/g)) {
-    const f = m[1].replace(/^["']|["']$/g, '');
-    if (f && !/^(\/dev\/null|\$null|nul)$/i.test(f)) out.push(f);
+  let doc: string | null = null;
+  for (const line of String(command).split(/\r?\n/)) {
+    if (doc !== null) { if (line.trim() === doc) doc = null; continue; }
+    let q = '';
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) { if (ch === q) q = ''; continue; }
+      if (ch === '"' || ch === "'") { q = ch; continue; }
+      if (ch === '<' && line[i + 1] === '<' && line[i + 2] !== '<') {
+        doc = /^<<-?\s*(["']?)([\w.-]+)\1/.exec(line.slice(i))?.[2] ?? doc;
+        i++;
+        continue;
+      }
+      if (ch !== '>' || /[-=<>&]/.test(line[i - 1] ?? '')) continue;
+      let j = line[i + 1] === '>' ? i + 2 : i + 1;
+      if (line[j] === '&') { i = j; continue; }
+      while (line[j] === ' ' || line[j] === '\t') j++;
+      let f = '';
+      if (line[j] === '"' || line[j] === "'") {
+        const close = line.indexOf(line[j], j + 1);
+        f = line.slice(j + 1, close < 0 ? undefined : close);
+        j = close < 0 ? line.length : close + 1;
+      } else {
+        while (j < line.length && !/[\s;&|<>()]/.test(line[j])) f += line[j++];
+      }
+      if (f && !/^(\/dev\/null|\$null|nul)$/i.test(f)) out.push(f);
+      i = j - 1;
+    }
   }
   return out;
 }

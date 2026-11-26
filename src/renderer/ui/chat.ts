@@ -694,9 +694,9 @@ export function decisionHtml(d: Decision, inWorker = false) {
   if (d.source === 'permission') {
     // "Allow for this task" is there when the action's kind can be named and it is neither a delete nor an always-ask
     // rule; the scope row says what that yes covers.
-    const scope = d.options.find((o) => o.label === ALLOW_TASK);
     const tags = b.tags?.length ? b.tags : [{ kind: 'unknown' as RiskTag }];
     const danger = tags.some((g) => g.kind === 'delete' || g.kind === 'rule');
+    const scope = danger ? undefined : d.options.find((o) => o.label === ALLOW_TASK);
     const pills = tags.map((g) => { const [tone, icon] = TAG_LOOK[g.kind]; return `<span class="pill"${pillTone(tone)}>${sym(icon)}${esc(g.label ?? t(`risk.tag.${g.kind}` as Key))}</span>`; }).join('');
     const row = (key: Key, v: string, full: string | null | undefined, cls = '') => v ? `<dt>${t(key)}</dt><dd${cls ? ` class="${cls}"` : ''}${tip(full)}>${v}</dd>` : '';
     const open = foldOpen('cmd', d.id);
@@ -725,7 +725,7 @@ export function decisionHtml(d: Decision, inWorker = false) {
     : d.options.map((o, i) => `<button class="btn${i === 0 ? ' btn-primary' : ''}" data-action="answer" data-id="${d.id}" data-val="${esc(o.label)}">${col ? kbd(o.label) : ''}${esc(o.label)}${col ? '' : kbd(o.label)}${o.description ? `<div class="opt-d">${esc(o.description)}</div>` : ''}</button>`).join('');
   // The free-text answer (another answer, or what to change in a plan) opens from its button; in the Worker's panel it is the composer.
   const hint = decisionHint(d);
-  const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${hint}" aria-label="${hint}"${foldOpen('reply', d.id) ? '' : ' hidden'}>`;
+  const custom = inWorker ? '' : `<input class="inp" data-keep="dec-${d.id}" data-enter="answer-custom" data-id="${d.id}" placeholder="${esc(hint)}" aria-label="${esc(hint)}"${foldOpen('reply', d.id) ? '' : ' hidden'}>`;
   return `<div class="dec brief${sel ? ' sel' : ''}" id="${id}"${card}>
     ${head}
     <div class="qrow"><div class="q"${tip(title)}>${esc(title)}</div>${more ? foldBtn('more', d, t('dec.more')) : ''}</div>
