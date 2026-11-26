@@ -21,80 +21,62 @@ flow('the sidebar tabs stay in view while the tab under them scrolls, and a redr
   assert.ok((await look()).top > 0);
 });
 
-flow('from 560 wide the selected memo opens beside the list, and a draft keeps its text and caret across 560', {}, async (app) => {
+flow('the sidebar is one column at any width: the selected memo opens in place, and a draft keeps its text and caret', {}, async (app) => {
   await app.evaluate("await window.ide.call('memo:add', 'Release notes go out on Thursdays'); await window.ide.call('memo:add', 'Prefer pnpm in new repositories'); return 1;");
   await app.click('[data-action="ins-tab"][data-v="memo"]');
   await app.until("document.querySelectorAll('#chat-ins .pk').length === 2", 'both memos');
-  // The sidebar's width from its handle's keys: Home is 320, each Shift+← 64 wider.
+  // The sidebar's width from its handle's keys: Home is the narrowest, End the widest.
   await app.size(1600);
-  await app.evaluate("document.querySelector('#rz-ins').focus(); return 1;");
-  const handle = async (code, vk, shift = false) => app.key(code, code, vk, shift ? 8 : 0);
+  const handle = async (code, vk) => { await app.evaluate("document.querySelector('#rz-ins').focus(); return 1;"); await app.key(code, code, vk); };
+  const insW = "parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w'))";
   const where = () => app.evaluate(`const ta = document.querySelector('#chat-ins textarea[data-keep^="memo-"]:not(#memo-new)'); return {
-    split: !!document.querySelector('#chat-ins .ins-cols.split'),
-    detail: document.querySelector('#chat-ins .ins-detail')?.innerText ?? '',
+    detail: !!document.querySelector('#chat-ins .ins-detail'),
     rows: [...document.querySelectorAll('#chat-ins .pk > .li')].filter((r) => r.offsetParent).length,
-    inDetail: !!ta?.closest('.ins-detail'), value: ta?.value, focus: !!ta && document.activeElement === ta, caret: ta?.selectionStart };`);
-  // One column at 320: no rows, no detail pane.
-  await handle('Home', 36);
-  await app.until("!document.querySelector('#chat-ins .ins-cols.split')", 'one column');
-  assert.equal((await where()).rows, 0);
-  // At 576 with nothing selected it stays one column; a click on a memo selects it, and the list becomes rows with
-  // that memo in the detail pane; a row selects another one.
-  for (let i = 0; i < 4; i++) await handle('ArrowLeft', 37, true);
-  await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) === 576", 'the sidebar at 576');
-  assert.equal((await where()).split, false);
-  await app.click('#chat-ins .pk-c > .memo[data-action="pick"]');
-  await app.until("!!document.querySelector('#chat-ins .ins-cols.split')", 'two panes');
-  let w = await where();
-  assert.equal(w.rows, 2);
-  assert.match(w.detail, /Prefer pnpm|Release notes/);
-  // Widest (End): the list keeps its width and the detail pane takes all the extra room.
-  const cols = () => app.evaluate("const q = (s) => Math.round(document.querySelector(s).getBoundingClientRect().width); return [q('#chat-ins .ins-list'), q('#chat-ins .ins-detail')];");
-  const [list576, detail576] = await cols();
-  await app.evaluate("document.querySelector('#rz-ins').focus(); return 1;");
+    open: !!document.querySelector('#chat-ins .ins-list .pk.sel > .pk-c > .memo'),
+    card: Math.round(document.querySelector('#chat-ins .pk-c > .memo').getBoundingClientRect().width),
+    value: ta?.value, focus: !!ta && document.activeElement === ta, caret: ta?.selectionStart };`);
+  // At the widest sidebar a click on a memo selects it in place: no detail pane, no list rows.
   await handle('End', 35);
-  await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) > 800", 'the widest sidebar');
-  const [listMax, detailMax] = await cols();
-  assert.equal(listMax, list576);
-  assert.ok(detailMax - detail576 > 200, `detail ${detail576} → ${detailMax}`);
+  await app.until(`${insW} === 640`, 'the widest sidebar');
+  await app.click('#chat-ins .pk-c > .memo[data-action="pick"]');
+  await app.until("!!document.querySelector('#chat-ins .pk.sel')", 'the memo selected');
+  let w = await where();
+  assert.deepEqual([w.detail, w.rows, w.open], [false, 0, true]);
+  // The cards take the sidebar's width.
+  const wide = w.card;
   await handle('Home', 36);
-  for (let i = 0; i < 4; i++) await handle('ArrowLeft', 37, true);
-  await app.until("parseFloat(document.querySelector('#win').style.getPropertyValue('--inspector-w')) === 576", 'back to 576');
-  const other = await app.evaluate("return [...document.querySelectorAll('#chat-ins .pk')].find((p) => !p.classList.contains('sel')).dataset.pick;");
-  await app.click(`#chat-ins .li[data-id="${other}"]`);
-  await app.until(`document.querySelector('#chat-ins .ins-detail .pk-c')?.dataset.from === '${other}'`, 'the other memo in the detail pane');
-  // Edit it, type, and narrow the window so the sidebar gives way under 560, then widen it again: the same field
-  // keeps its text, the focus and the caret.
-  await app.click('#chat-ins .ins-detail [data-action="memo-edit"]');
-  await app.until("document.activeElement?.matches('.ins-detail textarea')", 'the edit field');
+  await app.until(`${insW} === 320`, 'the narrowest sidebar');
+  assert.ok(wide - (await where()).card > 250, `card ${wide} → ${(await where()).card}`);
+  // Edit it, type, and narrow the window so the sidebar gives way, then widen it again: the field keeps its text,
+  // the focus and the caret.
+  await handle('End', 35);
+  await app.until(`${insW} === 640`, 'the widest sidebar again');
+  await app.click('#chat-ins .pk.sel [data-action="memo-edit"]');
+  await app.until("document.activeElement?.matches('#chat-ins .pk.sel textarea')", 'the edit field');
   await app.evaluate("const ta = document.activeElement; ta.value = 'Draft that must survive'; ta.setSelectionRange(5, 5); return 1;");
   await app.size(1100);
-  await app.until("!document.querySelector('#chat-ins .ins-cols.split')", 'one column again');
+  await app.until(`${insW} < 640`, 'the sidebar giving way');
   w = await where();
-  assert.deepEqual([w.inDetail, w.value, w.focus, w.caret], [false, 'Draft that must survive', true, 5]);
+  assert.deepEqual([w.value, w.focus, w.caret], ['Draft that must survive', true, 5]);
   await app.size(1600);
-  await app.until("!!document.querySelector('#chat-ins .ins-cols.split')", 'two panes again');
+  await app.until(`${insW} === 640`, 'the sidebar wide again');
   w = await where();
-  assert.deepEqual([w.inDetail, w.value, w.focus, w.caret], [true, 'Draft that must survive', true, 5]);
-  assert.match(await app.evaluate(`document.querySelector('#chat-ins .pk.sel > .li').innerText`), /editing/);
-  // Selecting the other memo leaves the draft open and marked, not lost.
-  await app.click(`#chat-ins .pk:not([data-pick="${other}"]) > .li`);
-  await app.until(`document.querySelector('#chat-ins .ins-detail .pk-c')?.dataset.from !== '${other}'`, 'the first memo in the detail pane');
+  assert.deepEqual([w.value, w.focus, w.caret], ['Draft that must survive', true, 5]);
+  // Selecting the other memo leaves the draft open, not lost.
+  await app.click('#chat-ins .pk:not(.sel) .memo[data-action="pick"]');
+  await app.until("!document.querySelector('#chat-ins .pk.sel textarea')", 'the other memo selected');
   assert.equal((await where()).value, 'Draft that must survive');
-  assert.match(await app.evaluate(`document.querySelector('#chat-ins .pk[data-pick="${other}"] > .li').innerText`), /editing/);
-  // Inbox in two panes: ↓ on the card in the detail pane selects the next decision, which takes the pane and the focus.
+  // The Inbox: a click selects a decision in place, and ↓ on it selects the next one, which takes the focus.
   await app.say('@fake task - Install one\n@@fake permission npm install a\n@@fake result Installed.\n@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.');
   await app.click('[data-action="ins-tab"][data-v="inbox"]');
   await app.until("document.querySelectorAll('#chat-ins [data-dec]').length === 2", 'two decisions');
-  // Nothing is selected, so the sidebar stays one column until a card is clicked.
-  assert.equal(await app.evaluate("return !!document.querySelector('#chat-ins .ins-cols.split');"), false);
   await app.click('#chat-ins .dec[data-dec] .q');
-  await app.until("!!document.querySelector('#chat-ins .ins-detail [data-dec]')", 'the clicked decision in the detail pane');
-  const first = await app.evaluate("const c = document.querySelector('#chat-ins .ins-detail [data-dec]'); c.focus(); return c.dataset.dec;");
+  await app.until("!!document.querySelector('#chat-ins .ins-list .pk.sel [data-dec]')", 'the clicked decision selected in place');
+  const first = await app.evaluate("const c = document.querySelector('#chat-ins .pk.sel [data-dec]'); c.focus(); return c.dataset.dec;");
   await app.key('ArrowDown', 'ArrowDown', 40);
-  const after = await app.evaluate("const c = document.querySelector('#chat-ins .ins-detail [data-dec]'); return { id: c?.dataset.dec, focus: document.activeElement === c, sel: document.querySelector('#chat-ins .pk.sel')?.dataset.pick };");
+  const after = await app.evaluate("const c = document.querySelector('#chat-ins .pk.sel [data-dec]'); return { id: c?.dataset.dec, focus: document.activeElement === c, detail: !!document.querySelector('#chat-ins .ins-detail') };");
   assert.notEqual(after.id, first);
-  assert.deepEqual([after.focus, after.sel], [true, after.id]);
+  assert.deepEqual([after.focus, after.detail], [true, false]);
 });
 
 flow('a memo keeps its lines: Shift+Enter is a new line, Enter adds it, and Enter saves an edit', {}, async (app) => {

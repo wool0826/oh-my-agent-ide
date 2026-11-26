@@ -981,3 +981,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Not checked on a real Mac** in this round: the 5px comes from the photo, and versions before 26 are assumed to draw the buttons at the given point. y stays 22.
     - **Rejected:** only moving x on the 96px rail (it fixes one macOS version and leaves the token wrong), and keeping 60px as room for larger macOS 26 buttons (the photo shows the same 52px group).
     - `test/trafficLights.test.ts` checks the tokens against the module, the rail formula, the photo's numbers and the version rule.
+
+215. **The right sidebar is one column at any width: the selected item opens in place, and the sidebar stops at 640** (T-0120, asked for by the user; follows 162, changes 177).
+    - **Chosen:** the one-column layout the sidebar already had under 560 px is now the only one. Inbox, Memos, Automations and Scripts list their cards, and the selected card opens where it is, with its ring and its buttons (pin, edit, delete, the form). The cards take the sidebar's width (the 440 cap is gone). ↑/↓, Home and End, the roving Tab stop, Undo and swipe-to-clear in the Inbox work as before.
+    - **Why:** the user found the inner list column next to a detail pane awkward: it showed the selected memo twice and halved the room for both.
+    - **Width:** the sidebar's widest is 640, down from 960 (177), which was there to give the detail pane room beside the list. One column wider than that makes lines too long to read. A width stored above 640 is brought down on the next start. The default (344), the narrowest (320) and the handle are unchanged.
+    - **Removed:** `paneMode`, `SPLIT_AT` and `LIST_W` (shared/insPanes), the detail pane that the selected card moved into, the hidden list rows of decisions, memos, automations and scripts, and their "editing" label. Only "New automation" and "New script" keep a row, which stands for their closed form.
+    - **Rejected:** a list that a selected item replaces, with a back button. It adds a step and loses the list's scroll position. Also rejected: keeping two panes as an option.
