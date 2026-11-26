@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme, net, protocol } from 'electron';
+import { app, BrowserWindow, Notification, ipcMain, shell, dialog, nativeTheme, net, protocol, powerSaveBlocker } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -43,6 +43,7 @@ import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
 import { hasTray, showWindow, updateTray } from './tray';
 import { startUpdateCheck, checkUpdate, updateView, applyUpdate, restartIntoUpdate, holdInstallOnQuit, followUpdateSetting } from './update';
 import { applyBlockers } from '../shared/update';
+import { awakeHolder, shouldStayAwake } from '../shared/awake';
 import { notifyInfo } from './notify';
 import { closeQuick, destroyQuick, openQuick, releaseQuickKey, syncQuickKey } from './quick';
 import { QUICK_ARG } from '../shared/quickKey';
@@ -73,6 +74,10 @@ let answerByUser: (id: string, ans: string) => void = () => {};
 
 /** What a restart into a downloaded update would wait for. */
 const updateBlockers = () => applyBlockers({ workers: store.data.workers, tasks: store.data.tasks, dispatcherBusy: dispatcher.busy });
+
+/** Keeps the computer from sleeping (not the screen from dimming) while work runs; the same call on macOS and Windows. */
+const awake = awakeHolder({ start: () => powerSaveBlocker.start('prevent-app-suspension'), stop: (id) => { if (powerSaveBlocker.isStarted(id)) powerSaveBlocker.stop(id); } });
+const syncAwake = () => awake.sync(!quitting && shouldStayAwake({ on: loadSettings().keepAwake !== false, workers: store.data.workers, dispatcherBusy: dispatcher.busy }));
 
 /** A newer release was found or downloaded: the gear and Settings show it, and one notification says so. */
 const updateHooks = {
@@ -467,6 +472,7 @@ function registerIpc() {
     if (patch.theme !== undefined) applyTheme();
     syncTray();
     syncLoginItem();
+    syncAwake();
     if (langChanged) dispatcher.refreshContext();
     // A new address is tried at once, so a wrong one shows its error here and not at the next memory write.
     if (remoteChanged) void syncMemory();
@@ -559,6 +565,8 @@ async function boot() {
   installPlugin();
   store.on('changed', pushState);
   store.on('changed', prWatchChanged);
+  store.on('changed', syncAwake);
+  syncAwake();
   repoEvents.on('progress', pushState);
   // Hooks for the end-to-end tests (test/e2e), which have no button for them; the window does not call them.
   if (fakeMode()) {
@@ -569,6 +577,7 @@ async function boot() {
     // What a test run would have opened on the computer (open:path, open:external keep it instead).
     handle('e2e:opened', () => e2eOpened);
     handle('mq:run', () => runMergeQueue());
+    handle('e2e:awake', () => awake.held);
   }
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);
@@ -689,6 +698,7 @@ else {
     automations.stop();
     workers.closeAll();
     dispatcher.close();
+    awake.release();
     store.flush();
     saveSettings();
   });

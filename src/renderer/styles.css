@@ -896,6 +896,8 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .srow.end { justify-content: flex-end; }
 .srow > .lbl { flex: 1 0 auto; min-width: 120px; font-size: var(--fs-body); color: var(--text-primary); }
 .srow > .lbl.muted { color: var(--text-secondary); }
+.srow.note > .lbl { flex: 1 1 auto; }
+.srow > .lbl > .lbl-note { display: block; margin-top: var(--space-2); font-size: var(--fs-caption); color: var(--text-tertiary); }
 .srow .inp { height: var(--control-lg); border-radius: var(--radius-md); }
 .srow .inp.w { width: 280px; max-width: 100%; flex: 0 1 280px; }
 .srow .combo { flex: 0 1 280px; }

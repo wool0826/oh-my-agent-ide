@@ -194,3 +194,21 @@ flow('the repository list has columns, the sidebar sums up before a pick, and Se
   const home = await app.evaluate("[document.querySelector('#set-home').value, document.querySelector('#set-home-v').textContent]");
   assert.ok(home[1].includes('…') && home[0].endsWith(home[1].split('…').pop()), `home shown as ${home[1]}`);
 });
+
+flow('the stay-awake switch is in Settings and holds the computer awake only while it is on and a Worker works', {}, async (app) => {
+  const held = () => app.evaluate("return await window.ide.call('e2e:awake');");
+  assert.equal(await held(), false);
+  // A Worker waiting on an approval is still working.
+  await app.say(['@fake task - Update the changelog', '@@fake permission npm install left-pad'].join('\n'));
+  await app.until("!!document.querySelector('#chat-ins .dec')", 'the decision waiting');
+  await app.until("return await window.ide.call('e2e:awake');", 'the computer held awake');
+  await app.click('[data-action="open-settings"]');
+  await app.click('[data-action="pane"][data-id="general"]');
+  assert.equal(await app.evaluate("const el = document.getElementById('set-awake'); return el.checked + '|' + !!el.closest('.srow').querySelector('.lbl-note')?.textContent;"), 'true|true');
+  await app.click('#set-awake');
+  await app.until("return (await window.ide.call('state')).settings.keepAwake === false;", 'the switch saved off');
+  assert.equal(await held(), false);
+  await app.click('#set-awake');
+  await app.until("return (await window.ide.call('state')).settings.keepAwake === true;", 'the switch saved on');
+  await app.until("return await window.ide.call('e2e:awake');", 'the computer held awake again');
+});

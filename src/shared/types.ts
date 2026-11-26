@@ -443,6 +443,8 @@ export interface SettingsView {
   background: boolean;
   /** Start with the window hidden when the user signs in to the OS. */
   openAtLogin: boolean;
+  /** The computer does not sleep while a Worker works or the Dispatcher is in a turn (shared/awake.ts). */
+  keepAwake: boolean;
 }
 
 /** What Settings shows about the user's Claude Code setup. */
