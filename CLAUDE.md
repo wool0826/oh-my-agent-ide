@@ -57,8 +57,10 @@ The spec, tokens and component gallery are in `docs/design-system/` (start with 
 
 ## Where things go
 
-- **i18n.** Every user-visible string is a key in `src/shared/i18n.ts`, added to both `en` and `ko`, next to the
-  keys of the same screen or group (not at the end of the file). Call it with `tr(...)`.
+- **i18n.** Every user-visible string is a key in the area file of its screen under `src/shared/i18n/` (common,
+  sidebar, chat, inspector, workers, repos, memory, settings), added to both its `en` and its `ko`, next to the keys
+  of the same group (not at the end of the file). A key lives in one area only. Call it with `tr(...)` from
+  `src/shared/i18n.ts`.
 - **CSS.** Add rules to `src/renderer/styles.css` next to the group for the same component (each group starts with a
   `/* … */` comment), not at the end of the file. New tokens go into the matching section of `tokens.css`.
 

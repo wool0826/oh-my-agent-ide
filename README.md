@@ -141,7 +141,7 @@ Build output goes to `dist/`, installers to `release/`.
 | `src/main/attachments.ts` | Paths of files dropped into messages |
 | `src/main/memory.ts` | Markdown memory with git history |
 | `src/shared/stateSplit.ts`, `src/main/stateFiles.ts` | Where the saved state lives: what leaves `state.json` for `chat.jsonl` and `tasks-done.jsonl`, how the three read back as one state, and the way back to one file |
-| `src/shared/i18n.ts` | English and Korean UI text |
+| `src/shared/i18n.ts`, `src/shared/i18n/` | English and Korean UI text, by area |
 | `src/shared/askWhy.ts` | Why each decision needs the user, for its card, sidebar row and notification |
 | `src/shared/routing.ts` | Which idle Worker takes a new task, or whether to create one |
 | `src/renderer/app.ts` | The window's entry: draws every screen, what each control does, start-up |
