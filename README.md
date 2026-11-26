@@ -112,7 +112,7 @@ npm run e2e
 npm start
 ```
 
-`npm test` runs the unit tests of the rules in `src/shared`. `npm run e2e` starts the built app on an empty profile with fake agents and a stand-in for `gh`, and drives its window through whole flows (`test/e2e/*.e2e.mjs`, one file per area); it uses no account and no network.
+`npm test` runs the unit tests of the rules in `src/shared`. `npm run e2e` starts the built app on an empty profile with fake agents and a stand-in for `gh`, and drives its window through whole flows (`test/e2e/*.e2e.mjs`, one file per area); it uses no account and no network. On Windows it also compares the main screens in both themes with the pictures in `test/e2e/visual/` (`npm run e2e:visual`; `npm run e2e:visual:update` writes them again after a change meant to change the look).
 
 Build output goes to `dist/`, installers to `release/`.
 

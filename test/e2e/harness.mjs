@@ -95,9 +95,10 @@ function makeRepo(dir) {
 
 /**
  * Launches the app. `settings` is merged over the test defaults; `repos` names repositories to create and register
- * (each at https://github.com/o/<name>); `gh` seeds the stand-in's file (prs, issues); `env` adds to the app's environment.
+ * (each at https://github.com/o/<name>); `gh` seeds the stand-in's file (prs, issues); `env` adds to the app's environment;
+ * `args` adds to Electron's command line (Chromium switches).
  */
-export async function launch({ settings = {}, repos = [], gh = {}, files = {}, env = {} } = {}) {
+export async function launch({ settings = {}, repos = [], gh = {}, files = {}, env = {}, args = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-e2e-'));
   const data = path.join(dir, 'data');
   const home = path.join(dir, 'home');
@@ -124,7 +125,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
   // The same profile and port each time, so restart() brings back the app a user would find after quitting it.
   const startApp = () => {
     const log = fs.openSync(path.join(dir, 'app.log'), 'a');
-    return spawn(electron, ['.', `--remote-debugging-port=${port}`, '--hidden'], {
+    return spawn(electron, ['.', `--remote-debugging-port=${port}`, '--hidden', ...args], {
       cwd: root, stdio: ['ignore', log, log],
       env: { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile, ELECTRON_ENABLE_LOGGING: '1', ...env },
     });

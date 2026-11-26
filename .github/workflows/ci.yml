@@ -70,3 +70,31 @@ jobs:
           path: test-results/e2e/
           if-no-files-found: ignore
           retention-days: 14
+
+  # The main screens in both themes against the pictures in test/e2e/visual/ (test/e2e/visual.e2e.mjs). Fonts draw
+  # differently on each system, so this runs on the one the pictures are of. Not a required check yet.
+  visual:
+    name: visual (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Screen comparison
+        run: npm run e2e:visual
+        timeout-minutes: 8
+      # Each screen that differs leaves its expected, actual and diff pictures; the flow's window and logs are beside them.
+      - name: Keep the pictures of the screens that differ
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diffs
+          path: |
+            test-results/visual/
+            test-results/e2e/
+          if-no-files-found: ignore
+          retention-days: 14
