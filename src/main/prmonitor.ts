@@ -10,10 +10,11 @@ import { automations } from './automations';
 import { ask, waitFor } from './decisions';
 import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readiness, runsOf, type Check, type RollupItem } from './prchecks';
 import { adoptSeen, isBot, parsePages, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
+import { MERGE_QUEUE, enqueue, headEntry, inPhase, leave, leftKey, leftNote, merged, nextStep, prune, removeEntry, tickAfter, updating } from '../shared/mergeQueue';
 import { ciReason } from '../shared/askWhy';
-import { canMerge, conflictBody, mergeMethod, planConflictFix } from '../shared/prMerge';
+import { busyPrs, canMerge, conflictBody, mergeMethod, planConflictFix } from '../shared/prMerge';
 import { PR_POLL, eachLimited, isFullRound, isRateLimited, nextPollDelay, parsePrUrl, prStateQueries, readPrStates, type PrState } from '../shared/prPoll';
-import type { Decision, Task } from '../shared/types';
+import type { Decision, MergeQueueEntry, MergeQueueLeft, Task } from '../shared/types';
 
 /**
  * Watch open PRs.
@@ -22,6 +23,7 @@ import type { Decision, Task } from '../shared/types';
  * - Keep the merge readiness (CI, conflicts, review) on the task for the UI.
  * - New review comments, then a conflict with the base, then failed CI: hand them to the Worker that opened the PR.
  * - Each PR once, even when a follow-up task pushed to its branch and recorded the same URL.
+ * - The merge queue (shared/mergeQueue.ts): the PR at the front takes its base, waits for its checks and is merged.
  */
 
 const parsePr = parsePrUrl;
@@ -220,40 +222,191 @@ async function checkOne(watch: PrWatch<Task>) {
   adoptSeen(task, watch.all);
   if (await sendComments(task)) return;
   // A conflict comes before CI: checks on a branch that cannot merge say little, and the merge starts them again.
-  if (planConflictFix(task, ready.conflicts, j.headRefOid ?? '', j.baseRefOid ?? '')) {
-    store.chat('event', t('ev.conflictFixing', { id: task.workerId ?? '', title: task.title }));
-    workers.sendReview(task, conflictBody(j.baseRefName || 'main'), 'conflict');
-    store.changed();
-    return;
-  }
+  if (sendConflict(task, ready.conflicts, j.headRefOid ?? '', j.baseRefOid ?? '', j.baseRefName ?? '')) return;
   await fixCi(task, env, checks, j.headRefOid ?? '');
 }
 
-/**
- * Merge a task's PR on the user's click, the way its repository allows (squash first). The state is read again
- * first, so a PR that stopped being ready since the window last showed it is not merged.
- */
-export async function mergePr(taskId: string) {
-  const task = store.task(taskId);
-  const p = task?.prUrl ? parsePr(task.prUrl) : null;
-  if (!task || !p) throw new Error(t('pr.err.noPr'));
-  const env = { ...ghEnv(), GH_HOST: p.host };
-  const view = await run('gh', ['pr', 'view', task.prUrl!, '--json', 'state,mergeable,reviewDecision,statusCheckRollup'], { env, timeoutMs: 60_000 });
-  if (view.code !== 0) throw new Error(view.stderr.trim().split('\n')[0] || t('pr.err.merge'));
-  const j = JSON.parse(view.stdout) as { state: string; mergeable?: string; reviewDecision?: string; statusCheckRollup?: RollupItem[] };
-  if (j.state !== 'OPEN' || !canMerge(readiness(parseChecks(j.statusCheckRollup), j.mergeable, j.reviewDecision))) {
-    void checkPrs({ full: true });
-    throw new Error(t('pr.err.notReady'));
-  }
+/** Hand a conflict with the base to the Worker, once per pair of head and base commits. True when it was sent. */
+function sendConflict(task: Task, conflicts: boolean, headSha: string, baseSha: string, base: string): boolean {
+  if (!planConflictFix(task, conflicts, headSha, baseSha)) return false;
+  store.chat('event', t('ev.conflictFixing', { id: task.workerId ?? '', title: task.title }));
+  workers.sendReview(task, conflictBody(base || 'main'), 'conflict');
+  store.changed();
+  return true;
+}
+
+const firstLine = (text: string) => text.trim().split('\n')[0];
+
+/** Merge the PR the way its repository allows (squash first), and only at the commit that was checked. Null, or why not. */
+async function mergeNow(url: string, env: NodeJS.ProcessEnv, p: NonNullable<ReturnType<typeof parsePr>>, headSha: string): Promise<string | null> {
   const repo = await run('gh', ['repo', 'view', `${p.host}/${p.owner}/${p.repo}`, '--json', 'squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'], { env, timeoutMs: 60_000 });
   let allowed: Parameters<typeof mergeMethod>[0] = null;
   try { if (repo.code === 0) allowed = JSON.parse(repo.stdout); } catch { /* squash */ }
   const method = mergeMethod(allowed);
-  const r = await run('gh', ['pr', 'merge', task.prUrl!, `--${method}`], { env, timeoutMs: 120_000 });
-  if (r.code !== 0) throw new Error(r.stderr.trim().split('\n')[0] || t('pr.err.merge'));
-  log.info('merged from the app', task.prUrl, method);
-  // Read it again at once, whenever the last round was: the task shows as merged now, not at the next round.
-  void checkPrs();
+  const r = await run('gh', ['pr', 'merge', url, `--${method}`, ...(headSha ? ['--match-head-commit', headSha] : [])], { env, timeoutMs: 120_000 });
+  if (r.code !== 0) return firstLine(r.stderr) || t('pr.err.merge');
+  log.info('merged from the app', url, method);
+  return null;
+}
+
+// ── The merge queue: the rules are in shared/mergeQueue.ts, and nothing about it is kept outside the saved state. ──
+
+const queue = (): readonly MergeQueueEntry[] => store.data.mergeQueue ?? [];
+
+function setQueue(next: readonly MergeQueueEntry[]) {
+  if (next === queue()) return;
+  store.data.mergeQueue = next.slice();
+  store.changed();
+}
+
+/** Put one entry in the place of the one it was made from, if that one is still in line. */
+function putEntry(next: MergeQueueEntry) {
+  const q = queue();
+  const i = q.findIndex((e) => e.taskId === next.taskId && !e.left);
+  if (i < 0 || q[i] === next) return;
+  setQueue(q.map((e, n) => (n === i ? next : e)));
+}
+
+/**
+ * "Merge", "Merge N" and a bundle's "Merge in order": the tasks' PRs join the merge queue, which merges them one
+ * at a time. Only PRs that can be merged as the window last saw them; each is read again when its turn comes.
+ */
+export function queueMerge(taskIds: string[]) {
+  const tasks = store.data.tasks;
+  if (taskIds.every((id) => !tasks.find((x) => x.id === id)?.prUrl)) throw new Error(t('pr.err.noPr'));
+  const busy = busyPrs(tasks);
+  const ready = taskIds.filter((id) => {
+    const x = tasks.find((y) => y.id === id);
+    return !!x?.prUrl && x.prState === 'OPEN' && canMerge(x.prChecks) && !busy.has(x.prUrl.toLowerCase());
+  });
+  if (!ready.length) {
+    void checkPrs({ full: true });
+    throw new Error(t('pr.err.notReady'));
+  }
+  setQueue(enqueue(queue(), tasks, ready, nowIso()));
+  void runMergeQueue();
+}
+
+/** The user takes a PR out of the queue, or clears the line of one that left. The PR itself is not touched. */
+export function unqueueMerge(taskId: string) {
+  setQueue(removeEntry(queue(), taskId, nowIso()));
+  void runMergeQueue();
+}
+
+/** A PR leaves the queue: the user and the Dispatcher hear of it and of each later PR of its bundle that left with it. */
+function leaveQueue(task: Task, why: MergeQueueLeft, detail = '') {
+  const before = queue();
+  const after = leave(before, task.id, why, nowIso(), detail);
+  setQueue(after);
+  for (const e of after) {
+    if (!e.left || before.find((b) => b.taskId === e.taskId)?.left) continue;
+    const x = store.task(e.taskId);
+    if (!x) continue;
+    store.chat('event', t('ev.queueLeft', { title: x.title, why: t(leftKey(e.left.why)) }));
+    store.pushUpdate(leftNote(x, e.left.why, e.left.detail));
+  }
+  notifyInfo(t('noti.queueLeft'), `${task.title}: ${t(leftKey(why))}`, undefined, task.id);
+}
+
+/**
+ * One step for the PR at the front, from what GitHub says now. Null when the queue moved on (merged, or it left),
+ * so the next PR has its turn at once; otherwise how long this one waits before it is read again (ms).
+ */
+async function stepQueue(entry: MergeQueueEntry): Promise<number | null> {
+  const task = store.task(entry.taskId);
+  const p = task?.prUrl ? parsePr(task.prUrl) : null;
+  if (!task || !p) { setQueue(removeEntry(queue(), entry.taskId, nowIso())); return null; }
+  const url = task.prUrl!;
+  const env = { ...ghEnv(), GH_HOST: p.host };
+  const view = await run('gh', ['pr', 'view', url, '--json', 'state,headRefName,headRefOid,baseRefName,baseRefOid,mergeable,reviewDecision,statusCheckRollup'], { env, timeoutMs: 60_000 });
+  if (view.code !== 0) { log.warn('merge queue: pr view failed', url, view.stderr.trim().slice(0, 200)); return MERGE_QUEUE.tick; }
+  const j = JSON.parse(view.stdout) as {
+    state: 'OPEN' | 'MERGED' | 'CLOSED'; headRefOid?: string; baseRefName?: string; baseRefOid?: string;
+    mergeable?: string; reviewDecision?: string; statusCheckRollup?: RollupItem[];
+  };
+  const checks = readiness(parseChecks(j.statusCheckRollup), j.mergeable, j.reviewDecision);
+  const head = j.headRefOid ?? '';
+  const base = j.baseRefName || 'main';
+  // How far the branch is behind its base: what the merge before this one changed.
+  let behind: number | null = null;
+  if (j.state === 'OPEN' && head) {
+    const c = await run('gh', ['api', `repos/${p.owner}/${p.repo}/compare/${base}...${head}`, '--jq', '.behind_by'], { env, timeoutMs: 60_000 });
+    const n = c.code === 0 && c.stdout.trim() ? Number(c.stdout.trim()) : NaN;
+    if (Number.isInteger(n)) behind = n;
+    else log.warn('merge queue: compare failed', url, c.stderr.trim().slice(0, 200));
+  }
+  // Taken out while gh ran: nothing is done to it.
+  const cur = queue().find((e) => e.taskId === entry.taskId && !e.left);
+  if (!cur) return null;
+  const busy = busyPrs(store.data.tasks).has(url.toLowerCase());
+  const step = nextStep(cur, { state: j.state, headSha: head, behind, mergeable: j.mergeable ?? 'UNKNOWN', checks, busy }, Date.now());
+  // The task the PR watch hands a conflict to, so the same conflict is not sent a second time by it.
+  const conflict = () => {
+    const first = prsToWatch(store.data.tasks).find((w) => w.url.toLowerCase() === url.toLowerCase())?.tasks[0] ?? task;
+    sendConflict(first, true, head, j.baseRefOid ?? '', base);
+  };
+  switch (step.do) {
+    case 'done': setQueue(merged(queue(), task.id)); void checkPrs(); return null;
+    case 'gone': setQueue(removeEntry(queue(), task.id, nowIso())); void checkPrs(); return null;
+    case 'wait': putEntry(inPhase(cur, step.phase, nowIso())); return tickAfter(step.phase, j.mergeable ?? 'UNKNOWN');
+    case 'update': {
+      const r = await run('gh', ['api', '-X', 'PUT', `repos/${p.owner}/${p.repo}/pulls/${p.num}/update-branch`, '-f', `expected_head_sha=${head}`], { env, timeoutMs: 120_000 });
+      if (r.code === 0) { putEntry(updating(cur, { headSha: head, checks }, nowIso())); return tickAfter('updating', 'MERGEABLE'); }
+      // GitHub had not worked out the conflict yet when the PR was read, and found it on the merge.
+      if (/conflict/i.test(`${r.stderr}\n${r.stdout}`)) { leaveQueue(task, 'conflict'); conflict(); } else leaveQueue(task, 'updateFailed', firstLine(r.stderr).slice(0, 200));
+      void checkPrs({ full: true });
+      return null;
+    }
+    case 'merge': {
+      putEntry(inPhase(cur, 'merging', nowIso()));
+      const err = await mergeNow(url, env, p, head);
+      if (err) { leaveQueue(task, 'mergeFailed', err.slice(0, 200)); return null; }
+      setQueue(merged(queue(), task.id));
+      // Read it at once, whenever the last round was: the task shows as merged now, not at the next round.
+      void checkPrs();
+      return null;
+    }
+    case 'leave': {
+      leaveQueue(task, step.why);
+      if (step.why === 'conflict') conflict();
+      // The PR is read in full at once: the task shows what stopped it, and failed checks go to the Worker by the
+      // usual way, with their logs.
+      void checkPrs({ full: true });
+      return null;
+    }
+  }
+}
+
+let queueRunning = false;
+let queueAgain = false;
+let queueTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Work through the merge queue: one PR after another until the one at the front has to wait, then again after
+ * MERGE_QUEUE.tick. One run at a time; a call during a run makes one more follow it.
+ */
+export async function runMergeQueue(): Promise<void> {
+  if (queueRunning) { queueAgain = true; return; }
+  if (!queue().length) return;
+  queueRunning = true;
+  if (queueTimer) { clearTimeout(queueTimer); queueTimer = null; }
+  let wait: number = MERGE_QUEUE.tick;
+  try {
+    for (;;) {
+      setQueue(prune(queue(), store.data.tasks, nowIso()));
+      const head = headEntry(queue());
+      const ms = head ? await stepQueue(head) : MERGE_QUEUE.tick;
+      if (ms !== null) { wait = ms; break; }
+    }
+  } catch (e) {
+    log.warn('merge queue', (e as Error).message);
+  } finally {
+    queueRunning = false;
+    if (queueAgain) { queueAgain = false; void runMergeQueue(); } else if (started && headEntry(queue())) {
+      queueTimer = setTimeout(() => { queueTimer = null; void runMergeQueue(); }, wait);
+      queueTimer.unref();
+    }
+  }
 }
 
 /** Branch cleanups put off while the Worker was in a turn in that worktree; each PR round tries them again. */
@@ -351,6 +504,8 @@ export async function checkPrs(opts: { full?: boolean } = {}): Promise<void> {
     if (again) { again = false; void checkPrs(); } else {
       for (const done of roundWaiters.splice(0)) done();
       schedule();
+      // The queue reads its PR after every round too: a merge or a push the round saw may be its next step.
+      void runMergeQueue();
     }
   }
 }
@@ -394,4 +549,6 @@ export function startPrMonitor() {
   dueAt = Date.now() + 20_000;
   timer = setTimeout(() => { timer = null; void checkPrs({ full: true }); }, 20_000);
   timer.unref();
+  // A queue that was at work when the app quit goes on from what GitHub says now.
+  void runMergeQueue();
 }

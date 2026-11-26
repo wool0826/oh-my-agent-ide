@@ -5,6 +5,7 @@ import { hasSpend, spendVars } from '../../shared/spend';
 import { cancelSet, followersOf, holdsWorktree, isQueued, statusAfterCancel, type CancelReport } from '../../shared/queue';
 import { overlapLine } from '../../shared/overlap';
 import { queueLine, queueWhy, type QueueCtx } from '../../shared/queueWhy';
+import { leftKey, phaseKey, queueRows, type QueueRow } from '../../shared/mergeQueue';
 import { patchLines } from '../../shared/diffComment';
 import { lastLines } from '../../shared/runOutput';
 import type { Checkpoint } from '../../shared/checkpoints';
@@ -72,6 +73,26 @@ export function filterWorkers(ws: Worker[], f: WorkerFilter | null) {
   return ws;
 }
 
+/**
+ * The merge queue above the Workers (decision 210): each PR's place and what it waits for, the ones that left with
+ * the reason, and a button on each to take it out. Nothing is shown while the queue is empty.
+ */
+function mergeQueueHtml() {
+  const rows = queueRows(S!.mergeQueue, S!.tasks);
+  if (!rows.length) return '';
+  const row = (r: QueueRow) => {
+    const left = r.state === 'left';
+    const state = r.state === 'left' ? t('mq.left', { why: r.why ? t(leftKey(r.why)) : '' }) : t(phaseKey(r.state));
+    const name = `#${r.num} ${r.title}`;
+    const line = [r.repo ?? t('general'), state, r.group ?? ''].filter(Boolean).join(' · ');
+    const mark = left ? ic('err') : `<span class="q-pos" aria-hidden="true">${r.pos}</span>`;
+    const act = (action: string, label: string, glyph: string) =>
+      `<button class="btn btn-icon btn-sm clear-x always" data-action="${action}" data-id="${esc(r.taskId)}" data-tip="${esc(label)}" aria-label="${esc(`${label}: ${name}`)}"><svg><use href="#${glyph}"/></svg></button>`;
+    return `<div class="row split q-row mq-row${r.pos === 1 ? ' next' : ''}${left ? ' left' : ''}"${r.detail ? ` data-tip="${esc(r.detail)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${esc(r.workerId ?? '')}">${mark}<span class="t"><b>${esc(name)}</b><small${left ? ' class="warn"' : ''}>${esc(line)}</small></span></button>${r.again ? act('mq-again', t('mq.again'), 's-refresh') : ''}${act('mq-remove', t(left ? 'mq.clear' : 'mq.remove'), 's-x')}</div>`;
+  };
+  return `<div class="mq" role="group" aria-label="${esc(t('mq.title'))}"><div class="lst-h">${t('mq.title')}</div><div class="q-line">${rows.map(row).join('')}</div></div>`;
+}
+
 export function renderWorkerList() {
   const s = S!;
   const root = $('#wk-list');
@@ -137,7 +158,7 @@ export function renderWorkerList() {
       return;
     }
     root.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">Worker</b><small>${esc(countsText())}</small></div>
-    ${lst}${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${archLis}` : ''}</div>`;
+    ${lst}${mergeQueueHtml()}${active.map(li).join('')}${arch.length ? `<div class="lst-h">${t('st.archived')}</div>${archLis}` : ''}</div>`;
   });
 }
 

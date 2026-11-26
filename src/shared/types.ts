@@ -180,6 +180,30 @@ export interface TaskOverlap {
   files: string[];
 }
 
+/** Where a PR is in the merge queue (shared/mergeQueue.ts): in line, taking the base, waiting for its checks, being merged. */
+export type MergeQueuePhase = 'waiting' | 'updating' | 'checks' | 'merging';
+
+/** Why a PR left the merge queue without being merged. */
+export type MergeQueueLeft = 'ciFailed' | 'conflict' | 'changes' | 'review' | 'worker' | 'timeout' | 'baseMoved' | 'updateFailed' | 'mergeFailed' | 'bundle';
+
+/** One PR in the merge queue, or one that left it and still says why. */
+export interface MergeQueueEntry {
+  taskId: string;
+  prUrl: string;
+  /** Its bundle (shared/bundle.ts): the PRs of one bundle merge in the order their tasks were made, and stop together. */
+  group?: string | null;
+  phase: MergeQueuePhase;
+  /** When the phase began, which its time limits count from. */
+  since: string;
+  /** The head commit before the base was last taken into the branch: checks on it no longer count. */
+  updatedFrom?: string | null;
+  /** Times the base was taken into the branch. */
+  updates?: number;
+  /** The PR had checks before the base was taken, so the new head is not merged before its own appear. */
+  expectChecks?: boolean;
+  left?: { why: MergeQueueLeft; at: string; detail?: string } | null;
+}
+
 /** A status a task entered, and when. on: a waiting task waits for the Dispatcher, not the user. */
 export interface TaskMark {
   status: TaskStatus;
@@ -476,6 +500,8 @@ export interface AppState {
   repos: Repo[];
   workers: Worker[];
   tasks: Task[];
+  /** The merge queue, in order, with the PRs that left it (shared/mergeQueue.ts). */
+  mergeQueue: MergeQueueEntry[];
   decisions: Decision[];
   autoAnswers: AutoAnswer[];
   /** Pending only. */

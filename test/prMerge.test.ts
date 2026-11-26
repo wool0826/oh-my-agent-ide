@@ -63,6 +63,8 @@ test('mergeWait names the first thing a PR waits for, and nothing exactly when c
   assert.equal(mergeWait(ok), null);
   assert.equal(mergeWait({ ...ok, ci: 'none' }), null);
   assert.equal(mergeWait(ok, true), 'worker');
+  // In the merge queue already: that comes first, whatever else it waits for.
+  assert.equal(mergeWait({ ...ok, ci: 'pending' }, true, true), 'queued');
   assert.equal(mergeWait({ ...ok, ci: 'pending', conflicts: true }), 'ci');
   assert.equal(mergeWait({ ...ok, ci: 'failing' }), 'ciFailed');
   assert.equal(mergeWait({ ...ok, conflicts: true, review: 'required' }), 'conflicts');

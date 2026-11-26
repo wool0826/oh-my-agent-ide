@@ -25,7 +25,7 @@ flow('a code task opens a PR, which is merged from the app', { repos: ['demo'] }
   await app.click('#chat-ins .prmerge.sure');
   const s = await app.until("return (await window.ide.call('state')).tasks.some((x) => x.prState === 'MERGED') && (await window.ide.call('state'));", 'the PR merged');
   assert.equal(task(s, 'Add a line').prState, 'MERGED');
-  assert.ok(app.gh().calls.includes(`pr merge ${url} --squash`));
+  assert.ok(app.gh().calls.some((c) => c.startsWith(`pr merge ${url} --squash`)));
 });
 
 flow('a bundle across repositories is merged in the order its tasks were made', { repos: ['api', 'web'] }, async (app) => {
@@ -39,7 +39,7 @@ flow('a bundle across repositories is merged in the order its tasks were made', 
   await app.click('[data-action="bundle-merge"]');
   await app.click('[data-action="bundle-merge"]');
   await app.until("return (await window.ide.call('state')).tasks.every((x) => x.prState === 'MERGED');", 'both PRs merged');
-  const merges = app.gh().calls.filter((c) => c.startsWith('pr merge'));
+  const merges = app.gh().calls.filter((c) => c.startsWith('pr merge')).map((c) => c.replace(/ --match-head-commit \w+$/, ''));
   assert.deepEqual(merges, [`pr merge ${pr('api')} --squash`, `pr merge ${pr('web')} --squash`]);
 });
 

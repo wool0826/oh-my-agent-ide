@@ -12,6 +12,7 @@ import { hasSpend, spendVars, type Spend } from '../../shared/spend';
 import { linkify, reportLinks, type ReportLink } from '../../shared/linkify';
 import { mdInline } from '../../shared/markdown';
 import { busyPrs, mergeWait, type MergeWait } from '../../shared/prMerge';
+import { queuedPrs } from '../../shared/mergeQueue';
 import { parseTime } from '../../shared/automations';
 import { canPick, openComparisons } from '../../shared/compare';
 import { awayDigest, awayRows, type AwayDigest } from '../../shared/away';
@@ -40,7 +41,7 @@ export const CI_BADGE: Record<string, [string, Key]> = { passing: ['ok', 'pr.ciP
 export const REVIEW_BADGE: Record<string, [string, Key]> = { approved: ['ok', 'pr.approved'], changes: ['warn', 'pr.changes'], required: ['', 'pr.reviewNeeded'] };
 
 /** The tip of a Merge button that cannot be pressed yet: when it opens. */
-const MERGE_WAIT: Record<MergeWait, Key> = { worker: 'pr.waitWorker', ci: 'pr.waitCi', ciFailed: 'pr.waitCiFailed', conflicts: 'pr.waitConflicts', changes: 'pr.waitChanges', review: 'pr.waitReview' };
+const MERGE_WAIT: Record<MergeWait, Key> = { queued: 'pr.waitQueued', worker: 'pr.waitWorker', ci: 'pr.waitCi', ciFailed: 'pr.waitCiFailed', conflicts: 'pr.waitConflicts', changes: 'pr.waitChanges', review: 'pr.waitReview' };
 
 /** Is an open PR ready to merge: CI, conflicts, review. */
 export function prBadges(x: Task) {
@@ -54,15 +55,15 @@ export function prBadges(x: Task) {
   if (rv) b.push(`<i class="${rv[0]}">${t(rv[1])}</i>`);
   // Not ready yet: the button is there but dimmed, and its tip says what it waits for. No data-action, so a click
   // does nothing; aria-disabled rather than disabled keeps it focusable and hoverable for the tip.
-  const wait = mergeWait(c, !!x.prUrl && busyPrs(S?.tasks ?? []).has(x.prUrl.toLowerCase()));
+  const wait = mergeWait(c, !!x.prUrl && busyPrs(S?.tasks ?? []).has(x.prUrl.toLowerCase()), !!x.prUrl && queuedPrs(S?.mergeQueue ?? []).has(x.prUrl.toLowerCase()));
   if (wait) {
     // A "Merge it?" asked before the PR went back to waiting is not carried over to when it opens again.
     if (ui.mergeAsk === x.id) ui.mergeAsk = null;
     b.push(`<button type="button" class="prmerge wait" aria-disabled="true" data-tip="${esc(t(MERGE_WAIT[wait]))}">${t('pr.merge')}</button>`);
   } else {
     // Ready to merge: a button, asked once before it merges.
-    const busy = ui.merging.has(x.id), sure = ui.mergeAsk === x.id;
-    b.push(`<button type="button" class="prmerge${sure ? ' sure' : ''}" data-action="pr-merge" data-id="${esc(x.id)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'pr.mergeSure' : 'pr.merge')}</button>`);
+    const sure = ui.mergeAsk === x.id;
+    b.push(`<button type="button" class="prmerge${sure ? ' sure' : ''}" data-action="pr-merge" data-id="${esc(x.id)}">${t(sure ? 'pr.mergeSure' : 'pr.merge')}</button>`);
   }
   return b.length ? `<span class="prst">${b.join('')}</span>` : '';
 }
@@ -933,15 +934,18 @@ export function bundlesHtml() {
   if (!bundles.length) return '';
   return bundles.map((b) => {
     const key = `b:${b.name}`;
-    const busy = ui.merging.has(key), sure = ui.mergeAsk === key;
-    const n = bundleMergeOrder(b).length;
+    const sure = ui.mergeAsk === key;
+    const order = bundleMergeOrder(b);
+    const n = order.length;
+    // Its PRs are in the merge queue already: the button says so until they are merged or one leaves.
+    const queued = n > 0 && order.every((x) => queuedPrs(S!.mergeQueue).has(x.prUrl!.toLowerCase()));
     const rows = b.tasks.map((x, i) => {
       const tn = x.status === 'failed' && !x.stopped ? 'danger' : x.status === 'running' ? 'accent' : x.prState === 'MERGED' ? 'review' : x.status === 'pr_open' ? 'pr-open' : x.status === 'done' ? 'success' : '';
       const label = x.prState === 'MERGED' ? t('pr.merged') : taskLabel(x);
       return `<div class="mini bnd"><b><span class="bnd-n">${i + 1}</span>${esc(x.repo ?? t('general'))}</b><span>${esc(x.title)}</span>
         <span class="bnd-f">${x.workerId ? `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(x.workerId)}">${esc(x.workerId)}</button>` : ''}${x.prUrl ? `<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}<span class="gap"></span><i class="pill"${pillTone(tn)}>${label}</i></span></div>`;
     }).join('');
-    const btn = b.ready || busy ? `<div class="mini bnd-act"><button class="btn btn-primary" data-action="bundle-merge" data-id="${esc(b.name)}"${busy ? ' disabled' : ''}>${t(busy ? 'pr.merging' : sure ? 'bundle.mergeSure' : 'bundle.merge', { n })}</button></div>` : '';
+    const btn = b.ready ? `<div class="mini bnd-act"><button class="btn btn-primary" data-action="bundle-merge" data-id="${esc(b.name)}"${queued ? ' disabled' : ''}>${t(queued ? 'pr.waitQueued' : sure ? 'bundle.mergeSure' : 'bundle.merge', { n })}</button></div>` : '';
     return `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('bundle.title')}</b><small>${esc(b.name)}</small></div><div class="group">${rows}${btn}</div></div>`;
   }).join('');
 }

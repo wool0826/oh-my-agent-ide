@@ -30,13 +30,15 @@ export function canMerge(c: PrChecks | null | undefined): boolean {
 }
 
 /** What an open PR waits for before it can be merged; each names when the Merge button opens. */
-export type MergeWait = 'worker' | 'ci' | 'ciFailed' | 'conflicts' | 'changes' | 'review';
+export type MergeWait = 'queued' | 'worker' | 'ci' | 'ciFailed' | 'conflicts' | 'changes' | 'review';
 
 /**
  * The first thing an open PR waits for before it can be merged, or null when it can be merged now.
  * `busy`: a Worker is still at work on the PR, so its head is about to change (as in readyToMerge).
+ * `queued`: it is in the merge queue already (shared/mergeQueue.ts), which merges it when its turn comes.
  */
-export function mergeWait(c: PrChecks, busy = false): MergeWait | null {
+export function mergeWait(c: PrChecks, busy = false, queued = false): MergeWait | null {
+  if (queued) return 'queued';
   if (busy) return 'worker';
   if (c.ci === 'pending') return 'ci';
   if (c.ci === 'failing') return 'ciFailed';

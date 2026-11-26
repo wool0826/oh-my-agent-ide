@@ -101,7 +101,7 @@ The original 45 rows with their tag, and where each one is run: a pass order abo
 | 2.2 | Make a PR conflict with its base (merge another change to the same lines). | The Worker is told, merges the base in, resolves it and pushes. No rebase, no force-push. | real | C4 |
 | 2.3 | Make CI fail on a PR. | The Worker gets the end of the failed log and pushes a fix, up to three times. | real | C2 |
 | 2.4 | Comment on a PR line in GitHub. | The Worker applies the comment and reports. | real | C3 |
-| 2.5 | Have two PRs ready at once. | "Merge 2" on the sidebar's heading merges both, one after the other. | e2e | `prs`: ""Merge N" merges every ready PR from the sidebar" |
+| 2.5 | Have two PRs ready at once. | "Merge 2" on the sidebar's heading puts both in the merge queue. The second takes the new base into its branch, waits for its checks and is merged; the queue shows at the top of the Worker list meanwhile. | e2e | `prs`: ""Merge N" merges every ready PR from the sidebar"; `mergeQueue`: "two PRs merge in order, the second on the base the first one left" |
 | 2.6 | Ask for a change that spans two repositories. | The Dispatcher makes one task per repository with the same bundle. The inbox shows them in order, and "Merge 2 in order" merges them in that order. | real | C5 (merge order: "a bundle across repositories is merged in the order its tasks were made") |
 | 2.7 | On the company GitHub host (Settings → General). | 1.1 and 2.1 work there too. | real | C6 |
 

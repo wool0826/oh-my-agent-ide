@@ -12,7 +12,7 @@ import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
 import { RING, ringArc, untilReset } from '../../shared/usageRing';
 import { USAGE_INTERVALS, limitWindow, usageFoot, usedUp, type UsageFoot } from '../../shared/usage';
-import { readyToMerge } from '../../shared/prMerge';
+import { queuedPrs, readyToQueue } from '../../shared/mergeQueue';
 import { groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { History, type WorkerFilter } from '../../shared/history';
 import { act } from '../app';
@@ -122,10 +122,15 @@ export function renderSidebar() {
   const inLine = qAll.filter((r) => r.pos !== null).sort((a, b) => a.pos! - b.pos!).map((r) => r.html).join('');
   const held = qAll.filter((r) => r.pos === null).map((r) => r.html).join('');
   const qRows = `${inLine ? `<div class="q-line">${inLine}</div>` : ''}${held && inLine ? `<div class="q-held">${t('side.queueHeld')}</div>` : ''}${held}`;
-  // Two or more PRs ready at once: one button merges them in turn, asked once.
-  const ready = readyToMerge(s.tasks);
-  const allBusy = ui.merging.has('*'), allSure = ui.mergeAsk === '*';
-  const prTitle = `${t('side.prs')}${ready.length > 1 || allBusy ? `<button class="h-act go${allSure ? ' sure' : ''}" data-action="pr-merge-all"${allBusy ? ' disabled' : ''}>${t(allBusy ? 'pr.merging' : allSure ? 'pr.mergeAllSure' : 'pr.mergeAll', { n: ready.length })}</button>` : ''}`;
+  // Two or more PRs ready at once: one button puts them in the merge queue, asked once. With nothing to add and
+  // the queue at work, the button opens the Worker list, where the queue is shown.
+  const ready = readyToQueue(s.tasks, s.mergeQueue);
+  const inQueue = queuedPrs(s.mergeQueue).size;
+  const allSure = ui.mergeAsk === '*';
+  const prAct = ready.length > 1
+    ? `<button class="h-act go${allSure ? ' sure' : ''}" data-action="pr-merge-all">${t(allSure ? 'pr.mergeAllSure' : 'pr.mergeAll', { n: ready.length })}</button>`
+    : inQueue ? `<button class="h-act" data-action="worker-filter" data-v="">${t('pr.queueOpen', { n: inQueue })}</button>` : '';
+  const prTitle = `${t('side.prs')}${prAct}`;
   // How many slots are taken, once in the heading: a dot per slot and the count.
   const used = Math.min(slotsUsed(s.tasks), s.settings.maxWorkers);
   const slotsText = esc(t('side.slots', { n: used, max: s.settings.maxWorkers }));

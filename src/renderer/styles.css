@@ -747,6 +747,10 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .li .m span { font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .li .r { display: flex; align-items: center; gap: var(--space-8); font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lst-h { font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); padding: var(--space-12) var(--space-10) var(--space-4); }
+/* The merge queue above the Worker list: the sidebar's queue rows (.q-row), set off from the Workers by a hairline. */
+.mq { flex: none; margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: 1px solid var(--border-subtle); }
+.mq .lst-h { padding-top: var(--space-4); }
+.mq-row .btn-icon + .btn-icon { margin-left: var(--space-2); }
 /* The repository list as columns (B2): name, default branch, path, then the pills; the narrow list drops path, then branch. */
 #repo-main .lst { container-type: inline-size; }
 .li.repo, .li-cols.repo { grid-template-columns: 22px minmax(0, 1.3fr) minmax(0, .6fr) minmax(0, 1fr) auto; }

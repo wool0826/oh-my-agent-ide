@@ -23,7 +23,7 @@ import { side } from './side';
 import { automations } from './automations';
 import { PICK_MESSAGE, canPick } from '../shared/compare';
 import type { AutoTrigger } from '../shared/types';
-import { startPrMonitor, checkPrs, checkPrsNow, checkPrsSoon, mergePr, prWatchChanged, resumeCiQuestion } from './prmonitor';
+import { startPrMonitor, checkPrs, checkPrsNow, checkPrsSoon, prWatchChanged, queueMerge, resumeCiQuestion, runMergeQueue, unqueueMerge } from './prmonitor';
 import { notifyDecision, setWindow, soundData, SOUND_EXTS } from './notify';
 import { notifyActions } from '../shared/notifyActions';
 import { attachmentBlock, registerAttachments, savePastedImage } from './attachments';
@@ -122,6 +122,7 @@ function snapshot(): AppState {
     repos: d.repos,
     workers: d.workers,
     tasks: d.tasks,
+    mergeQueue: d.mergeQueue ?? [],
     decisions: d.decisions,
     autoAnswers: d.autoAnswers,
     memorySuggestions: loadSettings().memorySuggest ? d.memorySuggestions.filter((x) => x.status === 'pending') : [],
@@ -327,7 +328,8 @@ function registerIpc() {
   handle('worker:diff', (id: string) => workers.diff(id));
   handle('worker:checkpoints', (id: string) => workers.checkpoints(id));
   handle('worker:restore', (id: string, ref: string) => workers.restore(id, ref));
-  handle('pr:merge', (taskId: string) => mergePr(taskId));
+  handle('mq:add', (taskIds: string[]) => queueMerge(Array.isArray(taskIds) ? taskIds.map(String) : []));
+  handle('mq:remove', (taskId: string) => unqueueMerge(String(taskId)));
   handle('pr:refresh', () => checkPrsNow());
   handle('repo:issues', (name: string) => listIssues(name));
   handle('task:revoke', (taskId: string, key: string) => workers.revokeGrant(taskId, key));
@@ -543,6 +545,7 @@ async function boot() {
     handle('e2e:clock', (ms: number) => { const now = Date.now() + Number(ms); workers.sweepWaiting(now); automations.tick(new Date(now)); });
     // What a test run would have opened on the computer (open:path, open:external keep it instead).
     handle('e2e:opened', () => e2eOpened);
+    handle('mq:run', () => runMergeQueue());
   }
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);
