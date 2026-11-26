@@ -3,6 +3,8 @@
 // In the stand-in a merge leaves the repository's other open PRs behind their base, and `update-branch` gives a PR a
 // new head with the fields of its `afterUpdate` (see gh-stub.mjs).
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { flow } from './harness.mjs';
 
 const pr = (n) => `https://github.com/o/demo/pull/${n}`;
@@ -11,6 +13,7 @@ const one = (n) => `@fake task demo Change ${n}\n@@fake write file${n}.txt ${n}\
 const check = (conclusion) => [conclusion ? { name: 'test', status: 'COMPLETED', conclusion } : { name: 'test', status: 'IN_PROGRESS' }];
 const open = (fields = {}) => ({ state: 'OPEN', mergeable: 'MERGEABLE', reviewDecision: 'APPROVED', checks: check('SUCCESS'), ...fields });
 const task = (state, title) => state.tasks.find((x) => x.title === title);
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** One round of the queue's runner now, not at its next tick. */
 const RUN = "await window.ide.call('mq:run');";
@@ -111,20 +114,22 @@ flow('a PR taken out of the queue in the Workers view is not merged', {
   assert.deepEqual(asked(app), ['merge 1', 'update 2']);
 });
 
-// The app quit while the PR at the front waited for the checks of its updated head: the saved queue goes on.
-const at = new Date().toISOString();
-const saved = {
-  tasks: [{
-    id: 'T-1', title: 'Change 1', prompt: 'Change 1', kind: 'code', repo: null, workerId: null, status: 'pr_open', branch: 'agent/t-1',
-    prUrl: pr(1), prState: 'OPEN', summary: null, files: [], createdAt: at, updatedAt: at, finishedAt: at, reviewSyncedAt: null, seenCommentIds: [],
-  }],
-  mergeQueue: [{ taskId: 'T-1', prUrl: pr(1), phase: 'checks', since: at, updatedFrom: 'a'.repeat(40), updates: 1, expectChecks: true }],
-};
-
 flow('a queue that was at work when the app quit goes on at the next start', {
-  files: { 'data/state.json': JSON.stringify(saved) }, gh: { prs: { [pr(1)]: open({ headOid: 'c'.repeat(40) }) } },
+  repos: ['demo'], gh: { prs: { [pr(1)]: open(), [pr(2)]: open({ afterUpdate: { checks: check() } }) } },
 }, async (app) => {
-  await app.until("return (await window.ide.call('state')).tasks.some((x) => x.id === 'T-1' && x.prState === 'MERGED');", 'the queued PR merged after the start');
-  assert.deepEqual(asked(app), ['merge 1']);
+  await queueAll(app, 2);
+  await app.until(`${RUN} const s = await window.ide.call('state'); return s.tasks.some((x) => x.prState === 'MERGED') && s.mergeQueue[0]?.phase === 'checks';`, 'the second PR waiting for its checks');
+  // What the app finds after a restart is what it saved: wait for the queue on disk.
+  const file = path.join(app.home, 'data', 'state.json');
+  const onDisk = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')).mergeQueue?.[0]?.phase; } catch { return null; } };
+  for (const end = Date.now() + 20_000; onDisk() !== 'checks';) {
+    if (Date.now() > end) throw new Error('The queue was never saved.');
+    await pause(100);
+  }
+  // Its checks pass while the app is closed; the new run reads the PR and merges it, with nothing asked twice.
+  await app.ghPr(pr(2), { checks: check('SUCCESS') });
+  await app.restart();
+  await app.until("return (await window.ide.call('state')).tasks.every((x) => x.prState === 'MERGED');", 'the second PR merged after the start');
+  assert.deepEqual(asked(app), ['merge 1', 'update 2', 'merge 2']);
   assert.deepEqual((await app.state()).mergeQueue, []);
 });
