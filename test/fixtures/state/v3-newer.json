@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "counters": { "worker": 5, "task": 9 },
   "repos": [],
   "workers": [],

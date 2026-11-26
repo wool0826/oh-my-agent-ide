@@ -1,0 +1,104 @@
+{
+  "version": 2,
+  "counters": {
+    "worker": 1,
+    "task": 5
+  },
+  "repos": [
+    {
+      "name": "app",
+      "url": "https://github.com/example/app",
+      "defaultBranch": "main"
+    }
+  ],
+  "workers": [
+    {
+      "id": "W-01",
+      "title": "Parser",
+      "model": "claude-opus-5-5",
+      "accountId": null,
+      "sessionId": "s1",
+      "cwd": "",
+      "repo": "app",
+      "status": "idle",
+      "statusText": "",
+      "contextTokens": 1200,
+      "taskIds": [
+        "T-0001"
+      ],
+      "createdAt": "2026-11-01T09:00:00.000Z",
+      "lastActiveAt": "2026-11-01T10:00:00.000Z",
+      "knowledge": ""
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T-0003",
+      "title": "Task 3",
+      "prompt": "Do thing 3",
+      "kind": "code",
+      "repo": "app",
+      "workerId": "W-01",
+      "status": "running",
+      "branch": "agent/t-0003",
+      "prUrl": null,
+      "prState": null,
+      "summary": null,
+      "files": [],
+      "createdAt": "2026-11-03T09:00:00.000Z",
+      "updatedAt": "2026-11-03T10:00:00.000Z",
+      "finishedAt": null,
+      "reviewSyncedAt": null,
+      "seenCommentIds": []
+    },
+    {
+      "id": "T-0005",
+      "title": "Task 5",
+      "prompt": "Do thing 5",
+      "kind": "code",
+      "repo": "app",
+      "workerId": null,
+      "status": "queued",
+      "branch": "agent/t-0005",
+      "prUrl": null,
+      "prState": null,
+      "summary": null,
+      "files": [],
+      "createdAt": "2026-11-05T09:00:00.000Z",
+      "updatedAt": "2026-11-05T10:00:00.000Z",
+      "finishedAt": null,
+      "reviewSyncedAt": null,
+      "seenCommentIds": []
+    }
+  ],
+  "decisions": [],
+  "autoAnswers": [],
+  "memorySuggestions": [],
+  "chat": [
+    {
+      "id": "c5",
+      "ts": "2026-11-01T09:05:00.000Z",
+      "kind": "error",
+      "text": "message 5",
+      "ref": "T-0002",
+      "cleared": true
+    },
+    {
+      "id": "c6",
+      "ts": "2026-11-01T09:06:00.000Z",
+      "kind": "user",
+      "text": "message 6"
+    }
+  ],
+  "dispatcher": {
+    "sessionId": null,
+    "date": null,
+    "contextTokens": 0,
+    "accountId": null
+  },
+  "pendingUpdates": [],
+  "sealed": {
+    "chat": 4,
+    "tasks": 3
+  }
+}

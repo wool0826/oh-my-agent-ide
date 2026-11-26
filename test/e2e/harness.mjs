@@ -123,9 +123,9 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
 
   const port = await freePort();
   // The same profile and port each time, so restart() brings back the app a user would find after quitting it.
-  const startApp = () => {
+  const startApp = (more = [`--remote-debugging-port=${port}`]) => {
     const log = fs.openSync(path.join(dir, 'app.log'), 'a');
-    return spawn(electron, ['.', `--remote-debugging-port=${port}`, '--hidden', ...args], {
+    return spawn(electron, ['.', ...more, '--hidden', ...args], {
       cwd: root, stdio: ['ignore', log, log],
       env: { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile, ELECTRON_ENABLE_LOGGING: '1', ...env },
     });
@@ -459,6 +459,23 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
         child.kill('SIGKILL');
         throw Object.assign(e, { dir, home });
       }
+    },
+    /**
+     * Runs the app once more with other arguments, for a start that does its work and quits by itself
+     * (`--state-v1`), and gives its exit code. The app is ended first unless `beside` asks for it to stay, as when
+     * someone starts it a second time; restart() opens it again afterwards.
+     */
+    async once(more, { beside = false } = {}) {
+      if (!beside) {
+        try { quick?.close(); } catch { /* closed */ }
+        quick = null;
+        await endApp();
+      }
+      const c = startApp(more);
+      return new Promise((done, fail) => {
+        const hung = setTimeout(() => { c.kill('SIGKILL'); fail(Object.assign(new Error(`The app started with ${more.join(' ')} did not quit.`), { dir, home })); }, 30_000);
+        c.once('exit', (code) => { clearTimeout(hung); done(code); });
+      });
     },
     async stop() {
       try { quick?.close(); } catch { /* closed */ }
