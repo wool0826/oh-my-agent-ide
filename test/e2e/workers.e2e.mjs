@@ -35,20 +35,21 @@ flow('a Worker is compacted before its next task, not when its task finishes', {
 flow('a URL in a result is a short link on the card and a link in its words', {}, async (app) => {
   await app.say('@fake task - Publish notes\n@@fake result Published [Release notes](https://claude.ai/artifact/abc123), see https://claude.ai/artifact/abc123 today.');
   await app.until("!!document.querySelector('#chat-thread .attach .links a[data-href=\"https://claude.ai/artifact/abc123\"]')", 'the artifact link on the result card');
-  const card = await app.evaluate("[...document.querySelectorAll('#chat-thread .attach .links a')].map((a) => a.innerText).join('|')");
+  // The links, then the icon-only conversation and reply buttons, named by their labels.
+  const card = await app.evaluate("[...document.querySelectorAll('#chat-thread .attach .links :is(a, button)')].map((a) => a.innerText || a.getAttribute('aria-label')).join('|')");
   assert.match(card, /^Release notes ↗\|Open W-\d+ conversation\|Reply$/);
   // In the words, the Markdown link reads its title and the bare URL is a link too.
   assert.equal(await app.evaluate("document.querySelector('#chat-thread .attach .sm').innerText"), 'Published Release notes, see https://claude.ai/artifact/abc123 today.');
   assert.equal(await app.evaluate("document.querySelectorAll('#chat-thread .attach .sm a[data-action=\"open-url\"]').length"), 2);
-  await app.until("!!document.querySelector('#chat-ins .res .lk a[data-href=\"https://claude.ai/artifact/abc123\"]')", 'the artifact link on the inbox row');
+  await app.until("!!document.querySelector('#chat-ins .res .racts a[data-href=\"https://claude.ai/artifact/abc123\"]')", 'the artifact link on the inbox row');
 });
 
 flow('an artifact a report names below its RESULT line reaches the card, the inbox and the Worker', {}, async (app) => {
   const art = 'https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7';
   await app.say(`@fake task - Audit the UI\n@@fake result Wrote the UI audit.\n@@fake link https://example.com/notes\n@@fake body 아티팩트: ${art}`);
   await app.until(`!!document.querySelector('#chat-thread .attach .links a[data-href="${art}"]')`, 'the artifact link on the result card');
-  assert.match(await app.evaluate("[...document.querySelectorAll('#chat-thread .attach .links a')].map((a) => a.innerText).join('|')"), /^example\.com ↗\|Artifact ↗\|Open W-\d+ conversation\|Reply$/);
-  await app.until(`!!document.querySelector('#chat-ins .res .lk a[data-href="${art}"]')`, 'the artifact link on the inbox row');
+  assert.match(await app.evaluate("[...document.querySelectorAll('#chat-thread .attach .links :is(a, button)')].map((a) => a.innerText || a.getAttribute('aria-label')).join('|')"), /^example\.com ↗\|Artifact ↗\|Open W-\d+ conversation\|Reply$/);
+  await app.until(`!!document.querySelector('#chat-ins .res .racts a[data-href="${art}"]')`, 'the artifact link on the inbox row');
   const t = task(await app.state(), 'Audit the UI');
   assert.equal(t.summary, 'Wrote the UI audit.');
   assert.deepEqual(t.links, ['https://example.com/notes', art]);

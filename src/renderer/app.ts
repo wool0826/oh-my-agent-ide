@@ -19,7 +19,7 @@ import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
 import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
-import { closeShot, markBrokenShot, openShot, shotOpen, showShot, stepShot } from './ui/shotview';
+import { closeShot, markBrokenShot, openShot, pickAxis, shotOpen, showShot, stepShot } from './ui/shotview';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
@@ -650,6 +650,7 @@ export async function act(el: HTMLElement, e: Event) {
     case 'keys-close': closeShortcuts(); break;
     case 'shot-open': openShot(el); break;
     case 'shot-pick': showShot(Number(el.dataset.i)); break;
+    case 'shot-axis': pickAxis(el); break;
     case 'shot-close': closeShot(); break;
     case 'confirm-ok': await confirmOk(); break;
     case 'worker-unarchive': await call('worker:unarchive', id); break;
