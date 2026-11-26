@@ -1,7 +1,7 @@
 // A task's planned steps (shared/steps.ts): declared and revised by its Worker, marked done, drawn in the sidebar.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { markDone, mergeProgress, reopenNote, reopenSteps, doneMask, setSteps, stepper, stepsLine, stepView, MAX_STEPS } from '../src/shared/steps';
+import { markDone, mergeProgress, progressNote, reopenNote, reopenSteps, reworded, doneMask, setSteps, stepper, stepsLine, stepView, MAX_STEPS } from '../src/shared/steps';
 import type { Task } from '../src/shared/types';
 
 const T = (over: Partial<Task> = {}) => ({ status: 'running', steps: null, ...over }) as Task;
@@ -28,6 +28,59 @@ test('setSteps: a revised plan keeps the steps already done that it still names'
   // A repeated title takes the done step once.
   setSteps(x, ['Plan', 'Plan']);
   assert.deepEqual(x.steps!.map((s) => s.doneAt), [AT, null]);
+});
+
+test('setSteps: a reworded step at the same position stays done (T-0131 cause D)', () => {
+  const x = T();
+  setSteps(x, ['Read code', 'Write rule', 'Run checks', 'PR']);
+  for (const n of [1, 2, 3]) markDone(x, n, AT);
+  assert.equal(setSteps(x, ['Read code', 'Write the rule and its tests', 'Run checks (unit, e2e)', 'Self-review', 'PR']), null);
+  assert.deepEqual(x.steps!.map((s) => !!s.doneAt), [true, true, true, false, false]);
+  // A different step at that position, or a reworded one that moved, starts not done.
+  setSteps(x, ['Read code', 'Open PR', 'Self-review', 'Write the rules']);
+  assert.deepEqual(x.steps!.map((s) => !!s.doneAt), [true, false, false, false]);
+});
+
+test('reworded: the shorter title\'s words are all in the longer one, word stems included', () => {
+  assert.equal(reworded('Run checks', 'Run checks (unit, e2e)'), true);
+  assert.equal(reworded('Write the rules and tests', 'Write rule'), true);
+  assert.equal(reworded('테스트 실행', '단위 테스트 실행'), true);
+  assert.equal(reworded('Run checks', 'Open PR'), false);
+  assert.equal(reworded('PR', 'Prepare docs'), false);
+  assert.equal(reworded('—', 'Run'), false);
+});
+
+test('setSteps: a plan that keeps none of the done steps of an unfinished one is refused (T-0131 cause C)', () => {
+  // T-0082: 4/5 done, stopped, then reopened by a message about other work.
+  const x = T();
+  setSteps(x, ['Read audit', 'Narrow window', 'Keyboard', 'Tests + build', 'Self-review, PR, merge']);
+  for (const n of [1, 2, 3, 4]) markDone(x, n, AT);
+  assert.match(setSteps(x, ['Inspect thread and branch features', 'Brief designer', 'Mockup artifact', 'Report']) ?? '', /^Not replaced: .*4\/5 steps done .*"Read audit".*Revise it instead/);
+  assert.deepEqual(stepView(x), { done: 4, total: 5, at: 4, current: 'Self-review, PR, merge', allDone: false });
+  // Revised with the done steps kept, the new work goes on from there.
+  assert.equal(setSteps(x, ['Read audit', 'Narrow window', 'Keyboard', 'Tests + build', 'Mockup artifact', 'Report']), null);
+  assert.equal(stepView(x)!.done, 4);
+  // One done step kept is a revision: the plan is the Worker's to reshape.
+  assert.equal(setSteps(x, ['Read audit', 'Report']), null);
+  assert.equal(stepView(x)!.done, 1);
+});
+
+test('setSteps: a plan with no step done, or all done, may be replaced', () => {
+  const x = T();
+  setSteps(x, ['a', 'b']);
+  assert.equal(setSteps(x, ['c', 'd']), null);
+  markDone(x, 1, AT); markDone(x, 2, AT);
+  assert.equal(setSteps(x, ['Fix review comments', 'Push']), null);
+  assert.equal(stepView(x)!.done, 0);
+});
+
+test('progressNote: the count first and each step by its number, so a step done out of order reads right (T-0131)', () => {
+  const x = T();
+  setSteps(x, ['a', 'b', 'c', 'd', 'e', 'f']);
+  for (const n of [1, 2, 4]) markDone(x, n, AT);
+  assert.equal(progressNote(x.steps!, 4), '3/6 done (just finished step 4 "d"); next step 3 "c".');
+  for (const n of [3, 5, 6]) markDone(x, n, AT);
+  assert.equal(progressNote(x.steps!, 6), '6/6 done (just finished step 6 "f"); all steps done.');
 });
 
 test('markDone: 1-based, idempotent, and out of range or without steps is an error', () => {
@@ -129,6 +182,7 @@ test('stepper: a long plan gets a three-line window that rolls up one line when 
   x.steps![3].doneAt = 'not a time';
   assert.deepEqual(view(prev).lines, ['d:done', 'e:cur', 'f:todo']);
   // A plan of one step shows one line; a new plan of another length plays nothing.
+  x.steps = null;
   setSteps(x, ['only']);
   assert.deepEqual(view('00000'), { rolled: false, lines: ['only:cur'] });
   assert.equal(stepper(x.steps!, null).size, 1);
@@ -150,8 +204,8 @@ test('stepper: steps done out of order stay in plan order, the count is of done 
   const w = stepper(x.steps!, prev, Date.parse(AT) + 500);
   assert.deepEqual([w.rolled, w.before, w.after, w.lines.length, w.lines[2].just], [false, 0, 0, 5, true]);
   // Six steps, just over the whole-plan size: a window, with a later step done out of order counted below.
+  x.steps = null;
   setSteps(x, ['a', 'b', 'c', 'd', 'e', 'f']);
-  for (const st of x.steps!) st.doneAt = null;
   markDone(x, 6, AT);
   const six = stepper(x.steps!, null);
   assert.deepEqual([six.size, six.before, six.after, six.afterDone], [3, 0, 3, 1]);

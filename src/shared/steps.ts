@@ -16,8 +16,23 @@ export interface StepView {
 }
 
 const key = (s: string) => s.trim().toLowerCase();
+const words = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 
-/** Declare or revise the plan. Steps already done keep their time when the new plan still names them. Returns an error text, or null. */
+/**
+ * A reworded step: every word of the shorter title is in the longer one, or starts or is started by one of its words
+ * ("Run checks" and "Run checks (unit, e2e)", "Write rule" and "Write the rules and tests").
+ */
+export function reworded(a: string, b: string) {
+  const [x, y] = [words(a), words(b)].sort((p, q) => p.length - q.length);
+  return x.length > 0 && x.every((w) => y.some((v) => v === w || (Math.min(v.length, w.length) >= 3 && (v.startsWith(w) || w.startsWith(v)))));
+}
+
+/**
+ * Declare or revise the plan. A step done before stays done when the new plan names it again (the same title anywhere)
+ * or rewords the step at its position (reworded). A plan that keeps none of the done steps of an unfinished one is
+ * refused, so a task reopened for other work does not lose how far it got (T-0131 cause C): the Worker revises it
+ * instead. A plan whose steps are all done may be replaced: that round is over. Returns an error text, or null.
+ */
 export function setSteps(task: Task, titles: unknown): string | null {
   const list = (Array.isArray(titles) ? titles : [])
     .map((x) => (typeof x === 'string' ? x.replace(/\s+/g, ' ').trim() : ''))
@@ -25,12 +40,22 @@ export function setSteps(task: Task, titles: unknown): string | null {
     .map((x) => (x.length > STEP_LEN ? `${x.slice(0, STEP_LEN - 1)}…` : x));
   if (!list.length) return 'Give at least one step.';
   if (list.length > MAX_STEPS) return `Give at most ${MAX_STEPS} steps; merge the small ones.`;
+  const old = task.steps ?? [];
   // Each step done before counts once, so a title the new plan repeats is not done twice.
-  const doneBefore = (task.steps ?? []).filter((s) => s.doneAt);
-  task.steps = list.map((title) => {
-    const i = doneBefore.findIndex((s) => key(s.title) === key(title));
-    return { title, doneAt: i < 0 ? null : doneBefore.splice(i, 1)[0].doneAt };
+  const taken = new Set<number>();
+  const take = (i: number) => { taken.add(i); return old[i].doneAt; };
+  const doneAt = list.map((title) => {
+    const i = old.findIndex((s, j) => s.doneAt && !taken.has(j) && key(s.title) === key(title));
+    return i < 0 ? null : take(i);
   });
+  list.forEach((title, i) => {
+    if (!doneAt[i] && old[i]?.doneAt && !taken.has(i) && reworded(old[i].title, title)) doneAt[i] = take(i);
+  });
+  const done = old.filter((s) => s.doneAt);
+  if (done.length && done.length < old.length && !taken.size) {
+    return `Not replaced: the current plan has ${done.length}/${old.length} steps done (${done.map((s) => `"${s.title}"`).join(', ')}) and the new one keeps none of them. Revise it instead: keep the done steps under their titles and change or add the others.`;
+  }
+  task.steps = list.map((title, i) => ({ title, doneAt: doneAt[i] }));
   return null;
 }
 
@@ -72,6 +97,15 @@ export function reopenNote(was: StepView | null, now: StepView | null): string {
 export function stepsLine(steps: TaskStep[]) {
   const v = stepView({ steps })!;
   return v.allDone ? `All ${v.total} steps done.` : `${v.done}/${v.total} done; now step ${v.at + 1}: ${v.current}.`;
+}
+
+/**
+ * The Dispatcher's progress line after step n (1-based) is marked done. The count comes first and each step is named
+ * by its number, so a step done out of order reads right: "3/6 done (just finished step 4 "d"); next step 3 "c".".
+ */
+export function progressNote(steps: TaskStep[], n: number) {
+  const v = stepView({ steps })!;
+  return `${v.done}/${v.total} done (just finished step ${n} "${steps[n - 1].title}"); ${v.allDone ? 'all steps done' : `next step ${v.at + 1} "${v.current}"`}.`;
 }
 
 /** Pending updates for the Dispatcher with this progress line in place of an older one for the same task. */

@@ -13,7 +13,7 @@ import { TellKind } from './workerText';
 export type StepsOp = { kind: 'set'; steps: unknown } | { kind: 'done'; step: unknown };
 export type StepsFn = (op: StepsOp) => string;
 
-const SET_STEPS = 'Declare or revise the planned steps of your current task (3–7 short labels, in order, at most 12), so the user sees how far you are. Steps already marked done stay done when the revised plan still names them.';
+const SET_STEPS = 'Declare or revise the planned steps of your current task (3–7 short labels, in order, at most 12), so the user sees how far you are. A step already marked done stays done when the revised plan names it again, or rewords the step at the same position and keeps its words (for example "Run checks" -> "Run checks (unit, e2e)"). Revise a plan, don\'t replace it: while some steps are done and others are not, a plan that keeps none of the done ones is refused.';
 const STEP_DONE = 'Mark a step of your current task done (its 1-based number from set_steps) as soon as you finish it. The Dispatcher is told without being interrupted.';
 
 /** Claude Code memory of the repository's main checkout; Workers without a repository share the IDE home's. */

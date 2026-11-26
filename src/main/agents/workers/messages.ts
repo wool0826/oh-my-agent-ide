@@ -5,14 +5,14 @@ import { log } from '../../log';
 import { store } from '../../store';
 import { nowIso, oneLine } from '../../util';
 import { selfReviewLine } from '../selfReview';
-import { STEPS_TASK_LINE } from '../stepsReminder';
+import { STEPS_TASK_LINE, followUpStepsLine } from '../stepsReminder';
 import { needsPlan, taskStarted } from '../workerPrompt';
 import { LIMIT_RESET_MSG, QUESTION_TAG, SLOT_FREE_MSG, planSummaryRule } from '../workerText';
 import type { FeedbackKind, WorkerManager, WorkerSession } from '../workers';
 import { lastTask } from '../../../shared/currentTask';
 import { isLocalRepo, localTaskLines } from '../../../shared/localRepo';
 import { waitsForSlot } from '../../../shared/slots';
-import { reopenNote, stepView } from '../../../shared/steps';
+import { reopenNote, reopenSteps, stepView } from '../../../shared/steps';
 import { canReopen, setStatus } from '../../../shared/taskStatus';
 import type { Task, Worker } from '../../../shared/types';
 import { restoreWorker } from './archive';
@@ -93,7 +93,10 @@ export async function send(m: WorkerManager, workerId: string, from: 'user' | 'd
       w.statusText = '';
     }
   }
-  const how = post(m, w, `${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}`);
+  // A Dispatcher follow-up that reopens the last task asks for progress steps as a task message does. A user's
+  // message goes as written (decision 230).
+  const reopens = from === 'dispatcher' && !text.startsWith(QUESTION_TAG) ? reopenable(m, w) : null;
+  const how = post(m, w, `${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}${reopens ? `\n\n${followUpStepsLine(reopens)}` : ''}`);
   // With no task to report on, what the turn says goes back to the Dispatcher as an update.
   if (from === 'dispatcher' && how === 'sent' && !m.currentTask(w)) m.replyOwed.add(w.id);
   return how;
@@ -151,11 +154,14 @@ export function sendReview(m: WorkerManager, task: Task, body: string, kind: Fee
   }
   (kind === 'ci' ? m.ciFixing : m.reviewing).add(task.id);
   store.log(w.id, 'event', t(kind === 'ci' ? 'log.ciFix' : kind === 'conflict' ? 'log.conflictFix' : 'log.review'));
+  const steps = followUpStepsLine(task);
+  // A new round of work, also when it waits for a slot or a usage limit first (those do not go through setStatus).
+  reopenSteps(task, 'running');
   const msg = kind === 'conflict'
-    ? `[Merge conflict] ${task.prUrl} conflicts with its base branch and cannot be merged. Resolve it on the same branch (${task.branch}) and report what you resolved.\n\n${body}`
+    ? `[Merge conflict] ${task.prUrl} conflicts with its base branch and cannot be merged. Resolve it on the same branch (${task.branch}) and report what you resolved.\n${steps}\n\n${body}`
     : kind === 'ci'
-    ? `[CI failure] Checks failed on ${task.prUrl}. Fix them on the same branch (${task.branch}), push, and report what you changed. If a failure does not come from this branch (a flaky test, CI setup, a missing secret), do not change unrelated code; say so in the report.\n\n${body}`
-    : `[Review comments] New comments on ${task.prUrl}. Address them on the same branch (${task.branch}), push, and report what you changed. If you leave a comment unaddressed, say why in the report.\n\n${body}`;
+    ? `[CI failure] Checks failed on ${task.prUrl}. Fix them on the same branch (${task.branch}), push, and report what you changed. If a failure does not come from this branch (a flaky test, CI setup, a missing secret), do not change unrelated code; say so in the report.\n${steps}\n\n${body}`
+    : `[Review comments] New comments on ${task.prUrl}. Address them on the same branch (${task.branch}), push, and report what you changed. If you leave a comment unaddressed, say why in the report.\n${steps}\n\n${body}`;
   if (!hasSlot(m, w)) return waitForSlot(m, w, task, msg);
   task.status = 'running';
   task.updatedAt = nowIso();

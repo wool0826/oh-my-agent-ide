@@ -5,7 +5,7 @@ import { CodexSession } from './codexSession';
 import { codexClient } from '../codex/client';
 import { providerOf } from '../../shared/models';
 import { alwaysAskHook } from './permissions';
-import { stepsReminder, stepsReminderHook } from './stepsReminder';
+import { REMIND_AFTER, stepsReminder, stepsReminderHook } from './stepsReminder';
 import { REVIEWER, reviewerAgent } from './selfReview';
 import { accounts } from '../accounts';
 import { store } from '../store';
@@ -151,6 +151,18 @@ export class WorkerManager {
     if (!acc) return null;
     const memDir = workerMemoryDir(w);
     const events = this.sessionEvents(w);
+    // Codex has no tool hooks: the steps reminder is added to the turn in progress instead (Claude: stepsReminderHook).
+    const codexEvents: SessionEvents = {
+      ...events,
+      onTool: (name, summary) => {
+        events.onTool?.(name, summary);
+        const task = this.currentTask(w);
+        const text = stepsReminder(this.stepless, task, name);
+        const cs = this.sessions.get(w.id);
+        // Not delivered: the next tool call tries again.
+        if (text && task && cs instanceof CodexSession) void cs.steer(text).then((ok) => { if (!ok) this.stepless.set(task.id, REMIND_AFTER - 1); });
+      },
+    };
     const s: WorkerSession = provider === 'chatgpt' ? new CodexSession({
       label: w.id,
       model: w.model,
@@ -165,7 +177,7 @@ export class WorkerManager {
       sandbox: 'workspace-write',
       approvalPolicy: 'on-request',
       approve: permissions.codexApproval(this, w),
-    }, events, codexClient()) : new AgentSession({
+    }, codexEvents, codexClient()) : new AgentSession({
       label: w.id,
       model: w.model,
       cwd: w.cwd,
