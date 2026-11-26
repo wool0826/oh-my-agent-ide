@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { areas, tr } from '../src/shared/i18n';
+import { areas, tr, type Key } from '../src/shared/i18n';
 
 test('a count picks the singular or the plural word in English, and Korean has one form', () => {
   assert.equal(tr('en', 'toast.cancelled', { n: 1 }), 'Cancelled 1 task.');
@@ -40,4 +40,10 @@ test('a key lives in one area, and each area has Korean for exactly its English 
     }
     assert.deepEqual(Object.keys(area.ko).sort(), Object.keys(area.en).sort(), name);
   }
+});
+
+test('a key is one of the names written in the dictionaries, not any string', () => {
+  // Fails to compile if an area's `en` gets a type that widens `Key` to `string`.
+  const narrow: string extends Key ? false : true = true;
+  assert.equal(narrow, true);
 });
