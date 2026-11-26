@@ -93,7 +93,8 @@ export async function send(m: WorkerManager, workerId: string, from: 'user' | 'd
       w.statusText = '';
     }
   }
-  // A Dispatcher follow-up that reopens the last task asks for progress steps as a task message does.
+  // A Dispatcher follow-up that reopens the last task asks for progress steps as a task message does. A user's
+  // message goes as written (decision 227).
   const reopens = from === 'dispatcher' && !text.startsWith(QUESTION_TAG) ? reopenable(m, w) : null;
   const how = post(m, w, `${from === 'user' ? '[User message]' : '[Dispatcher]'} ${text}${reopens ? `\n\n${followUpStepsLine(reopens)}` : ''}`);
   // With no task to report on, what the turn says goes back to the Dispatcher as an update.

@@ -5,7 +5,7 @@ import { CodexSession } from './codexSession';
 import { codexClient } from '../codex/client';
 import { providerOf } from '../../shared/models';
 import { alwaysAskHook } from './permissions';
-import { stepsReminder, stepsReminderHook } from './stepsReminder';
+import { REMIND_AFTER, stepsReminder, stepsReminderHook } from './stepsReminder';
 import { REVIEWER, reviewerAgent } from './selfReview';
 import { accounts } from '../accounts';
 import { store } from '../store';
@@ -156,9 +156,11 @@ export class WorkerManager {
       ...events,
       onTool: (name, summary) => {
         events.onTool?.(name, summary);
-        const text = stepsReminder(this.stepless, this.currentTask(w), name);
+        const task = this.currentTask(w);
+        const text = stepsReminder(this.stepless, task, name);
         const cs = this.sessions.get(w.id);
-        if (text && cs instanceof CodexSession) cs.steer(text);
+        // Not delivered: the next tool call tries again.
+        if (text && task && cs instanceof CodexSession) void cs.steer(text).then((ok) => { if (!ok) this.stepless.set(task.id, REMIND_AFTER - 1); });
       },
     };
     const s: WorkerSession = provider === 'chatgpt' ? new CodexSession({

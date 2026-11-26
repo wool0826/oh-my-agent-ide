@@ -60,6 +60,9 @@ test('setSteps: a plan that keeps none of the done steps of an unfinished one is
   // Revised with the done steps kept, the new work goes on from there.
   assert.equal(setSteps(x, ['Read audit', 'Narrow window', 'Keyboard', 'Tests + build', 'Mockup artifact', 'Report']), null);
   assert.equal(stepView(x)!.done, 4);
+  // One done step kept is a revision: the plan is the Worker's to reshape.
+  assert.equal(setSteps(x, ['Read audit', 'Report']), null);
+  assert.equal(stepView(x)!.done, 1);
 });
 
 test('setSteps: a plan with no step done, or all done, may be replaced', () => {

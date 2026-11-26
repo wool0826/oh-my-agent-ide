@@ -96,12 +96,16 @@ export class CodexSession {
 
   /**
    * Add a note to the turn in progress (turn/steer) without ending it, as a Claude hook adds context to a tool result.
-   * Nothing happens when no turn is running; a failed request is dropped.
+   * False when no turn is running or the request failed (the turn ended meanwhile).
    */
-  steer(text: string) {
-    if (this.closed || !this.sessionId || !this.turnId) return;
-    this.link.request('turn/steer', { threadId: this.sessionId, input: [{ type: 'text', text, text_elements: [] }], expectedTurnId: this.turnId }, 15_000)
-      .catch(() => { /* the turn ended meanwhile */ });
+  async steer(text: string): Promise<boolean> {
+    if (this.closed || !this.sessionId || !this.turnId) return false;
+    try {
+      await this.link.request('turn/steer', { threadId: this.sessionId, input: [{ type: 'text', text, text_elements: [] }], expectedTurnId: this.turnId }, 15_000);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Summarize the conversation so far. Codex also does this by itself as the context fills. */
