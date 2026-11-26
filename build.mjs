@@ -14,7 +14,7 @@ const configs = [
     platform: 'node',
     format: 'esm',
     target: 'node22',
-    external: ['electron', '@anthropic-ai/claude-agent-sdk', 'zod'],
+    external: ['electron', '@anthropic-ai/claude-agent-sdk', 'zod', 'electron-updater'],
     banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   },
   { ...common, entryPoints: ['src/preload/index.ts'], outfile: 'dist/preload.cjs', platform: 'node', format: 'cjs', external: ['electron'] },

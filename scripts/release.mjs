@@ -6,6 +6,10 @@ import { execFileSync } from 'node:child_process';
 
 const { version } = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const files = fs.readdirSync('release').filter((f) => (f.includes(`-${version}.`) || f.includes(`-${version}-`)) && /\.(exe|dmg)$/.test(f)).map((f) => `release/${f}`);
+// What the app's in-app update reads on Windows: latest.yml (version, sha512, size) and the blockmap.
+if (files.some((f) => f.endsWith('.exe'))) {
+  for (const f of ['latest.yml', ...fs.readdirSync('release').filter((n) => n.includes(`-${version}.exe.blockmap`))]) if (fs.existsSync(`release/${f}`)) files.push(`release/${f}`);
+}
 if (!files.length) {
   console.error(`No installer for ${version} in release/. Build it first: npm run dist:win (or dist:mac).`);
   process.exit(1);

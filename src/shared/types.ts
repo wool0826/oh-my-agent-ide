@@ -2,6 +2,7 @@
 
 import type { SessionSpend, Spend } from './spend';
 import type { UsageClock } from './usage';
+import type { UpdateView } from './update';
 
 export type Lang = 'en' | 'ko';
 
@@ -494,8 +495,8 @@ export interface AppState {
   preflightFailed?: number;
   /** Fake agent mode is on: every agent follows a script, and the window says so. */
   fake?: boolean;
-  /** A newer release than the one running, when the check found one. */
-  update?: { version: string; url: string } | null;
+  /** The newer version and how far it is (null with the update setting off). */
+  update?: UpdateView | null;
   setupNeeded: boolean;
   settings: SettingsView;
   accounts: AccountView[];
