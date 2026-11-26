@@ -580,9 +580,9 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .linkbtn:focus-visible { outline: var(--focus-outline); outline-offset: 1px; border-radius: var(--radius-xs); }
 /* A link that stands in a row or a meta line is one text line high. It keeps its look, and what takes the click
    is 24px high and at least as wide. Links inside the sentences of a message keep the line's height. */
-:is(.linkbtn, .links a, .plan-links button, .run-url, .snav .ver .upd, .li a[role="link"], .mini a[role="link"], .sh-cwd,
+:is(.linkbtn, .links a, .plan-links button, .run-url, .snav .ver .upd, .upd-get, .li a[role="link"], .mini a[role="link"], .sh-cwd,
   a[data-action="reveal"], a[data-action="open-settings"], a[data-action="open-chat"], a[data-action^="shell-"]) { position: relative; }
-:is(.linkbtn, .links a, .plan-links button, .run-url, .snav .ver .upd, .li a[role="link"], .mini a[role="link"], .sh-cwd,
+:is(.linkbtn, .links a, .plan-links button, .run-url, .snav .ver .upd, .upd-get, .li a[role="link"], .mini a[role="link"], .sh-cwd,
   a[data-action="reveal"], a[data-action="open-settings"], a[data-action="open-chat"], a[data-action^="shell-"])::after { content: ''; position: absolute; left: 50%; top: 50%; width: 100%; min-width: 24px; height: 24px; translate: -50% -50%; }
 
 /* The chat view's right sidebar has two tabs: the inbox, and the user's memos. */
@@ -1485,6 +1485,10 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 #pre-rows > * + * { border-top: .5px solid var(--border-subtle); }
 .pre-r { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-10); min-width: 0; }
 .pre-r .pill { font-style: normal; flex: none; }
+.upd-r { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-10); min-width: 0; }
+.upd-r .btn, .upd-r > .sval:first-child { flex: none; }
+.upd-get { color: var(--text-link); cursor: pointer; font-weight: 600; font-size: var(--fs-caption); white-space: nowrap; }
+.upd-get:hover { text-decoration: underline; }
 .pre-cmd { font-size: var(--fs-code); user-select: text; overflow-wrap: anywhere; }
 .pre-fix { font-size: var(--fs-caption); color: var(--text-secondary); text-align: right; }
 .skel.pre { flex: 1; }

@@ -8,6 +8,7 @@ import { THEMES, cleanTheme } from '../../shared/theme';
 import { typedTime } from '../../shared/notifyRules';
 import { focusSelector } from '../../shared/focusKey';
 import { midPath } from '../../shared/pathText';
+import { mayApply, type ApplyBlockers } from '../../shared/update';
 import { layerClose, layerFocus, layerOpen } from './layer';
 import { DECISION_SOUNDS, DONE_SOUNDS } from '../../shared/sounds';
 import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clampWaitSlot } from '../../shared/slots';
@@ -300,6 +301,47 @@ export function removeDialog() {
   </div>`;
 }
 
+/** "Get 0.7.0", opening the release page: where the app only links to a newer version, or could not download it. */
+function updateLink(cls: string): string {
+  const u = S?.update;
+  if (!u?.version || !u.url || (u.state !== 'link' && u.state !== 'failed')) return '';
+  return `<a class="${cls}" tabindex="0" role="link" data-action="open-url" data-href="${esc(u.url)}">${t('upd.get', { v: u.version })}</a>`;
+}
+
+/** What a restart into the update waits for, as "Workers running 2 · Tasks queued 1". */
+function waitingText(b: ApplyBlockers): string {
+  return [b.workers ? t('upd.waitWorkers', { n: b.workers }) : '', b.queued ? t('upd.waitQueued', { n: b.queued }) : '', b.dispatcher ? t('upd.waitDispatcher') : '']
+    .filter(Boolean).join(' · ');
+}
+
+/** The update's status row (none with the setting off). */
+function updateRows(): string {
+  const u = S?.update;
+  if (!u) return '';
+  const v = u.version ?? '';
+  let text = t('upd.idle');
+  let ctl = '';
+  if (u.state === 'checking') text = t('upd.checking');
+  else if (u.state === 'downloading') text = t('upd.downloading', { v, p: u.percent });
+  else if (u.state === 'link') { text = t('upd.available', { v }); ctl = updateLink('upd-get'); }
+  else if (u.state === 'failed' && v) { text = t('upd.failed', { v }); ctl = updateLink('upd-get'); }
+  else if (u.state === 'ready') {
+    text = t('upd.ready', { v });
+    const b = u.blockers ?? { workers: 0, queued: 0, dispatcher: false };
+    const wait = waitingText(b);
+    ctl = `${wait ? `<span class="sval muted" id="upd-wait">${esc(wait)}</span>` : ''}<button class="btn btn-lg btn-primary" id="upd-apply" data-action="update-apply"${mayApply(u.state, b) ? '' : ' disabled'}>${t('upd.apply')}</button>`;
+  }
+  return `<div class="srow"><span class="lbl">${t('upd.status')}</span><span class="upd-r"><span class="sval" id="upd-st" role="status">${esc(text)}</span>${ctl}</span></div>`;
+}
+
+/** Download progress and what a restart waits for change while Settings is open. */
+export function drawUpdate() {
+  const rows = document.getElementById('upd-rows');
+  if (rows) { const html = updateRows(); if (rows.innerHTML !== html) rows.innerHTML = html; }
+  const link = document.getElementById('ver-upd');
+  if (link) { const html = updateLink('upd'); if (link.innerHTML !== html) link.innerHTML = html; }
+}
+
 export function settingsHtml() {
   const s = S!;
   const st = s.settings;
@@ -330,8 +372,10 @@ export function settingsHtml() {
       ${row(t('set.openAtLogin'), 'set-login', `<input class="switch" id="set-login" type="checkbox" ${st.openAtLogin ? 'checked' : ''}>`)}
       ${row(t('set.shellProfile'), 'set-shprof', `<input class="switch" id="set-shprof" type="checkbox" ${st.shellProfile !== false ? 'checked' : ''}>`)}
       ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
-      ${row(t('set.diag'), 'set-diag', `<button class="btn btn-lg" id="set-diag" data-action="diag-export">${t('set.diagExport')}</button>`)}
-      ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}`)}${grp(
+      ${row(t('set.diag'), 'set-diag', `<button class="btn btn-lg" id="set-diag" data-action="diag-export">${t('set.diagExport')}</button>`)}`)}${grp(`
+      ${row(t('upd.version'), 'set-ver-v', `<span class="sval" id="set-ver-v" tabindex="0">${ui.version ? `v${esc(ui.version)}` : ''}</span>`)}
+      ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}
+      <div id="upd-rows">${updateRows()}</div>`, t('upd.group'))}${grp(
       `${row(t('set.jiraUrl'), 'set-jurl', `<input class="inp w" id="set-jurl" value="${esc(st.jiraUrl)}" placeholder="https://company.atlassian.net" spellcheck="false" autocomplete="off">`)}
       ${row(t('set.jiraEmail'), 'set-jmail', `<input class="inp w" id="set-jmail" value="${esc(st.jiraEmail)}" placeholder="${t('set.jiraEmailPh')}" spellcheck="false" autocomplete="off">`)}
       ${row(t('set.jiraToken'), 'set-jtok', `<input class="inp w" id="set-jtok" type="password" placeholder="${st.jiraTokenSet ? t('set.jiraTokenSet') : ''}" autocomplete="off" spellcheck="false">${st.jiraTokenSet ? `<button class="btn btn-lg" data-action="jira-token-clear">${t('set.jiraTokenClear')}</button>` : ''}`)}`, 'Jira')}${grp(
@@ -389,7 +433,7 @@ export function settingsHtml() {
         <label class="ssearch">${sym('s-search')}<input id="set-q" type="search" placeholder="${t('set.search')}" aria-label="${t('set.search')}" value="${esc(ui.setQ)}"></label>
         ${PANES.map((p) => `<button class="snav-i${ui.pane === p.id ? ' on' : ''}" data-action="pane" data-id="${p.id}"${ui.pane === p.id ? ' aria-current="page"' : ''}>${sym(p.glyph)}<span>${t(p.key)}</span>${p.id === 'accounts' && s.setupNeeded ? '<i class="dot"></i>' : ''}</button>`).join('')}
         <p class="snav-none" id="set-none" role="status" hidden>${t('search.none')}</p>
-        <span class="ver"><span id="ver-n">${ui.version ? `v${esc(ui.version)}` : ''}</span>${s.update ? `<a class="upd" tabindex="0" role="link" data-action="open-url" data-href="${esc(s.update.url)}">${t('upd.get', { v: s.update.version })}</a>` : ''}</span>
+        <span class="ver"><span id="ver-n">${ui.version ? `v${esc(ui.version)}` : ''}</span><span id="ver-upd">${updateLink('upd')}</span></span>
       </nav>
       <main class="spanes"><div class="sinner">${pane('accounts', accounts)}${pane('general', general)}${pane('display', display)}${pane('alerts', alerts)}${pane('memory', memory)}${pane('models', models)}</div></main>
     </div>
@@ -461,7 +505,7 @@ export function openSettings(pane?: Pane) {
   const over = root.querySelector<HTMLElement>('.dlg[aria-modal="true"]');
   if (over) layerFocus(over, over.querySelector<HTMLElement>('.dlg-btns .btn'));
   else layerFocus(root, root.querySelector<HTMLElement>('.snav-i.on') ?? root.querySelector<HTMLElement>('.snav-i'));
-  if (!ui.version) void call<string>('app:version').then((v) => { if (v) { ui.version = v; const el = root.querySelector('#ver-n'); if (el) el.textContent = `v${v}`; } });
+  if (!ui.version) void call<string>('app:version').then((v) => { if (v) { ui.version = v; for (const el of root.querySelectorAll('#ver-n, #set-ver-v')) el.textContent = `v${v}`; } });
   void installedFonts().then(() => { const f = document.getElementById('set-font') as HTMLInputElement | null; if (f) markFont(f); });
 }
 

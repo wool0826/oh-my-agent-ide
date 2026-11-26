@@ -29,7 +29,7 @@ import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closePalette, Cmd, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, preflight, renderRepos, setJira } from './ui/repos';
-import { applyFont, applyTheme, closeSettings, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
+import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, segc, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
@@ -713,6 +713,7 @@ export async function act(el: HTMLElement, e: Event) {
     }
     case 'restart-later': ui.restartAsk = false; openSettings(); break;
     case 'restart-now': await call('app:relaunch'); break;
+    case 'update-apply': await call('update:apply'); break;
     case 'models-refresh': void loadModels('now'); break;
     case 'font-reset': {
       $<HTMLInputElement>('#set-font').value = '';
@@ -1265,6 +1266,7 @@ export function init() {
     // At launch: what happened since the app was last looked at, a quit included.
     if (first) checkAway();
     renderAll();
+    if (ui.settingsShown) drawUpdate();
     // The settings sheet only depends on accounts; re-render it only when they change.
     const accKey = JSON.stringify(s.accounts) + s.setupNeeded;
     const accChanged = accKey !== ui.accKey;

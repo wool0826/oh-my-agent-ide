@@ -50,6 +50,26 @@ A local build is signed only if the signing variables below are set in your shel
 
 Intel Macs are not covered: the agent SDK installs its binary for the build machine's architecture only, so an x64 dmg needs its own Intel runner.
 
+## In-app updates
+
+The app finds a release once it is **published** (drafts and pre-releases are ignored), 20 seconds after launch and every six hours (decision 212).
+
+- **Windows:** the release must carry `latest.yml` and `OhMyAgentIDE-Setup-<version>.exe.blockmap` beside the installer; the workflow and `scripts/release.mjs` attach both. The app downloads the installer in the background, checks it against the sha512 and size in `latest.yml`, and installs it silently when the app quits, or at once from Settings → General → Updates when no Worker, queued task or Dispatcher turn is under way. An unsigned installer updates the same way: with no `publisherName` in the app's `app-update.yml` there is no publisher check. Once builds are signed, every later release must be signed by the same publisher, or installed apps refuse it. A per-machine ("all users") install asks for administrator rights once per update.
+- **macOS:** Squirrel.Mac installs only into a signed app, so until the Developer ID secrets exist the app links to the release page instead. Turning it on needs the signing secrets, a `zip` target beside the dmg (it writes `latest-mac.yml`) and those files attached to the release.
+- **A release without `latest.yml`** (0.6.2 and older): Windows falls back to the link.
+
+To try an update without publishing anything, build test installers under another identity, so neither the installed app nor its profile is touched:
+
+```sh
+npx electron-builder --win --publish never -c.appId=dev.ohmyagent.ide.updtest -c.productName="OMA Update Test"   -c.extraMetadata.name=oma-update-test -c.extraMetadata.productName="OMA Update Test"   -c.extraMetadata.version=0.9.0 -c.directories.output=release-test/v0.9.0
+```
+
+- Build a newer one the same way, install the older one silently (`/S`, from PowerShell: Git Bash turns `/S` into a path), serve the newer folder over http on 127.0.0.1, and start the installed test app with `OMA_UPDATE_FEED=http://127.0.0.1:<port>/` and `OMA_DATA_DIR=<an empty folder>`.
+- `extraMetadata.productName` matters: without it the test app's own profile is the real app's. The installer's restart after "Restart to update" starts the app without your environment, so put a `settings.json` whose `home` is a test folder into `%APPDATA%\OMA Update Test` first.
+- Afterwards run `Uninstall OMA Update Test.exe /S`, and delete `%APPDATA%\OMA Update Test` and `%LOCALAPPDATA%\oma-update-test-updater`.
+
+`OMA_UPDATE_FEED` is honoured only for an address on this computer.
+
 ## Signing secrets
 
 Add each one under the repository's Settings → Secrets and variables → Actions → New repository secret, or with `gh`:

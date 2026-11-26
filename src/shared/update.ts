@@ -36,3 +36,66 @@ export function updateFrom(release: unknown, current: string): UpdateInfo | null
   if (!/^https:\/\/github\.com\//.test(r.html_url) || !isNewer(r.tag_name, current)) return null;
   return { version: r.tag_name.trim().replace(/^v/, ''), url: r.html_url };
 }
+
+// In-app updates (decision 212): Windows downloads a release with electron-updater and installs it when the app quits,
+// or at once when the user asks and nothing is working. macOS keeps the link until the app is signed.
+
+/** Where the in-app update is. `link`: this build only links to the release page (macOS, an unpackaged build). */
+export type UpdateState = 'idle' | 'checking' | 'downloading' | 'ready' | 'failed' | 'link';
+
+/** What keeps a restart from happening now. */
+export interface ApplyBlockers {
+  /** Workers whose turn is not over (starting, running, or waiting for an answer). */
+  workers: number;
+  /** Tasks queued to start, including those waiting for a usage limit. */
+  queued: number;
+  /** The Dispatcher is in the middle of a turn. */
+  dispatcher: boolean;
+}
+
+/** The update as the window shows it. */
+export interface UpdateView {
+  state: UpdateState;
+  /** The newer version, when one is known. */
+  version: string | null;
+  /** Its release page. */
+  url: string | null;
+  /** Download progress, 0–100. */
+  percent: number;
+  /** Set while an update is ready: what a restart would wait for. */
+  blockers: ApplyBlockers | null;
+}
+
+/** The release page of a version. */
+export const releaseUrl = (version: string) => `https://github.com/${RELEASE_REPO}/releases/tag/v${version}`;
+
+const BUSY_WORKER = new Set(['starting', 'running', 'waiting']);
+
+export function applyBlockers(s: { workers: { status: string }[]; tasks: { status: string }[]; dispatcherBusy: boolean }): ApplyBlockers {
+  return {
+    workers: s.workers.filter((w) => BUSY_WORKER.has(w.status)).length,
+    queued: s.tasks.filter((t) => t.status === 'queued').length,
+    dispatcher: s.dispatcherBusy,
+  };
+}
+
+/** May the app restart into the downloaded update now? Only when one is ready and nothing is working or about to start. */
+export function mayApply(state: UpdateState, b: ApplyBlockers): boolean {
+  return state === 'ready' && b.workers === 0 && b.queued === 0 && !b.dispatcher;
+}
+
+/**
+ * A local update feed for testing a packaged build (OMA_UPDATE_FEED), as a URL ending in "/".
+ * Only this computer (127.0.0.1, ::1, localhost) is accepted: anything else is ignored.
+ */
+export function feedOverride(raw: string | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw.trim());
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)) return null;
+    return u.href.endsWith('/') ? u.href : `${u.href}/`;
+  } catch {
+    return null;
+  }
+}

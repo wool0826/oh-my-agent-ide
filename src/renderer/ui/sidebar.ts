@@ -491,7 +491,7 @@ export function applyPanels() {
   // A failed check comes before a newer release: the gear's dot is red for it.
   document.querySelector('.side-foot [data-action="open-settings"]')?.classList.toggle('has-issue', !!S?.preflightFailed);
   // The gear carries a dot while a newer release waits.
-  document.querySelector('.side-foot [data-action="open-settings"]')?.classList.toggle('has-update', !!S?.update);
+  document.querySelector('.side-foot [data-action="open-settings"]')?.classList.toggle('has-update', !!S?.update?.version);
   const find = $('#cmdk-btn');
   setTip(find, t('cmdk.tip'), isMac ? '⌘K' : 'Ctrl+K');
   find.setAttribute('aria-label', t('cmdk.tip'));

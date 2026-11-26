@@ -33,7 +33,7 @@ const FREEZE = `(() => {
   const Real = Date;
   class Seen extends Real { constructor(...a) { if (a.length) super(...a); else super(${SEEN_AT}); } static now() { return ${SEEN_AT}; } }
   globalThis.Date = Seen;
-  const css = '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } #ver-n { visibility: hidden; } .toolbar { padding-right: 150px !important; }';
+  const css = '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } #ver-n, #set-ver-v { visibility: hidden; } .toolbar { padding-right: 150px !important; }';
   const add = () => { const s = document.createElement('style'); s.id = 'e2e-still'; s.textContent = css; document.head.append(s); };
   if (document.head) add(); else document.addEventListener('DOMContentLoaded', add, { once: true });
 })();`;

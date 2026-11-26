@@ -40,7 +40,8 @@ import { notifyText } from '../shared/askWhy';
 import { answerTarget } from '../shared/inbox';
 import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
 import { hasTray, showWindow, updateTray } from './tray';
-import { startUpdateCheck, checkUpdate, updateInfo } from './update';
+import { startUpdateCheck, checkUpdate, updateView, applyUpdate, restartIntoUpdate, holdInstallOnQuit, followUpdateSetting } from './update';
+import { applyBlockers } from '../shared/update';
 import { notifyInfo } from './notify';
 import { closeQuick, destroyQuick, openQuick, releaseQuickKey, syncQuickKey } from './quick';
 import { QUICK_ARG } from '../shared/quickKey';
@@ -66,11 +67,14 @@ const e2eOpened: [string, string][] = [];
 /** The user's answer to a decision, from the inbox or a notification button. Set once the handlers exist. */
 let answerByUser: (id: string, ans: string) => void = () => {};
 
-/** A newer release was found: the gear and Settings show it, and one notification says so. */
-function onUpdate(u: { version: string }) {
-  pushState();
-  notifyInfo(t('upd.title', { v: u.version }), t('upd.body'));
-}
+/** What a restart into a downloaded update would wait for. */
+const updateBlockers = () => applyBlockers({ workers: store.data.workers, tasks: store.data.tasks, dispatcherBusy: dispatcher.busy });
+
+/** A newer release was found or downloaded: the gear and Settings show it, and one notification says so. */
+const updateHooks = {
+  changed: () => pushState(),
+  found: (v: string, ready: boolean) => notifyInfo(t(ready ? 'upd.readyTitle' : 'upd.title', { v }), t(ready ? 'upd.readyBody' : 'upd.body')),
+};
 
 /**
  * The parts of the look the page cannot paint follow the theme: the native frame and menus (themeSource), the
@@ -134,7 +138,7 @@ function snapshot(): AppState {
     scripts: d.scripts ?? [],
     runs: runs.views(),
     memorySync: memorySync(),
-    update: updateInfo(),
+    update: updateView(updateBlockers()),
     fake: fakeMode(),
     preflightFailed: failedCount(lastPreflight() ?? []),
     repoAdding: addingRepo(),
@@ -205,6 +209,7 @@ function createWindow() {
   });
   setWindow(win);
   watchWindow(win, () => quitting);
+  win.on('session-end', holdInstallOnQuit);
   // The AppUserModelID has no Start-menu shortcut when run with `electron .`, so the taskbar gets the icon and name from the window.
   if (process.platform === 'win32') win.setAppDetails({ appId: APP_ID, appIconPath: windowIconFile({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }, 'win32'), relaunchDisplayName: 'Oh My Agent IDE' });
   win.loadFile(path.join(here, 'renderer', 'index.html'));
@@ -445,7 +450,8 @@ function registerIpc() {
     const checkOn = patch.updateCheck === true && !before.updateCheck;
     const usageEvery = patch.usageRefreshMins !== undefined && patch.usageRefreshMins !== before.usageRefreshMins;
     updateSettings(patch);
-    if (checkOn) void checkUpdate(onUpdate);
+    if (patch.updateCheck !== undefined) followUpdateSetting();
+    if (checkOn) void checkUpdate();
     // The next round counts from now at the new interval (or there is none when it is only by hand).
     if (usageEvery) accounts.arm();
     const quickKeyOk = syncQuickKey(here);
@@ -501,7 +507,9 @@ function registerIpc() {
   // other callers take one up to 6 hours old.
   handle('models:list', (mode: 'cached' | 'fresh' | 'now') => listModels(mode === 'now' ? 0 : mode === 'fresh' ? 60_000 : 6 * 3600_000));
   handle('claude:info', (): ClaudeInfo => ({ home: claudeHome(), rules: ruleFiles(), memoryHome: path.join(claudeHome(), 'projects') }));
-  handle('app:relaunch', () => { app.relaunch(); app.quit(); });
+  handle('app:relaunch', () => { if (restartIntoUpdate(updateBlockers())) return; app.relaunch(); app.quit(); });
+  // Restart into the downloaded update; refused (false) while a Worker, a queued task or the Dispatcher is working.
+  handle('update:apply', () => applyUpdate(updateBlockers()));
 }
 
 async function boot() {
@@ -572,7 +580,7 @@ async function boot() {
   startPrMonitor();
   // A Worker that waits too long for an answer gives its slot to the queue (decision 118).
   setInterval(() => { workers.sweepWaiting(); workers.sweepStalled(); }, 30_000);
-  startUpdateCheck(onUpdate);
+  startUpdateCheck(updateHooks);
   // What the app needs on this computer: checked once the window is up, so a missing tool shows before a task fails on it.
   setTimeout(() => void runPreflight().then(() => pushState()).catch((e) => log.warn('preflight', e)), 3_000);
   automations.start((text) => dispatcher.send(text));

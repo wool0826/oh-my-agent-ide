@@ -55,7 +55,11 @@ jobs:
         include:
           - os: windows-latest
             platform: win
-            files: release/*.exe
+            # latest.yml and the blockmap are what the app's in-app update reads (docs/RELEASING.md, decision 212).
+            files: |
+              release/*.exe
+              release/*.exe.blockmap
+              release/latest.yml
           # Apple silicon runner: the dmg is for arm64 Macs (the agent SDK ships its binary per architecture).
           - os: macos-latest
             platform: mac
