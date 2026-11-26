@@ -632,6 +632,8 @@ function serveShots() {
 /**
  * `--state-v1`: the saved state is written back as the one file an older build reads, and the app quits without
  * opening (decision 213). Only the one running instance does it, so nothing else writes the files meanwhile.
+ * The write-back needs no Electron and runs before ready; the app then ends with an orderly quit, before ready when
+ * there is no dialog to show, since `app.exit` just after ready crashed on Windows (0xC0000005, T-0124).
  */
 function backToV1() {
   let said: string;
@@ -650,15 +652,20 @@ function backToV1() {
     failed = true;
     said = t('state.v1Failed', { error: e instanceof Error ? e.message : String(e) });
   }
-  if (!fakeMode()) dialog.showMessageBoxSync({ type: failed ? 'error' : 'info', message: said });
-  app.exit(failed ? 1 : 0);
+  const quit = () => {
+    // app.quit always exits with 0; the failure's 1 is set as the quit ends.
+    if (failed) app.once('will-quit', () => app.exit(1));
+    app.quit();
+  };
+  if (fakeMode()) quit();
+  else void app.whenReady().then(() => { dialog.showMessageBoxSync({ type: failed ? 'error' : 'info', message: said }); quit(); });
 }
 
 installCrashHandlers();
 protocol.registerSchemesAsPrivileged([{ scheme: SHOT_SCHEME, privileges: { standard: true, secure: true } }]);
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
-else if (process.argv.includes(V1_ARG)) void app.whenReady().then(backToV1);
+else if (process.argv.includes(V1_ARG)) backToV1();
 else {
   // A second launch shows the window; with --quick it opens the quick message box instead (for a launcher or a pinned shortcut).
   // One with --state-v1 wrote nothing back, because this app would write over it: the chat here says so.
