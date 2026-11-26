@@ -104,6 +104,15 @@ flow('a result card shows one before/after pair of its screenshots, with switche
 
   // The other files are one-line chips; the action row has the PR chip, icon-only buttons and the cost.
   assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${CARD} .rfiles .fchip')].map((c) => [c.innerText.trim(), c.getBoundingClientRect().height])`), [['report.md', 24], ['preflight-run-w…2026-11-26.log', 24]]);
+  // A chip with no remove button keeps the same room on both sides of its name (T-0142).
+  const room = await app.evaluate(`return [...document.querySelectorAll('${CARD} .rfiles .fchip')].map((c) => {
+    const s = getComputedStyle(c), r = c.getBoundingClientRect(), fn = c.querySelector('.fn').getBoundingClientRect();
+    return [s.paddingLeft, s.paddingRight, Math.round(r.right - fn.right)];
+  });`);
+  room.forEach(([l, r, gap], i) => {
+    assert.equal(r, l, `chip ${i} has ${l} on the left and ${r} on the right`);
+    assert.ok(gap >= parseFloat(l), `chip ${i}'s name ends ${gap}px from its edge`);
+  });
   const wid = (await app.state()).tasks.find((x) => x.title === 'Restyle the inbox').workerId;
   assert.deepEqual(await app.evaluate(`const r = document.querySelector('${CARD} .racts'); return [r.querySelector('.prchip').innerText.replace(/\\s+/g, ' ').trim(), [...r.querySelectorAll('button')].map((b) => [b.innerText.trim(), b.getAttribute('aria-label')])];`), ['#7 Open', [['', `Open ${wid} conversation`], ['', 'Reply']]]);
   // No file is a bare link any more.

@@ -1073,7 +1073,9 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .fchips { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: var(--space-6); padding: var(--space-4) 0 0; }
 /* One line at one height: the name is cut in its middle (shared/middleName) and, past the chip's width, at its end.
    Nothing is inherited from the bubble around it (pre-wrap, wrapping anywhere). */
-.fchip { display: inline-flex; align-items: center; gap: var(--space-4); max-width: 240px; height: var(--control-sm); box-sizing: border-box; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10); border-radius: var(--radius-full); background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-primary); font-size: var(--fs-caption); white-space: nowrap; overflow-wrap: normal; }
+.fchip { display: inline-flex; align-items: center; gap: var(--space-4); max-width: 240px; height: var(--control-sm); box-sizing: border-box; padding: var(--space-2) var(--space-10); border-radius: var(--radius-full); background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-primary); font-size: var(--fs-caption); white-space: nowrap; overflow-wrap: normal; }
+/* Only a chip that ends in its remove button sits closer to its right edge; a name never does. */
+.fchip:has(> button) { padding-right: var(--space-4); }
 .fchip > .fn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fchip .sym { font-size: var(--fs-body); color: var(--kind-doc); }
 .fchip button { width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; flex: none; }
