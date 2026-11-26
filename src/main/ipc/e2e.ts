@@ -1,9 +1,11 @@
 import { handle } from './handle';
-import { e2eOpened } from './app';
 import { workers } from '../agents/workers';
 import { automations } from '../automations';
 import { checkPrs, runMergeQueue } from '../prmonitor';
 import { diagnostics } from '../diagnostics';
+
+/** With fake agents (the end-to-end tests), what would have been opened on the computer, kept instead. */
+export const e2eOpened: [string, string][] = [];
 
 /** Hooks for the end-to-end tests (test/e2e), which have no button for them; the window does not call them. */
 export function registerE2eIpc(awake: { readonly held: boolean }) {

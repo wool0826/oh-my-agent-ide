@@ -83,8 +83,6 @@ Settings opens. Sections are on the left. The Status group at the top of General
 
 | Key | Action |
 |---|---|
-| `src/main/index.ts` | Start-up, the window, the state push and the wiring |
-| `src/main/ipc/` | The channels the window calls, one file per area, each with one register function |
 | ⌘/Ctrl+K | Command palette: go to a place, find a task or something said |
 | ⌘/Ctrl+Shift+Space (anywhere on the computer) | Quick message box; change it in Settings → General |
 | ⌘/Ctrl+L | Go to the message field (the app also starts there) |
@@ -129,6 +127,8 @@ Build output goes to `dist/`, installers to `release/`.
 
 | Path | What it does |
 |---|---|
+| `src/main/index.ts` | Start-up, the window, the state push and the wiring |
+| `src/main/ipc/` | The channels the window calls, one file per area, each with one register function |
 | `src/main/agents/session.ts` | One Claude Code session: account failover, compaction (80% of a 250K window, before a Worker's next task from 60K, and by Claude Code mid-turn), usage reading |
 | `src/main/agents/dispatcher.ts` | The Dispatcher session, its task-board MCP tools, and the turns Worker news starts |
 | `src/main/agents/workers.ts` | Creating and assigning Workers, questions and permissions, talking to the Dispatcher, results, tasks that wait for a merge |

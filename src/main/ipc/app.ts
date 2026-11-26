@@ -8,9 +8,7 @@ import { savePastedImage } from '../attachments';
 import { applyUpdate, restartIntoUpdate } from '../update';
 import { updateBlockers } from '../snapshot';
 import { fakeMode } from '../fake';
-
-/** With fake agents (the end-to-end tests), what would have been opened on the computer, kept instead. */
-export const e2eOpened: [string, string][] = [];
+import { e2eOpened } from './e2e';
 
 /** Opening links and files on the computer, pasted images, the version, and restarting into an update. */
 export function registerAppIpc() {
