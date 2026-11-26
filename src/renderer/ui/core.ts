@@ -20,13 +20,14 @@ import { init } from '../app';
 import { go, screen, show } from './history';
 import { ms } from './sidebar';
 import { keepThreadFocus } from './thread';
+import { receive, type Held, type Part, type StateMsg } from '../../shared/stateSync';
 
 declare global {
   interface Window {
     ide: {
       platform: string;
       call<T = any>(channel: string, ...args: unknown[]): Promise<T>;
-      onState(fn: (s: AppState) => void): void;
+      onState(fn: (msg: StateMsg) => void): void;
       onWorkerLog(fn: (id: string, item: WorkerLogItem) => void): void;
       onSideState(fn: (v: SideView) => void): void;
       onTermState(fn: (v: TermView) => void): void;
@@ -54,6 +55,25 @@ export let S: AppState | null = null;
 
 /** Sets `S` from another module, which cannot assign to an import. */
 export function setS(v: AppState | null) { S = v; }
+
+/** The numbered state last taken from the main process (shared/stateSync.ts). */
+let taken: Held | null = null;
+let resyncing = false;
+
+/**
+ * Reads a state message from the main process: the state to draw and the parts that changed (null: all of them), or
+ * null when it brings nothing to draw. After a missed message the whole state is asked for again; `again` reads it.
+ */
+export function readState(msg: StateMsg, again: (msg: StateMsg) => void): { state: AppState; parts: Set<Part> | null } | null {
+  const r = receive(taken, msg);
+  if (r.step === 'resync' && !resyncing) {
+    resyncing = true;
+    void ide.call<StateMsg>('state:full').then(again, () => {}).finally(() => { resyncing = false; });
+  }
+  if (r.step !== 'take') return null;
+  taken = r.held;
+  return { state: r.held.state, parts: r.parts };
+}
 
 export const lang = (): Lang => S?.settings.language ?? 'en';
 
@@ -700,11 +720,54 @@ export function watchTop(th: HTMLElement, load: () => void) {
 /** Marks where a thread's new items begin; they rise in after it. */
 export const NEW_FROM = '<i class="new-from" hidden></i>';
 
-export function setThread(th: HTMLElement, html: string, follow: boolean, older: boolean) {
+/** What a thread drawn from pieces shows: each piece's HTML and the nodes made from it (setThread). */
+const drawn = new WeakMap<HTMLElement, { pieces: { html: string; nodes: ChildNode[] }[]; touched: boolean }>();
+
+/** What the user does that handlers answer by changing the page by hand (init in app.ts, and threads here). */
+export const ACTS = ['click', 'keydown', 'input', 'change', 'drop', 'contextmenu'] as const;
+
+/** The thread's nodes may no longer be what its pieces made (a handler, a loading line): draw them all again next time. */
+function touch(th: Element) {
+  const d = drawn.get(th as HTMLElement);
+  if (d) d.touched = true;
+}
+
+function nodesOf(html: string): ChildNode[] {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  return [...tpl.content.childNodes];
+}
+
+/**
+ * Puts a thread's pieces in place (each a whole element or a few: a message, a time line, a branch with its
+ * replies). A piece with the same HTML as last time keeps its elements, so a new message adds only its own and the
+ * browser lays out only what changed. After the user did something inside the thread, or anything else changed its
+ * elements, all of them are made again, as a draw from one string would.
+ */
+function placePieces(th: HTMLElement, pieces: string[]) {
+  const was = drawn.get(th);
+  if (!was) for (const type of ACTS) th.addEventListener(type, () => touch(th), true);
+  const old = new Map<string, ChildNode[][]>();
+  if (was && !was.touched && was.pieces.every((p) => p.nodes.every((n) => n.parentNode === th))) {
+    for (const p of was.pieces) old.set(p.html, [...(old.get(p.html) ?? []), p.nodes]);
+  }
+  const next = pieces.map((html) => ({ html, nodes: old.get(html)?.shift() ?? nodesOf(html) }));
+  if (!old.size) th.replaceChildren(...next.flatMap((p) => p.nodes));
+  else {
+    const keep = new Set(next.flatMap((p) => p.nodes));
+    for (const n of [...th.childNodes]) if (!keep.has(n)) n.remove();
+    let at: ChildNode | null = th.firstChild;
+    for (const p of next) for (const n of p.nodes) { if (n === at) at = at.nextSibling; else th.insertBefore(n, at); }
+  }
+  drawn.set(th, { pieces: next, touched: false });
+}
+
+/** Draws a thread from one string, or from pieces that keep their elements while their HTML stays the same. */
+export function setThread(th: HTMLElement, html: string | string[], follow: boolean, older: boolean) {
   const fromEnd = th.scrollHeight - th.scrollTop;
   // The message that has the keyboard is a new element after this: the focus goes to the one in its place.
   const refocus = keepThreadFocus(th);
-  th.innerHTML = html;
+  if (typeof html === 'string') { drawn.delete(th); th.innerHTML = html; } else placePieces(th, html);
   if (older) scrollQuietly(th, th.scrollHeight - fromEnd);
   else if (follow) scrollQuietly(th, th.scrollHeight);
   refocus?.(older);
@@ -730,12 +793,14 @@ export function swapIn(el: HTMLElement) {
 
 /** Says "Loading…" on a thread's .pg-top while its page is on the way. */
 export function markLoading(th: HTMLElement) {
+  touch(th);
   const top = th.querySelector('.pg-top');
   if (top) top.textContent = t('page.loading');
 }
 
 /** Back to "Show earlier messages" when the page didn't come. */
 export function unmarkLoading(th: HTMLElement) {
+  touch(th);
   const top = th.querySelector('.pg-top');
   if (top) top.textContent = t('page.older');
 }

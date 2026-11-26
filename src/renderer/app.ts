@@ -1,5 +1,6 @@
 // The window's entry: drawing every screen, what each control does, and start-up.
-import type { AppState, Worker } from '../shared/types';
+import type { Worker } from '../shared/types';
+import { panelsFor, type Panel, type Part, type StateMsg } from '../shared/stateSync';
 import { hasSpend } from '../shared/spend';
 import { reviewMessage } from '../shared/diffComment';
 import { readyToQueue } from '../shared/mergeQueue';
@@ -23,7 +24,7 @@ import { closeShot, markBrokenShot, openShot, shotOpen, showShot, stepShot } fro
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
-import { $, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, moreBtn, onScroll, Pane, playSound, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
+import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, moreBtn, onScroll, Pane, playSound, readState, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
@@ -63,8 +64,14 @@ export function setView(v: View) {
   renderAll(true);
 }
 
-export function renderAll(force = false) {
+/**
+ * Draws the screen from the state. `parts`: only these parts changed since the last draw, so only the panels that
+ * read them are drawn (shared/stateSync.ts); without it every panel is.
+ */
+export function renderAll(force = false, parts: ReadonlySet<Part> | null = null) {
   if (!S) return;
+  const due = parts && !force ? panelsFor(parts) : null;
+  const draw = (p: Panel) => !due || due.has(p);
   const langChanged = ui.langApplied !== lang();
   applyStaticText();
   // Don't overwrite the preview while Settings is open.
@@ -75,15 +82,19 @@ export function renderAll(force = false) {
   const focused = document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-action]') ? document.activeElement : null;
   const focusKey = focused ? focusSelector(focused.tagName, focused.dataset) ?? '' : '';
   const focusRoot = focused?.closest<HTMLElement>('.sidebar, .view');
-  applyPanels();
-  renderSidebar();
-  renderUsage();
-  renderDispatcherStatus();
-  renderMemSync();
-  if (ui.cancelAsk) renderCancelDialog();
-  if (ui.view === 'chat') { renderChat(force); renderChatInspector(); renderSide(); renderTerm(); }
-  if (ui.view === 'worker') { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
-  if (ui.view === 'repo') renderRepos();
+  if (draw('frame')) { applyPanels(); renderSidebar(); }
+  if (draw('usage')) renderUsage();
+  if (draw('dispatcher')) renderDispatcherStatus();
+  if (draw('memSync')) renderMemSync();
+  if (ui.cancelAsk && draw('cancel')) renderCancelDialog();
+  if (ui.view === 'chat') {
+    if (draw('chat')) renderChat(force);
+    if (draw('chatIns')) renderChatInspector();
+    if (draw('side')) renderSide();
+    if (draw('term')) renderTerm();
+  }
+  if (ui.view === 'worker' && draw('workers')) { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
+  if (ui.view === 'repo' && draw('repos')) renderRepos();
   if (ui.view === 'memory' && force) renderMemory();
   if (focused && focusKey && !focused.isConnected && document.activeElement === document.body) focusRoot?.querySelector<HTMLElement>(focusKey)?.focus({ preventScroll: true });
 }
@@ -892,7 +903,7 @@ export function init() {
     if (el) skipSameHtml(el);
   }
   // Anything the user does makes the next draw a real one. Capture, so it counts before the handlers run.
-  for (const type of ['click', 'keydown', 'input', 'change', 'drop', 'contextmenu']) document.addEventListener(type, userActed, true);
+  for (const type of ACTS) document.addEventListener(type, userActed, true);
   document.body.classList.add(`platform-${ide.platform}`);
   ide.onFullScreen((on) => document.body.classList.toggle('fullscreen', on));
   // Before the first paint, so a sidebar that was put away does not animate shut at launch.
@@ -1257,23 +1268,31 @@ export function init() {
     memTimer = window.setTimeout(() => void searchMem(q), 200);
   });
 
-  ide.onState((s) => {
+  // The main process sends the parts of the state that changed; the panels that read them are drawn again.
+  const gotState = (msg: StateMsg) => {
+    const got = readState(msg, gotState);
+    if (!got) return;
+    const { state: s } = got;
+    const parts = S ? got.parts : null;
+    const has = (...ps: Part[]) => !parts || ps.some((p) => parts.has(p));
     const firstSetup = !S && s.setupNeeded;
     const langChanged = S && S.settings.language !== s.settings.language;
-    if (S) ui.chatOlder = slideOlder(ui.chatOlder, S.chat, s.chat, ui.chatFrom);
+    if (S && has('chat')) ui.chatOlder = slideOlder(ui.chatOlder, S.chat, s.chat, ui.chatFrom);
     const first = !S;
     setS(s);
     // At launch: what happened since the app was last looked at, a quit included.
     if (first) checkAway();
-    renderAll();
-    if (ui.settingsShown) drawUpdate();
+    renderAll(false, parts);
+    if (ui.settingsShown && has('update', 'settings')) drawUpdate();
+    if (!has('accounts', 'setupNeeded', 'settings')) return;
     // The settings sheet only depends on accounts; re-render it only when they change.
     const accKey = JSON.stringify(s.accounts) + s.setupNeeded;
     const accChanged = accKey !== ui.accKey;
     ui.accKey = accKey;
     if (firstSetup && !ui.settingsShown) openSettings('accounts');
     else if (ui.settingsShown && accChanged && !langChanged) openSettings();
-  });
+  };
+  ide.onState(gotState);
   bindSide();
   bindTerm();
   bindDock((tab) => { if (tab === 'sq') openSide(); else openTerm(); });
@@ -1313,10 +1332,12 @@ export function init() {
   // The age and slot clock of decisions: their text only, so nothing is drawn again.
   setInterval(() => tickDecisions(), 15_000);
 
-  void ide.call<AppState>('state').then((s) => {
-    setS(s);
+  void ide.call<StateMsg>('state:full').then((msg) => {
+    const got = readState(msg, gotState);
+    if (got) setS(got.state);
+    if (!S) return;
     renderAll(true);
-    if (s.setupNeeded) openSettings('accounts');
+    if (S.setupNeeded) openSettings('accounts');
     // The app starts where its main work is: the message field (K1).
     else if (!document.activeElement || document.activeElement === document.body) focusComposer();
   });
