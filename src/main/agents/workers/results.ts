@@ -8,7 +8,7 @@ import { notifyTaskEnd } from '../../notify';
 import { store } from '../../store';
 import { nowIso, oneLine } from '../../util';
 import { needsPlan, parseResult } from '../workerPrompt';
-import { GO_ON_MSG, clip } from '../workerText';
+import { GO_ON_MSG, clip, noResultMsg } from '../workerText';
 import type { WorkerManager } from '../workers';
 import { checkpointLabel } from '../../../shared/checkpoints';
 import { mergeLinks } from '../../../shared/linkify';
@@ -16,6 +16,7 @@ import { isLocalRepo } from '../../../shared/localRepo';
 import { doneNotice } from '../../../shared/notifyRules';
 import { hasSpend, spendVars } from '../../../shared/spend';
 import { setStatus } from '../../../shared/taskStatus';
+import { openWork, turnOutcome } from '../../../shared/turnOutcome';
 import type { Task, Worker } from '../../../shared/types';
 import { awaitPlan } from './plans';
 import { awaitDispatcher, unanswered } from './questions';
@@ -41,17 +42,29 @@ export function turnEnded(m: WorkerManager, w: Worker, text: string, isError: bo
   if (needsPlan(task) && !isError) return awaitPlan(m, w, task, text, background);
   if (!isError) {
     const { reported, blocked } = parseResult(text, w.cwd);
-    if (!reported) {
-      // Subagents the turn started are still running; the session goes on by itself when they report.
-      if (background) { task.updatedAt = nowIso(); return store.changed(); }
-      if (blocked || w.request) return awaitDispatcher(m, w, task, blocked);
-      // It stopped after a question (answered with the tool or in plain text), so the turn may have said nothing
-      // about the task: it is told to go on, once.
-      const s = m.sessions.get(w.id);
-      if (questioned && s && !s.closed) {
-        s.send(GO_ON_MSG);
-        return m.touch(w);
-      }
+    const s = m.sessions.get(w.id);
+    const live = !!s && !s.closed;
+    const how = turnOutcome({
+      reported, blocked: !!blocked || !!w.request, background, said, questioned,
+      reminded: m.resultReminded.has(task.id) || !live, openWork: openWork(task),
+    });
+    // Subagents the turn started are still running, or the turn said nothing (one Claude Code ends for a notice,
+    // such as a background shell the last session left behind): the task stays open, and sweepStalled reminds the
+    // Worker if nothing goes on.
+    if (how === 'wait') { task.updatedAt = nowIso(); return store.changed(); }
+    if (how === 'ask') return awaitDispatcher(m, w, task, blocked);
+    // It stopped after a question (answered with the tool or in plain text), so the turn may have said nothing
+    // about the task: it is told to go on, once. That message asks for the RESULT lines too, so it is the one reminder.
+    if (how === 'goOn' && live) {
+      m.resultReminded.add(task.id);
+      s!.send(GO_ON_MSG);
+      return m.touch(w);
+    }
+    if (how === 'remind') {
+      m.resultReminded.add(task.id);
+      log.info(`[${w.id}] ${task.id}: turn ended without RESULT; reminded`);
+      s!.send(noResultMsg(task.id));
+      return m.touch(w);
     }
   }
   finalize(m, w, task, text, isError);
@@ -71,6 +84,8 @@ export function finalize(m: WorkerManager, w: Worker, task: Task, text: string, 
   const wasCi = m.ciFixing.delete(task.id);
   const wasFollowup = m.followups.delete(task.id);
   const firstFinish = !task.finishedAt;
+  m.resultReminded.delete(task.id);
+  m.branchChecked.delete(task.id);
   // Finished anyway: what it asked the Dispatcher for holds nothing up any more.
   w.request = null;
   m.requestWakes.delete(task.id);

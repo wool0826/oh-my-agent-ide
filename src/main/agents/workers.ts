@@ -74,6 +74,10 @@ export class WorkerManager {
   stopping = new Map<string, 'user' | 'dispatcher'>();
   /** Tasks whose stall reminder went out, so a second stall flags the Worker instead of reminding it again. */
   stallNudged = new Set<string>();
+  /** Tasks whose Worker was told once that a turn ended without RESULT; another such turn may finish them. */
+  resultReminded = new Set<string>();
+  /** Tasks finished without a PR whose branch GitHub was already asked about (queue.ts followUp). */
+  branchChecked = new Set<string>();
   /** Tasks cancelled while this Worker's session had them, per Worker; it hears it with its next message. */
   notes = new Map<string, string[]>();
   /** Archived Workers whose worktree is being made again; a second call waits for the same one. */
