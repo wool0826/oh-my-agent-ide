@@ -1066,7 +1066,20 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 - The bar holds the words, "n/N", and icon-only Previous, Next and Close buttons with `aria-label` and `data-tip` (the app's tooltip in place of `title`). Escape closes it. A Worker's conversation found by a search opens with its matches marked, the newest one current.
 - Rejected: only the current match with a pulse (2A: no overview of where the others are); washing the whole message (2C: the word itself still not shown).
 
-229. **A result shows one before/after pair per screen with Width and Theme switches, its other files as one-line chips, and an action row of PR chip, icon-only buttons and the cost** (T-0138, the user's option B of the T-0136 mock-up; follows the thumbnails of 204 and the chips of 227).
+229. **A revised plan keeps a done step that it names again or rewords at the same position; a plan that keeps none of the done steps of an unfinished one is refused** (T-0135, causes C and D of the T-0131 report).
+    - **Why:** a stopped task reopened by a message about other work took the Worker's new plan in place of one 4/5 done (T-0082 went to 0/4), and a step renamed slightly ("Run checks" -> "Run checks (unit, e2e)") lost its done mark.
+    - **How:** `setSteps` keeps done marks by the same title anywhere, then by `reworded` at the same position (the shorter title's words all in the longer one, stems of three letters or more counting). When the old plan is partly done and the new one keeps none of its done steps, it is refused with "Revise it instead", so the old plan stays. A plan with all steps done may be replaced: that round is over. The set_steps description says so.
+    - **Rejected:** keeping the replaced plan in a `prevSteps` field, which the Stepper would not show without new UI, so the task would still read 0/4; and `keep_done: number[]` on set_steps, which leaves it to the Worker to count.
+
+230. **Follow-ups that set a task going again carry the progress line; Codex Workers get the steps reminder through `turn/steer`** (T-0135, cause E of the T-0131 report).
+    - **How:** `[Review comments]`, `[CI failure]`, `[Merge conflict]` and a Dispatcher message that reopens the last task end their instruction with `followUpStepsLine`: the task message's line, or for a task cut short with a partly done plan, "this task keeps its plan (n/m done). Revise it…". `sendReview` clears the last round's plan itself, since its status change to running (and the wait for a slot or a limit) does not go through `setStatus`.
+    - **Codex:** it has no tool hooks, so the reminder that a Claude Worker gets in a tool result after `REMIND_AFTER` calls is added to the Codex turn in progress with `turn/steer` (counted from `item/started`).
+    - **Left:** a user's message that reopens a task gets no line (the user's words go as written), and no Stepper text for an earlier round (a design decision for later).
+
+231. **The Dispatcher's progress line gives the count first and names every step by number: `3/6 done (just finished step 4 "d"); next step 3 "c".`** (T-0135, from the T-0131 report).
+    - **Why:** `step 4 done (3/6 done)` read like a wrong count when steps were marked out of order.
+
+232. **A result shows one before/after pair per screen with Width and Theme switches, its other files as one-line chips, and an action row of PR chip, icon-only buttons and the cost** (T-0138, the user's option B of the T-0136 mock-up; follows the thumbnails of 204 and the chips of 227).
 - `shared/shots` `shotSets` groups a task's images by name: files that differ only by before/after, wide/narrow or dark/light are one screen. A name with none of these words is a set of its own. It replaces `reportShots`; `pickShot` takes the exact match, else a shot without that part (so a set without light pictures still shows its dark pair).
 - One renderer (`ui/shotview` `shotsOf` + `fileChips`, `ui/chat` `resultParts`) draws the chat card, the Inbox Results row, the Worker summary and the Worker report, so all four look the same. Each place keeps its own switch state, keyed by place and set, and a switch redraws only its set and keeps the focus.
 - A count with an image icon (tooltip "8 images") shows only when the switches hide some pictures. The lightbox has Version, Width and Theme switches and a strip of all the set's pictures.

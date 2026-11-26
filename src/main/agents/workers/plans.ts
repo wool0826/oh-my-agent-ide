@@ -8,7 +8,7 @@ import type { StepsOp } from '../workerTools';
 import type { WorkerManager } from '../workers';
 import { planReason } from '../../../shared/askWhy';
 import { planFallback, planSummary } from '../../../shared/plan';
-import { markDone, mergeProgress, setSteps, stepView, stepsLine } from '../../../shared/steps';
+import { markDone, mergeProgress, progressNote, setSteps, stepView, stepsLine } from '../../../shared/steps';
 import { ALLOW, DENY, type Task, type Worker } from '../../../shared/types';
 import { awaitDecision, decided } from './permissions';
 
@@ -102,7 +102,7 @@ export function steps(m: WorkerManager, w: Worker, op: StepsOp): string {
     const n = Number(op.step);
     store.log(w.id, 'event', t('log.stepDone', { n, done: v.done, total: v.total, title: steps[n - 1].title }), task.id);
     const prefix = `${w.id} (${task.id}) progress:`;
-    mergeProgress(store.data.pendingUpdates, prefix, `${prefix} step ${n} done "${steps[n - 1].title}" (${v.done}/${v.total} done); ${v.allDone ? 'all steps done' : `next "${v.current}"`}.`);
+    mergeProgress(store.data.pendingUpdates, prefix, `${prefix} ${progressNote(steps, n)}`);
   }
   store.changed();
   return `${op.kind === 'set' ? `${steps.length} steps set. ` : ''}${stepsLine(steps)}`;

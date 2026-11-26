@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { workers } from '../src/main/agents/workers';
 import { taskMessage } from '../src/main/agents/workers/messages';
 import { workerCodexTools } from '../src/main/agents/workerTools';
+import { STEPS_TASK_LINE } from '../src/main/agents/stepsReminder';
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
@@ -580,14 +581,17 @@ test('review comments wait for a slot, then go out to the same Worker', () => {
   addTask(a);
   workers.ensureSession(a);
   const b = addWorker({ sessionId: 'sb' });
-  const pr = addTask(b, { status: 'pr_open', prUrl: 'https://github.com/o/r/pull/3', prState: 'OPEN', finishedAt: now });
+  const pr = addTask(b, { status: 'pr_open', prUrl: 'https://github.com/o/r/pull/3', prState: 'OPEN', finishedAt: now, steps: [{ title: 'Code', doneAt: now }, { title: 'PR', doneAt: null }] });
   workers.sendReview(pr, '- @me (a.ts:1): rename this');
   assert.deepEqual([pr.status, pr.queueReason], ['queued', 'slot']);
   assert.equal(sent.get(b.id), undefined);
+  // A new round: the last one's plan goes, also while it waits for a slot.
+  assert.equal(pr.steps, null);
   report(a);
   assert.equal(pr.status, 'running');
   assert.equal(sent.get(b.id)!.length, 1);
   assert.match(sent.get(b.id)![0], /^\[Review comments\] New comments on .*rename this/s);
+  assert.ok(sent.get(b.id)![0].includes(`report what you changed. If you leave a comment unaddressed, say why in the report.\n${STEPS_TASK_LINE}\n\n`));
   // Its report settles the task again.
   report(b, 'RESULT: Renamed');
   assert.equal(pr.status, 'pr_open');
@@ -799,7 +803,7 @@ test('steps: set and marked on the open task, the Dispatcher hears the latest on
   assert.match(workers.steps(w, { kind: 'done', step: 2 }), /2\/3 done; now step 3: Test/);
   // Marking a step again tells nobody twice.
   workers.steps(w, { kind: 'done', step: 2 });
-  assert.deepEqual(store.data.pendingUpdates, [`${w.id} (${x.id}) progress: step 2 done "Code" (2/3 done); next "Test".`]);
+  assert.deepEqual(store.data.pendingUpdates, [`${w.id} (${x.id}) progress: 2/3 done (just finished step 2 "Code"); next step 3 "Test".`]);
   assert.match(workers.steps(w, { kind: 'done', step: 9 }), /no step 9/);
   assert.equal(wakes, 0);
   assert.deepEqual(x.steps!.map((s) => !!s.doneAt), [true, true, false]);
@@ -823,6 +827,9 @@ test('steps: a follow-up on a finished task starts without the old plan, even on
   void workers.send(w.id, 'dispatcher', 'Also fix the README.');
   assert.equal(x.status, 'running');
   assert.equal(x.steps, null);
+  // Like a task message, it asks for steps (T-0131 cause E).
+  const msg = sent.get(w.id)!.at(-1)!;
+  assert.ok(msg.endsWith(`Also fix the README.\n\n${STEPS_TASK_LINE}`), msg);
 });
 
 test('steps: a Worker without an open task has none to set', () => {

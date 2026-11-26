@@ -1,6 +1,6 @@
 // A report's screenshots (T-0102): thumbnails on the result card, and one opened over the window at full size, with
 // the report's other shots a click or an arrow key away. A screen shows one before/after pair; its other parts
-// (wide/narrow, dark/light) are switches above it, on the card and in the opened view alike (decision 229).
+// (wide/narrow, dark/light) are switches above it, on the card and in the opened view alike (decision 232).
 import type { Key } from '../../shared/i18n';
 import { middleName } from '../../shared/middleName';
 import { firstPick, pickShot, setView, shotSets, shotUrl, SHOT_AXES, type Shot, type ShotAxis, type ShotPick, type ShotRole, type ShotSet } from '../../shared/shots';

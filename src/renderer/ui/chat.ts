@@ -87,7 +87,7 @@ function prChip(x: Task, url: string) {
 }
 
 /**
- * What a result carries, drawn the same on its chat card, its inbox row and the Worker's summary (decision 229): its
+ * What a result carries, drawn the same on its chat card, its inbox row and the Worker's summary (decision 232): its
  * screenshots as before/after pairs with switches, its other files as chips, then one row with its PR, the URLs its
  * report names, `acts` (buttons the place adds) and its cost. `text` is the report as the place shows it; the task's
  * own summary and the links its report named are read too. `key` names the place, so its switches are its own.

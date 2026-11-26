@@ -2,9 +2,23 @@
 // has made REMIND_AFTER tool calls on a running task without declaring any is reminded once, through the result of
 // its next tool call (a PostToolUse hook), so its turn is not interrupted. Kept apart from workers.ts to be tested.
 import type { HookCallbackMatcher } from '@anthropic-ai/claude-agent-sdk';
+import { reopenSteps, stepView } from '../../shared/steps';
 import type { Task } from '../../shared/types';
 
 export const STEPS_TASK_LINE = 'Progress: declare your expected steps with set_steps within your first few actions, even for a small task, and call step_done as each one finishes.';
+
+/**
+ * The progress line for a follow-up that sets a task going again (review comments, a CI failure, a merge conflict, a
+ * Dispatcher follow-up): a finished task starts a new round, so steps are asked for as in a task message; a task cut
+ * short keeps its plan, which is to be revised rather than replaced (setSteps). Read before the task is reopened.
+ */
+export function followUpStepsLine(task: Task): string {
+  const next = { ...task };
+  reopenSteps(next, 'running');
+  const v = stepView(next);
+  if (!v || v.allDone) return STEPS_TASK_LINE;
+  return `Progress: this task keeps its plan (${v.done}/${v.total} done). Revise it with set_steps if the work changed, keeping the done steps, and call step_done as each one finishes.`;
+}
 
 export const STEPS_REMINDER = 'Reminder from Oh My Agent IDE: you have not declared progress steps for this task. Call set_steps now with your expected steps (at least 2), then call step_done as each one finishes.';
 

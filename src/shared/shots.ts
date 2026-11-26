@@ -1,6 +1,6 @@
 // Screenshots in a Worker's report (T-0102): the FILE: lines that name images are shown as thumbnails on the result
 // card, a screen's "before" next to its "after", instead of as file links. Its other parts (wide/narrow, dark/light)
-// are switches, so a screen shows one pair at a time (decision 229).
+// are switches, so a screen shows one pair at a time (decision 232).
 
 /** The custom scheme the window loads a reported image through: file:// is not reachable from the page. */
 export const SHOT_SCHEME = 'oma-shot';
@@ -20,7 +20,7 @@ export function isLocalPath(p: string) {
 
 export type ShotRole = 'before' | 'after';
 
-/** The other parts a screenshot's name can vary by, each with its words in the order they are shown (decision 229). */
+/** The other parts a screenshot's name can vary by, each with its words in the order they are shown (decision 232). */
 export const SHOT_AXES = { width: ['wide', 'narrow'], theme: ['dark', 'light'] } as const;
 
 export type ShotAxis = keyof typeof SHOT_AXES;
@@ -64,7 +64,7 @@ const rank = (s: Shot) => (s.role ? ROLE_ORDER[s.role] : 2);
 const axisRank = (a: ShotAxis, v: string | null) => (v === null ? -1 : (SHOT_AXES[a] as readonly string[]).indexOf(v));
 
 /**
- * A report's files split into images, grouped by screen, and the rest (decision 229). A screen's shots are the images
+ * A report's files split into images, grouped by screen, and the rest (decision 232). A screen's shots are the images
  * whose names differ only by before/after, wide/narrow and dark/light; an image with none of those words is a screen
  * of its own. Screens keep the order the report first names them; within one, before comes ahead of after, then wide
  * ahead of narrow and dark ahead of light.
