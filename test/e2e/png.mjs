@@ -16,12 +16,16 @@ export function decode(buf) {
     } else if (kind === 'IDAT') idat.push(data);
     else if (kind === 'IEND') break;
     p += 12 + len;
+    if (p > buf.length) throw new Error('a cut-off PNG');
   }
   const raw = zlib.inflateSync(Buffer.concat(idat));
   const stride = w * bpp, px = Buffer.alloc(w * h * 4);
+  if (!bpp || raw.length !== h * (stride + 1)) throw new Error(`a broken PNG (${raw.length} bytes of pixels for ${w}×${h})`);
   let prev = Buffer.alloc(stride);
   for (let y = 0; y < h; y++) {
-    const f = raw[y * (stride + 1)], line = Buffer.from(raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)));
+    const f = raw[y * (stride + 1)];
+    if (f > 4) throw new Error(`a broken PNG (filter ${f} on row ${y})`);
+    const line = Buffer.from(raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)));
     for (let i = 0; i < stride; i++) {
       const a = i >= bpp ? line[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
       let add = 0;

@@ -1,7 +1,7 @@
 // Screen comparison: the main screens (chat, Workers, Notifications, settings, palette) in the dark and the light theme,
 // drawn with fake agents, fixed data and a stopped clock at a fixed size, against the pictures in test/e2e/visual/.
 // Fonts draw differently on each system, so the pictures are of one system (BASE_OS) and the flows run only there;
-// CI runs them as their own job (visual). Run with `npm run e2e:visual`; after a change that is meant to change the
+// CI runs them as their own job (visual), and `npm run e2e` leaves them out. Run with `npm run e2e:visual`; after a change that is meant to change the
 // look, write the pictures again with `npm run e2e:visual:update` and look at them in the PR.
 // A screen that differs leaves <screen>-expected.png, -actual.png and -diff.png (in red) in test-results/visual/.
 import assert from 'node:assert/strict';

@@ -16,7 +16,8 @@ if (!Number.isNaN(start)) {
   globalThis.Date = FixedDate;
 }
 
-if (process.env.OMA_E2E_OFFSCREEN) {
+// Only in the app itself: the programs it starts with ELECTRON_RUN_AS_NODE (the gh stand-in) get NODE_OPTIONS too.
+if (process.env.OMA_E2E_OFFSCREEN && process.type === 'browser') {
   // Electron's own module answers to the name only once the app's script starts.
   setImmediate(() => {
     require('electron').app.on('browser-window-created', (_e, win) => {
