@@ -267,6 +267,16 @@ test('T-0134: after the reminder, a task with steps left stays open instead of f
   assert.deepEqual([x.status, x.finishedAt], ['running', null]);
 });
 
+test('T-0136: a fix turn on a task whose PR is open ends pr_open after the reminder, not running until the merge', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, { kind: 'code', branch: 'agent/t-x', prUrl: 'https://github.com/o/r/pull/9', prState: 'OPEN' });
+  const s = workers.ensureSession(w)!;
+  s.ev.onTurnEnd!({ ...emptyTurn, text: 'Pushed the CI fix.' });
+  assert.equal(x.status, 'running');
+  s.ev.onTurnEnd!({ ...emptyTurn, text: 'Pushed the CI fix.' });
+  assert.deepEqual([x.status, x.prUrl], ['pr_open', 'https://github.com/o/r/pull/9']);
+});
+
 test('T-0134: with the PR URL in turns without RESULT, the task ends pr_open after the reminder and its follower keeps waiting', () => {
   const { w, dep, next, s } = limitScene();
   limit(false);

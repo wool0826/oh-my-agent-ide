@@ -82,12 +82,15 @@ async function adoptBranchPr(m: WorkerManager, dep: Task) {
   m.branchChecked.add(dep.id);
   const w = dep.workerId ? store.worker(dep.workerId) : null;
   const cwd = w?.cwd ?? store.repo(dep.repo!)?.path;
+  if (!cwd) return followUp(m, dep);
+  const finish = dep.finishedAt;
   const r = await run('gh', ['pr', 'list', '--head', dep.branch!, '--state', 'all', '--json', 'url,state', '--limit', '10'], { cwd, env: ghEnv(), timeoutMs: 60_000 });
   let list: unknown;
   try { list = r.code === 0 ? JSON.parse(r.stdout) : null; } catch { list = null; }
   const pr = pickBranchPr(list);
   const cur = store.task(dep.id);
-  if (!cur) return;
+  // Reopened (or finished again) meanwhile: that finish settles what waits on it.
+  if (!cur || cur.finishedAt !== finish || cur.status !== 'done') return;
   if (pr && !cur.prUrl && cur.status === 'done') {
     cur.prUrl = pr.url;
     cur.prState = pr.state;

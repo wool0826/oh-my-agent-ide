@@ -33,14 +33,13 @@ test('turnOutcome: text without RESULT is reminded once, then finishes the task'
   assert.equal(turnOutcome(end({ reminded: true })), 'finish');
 });
 
-test('turnOutcome: after the reminder, open work (steps left, a PR not merged) keeps the task open', () => {
+test('turnOutcome: after the reminder, steps left keep the task open', () => {
   assert.equal(turnOutcome(end({ reminded: true, openWork: true })), 'wait');
 });
 
-test('openWork: a step not done or an unmerged PR is open work; all steps done and no PR is not', () => {
+test('openWork: a step not done is open work; all steps done, or none planned, is not', () => {
   const step = (done: boolean) => ({ title: 's', doneAt: done ? '2026-11-26T00:00:00Z' : null });
-  assert.equal(openWork({ steps: [step(true), step(false)], prUrl: null, prState: null }), true);
-  assert.equal(openWork({ steps: [step(true)], prUrl: 'https://github.com/o/r/pull/1', prState: 'OPEN' }), true);
-  assert.equal(openWork({ steps: [step(true)], prUrl: 'https://github.com/o/r/pull/1', prState: 'MERGED' }), false);
-  assert.equal(openWork({ steps: null, prUrl: null, prState: null }), false);
+  assert.equal(openWork({ steps: [step(true), step(false)] }), true);
+  assert.equal(openWork({ steps: [step(true)] }), false);
+  assert.equal(openWork({ steps: null }), false);
 });

@@ -2,7 +2,6 @@
 // that said nothing is no report (Claude Code ends one for a notice, such as a background shell that died with the
 // session before a usage limit), and a turn that said something else gets one reminder first.
 import type { Task } from './types';
-import { hasOpenPr } from './queue';
 
 /**
  * finish: settle the task with what the turn said.
@@ -26,7 +25,7 @@ export interface TurnEnd {
   questioned: boolean;
   /** The Worker was already reminded once on this task that a turn ended without RESULT. */
   reminded: boolean;
-  /** Something of the task is still open: a step not done, or a PR not merged (openWork). */
+  /** A step the Worker planned is not done yet (openWork). */
   openWork: boolean;
 }
 
@@ -37,11 +36,14 @@ export function turnOutcome(t: TurnEnd): TurnOutcome {
   if (t.questioned) return 'goOn';
   if (!t.said) return 'wait';
   if (!t.reminded) return 'remind';
-  // It was told and still wrote no RESULT: finished, unless it left work open.
+  // It was told and still wrote no RESULT: finished, unless it left steps open (sweepStalled reminds it, then flags it).
   return t.openWork ? 'wait' : 'finish';
 }
 
-/** A task with a planned step not done yet, or a PR that is not merged or closed. */
-export function openWork(task: Pick<Task, 'steps' | 'prUrl' | 'prState'>): boolean {
-  return !!task.steps?.some((s) => !s.doneAt) || hasOpenPr(task);
+/**
+ * A task with a planned step not done yet. An open PR is not counted: a task that finishes with one is pr_open, so
+ * what waits on it still waits, and a review or CI fix turn on it must not keep it running until the merge.
+ */
+export function openWork(task: Pick<Task, 'steps'>): boolean {
+  return !!task.steps?.some((s) => !s.doneAt);
 }
