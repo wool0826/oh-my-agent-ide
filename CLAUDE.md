@@ -63,6 +63,8 @@ The spec, tokens and component gallery are in `docs/design-system/` (start with 
   repository view and its panels: summary, plans, checkpoints, merge queue, preflight, run), `memory`, `settings`;
   words and messages used on several screens go in `common`. A key lives in one area only (`npm test` catches a
   duplicate, `tsc` does not). Call it with `tr(...)` from `src/shared/i18n.ts`.
+- **IPC.** A channel the window calls goes into its area file under `src/main/ipc/` (chat, decisions, workers, repos,
+  memory, settings, tools, app; e2e hooks in `e2e.ts`) through `handle()`; `src/main/index.ts` only wires them up.
 - **CSS.** Add rules to `src/renderer/styles.css` next to the group for the same component (each group starts with a
   `/* … */` comment), not at the end of the file. New tokens go into the matching section of `tokens.css`.
 

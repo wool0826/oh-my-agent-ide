@@ -1009,3 +1009,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Why:** the e2e flow crashed with 0xC0000005 in 3 of 7 Windows CI runs, each time after the write-back had finished (T-0123). All three crashes were a windowless process calling `app.exit` milliseconds after `ready`; the refused start beside a running app stopped crashing once it quit before ready.
     - **Now:** the write-back needs no Electron and runs at start. Without a dialog to show (fake mode), the app quits before ready; otherwise it shows the dialog after ready, then quits. `app.quit` exits with 0 and `process.exitCode` is ignored, so a failure sets its 1 with `app.exit(1)` in `will-quit`.
     - **Rejected:** accepting 0xC0000005 in the test, which would hide a crash in a path users run.
+
+219. **The IPC handlers live in `src/main/ipc/`, one file per area with one register function; `index.ts` keeps start-up, the window and the wiring** (T-0118, K2 of the T-0093 plan).
+    - **How:** a pure move, the 97 channel names and their handler code unchanged. Handlers that need the window, the state push or the settings-follow-up calls get them through one `IpcContext` object from `index.ts`; the rest import their modules directly. The decision answer is a plain function (`ipc/decisions.ts`), also used by notification buttons and the Worker composer.
+    - **Also moved** to get `index.ts` under 300 lines: the snapshot (`snapshot.ts`), the screenshot protocol (`shots.ts`), `--state-v1` (`stateV1.ts`), the usage-limit retry (`limits.ts`) and the state-load notices (`stateReport.ts`).
+    - **Rejected:** one file per channel prefix (too many tiny files), and moving the window itself out of `index.ts`, which the plan keeps there.

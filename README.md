@@ -83,6 +83,8 @@ Settings opens. Sections are on the left. The Status group at the top of General
 
 | Key | Action |
 |---|---|
+| `src/main/index.ts` | Start-up, the window, the state push and the wiring |
+| `src/main/ipc/` | The channels the window calls, one file per area, each with one register function |
 | ⌘/Ctrl+K | Command palette: go to a place, find a task or something said |
 | ⌘/Ctrl+Shift+Space (anywhere on the computer) | Quick message box; change it in Settings → General |
 | ⌘/Ctrl+L | Go to the message field (the app also starts there) |
