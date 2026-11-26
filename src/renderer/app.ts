@@ -399,6 +399,12 @@ export async function act(el: HTMLElement, e: Event) {
       if (msg) flashCard(msg); else toast(t('reply.gone'));
       break;
     }
+    case 'evs-fold': {
+      if (!ui.evOpen.delete(id)) ui.evOpen.add(id);
+      renderChat();
+      document.querySelector<HTMLElement>(`.evs-h[data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+      break;
+    }
     case 'hand-fold': {
       if (!ui.handToggled.delete(id)) ui.handToggled.add(id);
       renderChat();

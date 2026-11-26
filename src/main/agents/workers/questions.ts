@@ -61,7 +61,7 @@ export function fromWorker(m: WorkerManager, w: Worker, kind: TellKind, text: st
   if (kind === 'answer' && w.ask) {
     const asked = w.ask.text;
     w.ask = null;
-    store.chat('event', t('ev.answered', { id: w.id, text: oneLine(body, 200) }));
+    store.event(t('ev.answered', { id: w.id, text: oneLine(body, 200) }), { k: 'answered', worker: w.id, task: task?.id, title: oneLine(body, 200) });
     store.pushUpdate(`${w.id} answered your question "${oneLine(asked, 200)}": ${clip(body, 4000)}`, true);
     return 'Delivered to the Dispatcher. Go on with what you were doing.';
   }
@@ -78,7 +78,7 @@ export function raise(m: WorkerManager, w: Worker, task: Task | null, text: stri
   const wake = wakesLeft(m, task?.id ?? w.id);
   w.request = { text, at: nowIso() };
   const about = task ? ` (${task.id} "${task.title}")` : '';
-  store.chat('event', t(blocked ? 'ev.blocked' : 'ev.requested', { id: w.id, text: oneLine(text, 200) }), task?.id);
+  store.event(t(blocked ? 'ev.blocked' : 'ev.requested', { id: w.id, text: oneLine(text, 200) }), { k: blocked ? 'blocked' : 'request', worker: w.id, task: task?.id, title: oneLine(text, 200) }, { ref: task?.id });
   store.pushUpdate(blocked
     ? `${w.id}${about} is blocked and waits for you: ${clip(text, 4000)}\n  ${REPLY_NOTE}`
     : `${w.id}${about} asks you: ${clip(text, 4000)}\n  Reply with send_to_worker: the answer, or what you did about it.`, wake);
@@ -122,7 +122,7 @@ export async function askWorker(m: WorkerManager, workerId: string, text: string
   if (!w) throw new Error(t('err.noWorker', { id: workerId }));
   if (w.status === 'archived') await m.unarchive(w);
   store.log(w.id, 'dispatcher', `${t('log.question')}: ${text}`);
-  store.chat('event', t('ev.asked', { id: w.id, text: oneLine(text, 200) }));
+  store.event(t('ev.asked', { id: w.id, text: oneLine(text, 200) }), { k: 'asked', worker: w.id, task: m.currentTask(w)?.id, title: oneLine(text, 200) });
   // Questions asked before an answer came are answered together.
   w.ask = { text: w.ask ? `${w.ask.text}\n${text}` : text, at: w.ask?.at ?? nowIso() };
   m.questioned.add(w.id);

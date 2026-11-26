@@ -126,7 +126,7 @@ export function fail(m: WorkerManager, w: Worker, task: Task, text: string) {
     store.log(w.id, 'event', t(by === 'user' ? 'log.stopped' : 'log.stoppedDispatcher'));
     if (by === 'user') store.pushUpdate(`The user stopped ${w.id} on ${task.id} "${task.title}". The task is left unfinished; a message to ${w.id} continues it.`);
   } else {
-    store.chat('error', t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), task.id);
+    store.event(t('ev.failed', { id: w.id, title: task.title, msg: task.summary }), { k: 'failed', task: task.id, worker: w.id, title: task.title }, { kind: 'error', ref: task.id });
     store.pushUpdate(`${w.id} ${task.id} "${task.title}" failed: ${task.summary}`, true, task.id);
     const n = doneNotice(t, { who: w.id, title: task.title, summary: task.summary, ok: false, prUrl: task.prUrl });
     // Its own burst: a failure right after another end of this Worker is not swallowed.

@@ -9,6 +9,7 @@ import { taskMinutes } from '../../shared/workerSummary';
 import { askLine, lastFailed, plainStatus, stepText } from '../../shared/workerState';
 import { dayWord, keepPick } from '../../shared/insPanes';
 import { handoutCounts, handoutFolded, handoutRuns, handoutSettled, handoutState, isHandout, runTasks, type HandoutState } from '../../shared/handouts';
+import { EV_KINDS, TONE_COLOR, evBadge, eventBlocks, type EvBlock, type EvIcon, type EvRow, type EvTone } from '../../shared/chatEvents';
 import { type Key } from '../../shared/i18n';
 import { hasSpend, spendVars, type Spend } from '../../shared/spend';
 import { linkify, reportLinks, type ReportLink } from '../../shared/linkify';
@@ -222,6 +223,74 @@ function handoutHtml(c: ChatItem) {
   return `<div class="hand${open ? ' open' : ''}" role="group" aria-label="${esc(t(rows.length === 1 ? 'ho.titleOne' : 'ho.title', { n: rows.length }))}">${head}${open ? `<div class="hand-rows">${rows.map(row).join('')}</div>` : ''}</div>`;
 }
 
+/** The event blocks of the thread drawn last, by their first line (shared/chatEvents.ts). */
+let evBlocks = new Map<string, EvBlock<ChatItem>>();
+/** How many times an error said again right after itself was said (renderChat). */
+let evTimes = new Map<string, number>();
+
+const evIcon = (icon: EvIcon, tone: EvTone, label: string) => `<span class="evi" role="img" aria-label="${esc(label)}" data-tip="${esc(label)}">${sym(`e-${icon}`, TONE_COLOR[tone])}</span>`;
+
+/** An event's time as 24-hour HH:MM (the day is in its tooltip and in the thread's stamps). */
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/**
+ * One event as a row (option A of T-0140): its icon, the task's id, a short title cut with an ellipsis, the Worker,
+ * a badge and the time. Clicking the title opens the Worker. A line saved without its parts shows its sentence.
+ */
+function evRowHtml(c: ChatItem, then = false) {
+  const n = evTimes.get(c.id) ?? 1;
+  const times = n > 1 ? ` <b class="times">×${n}</b>` : '';
+  const e = c.ev;
+  const pre = then ? `<span class="evi" role="img" aria-label="${esc(t('evs.then'))}">${sym('e-then', 'c-gray')}</span>` : '';
+  const time = `<time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${clock(c.ts)}</time>`;
+  if (!e) {
+    // An error about a Worker's task saved before rows: its card, as it was.
+    if (c.kind === 'error' && failureHtml(c)) return `<div class="evrow wide" role="listitem">${failureHtml(c)}</div>`;
+    const icon = c.kind === 'error' ? sym('s-alert', 'c-red') : sym('s-cpu', 'c-blue');
+    return `<div class="evrow${c.kind === 'error' ? ' err' : ''}" role="listitem">${pre}<span class="evi">${icon}</span><span class="evt" data-tip="${esc(c.text)}">${linkify(esc(c.text))}${times}</span>${time}</div>`;
+  }
+  const info = EV_KINDS[e.k];
+  const x = task(e.task);
+  const w = worker(e.worker ?? x?.workerId);
+  // A usage limit is about every account; a line about nothing named keeps its sentence, cut to the row.
+  const title = e.title || x?.title || (e.k === 'limitPaused' || e.k === 'limitHeld' ? t('evs.allAccounts') : c.text);
+  const b = evBadge(e);
+  let go = '';
+  if (e.k === 'failed' && x && w) {
+    // Still where it failed: the badge says the step, and it can go on from there.
+    const v = stepView(x);
+    if (x.status === 'failed' && !x.stopped && v && !v.allDone) Object.assign(b, { key: 'evb.failedAt', vars: { ...b.vars, n: v.at + 1, max: v.total } });
+    if (x.status === 'failed' && !x.stopped && workerTask(w)?.id === x.id && lastFailed(w, x)) go = iconBtn('s-play', t('wk.continueWho', { id: w.id }), `data-action="worker-continue" data-id="${esc(w.id)}"`);
+  }
+  const chip = e.task ? `<span class="evid">${esc(e.task)}</span>` : '';
+  const name = w ? `<button type="button" class="evt" data-action="open-worker" data-id="${esc(w.id)}" data-tip="${esc(c.text)}">${esc(title)}</button>` : `<span class="evt" data-tip="${esc(c.text)}">${esc(title)}</span>`;
+  const who = e.worker || x?.workerId ? `<span class="evw">${esc(e.worker ?? x?.workerId ?? '')}</span>` : '';
+  return `<div class="evrow" role="listitem" data-ev="${esc(e.k)}">${pre}${evIcon(info.icon, info.tone, t(`evk.${e.k}` as Key))}${chip}${name}${times}${who}<span class="pill"${pillTone(info.tone)}>${esc(t(b.key as Key, b.vars))}</span>${go}${time}</div>`;
+}
+
+/** A row with the events it caused hanging under it, in one box (a merge, then the task that waited on it). */
+const evPairHtml = (r: EvRow<ChatItem>) => (r.then.length ? `<div class="evpair" role="group">${evRowHtml(r.c)}${r.then.map((x) => evRowHtml(x, true)).join('')}</div>` : evRowHtml(r.c));
+
+/**
+ * A run of events (option C of T-0140): a few stay rows; a burst folds into one summary row that counts them by kind
+ * and opens to the rows. What needs the user (a failure, a usage limit, an error) is never folded: it stays under it.
+ */
+function evBlockHtml(b: EvBlock<ChatItem>) {
+  const rows = b.rows.map(evPairHtml).join('');
+  if (!b.fold) return `<div class="evs" role="list" aria-label="${esc(t('evs.list'))}">${rows}</div>`;
+  const open = ui.evOpen.has(b.id);
+  const label = t('evs.title', { n: b.n });
+  const span = clock(b.from) === clock(b.to) ? clock(b.from) : `${clock(b.from)}–${clock(b.to)}`;
+  const counts = b.counts.map((n) => {
+    const what = n.kinds.length ? n.kinds.map((k) => t(`evk.${k}` as Key)).join(', ') : t('evs.list');
+    return `<span class="evn" data-tip="${esc(what)}">${evIcon(n.icon, n.tone, what)}${n.n}</span>`;
+  }).join('');
+  const head = `<button type="button" class="evs-h" data-action="evs-fold" data-id="${esc(b.id)}" aria-expanded="${open}" aria-label="${esc(`${label} ${span}`)}">${sym('e-stack', 'c-gray')}<b>${esc(label)}</b><span class="evs-at">${span}</span><span class="evs-n">${counts}</span><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg></button>`;
+  const body = open ? `<div class="evs-rows" role="list" aria-label="${esc(t('evs.list'))}">${rows}</div>` : '';
+  const pinned = b.pinned.length ? `<div class="evs pin" role="list" aria-label="${esc(t('evs.pinned'))}">${b.pinned.map((c) => evRowHtml(c)).join('')}</div>` : '';
+  return `<div class="evblk"><div class="evs fold${open ? ' open' : ''}" role="group" aria-label="${esc(label)}">${head}${body}</div>${pinned}</div>`;
+}
+
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
     case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
@@ -371,7 +440,7 @@ export function renderChat(force = false, older = false) {
   runs = handoutRuns(all.slice(from));
   const key = `${lang()}:${s.setupNeeded}:${s.preflightFailed}:${s.repos.length > 0}:${ui.chatFrom}:${all.length - from}:${s.chat[s.chat.length - 1]?.id}:${earlier}:${ui.loadingOlder.has('chat')}:${s.dispatcher.busy}:${s.dispatcher.statusText}:${s.autoAnswers.filter((a) => a.corrected).length}:${shellKey(all.slice(from))}:${s.tasks.map((x) => x.status + x.prUrl + x.prState + (x.prChecks ? JSON.stringify(x.prChecks) : '')).join()}`;
   // The hand-out blocks follow their tasks: a step done or a decision answered draws them again.
-  const hands = `${handoutKey()}:${[...ui.handToggled].join()}`;
+  const hands = `${handoutKey()}:${[...ui.handToggled].join()}:${[...ui.evOpen].join()}`;
   if (!force && !older && key === ui.lastChatKey && hands === ui.lastHandKey) return;
   ui.lastChatKey = key;
   ui.lastHandKey = hands;
@@ -380,28 +449,37 @@ export function renderChat(force = false, older = false) {
   let last = 0;
   const folded = handoutFolded(runs);
   // The same error said again right after itself (e.g. every account at its limit) shows once with a count.
-  const items: { c: ChatItem; n: number }[] = [];
+  const listed: { c: ChatItem; n: number }[] = [];
   for (const c of all.slice(from)) {
-    const prev = items[items.length - 1];
+    const prev = listed[listed.length - 1];
     // A later hand-out of the turn is drawn in the block its first line opens.
     if (folded.has(c.id)) continue;
     if (prev && c.kind === 'error' && prev.c.kind === 'error' && prev.c.text === c.text && !c.ref && !prev.c.ref) { prev.n++; continue; }
-    items.push({ c, n: 1 });
+    listed.push({ c, n: 1 });
   }
+  // Events next to each other are one block, drawn where its first line is (shared/chatEvents.ts).
+  evTimes = new Map(listed.filter((x) => x.n > 1).map((x) => [x.c.id, x.n]));
+  evBlocks = eventBlocks(listed.map(({ c }) => c));
+  const headOf = new Map<string, string>();
+  for (const b of evBlocks.values()) for (const c of [...b.rows.flatMap((r) => [r.c, ...r.then]), ...b.pinned]) headOf.set(c.id, b.id);
+  const items = listed.filter(({ c }) => (headOf.get(c.id) ?? c.id) === c.id);
   // What arrived since the last render comes in with a short rise: everything after the marker (styles.css, .new-from).
-  const seenAt = older ? -1 : items.findIndex(({ c }) => c.id === ui.chatSeen);
-  const tail = items[items.length - 1]?.c.id ?? null;
+  const seenAt = older ? -1 : listed.findIndex(({ c }) => c.id === ui.chatSeen);
+  const tail = listed[listed.length - 1]?.c.id ?? null;
   // Only what is new is read out (L14): the last line from the app or an agent since the previous draw.
   if (seenAt >= 0 && !older) {
-    const fresh = items.slice(seenAt + 1).map(({ c }) => c).filter((c) => c.kind !== 'user');
+    const fresh = listed.slice(seenAt + 1).map(({ c }) => c).filter((c) => c.kind !== 'user');
     if (fresh.length) announce(fresh[fresh.length - 1].text);
   }
+  // The marker goes before the block the first new line is drawn in, unless that block was already there.
+  const next = seenAt >= 0 ? listed[seenAt + 1]?.c.id : undefined;
+  const nextHead = next ? headOf.get(next) ?? next : null;
+  const mark = nextHead && listed.findIndex(({ c }) => c.id === nextHead) > seenAt ? items.findIndex(({ c }) => c.id === nextHead) : -1;
   // Replies hang off what they answer (A-1 of T-0086): a run of replies right under their root is one branch from it;
   // a reply after other messages keeps its place in time, on a branch that starts from a tag naming the root.
   const ix = threadIndex(items.map(({ c }) => c));
   const layout = branchLayout(ix);
   const threadOf = (r: number) => (ix.replies.get(r) ?? []).map((j) => items[j].c);
-  const mark = seenAt >= 0 ? seenAt + 1 : -1;
   // The branch being drawn: one piece with its replies, closed when the next message is not on it.
   let br: string | null = null;
   for (let i = 0; i < items.length; i++) {
@@ -423,7 +501,8 @@ export function renderChat(force = false, older = false) {
       br += branchRow(c, r, threadOf(b.root));
       continue;
     }
-    let one = n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
+    const blk = evBlocks.get(c.id);
+    let one = blk ? evBlockHtml(blk) : n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
     if (canRoot(c)) one = rootAttr(one, c.id);
     // Which message it is, for a search that goes to one (find.ts).
     one = one.replace(/^<(\w+)(?=[\s>])/, `<$1 data-msg="${esc(c.id)}"`);

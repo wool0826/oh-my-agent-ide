@@ -131,7 +131,7 @@ export function settleBlocked(m: WorkerManager, dep: Task, how: 'start' | 'cance
     task.status = 'running';
     task.updatedAt = nowIso();
     w.title = task.title;
-    store.chat('event', t(merged ? 'ev.blockedStarted' : 'ev.blockedStartedDone', { id: w.id, title: task.title, dep: dep.title }));
+    store.event(t(merged ? 'ev.blockedStarted' : 'ev.blockedStartedDone', { id: w.id, title: task.title, dep: dep.title }), { k: 'started', task: task.id, worker: w.id, title: task.title, dep: dep.id });
     store.log(w.id, 'event', t(merged ? 'log.blockedStarted' : 'log.blockedStartedDone', { id: dep.id }));
     dispatch(m, w, task);
   }
@@ -148,8 +148,9 @@ export function cancelBlocked(m: WorkerManager, dep: Task, waiting: Task[]) {
   if (!reports.length) return;
   for (const r of reports) {
     if (r.followerOf !== dep.id) continue;
-    if (why === 'closed') store.chat('error', t('ev.blockedCancelled', { title: r.title, dep: dep.title }), r.id);
-    else store.chat('event', t(why === 'gone' ? 'ev.cancelled' : 'ev.blockedFailed', { title: r.title, dep: dep.title }), r.id);
+    const part = { task: r.id, worker: r.workerId ?? undefined, title: r.title, dep: dep.id };
+    if (why === 'closed') store.event(t('ev.blockedCancelled', { title: r.title, dep: dep.title }), { k: 'depClosed', ...part }, { kind: 'error', ref: r.id });
+    else store.event(t(why === 'gone' ? 'ev.cancelled' : 'ev.blockedFailed', { title: r.title, dep: dep.title }), { k: why === 'gone' ? 'cancelled' : 'depEnded', ...part }, { ref: r.id });
   }
   const reason = why === 'closed' ? 'had its PR closed without merging' : why === 'gone' ? 'no longer exists' : `ended as ${dep.status} with no PR to merge`;
   store.pushUpdate(`${dep.id}${why === 'gone' ? '' : ` "${dep.title}"`} ${reason}, so the tasks waiting for it were cancelled: ${reports.map(describeCancel).join('; ')}. If they are still wanted, create them again (with after_task_id once ${dep.id} or a replacement is in progress).`);
@@ -272,6 +273,7 @@ export function sweepStalled(m: WorkerManager, now = Date.now()) {
     // Shown as running while it waited on background shells; stalled is shown on an idle Worker.
     if (w.status === 'running') { w.status = 'idle'; w.statusText = ''; }
     store.log(w.id, 'event', t('log.stalled', { min }));
+    store.event(t('log.stalled', { min }), { k: 'stalled', task: task.id, worker: w.id, title: task.title, n: min }, { ref: task.id });
     store.pushUpdate(`${w.id} (${task.id} "${task.title}") looks stalled: its task is open, but its session has been idle for ${min} min with ${s?.shells ? `only ${s.shells} background command(s) left running (a server or a hung run?)` : 'nothing running'}${m.stallNudged.has(task.id) ? ', even after a reminder to go on' : ''}. send_to_worker to tell it how to go on, or stop it.`, true);
     store.changed();
   }

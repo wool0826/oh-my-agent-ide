@@ -3,6 +3,7 @@
 import type { SessionSpend, Spend } from './spend';
 import type { UsageClock } from './usage';
 import type { UpdateView } from './update';
+import type { ChatEv } from './chatEvents';
 
 export type Lang = 'en' | 'ko';
 
@@ -379,6 +380,8 @@ export interface ChatItem {
   shell?: ShellRun;
   /** 'handout': a Worker made or a task handed out (ref: the task), folded with its neighbours (shared/handouts.ts). */
   sub?: 'handout';
+  /** An event's parts, drawn as one row and folded with its neighbours (shared/chatEvents.ts). */
+  ev?: ChatEv;
   cleared?: boolean;
 }
 

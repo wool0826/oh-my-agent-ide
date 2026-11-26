@@ -150,6 +150,8 @@ export const ui = {
   undo: [] as { kind: 'result' | 'auto'; ids: string[] }[],
   /** Hand-out blocks the user opened or folded against their default (by their first line). */
   handToggled: new Set<string>(),
+  /** Folded event bursts the user opened (by their first line; shared/chatEvents.ts). */
+  evOpen: new Set<string>(),
   /** Inbox results whose summary is shown in full. */
   resOpen: new Set<string>(),
   lastChatKey: '',

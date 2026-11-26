@@ -69,7 +69,7 @@ export async function tidyCancelled(m: WorkerManager, reports: CancelReport[]) {
   for (const r of reports) {
     if (!r.kept) continue;
     const vars = { title: r.title, branch: r.kept.branch, n: r.kept.commits, path: r.kept.path };
-    store.chat('event', t(r.kept.dirty ? 'ev.cancelKeptChanges' : 'ev.cancelKeptCommits', vars));
+    store.event(t(r.kept.dirty ? 'ev.cancelKeptChanges' : 'ev.cancelKeptCommits', vars), { k: 'kept', task: r.id, worker: r.workerId ?? undefined, title: r.title, n: r.kept.commits, alt: !!r.kept.dirty });
   }
 }
 
@@ -97,15 +97,16 @@ export function markCancelled(m: WorkerManager, task: Task, followerOf: string |
 }
 
 export function announce(m: WorkerManager, reports: CancelReport[], all: boolean) {
+  const part = (k: 'cancelled' | 'dropped', r: CancelReport) => ({ k, task: r.id, worker: r.workerId ?? undefined, title: r.title });
   const dropped = (r: CancelReport) => t(r.status === 'pr_open' ? 'ev.cancelDroppedPr' : 'ev.cancelDropped', { title: r.title });
   if (all) {
-    store.chat('event', t('ev.queueCleared', { n: reports.length }));
-    for (const r of reports) if (r.status !== 'cancelled') store.chat('event', dropped(r));
+    store.event(t('ev.queueCleared', { n: reports.length }), { k: 'queueCleared', n: reports.length });
+    for (const r of reports) if (r.status !== 'cancelled') store.event(dropped(r), part('dropped', r));
     return;
   }
   const [first, ...rest] = reports;
-  store.chat('event', first.status === 'cancelled' ? t('ev.cancelled', { title: first.title }) : dropped(first));
-  if (rest.length) store.chat('event', t('ev.cancelFollowers', { n: rest.length, titles: rest.map((r) => `"${r.title}"`).join(', ') }));
+  store.event(first.status === 'cancelled' ? t('ev.cancelled', { title: first.title }) : dropped(first), part(first.status === 'cancelled' ? 'cancelled' : 'dropped', first));
+  if (rest.length) store.event(t('ev.cancelFollowers', { n: rest.length, titles: rest.map((r) => `"${r.title}"`).join(', ') }), { k: 'followers', task: first.id, title: first.title, n: rest.length });
 }
 
 /** Delete the branch a cancelled task left, unless it holds commits or uncommitted changes. */
