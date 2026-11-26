@@ -261,6 +261,8 @@ export interface Decision {
    * asking (askWhy.ts permissionPurpose). Unset when neither is known, and the card then shows no line for it.
    */
   purpose?: string | null;
+  /** The card's one-line fields (src/shared/brief.ts), set when it is asked; older decisions get them from the fields above. */
+  brief?: DecisionBrief | null;
   /** ci: the PR monitor asks whether to keep fixing CI. It is kept over a restart and waited for again. */
   kind?: 'ci';
 }
@@ -273,11 +275,27 @@ export interface DecisionReason {
   why: string;
 }
 
+/** A risk class a permission card shows as a badge: from the command itself, or an always-ask rule (with its label). */
+export type RiskTag = 'read' | 'write' | 'network' | 'delete' | 'rule' | 'unknown';
+
+/** One line each, at most BRIEF_MAX characters (src/shared/brief.ts); an empty one is not shown. */
+export interface DecisionBrief {
+  what: string;
+  why: string;
+  risk: string;
+  /** What comes of it: a plan's OUTPUT, the Dispatcher's outcome. */
+  out?: string;
+  /** permission: risk badges in order, strongest first. */
+  tags?: { kind: RiskTag; label?: string }[];
+}
+
 /** Three one-sentence lines at the top of a plan-first plan (src/shared/plan.ts). */
 export interface PlanSummary {
   what: string;
   how: string;
   output: string;
+  /** An optional RISK line: what could go wrong or is hard to undo. */
+  risk?: string;
   /** The Worker left the lines out even when asked; these were pulled from the plan text. */
   auto?: boolean;
 }

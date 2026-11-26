@@ -51,3 +51,7 @@ test('a report body comes after the protocol lines and a blank line, as a real W
   assert.equal(fakeReport(parseFakeScript('@fake result Published\n@fake link https://example.com/a\n@fake body 아티팩트: https://claude.ai/artifact/abc')),
     'RESULT: Published\nLINK: https://example.com/a\n\n아티팩트: https://claude.ai/artifact/abc');
 });
+
+test('fakeScript: pspermission asks for its command as PowerShell', () => {
+  assert.deepEqual(parseFakeScript('@fake pspermission Remove-Item -Recurse .\\dist'), [{ do: 'permission', command: 'Remove-Item -Recurse .\\dist', tool: 'PowerShell' }]);
+});

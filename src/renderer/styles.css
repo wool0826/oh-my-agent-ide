@@ -633,6 +633,29 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .dec .reason span { color: var(--text-primary); }
 .dec code { display: block; font-size: var(--fs-caption2); padding: var(--space-6) var(--space-8); word-break: break-all; user-select: text; }
 .dec .opt-d { font-size: var(--fs-caption2); color: var(--text-secondary); }
+/* One line per summary field (decision 223); the tooltip has the rest. A decision: what, why, risk and result in a table,
+   its long text in a well behind the details button. A permission: action, reason, risk badges and scope, then its
+   command folded to one line. */
+.dec .qrow { display: flex; align-items: center; gap: var(--space-8); }
+.dec .qrow .q { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kvt { width: 100%; border-collapse: collapse; font-size: var(--fs-caption); line-height: var(--lh-ui); }
+.kvt th { width: 1%; padding: var(--space-4) var(--space-10) var(--space-4) 0; text-align: left; vertical-align: top; font-weight: var(--fw-medium); color: var(--text-tertiary); white-space: nowrap; }
+.kvt td { max-width: 0; padding: var(--space-4) 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+.kvt tr + tr > * { border-top: .5px solid var(--border-subtle); }
+.dec .more { display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-8) var(--space-10); border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: var(--well); font-size: var(--fs-caption); line-height: var(--lh-body); color: var(--text-secondary); overflow-wrap: anywhere; }
+.dec .more[hidden] { display: none; }
+.dec .tog svg { transition: transform var(--dur-fast) var(--ease-out); }
+.dec .tog[data-fold="more"][aria-expanded="true"] svg, .dec .tog[data-fold="cmd"][aria-expanded="true"] svg { transform: rotate(90deg); }
+.btns.stack { flex-direction: column; align-items: stretch; }
+.dec .kv { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-4) var(--space-10); align-items: center; font-size: var(--fs-caption); line-height: var(--lh-ui); }
+.dec .kv dt { color: var(--text-tertiary); }
+.dec .kv dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+.dec .kv dd.w { font-weight: var(--fw-semibold); }
+.dec .kv dd > code { display: inline; padding: 0 var(--space-4); word-break: normal; }
+.dec .risks { display: flex; flex-wrap: wrap; gap: var(--space-4); white-space: normal; }
+.dec .cmd { display: flex; align-items: flex-start; gap: var(--space-4); }
+.dec .cmd > code { flex: 1; min-width: 0; padding: var(--space-4) var(--space-8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dec .cmd.open > code { max-height: calc(var(--space-48) * 5); overflow: auto; white-space: pre-wrap; word-break: break-all; }
 .btns { display: flex; gap: var(--space-6); justify-content: flex-end; flex-wrap: wrap; }
 .btns.col { flex-direction: column; align-items: stretch; }
 /* Answer buttons are one row or a stack, never a broken row: stacked at full width, the default (last in the row) first. */
@@ -1764,12 +1787,6 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .tip > span { min-width: 0; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 14; overflow: hidden; }
 .tip > kbd { flex: none; padding: 0; background: none; font-size: var(--fs-caption2); font-weight: var(--fw-medium); color: var(--text-secondary); white-space: nowrap; }
 @media (forced-colors: active) { .tip { border: 1px solid CanvasText; } }
-/* What "Allow for this task" would cover: one line of text just above the buttons, read before one is pressed. */
-.dec .scope { font-size: var(--fs-caption2); line-height: var(--lh-ui); color: var(--text-secondary); overflow-wrap: anywhere; word-break: keep-all; }
-.dec .scope > code { display: inline; padding: 0 var(--space-4); margin: 0 var(--space-2); word-break: break-all; color: var(--text-primary); }
-/* What the action is for (T-0085): just above the command, at most two lines; the tooltip shows the rest. With no
-   purpose known there is no line, so no empty gap. The Worker's decision line carries it as a second line. */
-.dec .purpose { font-size: var(--fs-caption); line-height: var(--lh-ui); color: var(--text-primary); overflow-wrap: anywhere; word-break: keep-all; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .cstrip:has(> .cs-why) { flex-wrap: wrap; row-gap: var(--space-2); }
 /* A zero basis so a long command never wraps to a line of its own: it grows to its width at most, then cuts. */
 .cstrip:has(> .cs-why) > code { flex: 1 1 0%; max-width: max-content; }

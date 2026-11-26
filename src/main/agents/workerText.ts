@@ -1,5 +1,6 @@
 // What Workers are told in fixed words, and the limits that go with it: the messages that restart a task, the notes about plans and questions, and the tools and environment every Worker session gets.
 import { langName } from '../i18n';
+import { BRIEF_MAX } from '../../shared/brief';
 import { type Task } from '../../shared/types';
 
 export const RESUME_MSG = 'The app restarted and interrupted your work. Continue the task where you left off.';
@@ -57,6 +58,6 @@ export const planNudge = (task: Task) =>
 export const planApproved = (task: Task) =>
   `[Plan approved] The user approved your plan for ${task.id}. That is the go-ahead this task was waiting for, even where the task message says to plan only: carry out the plan now in this session${task.kind === 'code' && task.branch ? ` on branch ${task.branch}` : ''}, and report the finished work as usual${task.kind === 'code' ? ', with the PR' : ''}. Do not stop at the plan.`;
 
-/** The user approves from these three lines; the full plan stays folded under them. */
+/** The user approves from these lines; the full plan stays folded under them. */
 export const planSummaryRule = () =>
-  `Start the plan with exactly three lines, one sentence each in ${langName()}: "WHAT: " what you will do, "HOW: " how you will do it, "OUTPUT: " what the user gets when it is done. Put the details below them.`;
+  `Start the plan with these lines in ${langName()}, each one short phrase of at most ${BRIEF_MAX} characters, not a sentence: "WHAT: " what you will do, "HOW: " how you will do it, "RISK: " what could go wrong or is hard to undo, "OUTPUT: " what the user gets when it is done. The approval card shows them as they are; put the details below them.`;

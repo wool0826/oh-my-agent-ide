@@ -152,8 +152,9 @@ export class FakeSession {
       case 'steps': this.cfg.steps?.({ kind: 'set', steps: s.steps }); return null;
       case 'step': this.cfg.steps?.({ kind: 'done', step: s.n }); return null;
       case 'permission': {
-        this.ev.onTool?.('Bash', `$ ${s.command}`);
-        const r = ask ? await ask('Bash', { command: s.command }, opts) : null;
+        const tool = s.tool ?? 'Bash';
+        this.ev.onTool?.(tool, `$ ${s.command}`);
+        const r = ask ? await ask(tool, { command: s.command }, opts) : null;
         this.ev.onText?.(!r || r.behavior === 'allow' ? `Ran: ${s.command}` : `Not allowed: ${s.command}`);
         return null;
       }

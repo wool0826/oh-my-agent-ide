@@ -70,7 +70,7 @@ flow('the sidebar is one column at any width: the selected memo opens in place, 
   await app.say('@fake task - Install one\n@@fake permission npm install a\n@@fake result Installed.\n@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.');
   await app.click('[data-action="ins-tab"][data-v="inbox"]');
   await app.until("document.querySelectorAll('#chat-ins [data-dec]').length === 2", 'two decisions');
-  await app.click('#chat-ins .dec[data-dec] .q');
+  await app.click('#chat-ins .dec[data-dec] .who');
   await app.until("!!document.querySelector('#chat-ins .ins-list .pk.sel [data-dec]')", 'the clicked decision selected in place');
   const first = await app.evaluate("const c = document.querySelector('#chat-ins .pk.sel [data-dec]'); c.focus(); return c.dataset.dec;");
   await app.key('ArrowDown', 'ArrowDown', 40);
@@ -197,7 +197,6 @@ flow('step rows grow with the text, link rows take a click 24px high, and a narr
   // The placeholders are short and stay on one line.
   assert.equal(await app.evaluate("document.querySelector('#chat-input').placeholder"), 'Ask the Dispatcher');
   assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#chat-input'), '::placeholder').whiteSpace"), 'nowrap');
-  assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#chat-ins .dec input.inp')).textOverflow"), 'ellipsis');
   // At the usual size a link row is one text line high, and the click is taken 11px above and below its middle.
   await app.evaluate("document.documentElement.style.setProperty('--ui-font-size', '13px'); return 1;");
   const hits = await app.evaluate(`const out = [];

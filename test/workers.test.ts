@@ -486,7 +486,7 @@ test('a plan-first turn that ends without a plan is reminded once, then waits fo
 test('a plan without its WHAT / HOW / OUTPUT lines is sent back once, then taken with a summary pulled from its text', async () => {
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w, { planFirst: true });
-  assert.match(taskMessage(workers, w, x), /Start the plan with exactly three lines, one sentence each in English: "WHAT: ".*"HOW: ".*"OUTPUT: "/);
+  assert.match(taskMessage(workers, w, x), /Start the plan with these lines in English, each one short phrase of at most 60 characters, not a sentence: "WHAT: ".*"HOW: ".*"RISK: ".*"OUTPUT: "/);
   const s = workers.ensureSession(w)!;
   const bare = '# Plan: Add dark mode\n\n## Approach\nAdd a theme setting and swap the CSS variables.\n\n## Verification\nRun the tests and check both themes.';
   const first = await presentPlan(s, bare);

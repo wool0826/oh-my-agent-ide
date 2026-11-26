@@ -38,6 +38,7 @@ import { kTokens } from '../../shared/context';
 import { DISPATCHER_COMPACT } from '../../shared/compactInstructions';
 import { recapChat } from '../../shared/recap';
 import { dispatcherReason } from '../../shared/askWhy';
+import { BRIEF_MAX, dispatcherBrief } from '../../shared/brief';
 import { describePick, newWorkLine, pickWorker } from '../../shared/routing';
 import { stepView } from '../../shared/steps';
 
@@ -324,14 +325,18 @@ function boardTools(d: Dispatcher) {
         return ok(rs.length ? rs.map(describeCancel).join('\n') : 'The queue was already empty.');
       }),
       tool('request_decision', 'Put something the user must decide into the decision inbox. The answer arrives later as a "[Decision answer]" message.', {
-        question: z.string(),
-        options: z.array(z.string()).min(2).max(4),
-        context: z.string().optional(),
-        why: z.string().optional().describe(`One short sentence in ${langName()} on why the user must decide this: what depends on it and what each choice risks or changes. Shown on the card and in the notification.`),
+        question: z.string().describe(`The question as a short title in ${langName()}, at most ${BRIEF_MAX} characters.`),
+        options: z.array(z.string()).min(2).max(4).describe('Short button labels, a few words each.'),
+        context: z.string().optional().describe('The full background; the card keeps it behind its details control.'),
+        what: z.string().optional().describe(`One line in ${langName()}, at most ${BRIEF_MAX} characters, a phrase not a sentence: what is decided.`),
+        why: z.string().optional().describe(`One line in ${langName()}, at most ${BRIEF_MAX} characters, a phrase not a sentence: why the user must decide this.`),
+        risk: z.string().optional().describe(`One line in ${langName()}, at most ${BRIEF_MAX} characters, a phrase not a sentence: what could go wrong or is hard to undo.`),
+        outcome: z.string().optional().describe(`One line in ${langName()}, at most ${BRIEF_MAX} characters, a phrase not a sentence: what happens once it is answered.`),
       }, async (a) => {
         createDecision({
           source: 'dispatcher', workerId: null, taskId: null, title: a.question, detail: a.context ?? '', code: null,
           options: a.options.map((o) => ({ label: o })), questionKey: null, reason: dispatcherReason(t, a.why),
+          brief: dispatcherBrief(a),
         });
         return ok('Posted to the decision inbox. Do not ask the user the same question again.');
       }),
@@ -411,7 +416,7 @@ export function systemPrompt(codex = false) {
     '2. Prefer Workers that already know the code. More instructions on work in progress go to its Worker with send_to_worker. For a new task, create_task without worker_id hands it to the idle Worker that best knows the repository (related past tasks, room left in its context) and creates a new Worker only when none fits. Give worker_id yourself to continue a specific thread of work (same PR, a follow-up); list_workers says under "New work" whether a Worker can take it, and do not pick one marked near compaction or busy (to line up more work behind the task of a busy Worker, use after_task_id on that task). Use new_worker only when the user asks for a fresh Worker. Several independent tasks at once go to different Workers by themselves.',
     '3. If the user names a repo with @name, use it; otherwise pick by description. If unclear, ask with request_decision. Requests like "register this" use register_repo.',
     '4. Model: opus by default; fable only for deep design work such as architecture or large structural changes.',
-    '5. Put anything the user must decide into the decision inbox with request_decision. Ask back in chat only when you cannot understand the request.',
+    '5. Put anything the user must decide into the decision inbox with request_decision: a short question, and what, why, risk and outcome as one-line phrases the card shows as they are; the long background goes in context. Ask back in chat only when you cannot understand the request.',
     '6. Save preferences, principles and repository traits the user states with remember. Use recall when you need a basis for a judgment.',
     `7. ${loadSettings().effortPerTask ? `Effort on create_task: omit it for ordinary work (the default is ${loadSettings().workerEffort}). Set medium for mechanical work (resolving conflicts, renames, small fixes, CI fixes, routine follow-ups) and low for trivial edits or lookups; set xhigh or max only for design, hard debugging or tricky concurrency.` : 'Do not set effort on create_task; the user fixed it in settings.'}`,
     '8. When work depends on a change that is still in an open PR, create it with after_task_id so it starts automatically after the merge. Use plan_first when the user wants to review the approach first (for example plan first or show me the plan) or a code change is large, risky or open to several designs; small, clear changes do not need it.',

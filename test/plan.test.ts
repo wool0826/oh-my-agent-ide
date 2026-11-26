@@ -77,3 +77,10 @@ test('planFallback: one section that is both approach and result is not used twi
   assert.equal(s.how, 'Edit the file.');
   assert.equal(s.output, 'Run the tests.');
 });
+
+test('planSummary: an optional RISK line is kept with the three', () => {
+  assert.deepEqual(planSummary('WHAT: One column\nHOW: Drop the split\nRISK: Visual baselines change\nOUTPUT: A merged PR'), {
+    what: 'One column', how: 'Drop the split', output: 'A merged PR', risk: 'Visual baselines change',
+  });
+  assert.equal(planSummary('WHAT: A\nRISK: R\nOUTPUT: C'), null);
+});

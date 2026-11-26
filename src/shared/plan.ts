@@ -8,6 +8,7 @@ const LABELS: Record<keyof Omit<PlanSummary, 'auto'>, string[]> = {
   what: ['what', '무엇을', '무엇'],
   how: ['how', '어떻게'],
   output: ['output', '결과물', '산출물', '결과'],
+  risk: ['risk', '위험'],
 };
 
 /** Only this many non-empty lines from the top are searched, so a "How:" deep in the details is not taken. */
@@ -79,7 +80,8 @@ function labels(lines: string[]) {
 /** The WHAT / HOW / OUTPUT lines near the top of the plan, or null unless all three are there. */
 export function planSummary(plan: string): PlanSummary | null {
   const { found } = labels(proseLines(plan));
-  return found.what && found.how && found.output ? { what: found.what, how: found.how, output: found.output } : null;
+  if (!found.what || !found.how || !found.output) return null;
+  return { what: found.what, how: found.how, output: found.output, ...(found.risk ? { risk: found.risk } : {}) };
 }
 
 const HOW_HEAD = /approach|how|step|implement|change|design|method|방법|접근|구현|변경|설계|단계/i;
@@ -119,5 +121,5 @@ export function planFallback(plan: string): PlanSummary | null {
   const what = found.what ?? (title && !GENERIC_TITLE.test(title) ? clip(title, 160) : sentence(take(nextUnused())));
   const how = found.how ?? sentence(take(firstUnder(HOW_HEAD) ?? nextUnused()));
   const output = found.output ?? sentence(take(firstUnder(OUT_HEAD) ?? nextUnused()));
-  return what || how || output ? { what, how, output, auto: true } : null;
+  return what || how || output ? { what, how, output, ...(found.risk ? { risk: found.risk } : {}), auto: true } : null;
 }

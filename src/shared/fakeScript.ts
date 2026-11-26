@@ -6,8 +6,8 @@ export type FakeStep =
   /** Says the lines of the message it received that contain `match` (what an agent was told, for a test to read). */
   | { do: 'echo'; match: string }
   | { do: 'tool'; name: string; summary: string }
-  /** Asks for a shell command through the real permission path. */
-  | { do: 'permission'; command: string }
+  /** Asks for a shell command through the real permission path; `pspermission` asks for it as PowerShell. */
+  | { do: 'permission'; command: string; tool?: 'PowerShell' }
   /** Asks the user a question with options through the real question path. */
   | { do: 'ask'; question: string; options: string[] }
   /** Submits a plan for approval. */
@@ -59,6 +59,7 @@ export function parseFakeScript(text: string): FakeStep[] {
       case 'echo': if (arg) out.push({ do: 'echo', match: arg }); break;
       case 'tool': if (head) out.push({ do: 'tool', name: head, summary: tail || head }); break;
       case 'permission': if (arg) out.push({ do: 'permission', command: arg }); break;
+      case 'pspermission': if (arg) out.push({ do: 'permission', command: arg, tool: 'PowerShell' }); break;
       case 'ask': {
         const [question, ...options] = arg.split('|').map((s) => s.trim()).filter(Boolean);
         if (question && options.length >= 2) out.push({ do: 'ask', question, options });
