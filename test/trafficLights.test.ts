@@ -2,41 +2,86 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { LIGHTS_PAD_26, LIGHTS_W, LIGHTS_X, trafficLightPosition } from '../src/shared/trafficLights';
+import { LIGHTS_POSITION, LIGHTS_W, LIGHTS_X, LIGHTS_Y, lightsLayout, type LightsTokens } from '../src/shared/trafficLights';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(process.cwd(), ...p), 'utf8');
 const tokens = read('src', 'renderer', 'tokens.css');
+const styles = read('src', 'renderer', 'styles.css');
+const main = read('src', 'main', 'index.ts');
 const px = (name: string) => {
   const m = tokens.match(new RegExp(`--${name}:\\s*([\\d.]+)px;`));
   assert.ok(m, `--${name} in tokens.css`);
   return Number(m[1]);
 };
+const k: LightsTokens = { lightsX: px('lights-x'), gap: px('lights-gap'), inset: px('panel-inset'), toolbarH: px('toolbar-h'), padMax: px('space-12') };
+/** The box Electron reports: the frames plus the position as a margin on every side. */
+const box = (frames: number, buttonH: number) => ({ w: 2 * LIGHTS_X + frames, h: 2 * LIGHTS_Y + buttonH });
+// macOS 15: 14pt frames 20pt apart (54); macOS 26: wider frames, about 60 (T-0143). Neither is assumed by the layout.
+const boxes = { 'macOS 15': box(54, 16), 'macOS 26': box(60, 16), 'odd frames': box(70, 24) };
 
-test('trafficLights: --lights-x and --lights-w are where the window draws the buttons', () => {
+test('trafficLights: the tokens match the module', () => {
   assert.equal(px('lights-x'), LIGHTS_X);
   assert.equal(px('lights-w'), LIGHTS_W);
-  assert.equal(LIGHTS_W, 52);
 });
 
-test('trafficLights: the collapsed rail leaves the same margin on both sides of them', () => {
-  assert.match(read('src', 'renderer', 'styles.css'), /\.platform-darwin:not\(\.fullscreen\) \.win \{ --rail-w: calc\(2 \* var\(--lights-x\) \+ var\(--lights-w\) - var\(--panel-inset\)\); \}/);
-  const inset = px('panel-inset');
-  const rail = 2 * LIGHTS_X + LIGHTS_W - inset;
-  // The sidebar panel runs from the inset to the rail's right edge.
-  assert.equal(LIGHTS_X - inset, rail - (LIGHTS_X + LIGHTS_W));
+test('trafficLights: the window puts the lights at the same spot on every macOS version', () => {
+  assert.deepEqual(LIGHTS_POSITION, { x: LIGHTS_X, y: LIGHTS_Y });
+  assert.match(main, /trafficLightPosition: mac \? \{ \.\.\.LIGHTS_POSITION \} : undefined/);
+  assert.doesNotMatch(main, /getSystemVersion/);
 });
 
-test('trafficLights: the user\'s macOS 26 measurement comes out even with the pad', () => {
-  // x 22 in an 88px panel: 9px before the close button, 27px after the zoom button. Shifting by the pad and
-  // narrowing the panel to the rail of the tokens leaves the same margin on both sides, within a pixel.
-  const left = 9 + LIGHTS_PAD_26, width = 88 - 27 - 9;
-  const panel = 2 * LIGHTS_X + LIGHTS_W - 2 * px('panel-inset');
-  assert.ok(Math.abs(left - (panel - left - width)) <= 1);
+test('trafficLights: on macOS the window reports the lights\' box to the page without moving them', () => {
+  // `true`, not an object: a height would centre the lights in it (electron#49183).
+  assert.match(main, /titleBarOverlay: mac \? true : \{/);
+  assert.match(main, /leave-full-screen[^\n]*setWindowButtonPosition/);
 });
 
-test('trafficLights: macOS 26 and later get the pad, earlier versions the plain position', () => {
-  assert.deepEqual(trafficLightPosition('26.1'), { x: LIGHTS_X + LIGHTS_PAD_26, y: 22 });
-  assert.deepEqual(trafficLightPosition('27.0'), { x: LIGHTS_X + LIGHTS_PAD_26, y: 22 });
-  assert.deepEqual(trafficLightPosition('15.6.1'), { x: LIGHTS_X, y: 22 });
-  assert.deepEqual(trafficLightPosition(''), { x: LIGHTS_X, y: 22 });
+test('trafficLights: a 98×60 box (macOS 15) gives the back button at 90, an 88px rail and 8px of padding', () => {
+  assert.deepEqual(lightsLayout({ w: 98, h: 60 }, k), { zoomRight: 76, end: 90, railW: 90, toolbarPad: 8 });
+});
+
+test('trafficLights: the Settings back button keeps the gap after the zoom button, whatever the frames', () => {
+  for (const [name, b] of Object.entries(boxes)) {
+    const l = lightsLayout(b, k);
+    assert.equal(l.end - l.zoomRight, k.gap, name);
+    assert.ok(l.end - l.zoomRight >= 12, name);
+  }
+  // The token fallback gives what the page had before for 52pt buttons.
+  assert.equal(lightsLayout({ w: 2 * LIGHTS_X + LIGHTS_W, h: k.toolbarH }, k).end, 88);
+});
+
+test('trafficLights: the collapsed rail\'s panel has the same margin before the close and after the zoom button', () => {
+  for (const [name, b] of Object.entries(boxes)) {
+    const l = lightsLayout(b, k);
+    const frames = b.w - 2 * LIGHTS_X;
+    const before = LIGHTS_X - k.inset, after = l.railW - l.zoomRight;
+    assert.equal(before, after, `${name}: ${before} / ${after} (frames ${frames})`);
+  }
+});
+
+test('trafficLights: the bars beside the lights share their middle line, within a bounded padding', () => {
+  for (const [name, b] of Object.entries(boxes)) {
+    const l = lightsLayout(b, k);
+    if (b.h - k.toolbarH <= k.padMax) assert.equal(k.toolbarH / 2 + l.toolbarPad / 2, b.h / 2, name);
+    assert.ok(l.toolbarPad >= 0 && l.toolbarPad <= k.padMax, name);
+  }
+  assert.equal(lightsLayout({ w: 96, h: 30 }, k).toolbarPad, 0);
+});
+
+test('trafficLights: styles.css computes the same from env(titlebar-area-*), with the tokens only as the fallback', () => {
+  const rule = (sel: string, prop: string) => {
+    const blocks = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].trim().split('\n').at(-1)!.trim() === sel);
+    const decl = blocks.map((m) => m[2].match(new RegExp(`${prop.replace(/[-]/g, '\\-')}:\\s*([^;]+);`))?.[1]).find(Boolean);
+    assert.ok(decl, `${sel} { ${prop} }`);
+    return decl.trim();
+  };
+  const mac = '.platform-darwin:not(.fullscreen)';
+  assert.equal(rule(mac, '--lights-box-w'), 'max(env(titlebar-area-x, calc(2 * var(--lights-x) + var(--lights-w))), calc(2 * var(--lights-x)))');
+  assert.equal(rule(mac, '--lights-box-h'), 'env(titlebar-area-height, var(--toolbar-h))');
+  assert.equal(rule(mac, '--lights-end'), 'calc(var(--lights-box-w) - var(--lights-x) + var(--lights-gap))');
+  assert.equal(rule(mac, '--lights-pad'), 'clamp(0px, calc(var(--lights-box-h) - var(--toolbar-h)), var(--space-12))');
+  assert.equal(rule(`${mac} .win`, '--rail-w'), 'calc(var(--lights-box-w) - var(--panel-inset))');
+  // --lights-w is a fallback only: nothing else lays out from the guessed width.
+  assert.equal(styles.match(/var\(--lights-w\)/g)?.length, 1);
+  assert.match(rule('.platform-darwin .stopbar > .sback', 'margin-left'), /var\(--lights-end\)/);
 });

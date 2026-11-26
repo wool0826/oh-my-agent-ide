@@ -229,7 +229,7 @@ Nested corners stay concentric (inner ≈ outer − padding).
 | `--row-min` | 44 | settings rows |
 | `--icon-sm/md/lg/hero` | 13/16/18/44 | in-button icons / glyph art / glyph box / empty states |
 | Layout | 272 · 344 · 52 · 8 | sidebar, inspector, toolbar height, panel inset (unchanged) |
-| `--lights-x/-w/-gap` | 22 · 52 · 14 | macOS traffic lights: where they start, the width of the three buttons, the gap after them. What sits at the top left of the window starts after `x + w + gap`, on macOS outside full screen only |
+| `--lights-x/-w/-gap` | 22 · 52 · 14 | macOS traffic lights: where the close button starts (and the margin after zoom), a fallback width of the three buttons, the gap after them. The layout reads the box the window reports (`--lights-box-w/-h` from `env(titlebar-area-x/-height)`); what sits at the top left starts at `box-w − x + gap`, on macOS outside full screen only |
 
 Targets smaller than 24px visually (chip remove 20, clear 24) get a transparent inset so the clickable area is ≥24×24 (WCAG 2.5.8). Link rows (`.linkbtn`, `.links a`, plan links) are one text line high and get the same 24px-high area through `::after`; links inside a sentence keep the height of their line.
 
