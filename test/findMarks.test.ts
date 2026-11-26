@@ -14,8 +14,11 @@ test('findMarks: Korean text and empty words', () => {
   assert.deepEqual(matchRanges('두 줄로 줄바꿈 되면서', ['줄바꿈', '']), [[5, 8]]);
 });
 
-test('findMarks: no match when lower-casing changes the length', () => {
-  assert.deepEqual(matchRanges('İstanbul', ['stanbul']), []);
+test('findMarks: a character whose lower case is longer does not shift the matches', () => {
+  const text = 'İstanbul and Ankara';
+  const [r1, r2] = matchRanges(text, ['stanbul', 'ankara']);
+  assert.equal(text.slice(...r1), 'stanbul');
+  assert.equal(text.slice(...r2), 'Ankara');
 });
 
 test('findMarks: the current match is the message first one, else the last', () => {

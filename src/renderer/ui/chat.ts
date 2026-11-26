@@ -414,7 +414,7 @@ export function renderChat(force = false, older = false) {
     let one = n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
     if (canRoot(c)) one = rootAttr(one, c.id);
     // Which message it is, for a search that goes to one (find.ts).
-    one = one.replace(/^<(\w+) /, `<$1 data-msg="${esc(c.id)}" `);
+    one = one.replace(/^<(\w+)(?=[\s>])/, `<$1 data-msg="${esc(c.id)}"`);
     pieces.push(one);
   }
   if (br !== null) pieces.push(br + '</div>');

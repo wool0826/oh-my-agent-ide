@@ -3,16 +3,30 @@
 
 /**
  * Where the words occur in `text`, ignoring case: [start, end) pairs in order, none overlapping (a longer word wins
- * where two start at the same place). Empty when lower-casing would change the text's length, so the pairs always
- * point into `text` itself.
+ * where two start at the same place). Each character is lower-cased on its own and mapped back, so a character
+ * whose lower case is longer (İ) does not shift the pairs: they always point into `text` itself.
  */
 export function matchRanges(text: string, words: readonly string[]): [number, number][] {
-  const low = text.toLowerCase();
-  if (low.length !== text.length) return [];
+  let low = '';
+  // For each code unit of `low`, where its character starts in `text`; one more entry for the end.
+  const from: number[] = [];
+  for (let i = 0; i < text.length;) {
+    const ch = String.fromCodePoint(text.codePointAt(i) ?? 0);
+    const l = ch.toLowerCase();
+    for (let k = 0; k < l.length; k++) from.push(i);
+    low += l;
+    i += ch.length;
+  }
+  from.push(text.length);
   const all: [number, number][] = [];
   for (const w of words) {
     if (!w) continue;
-    for (let i = low.indexOf(w); i >= 0; i = low.indexOf(w, i + w.length)) all.push([i, i + w.length]);
+    for (let i = low.indexOf(w); i >= 0; i = low.indexOf(w, i + w.length)) {
+      // A match that ends inside a character's longer lower case takes that whole character.
+      let end = i + w.length;
+      while (end < low.length && from[end] === from[end - 1]) end++;
+      all.push([from[i], from[end]]);
+    }
   }
   all.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
   const out: [number, number][] = [];

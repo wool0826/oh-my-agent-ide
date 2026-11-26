@@ -3,13 +3,15 @@
 import { findCount, firstFrom, matchRanges, tickAt } from '../../shared/findMarks';
 import { stepIndex } from '../../shared/palette';
 import { searchWords } from '../../shared/textSearch';
-import { esc, sym, t } from './core';
+import { esc, sym, t, ui } from './core';
 
 type ThreadId = 'chat-thread' | 'ws-thread';
 
 const find = {
   /** The thread searched; null while no search is shown. */
   th: null as ThreadId | null,
+  /** For a Worker's thread: which Worker. Another one opened there closes the search. */
+  wid: null as string | null,
   q: '',
   words: [] as string[],
   cur: -1,
@@ -22,7 +24,11 @@ const find = {
 /** Message boxes a match can be in: text the user reads, not buttons or code. */
 const SKIP = 'button, script, style, svg, .stamp, .older, mark.find';
 
-export function findOpen() { return find.th !== null; }
+/** A search is shown: its thread is on the screen. */
+export function findOpen() {
+  const el = thread();
+  return !!el && el.getClientRects().length > 0;
+}
 
 const thread = () => (find.th ? document.getElementById(find.th) : null);
 
@@ -31,8 +37,10 @@ const thread = () => (find.th ? document.getElementById(find.th) : null);
  * (a Worker's newest line).
  */
 export function startFind(th: ThreadId, q: string, anchor: string) {
-  if (find.th && find.th !== th) clearMarks(thread());
+  if (find.th) closeFind();
+  if (!searchWords(q).length) return;
   find.th = th;
+  find.wid = th === 'ws-thread' ? ui.wSel : null;
   find.q = q.trim();
   find.words = searchWords(find.q);
   find.cur = -1;
@@ -45,6 +53,7 @@ export function closeFind() {
   const el = thread();
   clearMarks(el);
   find.th = null;
+  find.wid = null;
   find.cur = -1;
   find.at = null;
   bar(el)?.remove();
@@ -54,6 +63,8 @@ export function closeFind() {
 /** Marks the thread again after it was drawn. `arrive`: centre the current match and pulse it. */
 export function refreshFind(th: ThreadId, arrive = false) {
   if (find.th !== th) return;
+  // The Worker's thread now shows another Worker: the search was for the one before.
+  if (th === 'ws-thread' && ui.wSel !== find.wid) { closeFind(); return; }
   const el = thread();
   if (!el) return;
   clearMarks(el);
@@ -102,7 +113,8 @@ function again(el: HTMLElement, marks: HTMLElement[]): number {
 function markAll(el: HTMLElement): HTMLElement[] {
   if (!find.words.length) return [];
   const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (n.parentElement?.closest(SKIP) || !n.nodeValue?.trim() ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    // A text node right in the thread is one of its drawn pieces (core.ts, placePieces): left alone, so the pieces keep their nodes.
+    acceptNode: (n) => (n.parentNode === el || n.parentElement?.closest(SKIP) || !n.nodeValue?.trim() ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
   const texts: Text[] = [];
   for (let n = walk.nextNode(); n; n = walk.nextNode()) texts.push(n as Text);
