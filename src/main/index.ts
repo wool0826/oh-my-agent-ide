@@ -641,18 +641,16 @@ function backToV1() {
 installCrashHandlers();
 protocol.registerSchemesAsPrivileged([{ scheme: SHOT_SCHEME, privileges: { standard: true, secure: true } }]);
 const single = app.requestSingleInstanceLock();
-if (!single) {
-  // Beside a running app nothing is written back (that app would write over it), and whoever asked is told.
-  if (process.argv.includes(V1_ARG)) {
-    void app.whenReady().then(() => {
-      if (!fakeMode()) dialog.showMessageBoxSync({ type: 'error', message: t('state.v1Running') });
-      app.exit(1);
-    });
-  } else app.quit();
-} else if (process.argv.includes(V1_ARG)) void app.whenReady().then(backToV1);
+if (!single) app.quit();
+else if (process.argv.includes(V1_ARG)) void app.whenReady().then(backToV1);
 else {
   // A second launch shows the window; with --quick it opens the quick message box instead (for a launcher or a pinned shortcut).
-  app.on('second-instance', (_e, argv) => { if (argv.includes(QUICK_ARG)) openQuick(here); else showWindow(win); });
+  // One with --state-v1 wrote nothing back, because this app would write over it: the chat here says so.
+  app.on('second-instance', (_e, argv) => {
+    if (argv.includes(QUICK_ARG)) return openQuick(here);
+    if (argv.includes(V1_ARG) && store.loaded) store.chat('error', t('state.v1Running'));
+    showWindow(win);
+  });
   app.whenReady().then(async () => {
     registerIpc();
     serveShots();

@@ -76,16 +76,24 @@ flow('started with --state-v1 the app writes the state back as one file and quit
   files: { 'data/state.json': SHORT },
 }, async (app) => {
   assert.deepEqual([saved(app).version, lines(app, 'chat.jsonl').length, lines(app, 'tasks-done.jsonl').length], [2, 100, 5]);
-  // Beside a running app nothing is done (the app that runs would write over it), and the start ends as a failure.
-  assert.equal(await app.once(['--state-v1'], { beside: true }), 1);
+  // Beside a running app nothing is done (the app that runs would write over it), and that app says so in its chat.
+  await app.once(['--state-v1'], { beside: true });
+  const refused = (c) => c.kind === 'error' && c.text.includes('--state-v1 while it was running');
+  await app.until(`return (await window.ide.call('state')).chat.some(${refused});`, 'the running app saying that nothing was written back');
   assert.equal(saved(app).version, 2);
   assert.deepEqual(named(app, 'state-v2-before-v1-'), []);
-  // With the app closed, one file holds everything again and the files it came from are kept.
+  // What the way back writes is what the app saved: wait for that notice on disk.
+  for (const end = Date.now() + 20_000; !savedNow(app)?.chat.some(refused);) {
+    if (Date.now() > end) throw new Error('The notice was never saved.');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  // With the app closed, one file holds everything again, what was said since the split too, and the files it came from are kept.
   assert.equal(await app.once(['--state-v1']), 0);
   const back = saved(app);
   assert.deepEqual([back.version, 'sealed' in back], [1, false]);
   assert.deepEqual(back.tasks, JSON.parse(SHORT).tasks);
-  assert.deepEqual(back.chat, JSON.parse(SHORT).chat);
+  assert.deepEqual(back.chat.slice(0, 150), JSON.parse(SHORT).chat);
+  assert.deepEqual(back.chat.slice(150).map(refused), [true]);
   assert.deepEqual([fs.existsSync(inData(app, 'chat.jsonl')), fs.existsSync(inData(app, 'tasks-done.jsonl'))], [false, false]);
   assert.deepEqual([named(app, 'state-v2-before-v1-').length, named(app, 'chat-before-v1-').length, named(app, 'tasks-done-before-v1-').length], [1, 1, 1]);
   // A second time there is nothing to write back, and nothing is touched.
@@ -95,7 +103,7 @@ flow('started with --state-v1 the app writes the state back as one file and quit
   await app.restart();
   const s = await app.state();
   assert.deepEqual([s.tasks.length, s.chat.filter((c) => /^message \d+$/.test(c.text)).length], [5, 150]);
-  assert.equal(s.chat.some((c) => c.kind === 'error'), false);
+  assert.deepEqual(s.chat.filter((c) => c.kind === 'error').map(refused), [true], 'nothing else went wrong');
   assert.deepEqual([saved(app).version, lines(app, 'tasks-done.jsonl').length], [2, 5]);
   assert.equal(named(app, 'state-v1-before-v2-').length, 2);
 });
