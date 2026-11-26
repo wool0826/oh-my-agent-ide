@@ -5,7 +5,7 @@ import { SCRIPT_CMD_MAX, SCRIPT_NAME_MAX, sortScripts } from '../../shared/scrip
 import type { ShellScript } from '../../shared/types';
 import { esc, S, sym, t, toast, tryCall, ui, when } from './core';
 import { openPop } from './controls';
-import { rowHtml, rowText, slotHtml } from './panes';
+import { rowHtml, slotHtml } from './panes';
 
 /** The open form's folder for each form ('new' or a script's id), until it is saved or cancelled. */
 const folders = new Map<string, string>();
@@ -42,18 +42,17 @@ function scriptSlot(s: ShellScript) {
   const sel = ui.scriptSel === s.id;
   const edit = ui.scriptEdit === s.id;
   const where = whereLabel(s.repo);
-  const row = rowHtml('script', s.id, sel, rowText(s.name, edit ? `${where} · ${t('memo.editing')}` : where));
-  if (edit) return slotHtml(s.id, sel, row, `<div class="memo script open">${formHtml(s.id, s)}</div>`);
+  if (edit) return slotHtml(s.id, sel, `<div class="memo script open">${formHtml(s.id, s)}</div>`);
   if (!sel) {
     const card = `<div class="memo script" data-action="pick" data-tab="script" data-id="${esc(s.id)}" data-focus="card-script-${esc(s.id)}" data-nav="script:${esc(s.id)}" tabindex="-1"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, false)}<span class="meta"><span class="script-where">${esc(where)}</span><span class="acts">${runBtn(s)}</span></span></div>`;
-    return slotHtml(s.id, false, row, card);
+    return slotHtml(s.id, false, card);
   }
   const sure = ui.memoDel === s.id;
   const act = (action: string, icon: string, label: string) => `<button class="mact" data-action="${action}" data-id="${esc(s.id)}" data-tip="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="script-remove" data-id="${esc(s.id)}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
   const facts = `<dl class="facts"><dt>${t('script.where')}</dt><dd>${esc(where)}</dd><dt>${t('auto.lastRun')}</dt><dd>${s.lastRunAt ? esc(when(s.lastRunAt)) : esc(t('auto.never'))}</dd></dl>`;
   const card = `<div class="memo script open" data-nav="script:${esc(s.id)}" tabindex="-1"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, true)}${facts}<span class="meta">${runBtn(s)}<span class="gap"></span><span class="acts">${act('script-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
-  return slotHtml(s.id, true, row, card);
+  return slotHtml(s.id, true, card);
 }
 
 /** The Scripts tab: "New script" (the form, selected at first), then the saved ones by name. */
@@ -64,7 +63,7 @@ export function scriptsHtml() {
   ui.scriptSel = keepPick(['new', ...list.map((s) => s.id)], ui.scriptSel, null);
   if (ui.scriptEdit && !list.some((s) => s.id === ui.scriptEdit)) ui.scriptEdit = null;
   const isNew = ui.scriptSel === 'new';
-  const head = slotHtml('new', isNew, rowHtml('script', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('script.new')}</b></span>`), add, ' new');
+  const head = slotHtml('new', isNew, add, rowHtml('script', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('script.new')}</b></span>`), ' new');
   return `${head}<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.tabScript')}</b><small>${list.length}</small></div><div class="group">${list.map(scriptSlot).join('')}</div></div>`;
 }
 

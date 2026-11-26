@@ -10,6 +10,8 @@ test('parseWidth: a stored number is kept within limits; anything else is the de
   assert.equal(parseWidth('side', '300.6'), 301);
   assert.equal(parseWidth('side', '20'), PANELS.side.min);
   assert.equal(parseWidth('ins', '9999'), PANELS.ins.max);
+  // A width stored when the right sidebar could reach 960 comes back at 640.
+  assert.equal(parseWidth('ins', '960'), 640);
   for (const raw of [null, undefined, '', 'wide', 'NaN']) {
     assert.equal(parseWidth('side', raw), PANELS.side.def, String(raw));
     assert.equal(parseWidth('ins', raw), PANELS.ins.def, String(raw));
@@ -62,8 +64,8 @@ test('keyWidth: arrows move the handle, Shift moves it further, Home and End go 
   assert.equal(keyWidth('side', 'ArrowLeft', true, PANELS.side.min, def, wide), PANELS.side.min);
   assert.equal(keyWidth('side', 'Home', false, 300, def, wide), PANELS.side.min);
   assert.equal(keyWidth('ins', 'End', false, 300, def, { ...wide, winW: 2000 }), PANELS.ins.max);
-  // On 1600 the right sidebar may still pass 640 (the old maximum), up to what leaves MAIN_MIN.
-  assert.equal(keyWidth('ins', 'End', false, 300, def, wide), 1600 - def.side - MAIN_MIN);
+  // On 1600 the right sidebar stops at its maximum; on a smaller window at what leaves MAIN_MIN.
+  assert.equal(keyWidth('ins', 'End', false, 300, def, wide), PANELS.ins.max);
   assert.equal(keyWidth('ins', 'End', false, 300, def, { winW: 1200, sideMin: false, insMin: false }), 1200 - def.side - MAIN_MIN);
   assert.equal(keyWidth('side', 'Enter', false, 300, def, wide), null);
   assert.equal(keyWidth('side', 'ArrowUp', false, 300, def, wide), null);

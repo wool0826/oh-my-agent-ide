@@ -1,18 +1,16 @@
-// The right sidebar's list and detail (shared/insPanes). Every item that can be selected is a slot (.pk) holding
-// its list row (.li) and its card (.pk-c). From SPLIT_AT wide the selected slot's card moves into the detail pane;
-// under it the card goes back to its slot. The node moves and is not drawn again, so typed text, the caret and the
-// focus stay where they were.
+// The right sidebar's lists: one column at any width. Every item that can be selected is a slot (.pk) holding its
+// card (.pk-c); the selected card opens in place. Only the "New automation" and "New script" slots also have a row
+// (.li), which stands for their form while it is closed.
 //
-// Every list is one Tab stop (roving tabindex): its items carry data-nav, a key that names the item whatever its
-// form (the row in two panes, the card in one column), and ↑/↓ move between the ones shown at any width.
-// Selecting is the user's doing only (a click, Enter or Space, ↑/↓); the focus alone selects nothing.
-import { paneMode } from '../../shared/insPanes';
+// Every list is one Tab stop (roving tabindex): its items carry data-nav, a key that names the item, and ↑/↓ move
+// between the ones shown. Selecting is the user's doing only (a click, Enter or Space, ↑/↓); the focus alone selects
+// nothing.
 import { $, esc } from './core';
 
 export type PaneTab = 'inbox' | 'memo' | 'auto' | 'script';
 
-/** One selectable item: its row for the list column, then its card. `cls` marks a kind of slot (" new"). */
-export function slotHtml(key: string, sel: boolean, row: string, card: string, cls = '') {
+/** One selectable item: its card, after `row` when it has one. `cls` marks a kind of slot (" new"). */
+export function slotHtml(key: string, sel: boolean, card: string, row = '', cls = '') {
   return `<div class="pk${cls}${sel ? ' sel' : ''}" data-pick="${esc(key)}">${row}<div class="pk-c">${card}</div></div>`;
 }
 
@@ -21,15 +19,14 @@ export function rowHtml(tab: PaneTab, key: string, sel: boolean, inner: string) 
   return `<div class="li" role="button" data-action="pick" data-tab="${tab}" data-id="${esc(key)}" data-nav="${tab}:${esc(key)}" data-focus="pick-${tab}-${esc(key)}" tabindex="-1"${sel ? ' aria-current="true"' : ''}>${inner}</div>`;
 }
 
-/** The items of the list shown now, in order: rows in two panes, cards in one column; never the detail pane. */
+/** The items of the list shown now, in order. */
 export function navItems(root: HTMLElement = $('#chat-ins')): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>('.ins-list [data-nav]')].filter((x) => !!x.offsetParent && !x.closest('.ins-detail'));
+  return [...root.querySelectorAll<HTMLElement>('.ins-list [data-nav]')].filter((x) => !!x.offsetParent);
 }
 
-/** The list item `el` stands for: itself, the one it is inside, or the selected row for the card in the detail pane. */
+/** The list item `el` stands for: itself or the one it is inside. */
 export function navItem(el: Element | null, root: HTMLElement = $('#chat-ins')): HTMLElement | null {
   if (!el || !root.contains(el)) return null;
-  if (el.closest('.ins-detail')) return root.querySelector<HTMLElement>('.ins-list .pk.sel > .li');
   return el.closest<HTMLElement>('.ins-list [data-nav]');
 }
 
@@ -64,63 +61,10 @@ export function rove(root: HTMLElement = $('#chat-ins')) {
   });
 }
 
-/** A row's text: the title on up to two lines, and one small line under it. */
-export const rowText = (title: string, small: string) => `<span class="t"><b>${esc(title)}</b>${small ? `<small>${esc(small)}</small>` : ''}</span>`;
-
 /** The tab's content scrolls in its own box under the tabs, so the tabs stay in view (data-scroll keeps its offset). */
-export const colsHtml = (list: string, attrs = '') => `<div class="ins-body" data-scroll="ins-body"${attrs}><div class="ins-cols"><div class="ins-list">${list}</div><div class="ins-detail"></div></div></div>`;
+export const colsHtml = (list: string, attrs = '') => `<div class="ins-body" data-scroll="ins-body"${attrs}><div class="ins-cols"><div class="ins-list">${list}</div></div></div>`;
 
-/** The sidebar's width as the user set it; the aside itself is narrower by its inset. */
-function sidebarWidth(root: HTMLElement) {
-  const w = parseFloat($('#win').style.getPropertyValue('--inspector-w'));
-  return Number.isFinite(w) ? w : root.offsetWidth;
-}
-
-
-/** Moves `node` into `to`, keeping a focus inside it, with the caret and the scroll of a text field. */
-function moveKeep(node: HTMLElement, to: HTMLElement) {
-  const a = document.activeElement as HTMLElement | null;
-  const inside = !!a && node.contains(a);
-  const field = inside && (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) ? a : null;
-  const range = field ? { s: field.selectionStart, e: field.selectionEnd, d: field.selectionDirection ?? undefined, top: field.scrollTop } : null;
-  to.append(node);
-  if (!inside) return;
-  a!.focus({ preventScroll: true });
-  if (field && range && range.s != null && range.e != null) {
-    try { field.setSelectionRange(range.s, range.e, range.d); } catch { /* not selectable */ }
-    field.scrollTop = range.top;
-  }
-}
-
-/** Puts the selected card where the width wants it: in the detail pane from SPLIT_AT, in its slot under it. */
-export function placeDetail(root: HTMLElement = $('#chat-ins')) {
-  const cols = root.querySelector<HTMLElement>(':scope > .ins-body > .ins-cols');
-  if (!cols) return;
-  const detail = cols.querySelector<HTMLElement>(':scope > .ins-detail')!;
-  const sel = cols.querySelector<HTMLElement>(':scope > .ins-list .pk.sel');
-  const split = paneMode(sidebarWidth(root), !!sel) === 'split';
-  if (cols.classList.contains('split') !== split) cols.classList.toggle('split', split);
-  const cur = detail.querySelector<HTMLElement>(':scope > .pk-c');
-  const want = split && sel ? sel.querySelector<HTMLElement>(':scope > .pk-c') ?? (cur?.dataset.from === sel.dataset.pick ? cur : null) : null;
-  if (cur && cur !== want) {
-    const home = cols.querySelector<HTMLElement>(`.ins-list .pk[data-pick="${CSS.escape(cur.dataset.from ?? '')}"]`);
-    if (home) moveKeep(cur, home); else cur.remove();
-  }
-  if (want && want.parentElement !== detail) {
-    want.dataset.from = sel!.dataset.pick;
-    moveKeep(want, detail);
-  }
-  rove(root);
-  // The card in the detail pane is a stop of its own, with all of its controls in the Tab order.
-  detail.querySelectorAll<HTMLElement>('[data-rove]').forEach((c) => {
-    if (c.dataset.rove) c.setAttribute('tabindex', c.dataset.rove); else c.removeAttribute('tabindex');
-    delete c.dataset.rove;
-  });
-  const card = detail.querySelector<HTMLElement>(':scope > .pk-c > [data-nav]');
-  if (card && card.tabIndex !== 0) card.tabIndex = 0;
-}
-
-/** Selects slot `key` in place (rows and slots), then places its card. */
+/** Selects slot `key` in place (slots and their rows), then makes the list's Tab stop follow. */
 export function markPick(key: string | null, root: HTMLElement = $('#chat-ins')) {
   root.querySelectorAll<HTMLElement>('.ins-list .pk').forEach((slot) => {
     const on = slot.dataset.pick === key;
@@ -129,11 +73,5 @@ export function markPick(key: string | null, root: HTMLElement = $('#chat-ins'))
     if (!row) return;
     if (on) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
   });
-  placeDetail(root);
-}
-
-/** Follows the sidebar's width: crossing SPLIT_AT while dragging moves the selected card, nothing else. */
-export function watchPanes() {
-  const root = $('#chat-ins');
-  new ResizeObserver(() => placeDetail(root)).observe(root);
+  rove(root);
 }

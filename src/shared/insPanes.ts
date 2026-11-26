@@ -1,15 +1,5 @@
-// The right sidebar's two layouts. Under SPLIT_AT it is one column and the selected item opens in place; from
-// SPLIT_AT the list keeps LIST_W and the rest is a detail pane for the selected item. With nothing selected it
-// stays one column at any width.
-
-/** The sidebar width from which the list and the selected item sit side by side. */
-export const SPLIT_AT = 560;
-/** The list column in two panes (--ins-list-w in styles.css). */
-export const LIST_W = 248;
-
-export function paneMode(width: number, hasSelection: boolean): 'one' | 'split' {
-  return hasSelection && width >= SPLIT_AT ? 'split' : 'one';
-}
+// The right sidebar's lists (ui/panes.ts): one column at any width, the selected item opened in place. What is
+// selected, where ↑/↓ go, and where the focus goes when an item leaves.
 
 /** The selected item of a list: the current one while it is still there, otherwise `fallback`. */
 export function keepPick(ids: string[], cur: string | null, fallback: string | null): string | null {

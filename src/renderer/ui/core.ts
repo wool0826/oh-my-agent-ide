@@ -606,7 +606,7 @@ export function userActed(e?: Event) {
 let wholeTurn = 0;
 /**
  * True once after the user did something: that state update draws every panel, as all of them were before
- * decision 215, so what handlers changed by hand is put right in every panel, not only where a part changed.
+ * decision 216, so what handlers changed by hand is put right in every panel, not only where a part changed.
  */
 export function actedSinceWholeDraw() {
   const acted = wholeTurn !== drawTurn;

@@ -1,4 +1,4 @@
-// End-to-end flows: the window draws only what changed (decision 215).
+// End-to-end flows: the window draws only what changed (decision 216).
 import assert from 'node:assert/strict';
 import { flow } from './harness.mjs';
 

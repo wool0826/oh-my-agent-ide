@@ -36,8 +36,7 @@ flow('one name for a waiting decision, a search that finds nothing says so, and 
 flow('a result is cleared on its own by its ✕ or Delete and comes back with Undo, and the list answers the arrows at any width', {}, async (app) => {
   await app.say('@fake task - First one\n@@fake result One.\n@fake task - Second one\n@@fake result Two.\n@fake task - Third one\n@@fake result Three.');
   await app.until("document.querySelectorAll('#chat-ins .res').length === 3", 'three result cards');
-  // The default sidebar is one column: the list is one Tab stop, nothing is selected, and its header says "Clear all".
-  assert.equal(await app.evaluate("return !!document.querySelector('#chat-ins .ins-cols.split');"), false);
+  // The list is one Tab stop, nothing is selected, and its header says "Clear all".
   const stops = () => app.evaluate("return [...document.querySelectorAll('#chat-ins .ins-list [data-nav]')].filter((x) => x.tabIndex === 0).map((x) => x.dataset.nav);");
   assert.equal((await stops()).length, 1);
   assert.equal(await app.evaluate("document.querySelector('#chat-ins [data-action=\"clear\"][data-kind=\"result\"]').textContent"), 'Clear all');
