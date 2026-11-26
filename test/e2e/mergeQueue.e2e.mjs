@@ -75,7 +75,9 @@ flow('a PR whose checks fail after the update leaves the queue, and the next one
   await app.click('#wk-list .mq-row [data-action="mq-again"]');
   await app.until(mergedCount(3), 'the second PR merged too');
   await app.click('#views button[data-v="chat"]');
-  await app.until("document.querySelector('#chat-thread')?.innerText.includes('Change 2: left the merge queue (checks failed)')", 'the chat event');
+  // A row for it, maybe inside a fold of the events around it: opened to find it.
+  await app.until(`document.querySelectorAll('#chat-thread .evs-h[aria-expanded="false"]').forEach((b) => b.click());
+    return [...document.querySelectorAll('#chat-thread .evrow[data-ev="queueLeft"]')].some((r) => /Change 2/.test(r.innerText) && /Left queue/.test(r.innerText) && /checks failed/.test(r.querySelector('.evt').dataset.tip));`, 'the chat event');
 });
 
 flow('a PR that conflicts with the new base leaves the queue and goes to its Worker', {

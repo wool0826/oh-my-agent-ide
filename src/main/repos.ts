@@ -316,7 +316,7 @@ export async function ensureWorktree(repo: Repo, workerId: string): Promise<stri
   await runOk('git', ['worktree', 'add', '--detach', dir, baseRef(repo)], { cwd: repo.path });
   if (repo.setup?.trim()) {
     const r = await runSetup(repo.setup, dir, repo.path);
-    if (r.code !== 0) store.chat('error', t('ev.setupFailed', { repo: repo.name, msg: r.tail || String(r.code) }));
+    if (r.code !== 0) store.event(t('ev.setupFailed', { repo: repo.name, msg: r.tail || String(r.code) }), { k: 'setupFailed', title: repo.name }, { kind: 'error' });
   }
   return dir;
 }

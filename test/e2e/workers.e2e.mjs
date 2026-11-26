@@ -74,8 +74,11 @@ flow('a Worker whose turn failed is listed as stopped with an error, says where 
   // The failed turn left the Worker idle; the sidebar, the chat and the Worker list still say it failed.
   assert.equal(s.workers.find((w) => w.id === t.workerId).status, 'idle');
   await app.until("document.querySelector('#side').innerText.includes('Stopped with an error')", 'the Worker under "Stopped with an error"');
-  await app.until("!!document.querySelector('#chat-thread .attach.fail [data-action=\"worker-continue\"]')", 'the failure card with Continue');
-  assert.match(await app.evaluate("document.querySelector('#chat-thread .attach.fail').innerText"), /W-\d+ · general · Stopped at 2\/3 · Build it · The build is broken/);
+  // In the chat, a row that needs the user: the task, its Worker, the step it stopped at, and Continue as an icon.
+  const FAILED = '#chat-thread .evrow[data-ev="failed"]';
+  await app.until(`!!document.querySelector('${FAILED} [data-action="worker-continue"]')`, 'the failure row with Continue');
+  assert.match(await app.evaluate(`document.querySelector('${FAILED}').innerText`), /T-\d+\s+Break\s+W-\d+\s+Failed 2\/3/);
+  assert.match(await app.evaluate(`document.querySelector('${FAILED} .evt').dataset.tip`), /The build is broken/);
   await app.click('button[data-v="worker"]');
   const row = await app.evaluate("document.querySelector('#wk-list .wrow').innerText");
   assert.match(row, /Failed/);

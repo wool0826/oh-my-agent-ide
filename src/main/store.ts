@@ -20,6 +20,7 @@ import { stampHistory } from '../shared/retro';
 import { callers, moveLine, statusMoves } from '../shared/taskStatus';
 import { log } from './log';
 import type { Memo, Automation, MergeQueueEntry, ShellScript } from '../shared/types';
+import type { ChatEv } from '../shared/chatEvents';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, TaskStatus, Worker, WorkerLogItem } from '../shared/types';
 
 export interface DispatcherState {
@@ -377,6 +378,13 @@ class Store extends EventEmitter {
     // The oldest leave memory when a save has put them in the file (flush); read-only, nothing is saved.
     if (this.readOnly) this.dropOldChat();
     this.changed();
+    return item;
+  }
+
+  /** An event line with its parts, which the thread draws as one row (shared/chatEvents.ts). */
+  event(text: string, ev: ChatEv, opts: { kind?: 'event' | 'error'; ref?: string } = {}) {
+    const item = this.chat(opts.kind ?? 'event', text, opts.ref);
+    item.ev = ev;
     return item;
   }
 

@@ -78,7 +78,7 @@ export function awaitPlan(m: WorkerManager, w: Worker, task: Task, text: string,
     s.send(planNudge(task));
     return m.touch(w);
   }
-  store.chat('event', t('ev.planMissing', { id: w.id, title: task.title }), task.id);
+  store.event(t('ev.planMissing', { id: w.id, title: task.title }), { k: 'planMissing', task: task.id, worker: w.id, title: task.title }, { ref: task.id });
   store.pushUpdate(`${w.id} ${task.id} "${task.title}" is still planning: its turn ended without a plan to approve ("${oneLine(text, 160)}"). The task stays open; send_to_worker if it needs instructions.`, true);
   store.changed();
 }

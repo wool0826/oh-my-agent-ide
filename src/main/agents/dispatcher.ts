@@ -186,7 +186,7 @@ function unassigned(task: Task, msg: string) {
   task.status = 'failed';
   task.summary = oneLine(msg, 200);
   task.updatedAt = task.finishedAt = nowIso();
-  store.chat('error', t('ev.assignFailed', { title: task.title, msg: task.summary }), task.id);
+  store.event(t('ev.assignFailed', { title: task.title, msg: task.summary }), { k: 'startFailed', task: task.id, title: task.title }, { kind: 'error', ref: task.id });
   store.changed();
 }
 
@@ -224,9 +224,9 @@ function boardTools(d: Dispatcher) {
         description: z.string().optional().describe('What the repository is responsible for. Used to route tasks.'),
       }, async (a) => {
         try {
-          store.chat('event', t('ev.cloning', { name: a.name ?? a.url }));
+          store.event(t('ev.cloning', { name: a.name ?? a.url }), { k: 'cloning', title: a.name ?? a.url });
           const r = await registerRepo(a);
-          store.chat('event', t(r.local ? 'ev.registeredLocal' : 'ev.registered', { name: r.name, path: r.path }));
+          store.event(t(r.local ? 'ev.registeredLocal' : 'ev.registered', { name: r.name, path: r.path }), { k: 'registered', title: r.name, alt: !!r.local });
           return ok(`Registered: ${repoLine(r)}\nPath: ${r.path}`);
         } catch (e) {
           return fail(`Registration failed: ${(e as Error).message}`);
@@ -509,7 +509,7 @@ class Dispatcher {
         if (this.wakeDue) this.wake();
       },
       onTool: (_n, summary) => { this.statusText = summary; store.changed(); },
-      onArtifactComment: (e) => store.chat('event', artifactCommentLine(t, e)),
+      onArtifactComment: (e) => store.event(artifactCommentLine(t, e), e.phase === 'end' ? { k: 'replied', alt: !e.replied } : { k: 'comment', title: e.comment.excerpt || undefined }),
       onContext: (n) => { d.contextTokens = n; store.changed(); },
       onSpend: (turn, session) => {
         d.sessionSpend = session;
@@ -521,7 +521,8 @@ class Dispatcher {
         if (e.phase === 'start') this.statusText = t('st.compacting');
         else {
           this.statusText = '';
-          store.chat(e.phase === 'done' ? 'event' : 'error', e.phase === 'done' ? t('ev.compacted', { a: kTokens(e.from), b: kTokens(e.to) }) : t('ev.compactFailed', { msg: oneLine(e.error, 200) }));
+          if (e.phase === 'done') store.event(t('ev.compacted', { a: kTokens(e.from), b: kTokens(e.to) }), { k: 'compacted', note: `${kTokens(e.from)} → ${kTokens(e.to)}` });
+          else store.event(t('ev.compactFailed', { msg: oneLine(e.error, 200) }), { k: 'compactFailed', title: oneLine(e.error, 200) }, { kind: 'error' });
         }
         store.changed();
       },
@@ -530,12 +531,12 @@ class Dispatcher {
         const stopped = st !== 'busy' && this.stopping;
         if (stopped) {
           this.stopping = false;
-          store.chat('event', t('ev.dispatcherStopped'));
+          store.event(t('ev.dispatcherStopped'), { k: 'dStopped' });
           this.queuedReply = undefined;
           this.auto = false;
           this.autoActed = false;
         } else if (st === 'error') {
-          store.chat('error', t('err.dispatcher', { msg: text }));
+          store.event(t('err.dispatcher', { msg: text }), { k: 'dError', title: oneLine(text, 200) }, { kind: 'error' });
           this.queuedReply = undefined;
           // A session that died mid-turn ends no turn, so an automatic one is over here.
           this.auto = false;
@@ -548,7 +549,7 @@ class Dispatcher {
       },
       onLimited: () => {
         this.cutOff = true;
-        store.chat('event', t('ev.limitPaused', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
+        store.event(t('ev.limitPaused', { time: limitResetText(accounts.nextFreeAt(this.provider)) }), { k: 'limitPaused', note: limitResetText(accounts.nextFreeAt(this.provider)) });
       },
     };
   }
@@ -594,7 +595,7 @@ class Dispatcher {
       if (d.sessionId) {
         const recap = recapChat(store.data.chat);
         this.carry = recap ? `[Earlier conversation] ${switched ? 'The Dispatcher model changed' : 'A new day started'}, so this is a new session. The end of the earlier conversation, for context (tasks and Workers are as the board tools show them now):\n${recap}` : null;
-        store.chat('event', t(switched ? 'ev.dispatcherNewModel' : 'ev.dispatcherNewDay'));
+        store.event(t(switched ? 'ev.dispatcherNewModel' : 'ev.dispatcherNewDay'), { k: 'newChat' });
       }
       d.sessionId = null;
       d.sessionSpend = null;
@@ -663,7 +664,7 @@ class Dispatcher {
     if (this.autoTurns >= MAX_AUTO_TURNS) {
       // The updates stay for the user's next message.
       this.wakeDue = false;
-      if (!this.autoPaused) store.chat('event', t('ev.autoPaused', { n: MAX_AUTO_TURNS }));
+      if (!this.autoPaused) store.event(t('ev.autoPaused', { n: MAX_AUTO_TURNS }), { k: 'autoPaused', n: MAX_AUTO_TURNS });
       this.autoPaused = true;
       return;
     }
@@ -715,9 +716,9 @@ class Dispatcher {
     this.userSpoke();
     const s = this.open();
     if (!s) {
-      if (!accounts.list().length) { store.chat('error', t('err.noAccount')); return id; }
+      if (!accounts.list().length) { store.event(t('err.noAccount'), { k: 'noAccount' }, { kind: 'error' }); return id; }
       this.hold(full, to);
-      store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
+      this.limitHeldLine();
       store.changed();
       return id;
     }
@@ -738,7 +739,7 @@ class Dispatcher {
     // Several runs ending during a usage limit: one note goes with all their results when it resets.
     if (this.held.includes(SHELL_NOTE)) return;
     this.hold(SHELL_NOTE, null);
-    store.chat('event', t('ev.limitHeld', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
+    this.limitHeldLine();
     store.changed();
   }
 
@@ -757,8 +758,14 @@ class Dispatcher {
     if (!this.held.length && !this.cutOff) return this.runWake();
     const s = this.open();
     if (!s) return;
-    store.chat('event', t('log.limitCleared'));
+    store.event(t('log.limitCleared'), { k: 'resumed' });
     this.deliver(s, []);
+  }
+
+  /** The line that says a message waits for the usage limit to reset, and when that is. */
+  private limitHeldLine() {
+    const time = limitResetText(accounts.nextFreeAt(this.provider));
+    store.event(t('ev.limitHeld', { time }), { k: 'limitHeld', note: time });
   }
 
   /** A message waits for a usage limit to reset; the turn that sends it answers the report it was filed under. */
@@ -827,7 +834,7 @@ class Dispatcher {
     d.sessionSpend = null;
     d.contextTokens = 0;
     d.date = today();
-    store.chat('event', t('ev.dispatcherCleared'));
+    store.event(t('ev.dispatcherCleared'), { k: 'cleared' });
     store.changed();
   }
 

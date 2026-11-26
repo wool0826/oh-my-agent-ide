@@ -177,7 +177,7 @@ export function saveSuggestion(id: string, text?: string) {
   sg.text = oneLine(text?.trim() || sg.text, 400);
   sg.status = 'saved';
   const file = remember(sg.scope, sg.text, sg.repo, sg.source);
-  store.chat('event', t('ev.remembered', { text: oneLine(sg.text, 120) }));
+  store.event(t('ev.remembered', { text: oneLine(sg.text, 120) }), { k: 'memory', title: oneLine(sg.text, 120) });
   store.changed();
   return file;
 }

@@ -37,7 +37,7 @@ export function registerWorkerIpc() {
     const picked = store.task(taskId);
     if (!picked?.compare || picked.compare.picked || !canPick(picked) || !picked.workerId) return;
     for (const x of store.data.tasks) if (x.compare?.group === picked.compare.group) x.compare.picked = picked.id;
-    store.chat('event', t('ev.comparePicked', { id: picked.workerId, title: picked.title }));
+    store.event(t('ev.comparePicked', { id: picked.workerId, title: picked.title }), { k: 'picked', task: picked.id, worker: picked.workerId ?? undefined, title: picked.title });
     store.changed();
     return workers.send(picked.workerId, 'user', PICK_MESSAGE);
   });

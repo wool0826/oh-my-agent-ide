@@ -30,10 +30,10 @@ export function registerDecisionIpc() {
     const a = store.data.autoAnswers.find((x) => x.id === id);
     if (!a) throw new Error(t('err.noItem'));
     a.corrected = { answer: newAnswer, scope, at: nowIso() };
-    store.chat('event', t(scope === 'preference' ? 'ev.correctedPref' : 'ev.corrected', { q: oneLine(a.question, 60), a: newAnswer }));
+    store.event(t(scope === 'preference' ? 'ev.correctedPref' : 'ev.corrected', { q: oneLine(a.question, 60), a: newAnswer }), { k: 'corrected', worker: a.workerId, title: oneLine(a.question, 120) });
     if (scope === 'preference') revisePreference(a.basis, `${oneLine(a.question, 120)} → ${newAnswer}`);
     workers.send(a.workerId, 'user', `[Correction] For "${a.question}" the Dispatcher answered "${a.answer}" on the user's behalf, but the user corrected it to "${newAnswer}". Adjust anything you already did accordingly.`)
-      .catch((e) => store.chat('error', t('err.correction', { id: a.workerId, msg: (e as Error).message })));
+      .catch((e) => store.event(t('err.correction', { id: a.workerId, msg: (e as Error).message }), { k: 'correctFailed', worker: a.workerId, title: oneLine(a.question, 120) }, { kind: 'error' }));
     store.changed();
     suggestFromCorrection(a);
   });

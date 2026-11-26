@@ -12,6 +12,7 @@ import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readine
 import { adoptSeen, isBot, parsePages, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
 import { MERGE_QUEUE, enqueue, headEntry, inPhase, leave, leftKey, leftNote, merged, newlyLeft, nextStep, prune, removeEntry, tickAfter, updateRefused, updating } from '../shared/mergeQueue';
 import { ciReason } from '../shared/askWhy';
+import { evAbout, prNumber } from '../shared/chatEvents';
 import { busyPrs, canMerge, conflictBody, mergeMethod, planConflictFix } from '../shared/prMerge';
 import { PR_POLL, eachLimited, isFullRound, isRateLimited, nextPollDelay, parsePrUrl, prStateQueries, readPrStates, type PrState } from '../shared/prPoll';
 import type { Decision, MergeQueueEntry, MergeQueueLeft, Task } from '../shared/types';
@@ -72,7 +73,7 @@ export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', h
   }
   if (!watch.announced) {
     const text = merged ? t('ev.prMerged', { title: first.title }) : t('ev.prClosed', { title: first.title });
-    store.chat('event', text);
+    store.event(text, { k: merged ? 'merged' : 'closed', task: first.id, worker: first.workerId ?? undefined, title: first.title, pr: prNumber(first.prUrl) });
     for (const id of new Set(tasks.map((x) => x.workerId))) if (id && store.worker(id)) store.log(id, 'event', text);
     const also = tasks.length > 1 ? ` (also recorded by ${tasks.slice(1).map((x) => x.id).join(', ')})` : '';
     store.pushUpdate(`${first.id} "${first.title}" PR ${merged ? 'merged' : 'closed without merging'}${also}; branch cleaned up`);
@@ -117,7 +118,7 @@ async function sendComments(task: Task) {
   task.seenCommentIds.push(...fresh.map((c) => c.id));
   task.reviewSyncedAt = nowIso();
   const body = fresh.map((c) => `- @${c.author} (${c.where}): ${c.body.trim()}`).join('\n');
-  store.chat('event', t('ev.reviewing', { id: task.workerId ?? '', title: task.title, n: fresh.length }));
+  store.event(t('ev.reviewing', { id: task.workerId ?? '', title: task.title, n: fresh.length }), { k: 'review', ...evAbout(task), n: fresh.length });
   workers.sendReview(task, body);
   return true;
 }
@@ -142,7 +143,7 @@ async function fixCi(task: Task, env: NodeJS.ProcessEnv, checks: Check[], headSh
 function sendCiFix(task: Task, body: string) {
   task.ciFixAttempts = (task.ciFixAttempts ?? 0) + 1;
   task.ciFixTotal = (task.ciFixTotal ?? 0) + 1;
-  store.chat('event', t('ev.ciFixing', { id: task.workerId ?? '', title: task.title, n: task.ciFixAttempts, max: MAX_CI_FIXES }));
+  store.event(t('ev.ciFixing', { id: task.workerId ?? '', title: task.title, n: task.ciFixAttempts, max: MAX_CI_FIXES }), { k: 'ci', ...evAbout(task), n: task.ciFixAttempts, max: MAX_CI_FIXES });
   workers.sendReview(task, body, 'ci');
 }
 
@@ -229,7 +230,7 @@ async function checkOne(watch: PrWatch<Task>) {
 /** Hand a conflict with the base to the Worker, once per pair of head and base commits. True when it was sent. */
 function sendConflict(task: Task, conflicts: boolean, headSha: string, baseSha: string, base: string): boolean {
   if (!planConflictFix(task, conflicts, headSha, baseSha)) return false;
-  store.chat('event', t('ev.conflictFixing', { id: task.workerId ?? '', title: task.title }));
+  store.event(t('ev.conflictFixing', { id: task.workerId ?? '', title: task.title }), { k: 'conflict', ...evAbout(task) });
   workers.sendReview(task, conflictBody(base || 'main'), 'conflict');
   store.changed();
   return true;
@@ -297,7 +298,7 @@ function moveQueue(after: readonly MergeQueueEntry[]) {
   for (const e of newlyLeft(before, after)) {
     const x = store.task(e.taskId);
     if (!x) continue;
-    store.chat('event', t('ev.queueLeft', { title: x.title, why: t(leftKey(e.left!.why)) }));
+    store.event(t('ev.queueLeft', { title: x.title, why: t(leftKey(e.left!.why)) }), { k: 'queueLeft', ...evAbout(x), note: t(leftKey(e.left!.why)) });
     store.pushUpdate(leftNote(x, e.left!.why, e.left!.detail));
   }
 }
