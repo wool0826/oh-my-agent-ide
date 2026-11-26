@@ -1014,3 +1014,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **How:** a pure move, the 97 channel names and their handler code unchanged. Handlers that need the window, the state push or the settings-follow-up calls get them through one `IpcContext` object from `index.ts`; the rest import their modules directly. The decision answer is a plain function (`ipc/decisions.ts`), also used by notification buttons and the Worker composer.
     - **Also moved** to get `index.ts` under 300 lines: the snapshot (`snapshot.ts`), the screenshot protocol (`shots.ts`), `--state-v1` (`stateV1.ts`), the usage-limit retry (`limits.ts`) and the state-load notices (`stateReport.ts`).
     - **Rejected:** one file per channel prefix (too many tiny files), and moving the window itself out of `index.ts`, which the plan keeps there.
+
+220. **`workers.ts` keeps the Workers' state, sessions and public methods; what they do is in `src/main/agents/workers/`, one file per area** (T-0119, K3 of the T-0093 plan, follows 219).
+    - **How:** each private method became a function in its area file (permissions, questions, plans, results, queue, messages, cancel, archive) that takes the manager as its first argument. Public methods stay on the class as one-line calls into those files, and the files call them back through the manager, so a test that wraps one (`archive`) still sees every call. The state the methods shared stays on the manager.
+    - **To `src/shared` with tests:** `setStatus` and when a follow-up reopens a finished task (`taskStatus.ts`), the permission buttons and answer labels (`grants.ts`), how a task's links add up (`linkify.ts`) and why blocked tasks are cancelled (`queue.ts`).
+    - **Rejected:** a chain of subclasses, one per area, which would hide which file a `this.` call lands in; and moving the state into module variables, which would leave two places to reset in tests.
+

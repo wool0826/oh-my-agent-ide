@@ -65,6 +65,9 @@ The spec, tokens and component gallery are in `docs/design-system/` (start with 
   duplicate, `tsc` does not). Call it with `tr(...)` from `src/shared/i18n.ts`.
 - **IPC.** A channel the window calls goes into its area file under `src/main/ipc/` (chat, decisions, workers, repos,
   memory, settings, tools, app; e2e hooks in `e2e.ts`) through `handle()`; `src/main/index.ts` only wires them up.
+- **Workers.** `src/main/agents/workers.ts` holds the Workers' state, their sessions and the public methods; what they
+  do goes into its area file under `src/main/agents/workers/` (permissions, questions, plans, results, queue, messages,
+  cancel, archive) as a function that takes the manager first and calls public methods back through it.
 - **CSS.** Add rules to `src/renderer/styles.css` next to the group for the same component (each group starts with a
   `/* … */` comment), not at the end of the file. New tokens go into the matching section of `tokens.css`.
 

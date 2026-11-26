@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { workers } from '../src/main/agents/workers';
+import { taskMessage } from '../src/main/agents/workers/messages';
 import { workerCodexTools } from '../src/main/agents/workerTools';
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
@@ -72,7 +73,7 @@ function pausedWorker() {
 
 beforeEach(() => {
   workers.closeAll();
-  (workers as unknown as { held: Map<string, string[]> }).held.clear();
+  workers.held.clear();
   Object.assign(store.data, { workers: [], tasks: [], chat: [], pendingUpdates: [], decisions: [] });
   sent.clear();
   limit(false);
@@ -202,7 +203,7 @@ test('on restart while every account is limited, no Worker is left running', () 
 
 test('cancelling a paused task drops its held messages, nothing restarts it, and the Worker hears it once', async () => {
   const { w, x } = pausedWorker();
-  const held = (workers as unknown as { held: Map<string, string[]> }).held;
+  const held = workers.held;
   held.set(w.id, ['[User message] Held.']);
   await workers.cancelTask(x.id, 'user');
   assert.equal(x.status, 'cancelled');
@@ -485,7 +486,7 @@ test('a plan-first turn that ends without a plan is reminded once, then waits fo
 test('a plan without its WHAT / HOW / OUTPUT lines is sent back once, then taken with a summary pulled from its text', async () => {
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w, { planFirst: true });
-  assert.match((workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x), /Start the plan with exactly three lines, one sentence each in English: "WHAT: ".*"HOW: ".*"OUTPUT: "/);
+  assert.match(taskMessage(workers, w, x), /Start the plan with exactly three lines, one sentence each in English: "WHAT: ".*"HOW: ".*"OUTPUT: "/);
   const s = workers.ensureSession(w)!;
   const bare = '# Plan: Add dark mode\n\n## Approach\nAdd a theme setting and swap the CSS variables.\n\n## Verification\nRun the tests and check both themes.';
   const first = await presentPlan(s, bare);
@@ -1324,7 +1325,7 @@ test('progress steps are required: the Worker prompt and every task message ask 
   assert.match(prompt, /required for every task, small ones included/);
   assert.match(prompt, /Within your first few actions, declare the expected steps \(at least 2/);
   assert.doesNotMatch(prompt, /Skip this for small tasks/);
-  const msg = (workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x);
+  const msg = taskMessage(workers, w, x);
   assert.match(msg, /Progress: declare your expected steps with set_steps within your first few actions, even for a small task/);
 });
 
@@ -1344,7 +1345,7 @@ test('local-only repository: the task message has no fetch, push or PR, and a fi
   try {
     const w = addWorker({ repo: 'loc' });
     const x = addTask(w, { kind: 'code', repo: 'loc', branch: 'agent/t-9' });
-    const msg = (workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x);
+    const msg = taskMessage(workers, w, x);
     assert.match(msg, /git switch -c agent\/t-9 trunk`/);
     assert.match(msg, /local only/);
     assert.doesNotMatch(msg, /git fetch origin|origin\/trunk/);
@@ -1367,7 +1368,7 @@ test('a repository with origin keeps the fetch and origin base in its task messa
   try {
     const w = addWorker({ repo: 'rem' });
     const x = addTask(w, { kind: 'code', repo: 'rem', branch: 'agent/t-8' });
-    const msg = (workers as unknown as { taskMessage(w: Worker, x: Task): string }).taskMessage(w, x);
+    const msg = taskMessage(workers, w, x);
     assert.match(msg, /git fetch origin.*origin\/main/);
   } finally {
     store.data.repos = store.data.repos.filter((r) => r.name !== 'rem');

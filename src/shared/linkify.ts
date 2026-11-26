@@ -85,6 +85,16 @@ export function reportLinks(text: string | null | undefined, skip: (string | nul
 /** The URL of a kept link: "[title](url)" or the bare URL. */
 export const linkUrl = (l: string) => /^\[[^\]]*\]\((https?:\/\/[^)\s]+)\)$/.exec(l)?.[1] ?? l;
 
+/**
+ * A task's links after another report: they add up over the task's turns, once each by URL (a later "[title](url)"
+ * takes an earlier one's place), and without the task's own PR.
+ */
+export function mergeLinks(kept: readonly string[] | null | undefined, added: readonly string[], own: string | null | undefined): string[] {
+  const byUrl = new Map<string, string>();
+  for (const l of [...(kept ?? []), ...added]) if (linkUrl(l) !== own) byUrl.set(linkUrl(l), l);
+  return [...byUrl.values()];
+}
+
 /** Report lines whose URLs are all results, whatever they point at. */
 const LINK_LINE = /^(?:LINK|FILE):/i;
 

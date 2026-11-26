@@ -1,7 +1,9 @@
 // "Allow for this task": one yes covers the same kind of action until the task ends (decision 119).
 // What counts as the same kind is decided here, narrowly, so a yes to one thing is never a yes to another.
 
+import type { Say } from './askWhy';
 import { readShell, shellOf } from './shellWords';
+import { ALLOW, ALLOW_TASK, DENY } from './types';
 
 /** The always-ask rules, by their label key. Each can be switched off in Settings; order is the order shown. */
 export const ASK_RULES = [
@@ -70,4 +72,14 @@ export function withGrant(grants: readonly Grant[] | null | undefined, g: Grant)
 
 export function withoutGrant(grants: readonly Grant[] | null | undefined, key: string): Grant[] {
   return (grants ?? []).filter((x) => x.key !== key);
+}
+
+/** A permission's buttons: Allow and Deny, and "Allow for this task" with what it covers when offered. */
+export function permissionOptions(scope: GrantScope | null): { label: string; description?: string }[] {
+  return [{ label: ALLOW }, { label: DENY }, ...(scope ? [{ label: ALLOW_TASK, description: scope.label }] : [])];
+}
+
+/** A permission's answer as the Worker's conversation shows it: the button's name, or the user's own words. */
+export function answerLabel(t: Say, ans: string): string {
+  return ans === ALLOW ? t('allow') : ans === ALLOW_TASK ? t('allowTask') : ans === DENY ? t('deny') : ans;
 }

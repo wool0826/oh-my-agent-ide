@@ -75,6 +75,13 @@ export function afterDependency(dep: Pick<Task, 'status' | 'prUrl' | 'prState'> 
   return 'wait';
 }
 
+/** Why the tasks blocked on `dep` are cancelled (afterDependency said cancel): its PR was closed, it is gone, or it failed. */
+export type CancelWhy = 'closed' | 'failed' | 'gone';
+
+export function cancelWhy(dep: Pick<Task, 'prState'>, exists: boolean): CancelWhy {
+  return dep.prState === 'CLOSED' ? 'closed' : !exists ? 'gone' : 'failed';
+}
+
 /** A task that still needs its Worker's worktree: its PR may get review fixes, or it has yet to start there. */
 export function holdsWorktree(x: Pick<Task, 'status'> | null | undefined): boolean {
   return x?.status === 'pr_open' || x?.status === 'blocked' || x?.status === 'queued';
