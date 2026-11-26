@@ -10,6 +10,8 @@ export const MERGE_QUEUE = {
   tick: 15_000,
   /** The same while GitHub is about to answer: the branch is being updated, or it still works out whether the PR merges. */
   tickSoon: 3_000,
+  /** How long into a phase the short tick is used; an answer that takes longer is asked for at the usual pace. */
+  soonFor: 60_000,
   /** Longest wait for a PR's checks to end. */
   checksMax: 60 * 60_000,
   /** Longest wait for checks to show up on a head the base was just taken into. */
@@ -18,6 +20,8 @@ export const MERGE_QUEUE = {
   headMoves: 3 * 60_000,
   /** Times the base is taken into one PR before the queue gives up on it (the base keeps moving). */
   maxUpdates: 3,
+  /** Times in a row GitHub may refuse to take the base in (not for a conflict) before the PR leaves. */
+  maxFails: 3,
 };
 
 type QueueTask = Pick<Task, 'id' | 'prUrl' | 'prState' | 'createdAt'> & { bundle?: string | null };
@@ -116,6 +120,8 @@ export interface QueueFacts {
   /** GitHub's own word: MERGEABLE, CONFLICTING, or UNKNOWN while it still works it out. */
   mergeable: string;
   checks: PrChecks;
+  /** The checks on the head, by name, whatever their state. */
+  names: readonly string[];
   /** A Worker is at work on the PR, so its head is about to change. */
   busy: boolean;
 }
@@ -153,19 +159,47 @@ export function nextStep(entry: MergeQueueEntry, f: QueueFacts, now: number): Qu
   if (f.mergeable !== 'MERGEABLE' || f.behind === null) return waitChecks(MERGE_QUEUE.checksMax);
   if (f.behind > 0) return (entry.updates ?? 0) >= MERGE_QUEUE.maxUpdates ? { do: 'leave', why: 'baseMoved' } : { do: 'update' };
   if (f.checks.ci === 'pending') return waitChecks(MERGE_QUEUE.checksMax);
-  // Right after the base was taken, the new head has no checks yet: "none" there means "not started", not "nothing to pass".
-  if (f.checks.ci === 'none' && entry.expectChecks && entry.updatedFrom) return waitChecks(MERGE_QUEUE.checksAppear);
+  if (entry.expectChecks && entry.updatedFrom) {
+    // Right after the base was taken, the new head has no checks yet: "none" there means "not started", not "nothing to pass".
+    if (f.checks.ci === 'none') return waitChecks(MERGE_QUEUE.checksAppear);
+    // They start one by one: a quick one has passed while another the old head had is not there yet. Those get the
+    // same time to show up; after it, the ones that ran decide (a check the base dropped never comes).
+    const missing = (entry.expectNames ?? []).some((n) => !f.names.includes(n));
+    if (missing && spent('checks') <= MERGE_QUEUE.checksAppear) return { do: 'wait', phase: 'checks' };
+  }
   return { do: 'merge' };
 }
 
-/** How long until the PR at the front is read again: soon while GitHub is in the middle of something short. */
-export function tickAfter(phase: MergeQueuePhase, mergeable: string): number {
-  return phase === 'updating' || (mergeable !== 'MERGEABLE' && mergeable !== 'CONFLICTING') ? MERGE_QUEUE.tickSoon : MERGE_QUEUE.tick;
+/**
+ * How long until the PR at the front is read again: soon while GitHub is in the middle of something short (the
+ * branch is being updated, or it still works out whether the PR merges), for the first minute of the phase.
+ */
+export function tickAfter(entry: MergeQueueEntry, mergeable: string, now: number): number {
+  const short = entry.phase === 'updating' || (mergeable !== 'MERGEABLE' && mergeable !== 'CONFLICTING');
+  return short && now - Date.parse(entry.since) < MERGE_QUEUE.soonFor ? MERGE_QUEUE.tickSoon : MERGE_QUEUE.tick;
 }
 
 /** The entry once the base was asked into its branch: it waits for the branch to move off the head read just now. */
-export function updating(entry: MergeQueueEntry, f: Pick<QueueFacts, 'headSha' | 'checks'>, now: string): MergeQueueEntry {
-  return { ...entry, phase: 'updating', since: now, updatedFrom: f.headSha, updates: (entry.updates ?? 0) + 1, expectChecks: !!entry.expectChecks || f.checks.ci !== 'none' };
+export function updating(entry: MergeQueueEntry, f: Pick<QueueFacts, 'headSha' | 'checks' | 'names'>, now: string): MergeQueueEntry {
+  return {
+    ...entry, phase: 'updating', since: now, updatedFrom: f.headSha, updates: (entry.updates ?? 0) + 1, fails: 0,
+    expectChecks: !!entry.expectChecks || f.checks.ci !== 'none',
+    expectNames: f.names.length ? [...f.names] : entry.expectNames ?? [],
+  };
+}
+
+/**
+ * GitHub refused to take the base in, and not for a conflict (the head moved under the request, a short outage):
+ * the entry to try again with at the next read, or null once it has been refused too often.
+ */
+export function updateRefused(entry: MergeQueueEntry): MergeQueueEntry | null {
+  const fails = (entry.fails ?? 0) + 1;
+  return fails >= MERGE_QUEUE.maxFails ? null : { ...entry, fails };
+}
+
+/** The entries that left between two states of the queue: what the user and the Dispatcher are told about. */
+export function newlyLeft(before: readonly MergeQueueEntry[], after: readonly MergeQueueEntry[]): MergeQueueEntry[] {
+  return after.filter((e) => e.left && !before.find((b) => b.taskId === e.taskId)?.left);
 }
 
 /** The entry in a phase; the phase's clock starts only when it enters it. */

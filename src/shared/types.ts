@@ -201,6 +201,10 @@ export interface MergeQueueEntry {
   updates?: number;
   /** The PR had checks before the base was taken, so the new head is not merged before its own appear. */
   expectChecks?: boolean;
+  /** Those checks by name: the new head is not merged on the first of them alone while the others have yet to start. */
+  expectNames?: string[];
+  /** Times in a row GitHub refused to take the base in for a reason other than a conflict. */
+  fails?: number;
   left?: { why: MergeQueueLeft; at: string; detail?: string } | null;
 }
 

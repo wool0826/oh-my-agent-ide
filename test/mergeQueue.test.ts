@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MERGE_QUEUE, enqueue, headEntry, inPhase, leave, leftKey, leftNote, merged, nextStep, phaseKey, prune, queueRows, queuedPrs, readyToQueue, removeEntry, tickAfter, updating, type QueueFacts } from '../src/shared/mergeQueue';
+import { MERGE_QUEUE, enqueue, headEntry, inPhase, leave, leftKey, leftNote, merged, newlyLeft, nextStep, phaseKey, prune, queueRows, queuedPrs, readyToQueue, removeEntry, tickAfter, updateRefused, updating, type QueueFacts } from '../src/shared/mergeQueue';
 import { tr } from '../src/shared/i18n';
 import type { MergeQueueEntry, PrChecks, Task } from '../src/shared/types';
 
@@ -14,7 +14,7 @@ const task = (n: number, more: Record<string, unknown> = {}) => ({
 });
 const tasks = [task(1), task(2), task(3)];
 const entry = (more: Partial<MergeQueueEntry> = {}): MergeQueueEntry => ({ taskId: 'T-1', prUrl: pr(1), phase: 'waiting', since: NOW, ...more });
-const facts = (more: Partial<QueueFacts> = {}): QueueFacts => ({ state: 'OPEN', headSha: 'aaa', behind: 0, mergeable: 'MERGEABLE', checks: ok, busy: false, ...more });
+const facts = (more: Partial<QueueFacts> = {}): QueueFacts => ({ state: 'OPEN', headSha: 'aaa', behind: 0, mergeable: 'MERGEABLE', checks: ok, names: ['test'], busy: false, ...more });
 const ids = (q: readonly MergeQueueEntry[]) => q.map((e) => `${e.taskId}${e.left ? `:${e.left.why}` : ''}`);
 
 test('mergeQueue: PRs join at the back in the order given, each PR once', () => {
@@ -103,7 +103,7 @@ test('mergeQueue: a PR behind its base takes the base first', () => {
 
 test('mergeQueue: after the base was asked in, it waits for the branch to move, then for the new head\'s checks', () => {
   const e = updating(entry(), facts(), NOW);
-  assert.deepEqual(e, { taskId: 'T-1', prUrl: pr(1), phase: 'updating', since: NOW, updatedFrom: 'aaa', updates: 1, expectChecks: true });
+  assert.deepEqual(e, { taskId: 'T-1', prUrl: pr(1), phase: 'updating', since: NOW, updatedFrom: 'aaa', updates: 1, fails: 0, expectChecks: true, expectNames: ['test'] });
   // Still the old head: its passing checks do not count.
   assert.deepEqual(nextStep(e, facts({ behind: 1 }), at(1000)), { do: 'wait', phase: 'updating' });
   assert.deepEqual(nextStep(e, facts({ behind: 1 }), at(MERGE_QUEUE.headMoves + 1)), { do: 'leave', why: 'updateFailed' });
@@ -198,9 +198,44 @@ test('mergeQueue: "Merge N" adds the ready PRs that are not in line yet', () => 
 });
 
 test('mergeQueue: the PR is read again soon while GitHub is in the middle of something short', () => {
-  assert.equal(tickAfter('updating', 'MERGEABLE'), MERGE_QUEUE.tickSoon);
-  assert.equal(tickAfter('checks', 'UNKNOWN'), MERGE_QUEUE.tickSoon);
-  assert.equal(tickAfter('checks', 'MERGEABLE'), MERGE_QUEUE.tick);
+  assert.equal(tickAfter(entry({ phase: 'updating' }), 'MERGEABLE', at(0)), MERGE_QUEUE.tickSoon);
+  assert.equal(tickAfter(entry({ phase: 'checks' }), 'UNKNOWN', at(0)), MERGE_QUEUE.tickSoon);
+  assert.equal(tickAfter(entry({ phase: 'checks' }), 'MERGEABLE', at(0)), MERGE_QUEUE.tick);
+  // An answer that takes longer than a minute is asked for at the usual pace.
+  assert.equal(tickAfter(entry({ phase: 'checks' }), 'UNKNOWN', at(MERGE_QUEUE.soonFor)), MERGE_QUEUE.tick);
+  assert.equal(tickAfter(entry({ phase: 'updating' }), 'MERGEABLE', at(MERGE_QUEUE.soonFor)), MERGE_QUEUE.tick);
+});
+
+test('mergeQueue: the new head is not merged on its first check while another the old head had has not started', () => {
+  const e = inPhase(updating(entry(), facts({ names: ['windows', 'macos'] }), NOW), 'checks', NOW);
+  assert.deepEqual(e.expectNames, ['windows', 'macos']);
+  const quick = facts({ headSha: 'bbb', names: ['windows'] });
+  assert.deepEqual(nextStep(e, quick, at(1000)), { do: 'wait', phase: 'checks' });
+  assert.deepEqual(nextStep(e, facts({ headSha: 'bbb', names: ['macos', 'windows'] }), at(1000)), { do: 'merge' });
+  // A check the base dropped never comes: after the time checks get to show up, the ones that ran decide.
+  assert.deepEqual(nextStep(e, quick, at(MERGE_QUEUE.checksAppear + 1)), { do: 'merge' });
+  // A second update keeps the names when the head it was asked on had none yet.
+  assert.deepEqual(updating(e, facts({ headSha: 'bbb', names: [], checks: { ...ok, ci: 'none' } }), NOW).expectNames, ['windows', 'macos']);
+});
+
+test('mergeQueue: a refused update is tried again, and the PR leaves after three in a row', () => {
+  const once = updateRefused(entry());
+  assert.equal(once?.fails, 1);
+  const twice = updateRefused(once!);
+  assert.equal(twice?.fails, 2);
+  assert.equal(updateRefused(twice!), null);
+  // An update that went through starts the count again.
+  assert.equal(updating(twice!, facts(), NOW).fails, 0);
+});
+
+test('mergeQueue: the entries that left between two states are the ones to tell about', () => {
+  const list = [task(1, { bundle: 'g' }), task(2, { bundle: 'g' }), task(3)];
+  const q = enqueue([], list, ['T-1', 'T-2', 'T-3'], NOW);
+  // Taken out (its PR was closed): the later PR of its bundle left with it, and only that one is news.
+  assert.deepEqual(newlyLeft(q, removeEntry(q, 'T-1', NOW)).map((e) => `${e.taskId}:${e.left!.why}`), ['T-2:bundle']);
+  const left = leave(q, 'T-3', 'ciFailed', NOW);
+  assert.deepEqual(newlyLeft(left, leave(left, 'T-1', 'conflict', NOW)).map((e) => e.taskId), ['T-1', 'T-2']);
+  assert.deepEqual(newlyLeft(q, q), []);
 });
 
 test('mergeQueue: every phase and every reason has its text in both languages', () => {
