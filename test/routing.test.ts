@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { REUSE_MAX_CONTEXT, describePick, keywords, newWorkLine, pickWorker, rankWorkers, reuseBlock, type NewTask } from '../src/shared/routing';
+import { REUSE_MAX_CONTEXT, describePick, keywords, lateBind, newWorkLine, pickWorker, rankWorkers, reuseBlock, startWorker, type NewTask } from '../src/shared/routing';
 import { WORKER_TASK_COMPACT } from '../src/shared/context';
 import type { Task, Worker } from '../src/shared/types';
 
@@ -107,4 +107,30 @@ test('routing: the pick is explained for the Dispatcher', () => {
   const c = pickWorker([worker('W-02')], [task('T-2', { workerId: 'W-02', title: 'prmonitor merge cleanup' })], nt({ prompt: 'prmonitor merge' }), MODEL, NOW)!;
   assert.equal(describePick(c, 'demo'), 'knows demo from 1 task(s); related: prmonitor, merge; context 40K');
   assert.equal(describePick({ ...c, related: [] }, null), 'did related work; context 40K');
+});
+
+test('routing: a task that cannot start yet waits without a Worker; a pinned one is bound at once (T-0146)', () => {
+  const free = { pinned: false, after: false, slotFree: true, accountFree: true };
+  assert.equal(lateBind(free), 'now');
+  assert.equal(lateBind({ ...free, after: true }), 'blocked');
+  assert.equal(lateBind({ ...free, slotFree: false }), 'slot');
+  assert.equal(lateBind({ ...free, accountFree: false }), 'limit');
+  assert.equal(lateBind({ ...free, after: true, slotFree: false }), 'blocked');
+  assert.equal(lateBind({ pinned: true, after: true, slotFree: false, accountFree: false }), 'now');
+});
+
+test("routing: a chained task starts on its dependency's Worker when that one passes the filters", () => {
+  const ws = [worker('W-01', { lastActiveAt: hoursAgo(0.1) }), worker('W-02', { lastActiveAt: hoursAgo(3) })];
+  const tasks = [task('T-1', { workerId: 'W-01', title: 'PR monitor merged state' }), task('T-2', { workerId: 'W-02', prState: 'MERGED' })];
+  assert.equal(startWorker(ws, tasks, nt(), MODEL, 'W-02', NOW)?.worker.id, 'W-02');
+  assert.equal(startWorker(ws, tasks, nt(), MODEL, null, NOW)?.worker.id, pickWorker(ws, tasks, nt(), MODEL, NOW)?.worker.id);
+});
+
+test('routing: a busy, other-model or full dependency Worker gives way to the usual pick', () => {
+  const tasks = [task('T-1', { workerId: 'W-01' }), task('T-2', { workerId: 'W-02' })];
+  for (const patch of [{ status: 'running' as const }, { model: 'claude-sonnet-5-5' }, { contextTokens: REUSE_MAX_CONTEXT + 1 }]) {
+    const ws = [worker('W-01'), worker('W-02', patch)];
+    assert.equal(startWorker(ws, tasks, nt(), MODEL, 'W-02', NOW)?.worker.id, 'W-01', JSON.stringify(patch));
+  }
+  assert.equal(startWorker([worker('W-02', { status: 'running' })], tasks, nt(), MODEL, 'W-02', NOW), null);
 });

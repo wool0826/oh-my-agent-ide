@@ -105,6 +105,12 @@ flow('with one slot, the second task waits and starts when the first ends', { se
   assert.match(side, /next, when a slot frees/);
   assert.equal(await app.evaluate("document.querySelector('#side .q-row.next .q-pos')?.textContent"), '1');
   assert.equal(await app.evaluate("document.querySelectorAll('#side .q-slots i').length + ':' + document.querySelectorAll('#side .q-slots i.on').length"), '1:1');
+  // It waits with no Worker yet (T-0146): its row opens its waiting card, with no Worker selected.
+  assert.equal(task(s, 'Second').workerId, null);
+  assert.equal(s.workers.length, 1);
+  await app.click('#side .q-row [data-action="open-queued"]');
+  await app.until("(document.querySelector('#wk-ins .qcard')?.innerText ?? '').includes('Second') && !!document.querySelector('#side .q-row.sel')", 'the waiting card of Second');
+  await app.click('button[data-v="chat"]');
   await app.click(answer('allow'));
   // The first finishes, the second takes the slot and asks in its turn.
   await app.until(`(document.querySelector('${DEC}')?.innerText ?? '').includes('npm run two')`, "the second task's permission card");

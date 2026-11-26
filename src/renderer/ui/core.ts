@@ -199,6 +199,8 @@ export const ui = {
   decOpen: new Set<string>(),
   /** Queued tasks whose request is shown in full on the Worker view's waiting card. */
   qOpen: new Set<string>(),
+  /** A waiting task with no Worker yet whose card the Worker view shows (T-0146). */
+  qSel: null as string | null,
   models: { models: [], fetchedAt: null, error: null } as ModelList,
   modelsLoading: false,
   restartAsk: false,

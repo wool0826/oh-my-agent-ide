@@ -86,6 +86,8 @@ export class WorkerManager {
   held = new Map<string, string[]>();
   /** PR feedback for a finished task that came while its Worker was on another one, per Worker, oldest first. */
   feedback = new Map<string, { taskId: string; body: string; kind: FeedbackKind }[]>();
+  /** Tasks that waited unassigned and are being given a Worker now (its worktree is made): each holds a slot meanwhile. */
+  binding = new Set<string>();
 
   list() { return store.data.workers; }
 
@@ -355,6 +357,9 @@ export class WorkerManager {
   restore(workerId: string, ref: string) { return results.restore(this, workerId, ref); }
   diff(workerId: string) { return results.diff(this, workerId); }
   assign(task: Task, workerId: string | null, model: string): Promise<Worker> { return queue.assign(this, task, workerId, model); }
+  enqueue(task: Task, how: 'blocked' | 'slot' | 'limit') { return queue.enqueue(this, task, how); }
+  slotFree() { return queue.slotFree(this); }
+  accountFree(model: string) { return queue.accountFree(model); }
   onPrSettled(doneTask: Task, merged: boolean) { return queue.onPrSettled(this, doneTask, merged); }
   sweepWaiting(now?: number) { return queue.sweepWaiting(this, now); }
   sweepStalled(now?: number) { return queue.sweepStalled(this, now); }

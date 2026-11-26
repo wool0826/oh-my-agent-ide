@@ -111,7 +111,10 @@ export interface Task {
   prompt: string;
   kind: 'code' | 'other';
   repo: string | null;
+  /** Null while it waits to start unassigned (shared/routing.ts lateBind): a Worker is picked when it can start. */
   workerId: string | null;
+  /** The model its Worker runs, kept while it waits unassigned so the Worker picked later runs the same one. */
+  model?: string | null;
   status: TaskStatus;
   branch: string | null;
   prUrl: string | null;

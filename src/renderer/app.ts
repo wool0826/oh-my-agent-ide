@@ -369,6 +369,7 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'open-worker': openWorker(id); break;
+    case 'open-queued': ui.qSel = id; go({ view: 'worker', wSel: null, wOpen: false }); renderWorkerInspector(); break;
     case 'chat-stop': {
       const b = el as HTMLButtonElement;
       b.disabled = true;

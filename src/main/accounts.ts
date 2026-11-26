@@ -199,6 +199,11 @@ class Accounts extends EventEmitter {
     return chosen;
   }
 
+  /** An account could carry a new session of this provider now (pick would find one), without picking it. */
+  hasFree(provider: Provider = 'claude') {
+    return !!chooseAccount(this.list(), Date.now(), null, provider);
+  }
+
   allLimited() {
     const l = this.list();
     return l.length > 0 && l.every((a) => this.isLimited(a));
