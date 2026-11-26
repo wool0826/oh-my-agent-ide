@@ -26,12 +26,14 @@ const THRESHOLD = 8;
 const MAX_SHARE = 0.0005;
 
 // Before the window's own scripts: the window's clock stands at SEEN_AT, nothing moves (animations, transitions, the
-// caret), and what every release changes (the version in Settings) is not drawn.
+// caret), and what every release changes (the version in Settings) is not drawn. The toolbar keeps clear of the caption
+// buttons by the real window's size, which the screen it is on limits (the CI runner's is smaller than the pictures), so
+// it keeps the 150px they take at 100%.
 const FREEZE = `(() => {
   const Real = Date;
   class Seen extends Real { constructor(...a) { if (a.length) super(...a); else super(${SEEN_AT}); } static now() { return ${SEEN_AT}; } }
   globalThis.Date = Seen;
-  const css = '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } #ver-n { visibility: hidden; }';
+  const css = '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } #ver-n { visibility: hidden; } .toolbar { padding-right: 150px !important; }';
   const add = () => { const s = document.createElement('style'); s.id = 'e2e-still'; s.textContent = css; document.head.append(s); };
   if (document.head) add(); else document.addEventListener('DOMContentLoaded', add, { once: true });
 })();`;
@@ -85,9 +87,10 @@ for (const theme of ['dark', 'light']) {
     settings: { theme },
     // The main process's clock almost stopped, and its window shown off the screen (test/e2e/still.cjs).
     env: { NODE_OPTIONS: `--require "${path.join(here, 'still.cjs').replaceAll('\\', '/')}"`, OMA_E2E_CLOCK: MADE_AT, OMA_E2E_OFFSCREEN: '1', TZ: 'UTC' },
-    // Grey text smoothing and one pixel per point, whatever the screen's own settings are, and a window off the screen
-    // that is drawn as if it were in view.
-    args: ['--disable-lcd-text', '--force-device-scale-factor=1', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
+    // Grey text smoothing, one pixel per point and drawing without the graphics card (whose rounded edges differ from
+    // machine to machine), whatever the screen's own settings are, and a window off the screen that is drawn as if it
+    // were in view.
+    args: ['--disable-lcd-text', '--force-device-scale-factor=1', '--disable-gpu', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
       '--disable-background-timer-throttling', '--disable-features=CalculateNativeWinOcclusion'],
   };
   const run = process.platform === BASE_OS ? flow : (name) => test.skip(`${name} (pictures are of ${BASE_OS})`);
