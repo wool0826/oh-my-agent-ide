@@ -87,6 +87,7 @@ export const DEFAULTS: SettingsView = {
   shellProfile: true,
   background: true,
   openAtLogin: false,
+  keepAwake: true,
 };
 
 /**
