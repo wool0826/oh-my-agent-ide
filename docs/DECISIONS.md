@@ -1100,3 +1100,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Cause and effect: a row whose task waited on a task merged or closed in the same block hangs under it in one box with a "then" arrow.
     - The summary row is one button (Enter/Space, `aria-expanded`, its label "6 events 23:21–23:22"); counts group by icon in order of first appearance, each icon labelled with its kinds. Times are 24-hour HH:MM; the day is in the tooltip and the thread's stamps.
     - The failure card becomes an A row with Failed n/max and the Continue icon button; the reason is in the title's tooltip. Hand-out blocks ("assigned") stay as they are and end a run, unlike the mock-up's assigned row: they already have their own one-line layout and actions.
+
+235. **An attachment chip keeps the same inner padding on both sides of its name; only a chip that ends in its remove button is tighter on the right** (T-0142, follows 227 and 232).
+    - Cause: `.fchip` had `padding: 2px 4px 2px 10px`, sized for the composer chip whose round remove button sits at its end. A result card's file chips (`.rfiles`, 232) have no button, so their name stopped 4px from the pill's rounded end and looked cut off.
+    - Now 10px on both sides, and `.fchip:has(> button)` sets the right to 4px. The sent-message chip keeps its own 8px on both sides.
+    - Rejected: a separate class per place, because the markup decides whether there is a button and `:has` follows it on its own.
