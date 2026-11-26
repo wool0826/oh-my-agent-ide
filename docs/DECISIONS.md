@@ -1026,3 +1026,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Old lines** have no source, so `noiseLine` matches the permission, plan and CI titles the app wrote, in English and Korean. At launch each `memory/decisions/*.md` with something to take out is copied to `data/backups/memory-decisions-<month>-<time>.md`, then rewritten and committed. A file with nothing to remove is left alone.
     - **The allow-list is unaffected:** the look back reads `task.permissions` and the task's grants, which `decisions.answer` keeps. Nothing reads these memory lines.
     - **Rejected:** filtering only in the digest and recall, which would leave the files growing; and a one-time flag, because memory synced from a PC on an older version can bring the lines back.
+
+222. **`s-pencil` and `s-refresh` are line icons on the 20 grid with a 1.6 stroke, like the other tab icons** (T-0130, user's pick 5B).
+    - **Why:** `s-pencil` had no `fill`/`stroke`, so in the narrow right sidebar tab it drew as a black silhouette that ignored the text colour in both themes. `s-refresh` (10 grid, 1.3 stroke) drew about 1.7px thick at 13px, heavier than its neighbours.
+    - **Now:** both symbols carry `fill="none" stroke="currentColor"`, so every use follows the text colour; the pencil-only `.btn.aa-pen svg` override is gone.
+    - **Rejected:** only adding the attributes to the pencil (5A), which left the refresh thicker; a filled pencil (5C), which still looked heavier than the line icons.

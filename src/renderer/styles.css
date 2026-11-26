@@ -690,7 +690,6 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .btn.hov svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
 .aa:hover .hov, .aa.sel .hov, .hov:focus-visible { opacity: 1; }
 .aa.editing .aa-pen, .aa.corrected .aa-pen { display: none; }
-.btn.aa-pen svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
 /* A result's or an auto-answer's own buttons (✕ clears it, the pencil corrects it), top right: shown while the pointer
    is on the row, while it or a button in it has the focus, and while it is selected. */
 .res { position: relative; }
