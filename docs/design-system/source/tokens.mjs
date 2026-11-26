@@ -56,9 +56,9 @@ export const scale = {
     'control-sm': '24px', 'control-md': '28px', 'control-lg': '32px', 'row-min': '44px',
     'icon-sm': '13px', 'icon-md': '16px', 'icon-lg': '18px', 'icon-hero': '44px',
     'sidebar-w': '272px', 'inspector-w': '344px', 'toolbar-h': '52px', 'panel-inset': '8px', 'settings-nav-w': '240px', 'settings-max': '680px',
-    // The macOS traffic lights as drawn (src/shared/trafficLights.ts): 12px buttons with 8px gaps are 52px wide; on
-    // macOS 26 the window moves them 5px right so they are drawn at x 22 there too. Things at the top left of the window
-    // start at --lights-end, which styles.css sets on macOS outside full screen only.
+    // The macOS traffic lights (src/shared/trafficLights.ts): the window puts the close button at x 22 and reports the
+    // box around the buttons (env(titlebar-area-x/-height)); styles.css lays out from that box. -w (12px buttons, 8px
+    // apart) is only its fallback. Things at the top left start at --lights-end, on macOS outside full screen only.
     'lights-x': '22px', 'lights-w': '52px', 'lights-gap': '14px',
   },
   dur: { instant: '80ms', fast: '120ms', base: '180ms', slow: '300ms', glide: '460ms', spin: '1000ms', attention: '1100ms' },

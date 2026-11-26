@@ -260,9 +260,10 @@ flow('the app starts in the message field, the views are one Tab stop, and a nar
   await app.size(900, 760);
   b = JSON.parse(await app.until(`return document.querySelector('#win').classList.contains('side-min') && (() => { ${box} })()`, 'the rail at 900px'));
   assert.ok(b.main >= 520, JSON.stringify(b));
-  // The rail holds the macOS traffic lights (--lights-x, --lights-w wide) with even margins; elsewhere it stays 60 wide, and
-  // the toolbar's controls end clear of the caption buttons (150px at 100%). The grid animates, so wait for it to settle.
-  await app.until("return (() => { const s = document.querySelector('.sidebar').getBoundingClientRect(); const mac = !!document.querySelector('.platform-darwin:not(.fullscreen)'); const css = getComputedStyle(document.body); const x = parseFloat(css.getPropertyValue('--lights-x')), w = parseFloat(css.getPropertyValue('--lights-w')); return mac ? Math.abs((s.right - x - w) - (x - s.left)) < 0.5 : Math.abs(s.right - 60) < 0.5; })()", 'the rail sized for the traffic lights on macOS, 60px elsewhere');
+  // On macOS the rail's panel is centred on the box the window reports around the traffic lights (lights.e2e.mjs);
+  // elsewhere it stays 60 wide, and the toolbar's controls end clear of the caption buttons (150px at 100%). The grid
+  // animates, so wait for it to settle.
+  await app.until("return (() => { const s = document.querySelector('.sidebar').getBoundingClientRect(); const mac = !!document.querySelector('.platform-darwin:not(.fullscreen)'); const css = getComputedStyle(document.body); const o = navigator.windowControlsOverlay; const box = o?.visible ? o.getTitlebarAreaRect().x : 2 * parseFloat(css.getPropertyValue('--lights-x')) + parseFloat(css.getPropertyValue('--lights-w')); return mac ? Math.abs((s.left + s.right) / 2 - box / 2) < 0.5 : Math.abs(s.right - 60) < 0.5; })()", 'the rail centred on the traffic lights on macOS, 60px elsewhere');
   for (const w of [900, 760]) {
     await app.size(w, 760);
     const end = Number(await app.until(`return (() => { if (document.querySelector('.platform-darwin')) return 1; const r = Math.max(...[...document.querySelector('.toolbar').children].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right)); return r <= innerWidth - 150 + 0.5 ? String(r) : ''; })()`, `the toolbar clear of the caption buttons at ${w}px`));
