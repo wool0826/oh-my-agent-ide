@@ -24,7 +24,7 @@ import { closeShot, markBrokenShot, openShot, shotOpen, showShot, stepShot } fro
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
-import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, moreBtn, onScroll, Pane, playSound, readState, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
+import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, moreBtn, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, when, worker, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
@@ -1273,7 +1273,7 @@ export function init() {
     const got = readState(msg, gotState);
     if (!got) return;
     const { state: s } = got;
-    const parts = S ? got.parts : null;
+    const parts = S && !actedSinceWholeDraw() ? got.parts : null;
     const has = (...ps: Part[]) => !parts || ps.some((p) => parts.has(p));
     const firstSetup = !S && s.setupNeeded;
     const langChanged = S && S.settings.language !== s.settings.language;

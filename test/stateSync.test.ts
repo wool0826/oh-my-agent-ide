@@ -99,18 +99,19 @@ test('stateSync: a list in a new order sends the order; a list without ids, and 
   assert.deepEqual([...panelsFor(['dispatcher'])].sort(), ['chat', 'dispatcher']);
 });
 
-test('stateSync: the sender numbers its messages and sends nothing when nothing changed', () => {
+test('stateSync: the sender numbers its messages, and sends empty changes when nothing changed', () => {
   const tx = new StateSender();
   const a = recorded[1];
   const b = recorded[2];
   assert.deepEqual(tx.next(a), { kind: 'full', seq: 1, state: a });
-  assert.equal(tx.next(sent(a)), null);
+  // Still a message: after the user did something, the window draws every panel at the next one (decision 140).
+  assert.deepEqual(tx.next(sent(a)), { kind: 'changes', from: 1, seq: 2, changes: { set: {}, lists: {}, gone: [] } });
   const m = tx.next(b);
-  assert.equal(m?.kind === 'changes' && `${m.from}>${m.seq}`, '1>2');
+  assert.equal(m.kind === 'changes' && `${m.from}>${m.seq}`, '2>3');
   // A whole state starts again from itself.
-  assert.deepEqual(tx.full(a), { kind: 'full', seq: 3, state: a });
+  assert.deepEqual(tx.full(a), { kind: 'full', seq: 4, state: a });
   const m2 = tx.next(b);
-  assert.equal(m2?.kind === 'changes' && `${m2.from}>${m2.seq}`, '3>4');
+  assert.equal(m2.kind === 'changes' && `${m2.from}>${m2.seq}`, '4>5');
 });
 
 test('stateSync: the window takes messages in order, skips old ones, and asks again after a gap', () => {
@@ -154,12 +155,12 @@ test('stateSync: a window that misses messages catches up and ends with the same
     for (let i = 0; i < 40; i++) {
       now = r() < 0.2 ? s : edit(now, r, 1 + Math.floor(r() * 3));
       const msg = tx.next(now);
-      if (msg && r() >= 0.25) deliver(msg); // a quarter of them are lost
+      if (r() >= 0.25) deliver(msg); // a quarter of them are lost
     }
   }
   // A lost message is noticed at the next one, which brings the window back in step.
   now = { ...now, dispatcher: { ...now.dispatcher, statusText: 'last' } };
-  deliver(tx.next(now)!);
+  deliver(tx.next(now));
   same(held!.state, now);
   assert.ok(seen.changes > 100 && seen.resync > 10, JSON.stringify(seen));
 });

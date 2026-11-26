@@ -598,6 +598,18 @@ export function keepInputs(root: HTMLElement, render: () => void) {
 let drawTurn = 0;
 export function userActed() { drawTurn++; }
 
+/** The draw turn at the last state update that drew every panel. */
+let wholeTurn = 0;
+/**
+ * True once after the user did something: that state update draws every panel, as all of them were before
+ * decision 214, so what handlers changed by hand is put right in every panel, not only where a part changed.
+ */
+export function actedSinceWholeDraw() {
+  const acted = wholeTurn !== drawTurn;
+  wholeTurn = drawTurn;
+  return acted;
+}
+
 /**
  * Makes a panel skip a write of the HTML it already shows. Every state update draws every panel of the screen
  * again by setting its innerHTML; most of the time a panel's HTML is the same as before, and writing it anyway

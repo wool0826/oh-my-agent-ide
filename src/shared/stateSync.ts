@@ -133,7 +133,8 @@ export const changedParts = (c: StateChanges): Set<Part> => new Set([...Object.k
 
 /**
  * The main process's side: numbers each message and remembers what the window holds, to send only what differs
- * from it. `full` is for the window's load and for a window out of step; `next` returns null when nothing changed.
+ * from it. `full` is for the window's load and for a window out of step. `next` sends empty changes when nothing
+ * changed: a state update after the user did something still draws the window again (decision 140).
  */
 export class StateSender {
   private seq = 0;
@@ -144,11 +145,10 @@ export class StateSender {
     return { kind: 'full', seq: ++this.seq, state };
   }
 
-  next(state: AppState): StateMsg | null {
+  next(state: AppState): StateMsg {
     if (!this.held) return this.full(state);
     const prints = printState(state);
-    const changes = stateChanges(this.held, state, prints);
-    if (!changes) return null;
+    const changes = stateChanges(this.held, state, prints) ?? { set: {}, lists: {}, gone: [] };
     this.held = prints;
     const from = this.seq;
     return { kind: 'changes', from, seq: ++this.seq, changes };

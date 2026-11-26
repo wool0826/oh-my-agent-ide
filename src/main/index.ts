@@ -177,10 +177,7 @@ function pushState() {
   if (pushTimer) return;
   pushTimer = setTimeout(() => {
     pushTimer = null;
-    if (win) {
-      const msg = sender.next(snapshot());
-      if (msg) win.webContents.send('state', msg);
-    }
+    if (win) win.webContents.send('state', sender.next(snapshot()));
     syncTray();
   }, 120);
 }
