@@ -58,21 +58,37 @@ export function setS(v: AppState | null) { S = v; }
 
 /** The numbered state last taken from the main process (shared/stateSync.ts). */
 let taken: Held | null = null;
-let resyncing = false;
+let reread: ((msg: StateMsg) => void) | null = null;
+let asking = false;
+/** The newest message missed while the whole state was on its way. */
+let behind = 0;
 
 /**
  * Reads a state message from the main process: the state to draw and the parts that changed (null: all of them), or
  * null when it brings nothing to draw. After a missed message the whole state is asked for again; `again` reads it.
  */
 export function readState(msg: StateMsg, again: (msg: StateMsg) => void): { state: AppState; parts: Set<Part> | null } | null {
+  reread = again;
   const r = receive(taken, msg);
-  if (r.step === 'resync' && !resyncing) {
-    resyncing = true;
-    void ide.call<StateMsg>('state:full').then(again, () => {}).finally(() => { resyncing = false; });
-  }
+  if (r.step === 'resync') { behind = Math.max(behind, msg.seq); askWholeState(); }
   if (r.step !== 'take') return null;
   taken = r.held;
   return { state: r.held.state, parts: r.parts };
+}
+
+/**
+ * Asks the main process for the whole state: after a missed message, and after a call that failed, since the window
+ * may have changed its copy before the call (a setting) and parts that did not change are not sent again.
+ */
+function askWholeState() {
+  const back = reread;
+  if (asking || !back) return;
+  asking = true;
+  void ide.call<StateMsg>('state:full').then(back, () => {}).finally(() => {
+    asking = false;
+    // One missed while it was on its way that is newer than what it brought: ask once more.
+    if (taken && behind > taken.seq) askWholeState();
+  });
 }
 
 export const lang = (): Lang => S?.settings.language ?? 'en';
@@ -514,6 +530,7 @@ export async function tryCall<T = any>(ch: string, ...args: unknown[]): Promise<
   try {
     return { ok: true, v: await ide.call<T>(ch, ...args) };
   } catch (e) {
+    askWholeState();
     return { ok: false, error: errText(e) };
   }
 }
@@ -722,6 +739,8 @@ export const NEW_FROM = '<i class="new-from" hidden></i>';
 
 /** What a thread drawn from pieces shows: each piece's HTML and the nodes made from it (setThread). */
 const drawn = new WeakMap<HTMLElement, { pieces: { html: string; nodes: ChildNode[] }[]; touched: boolean }>();
+/** Threads that already tell `touch` what the user does in them. */
+const listening = new WeakSet<HTMLElement>();
 
 /** What the user does that handlers answer by changing the page by hand (init in app.ts, and threads here). */
 export const ACTS = ['click', 'keydown', 'input', 'change', 'drop', 'contextmenu'] as const;
@@ -746,7 +765,7 @@ function nodesOf(html: string): ChildNode[] {
  */
 function placePieces(th: HTMLElement, pieces: string[]) {
   const was = drawn.get(th);
-  if (!was) for (const type of ACTS) th.addEventListener(type, () => touch(th), true);
+  if (!listening.has(th)) { listening.add(th); for (const type of ACTS) th.addEventListener(type, () => touch(th), true); }
   const old = new Map<string, ChildNode[][]>();
   if (was && !was.touched && was.pieces.every((p) => p.nodes.every((n) => n.parentNode === th))) {
     for (const p of was.pieces) old.set(p.html, [...(old.get(p.html) ?? []), p.nodes]);

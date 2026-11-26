@@ -70,14 +70,14 @@ export function setView(v: View) {
  */
 export function renderAll(force = false, parts: ReadonlySet<Part> | null = null) {
   if (!S) return;
-  const due = parts && !force ? panelsFor(parts) : null;
-  const draw = (p: Panel) => !due || due.has(p);
   const langChanged = ui.langApplied !== lang();
   applyStaticText();
   // Don't overwrite the preview while Settings is open.
   applyTheme(S.settings.theme);
   if (!ui.settingsShown) applyFont(S.settings.fontFamily, S.settings.fontSize);
   if (langChanged) force = true;
+  const due = parts && !force ? panelsFor(parts) : null;
+  const draw = (p: Panel) => !due || due.has(p);
   // A focused control (a row, a button, a link) is drawn again as a new element; the focus goes to the one that took its place.
   const focused = document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-action]') ? document.activeElement : null;
   const focusKey = focused ? focusSelector(focused.tagName, focused.dataset) ?? '' : '';
