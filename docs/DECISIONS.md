@@ -926,3 +926,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
    - 206 added a bare `.tl` rule for the time line, which turned the sidebar tab labels (`.ins-tabs .tl`) into 6px grey bars. The time line was renamed; the labels keep `.tl`.
    - Renaming beat scoping the rule to `#ws-sum`: the same bar may be reused outside the Summary tab, and no other class 206 added is used anywhere else.
    - `test/e2e/layout.e2e.mjs` now checks that the chosen tab's label is text: no track colour behind it, as high as its font, not clipped.
+
+209. **The checklist's `e2e` rows run in `test/e2e/realuse.e2e.mjs`, one flow per row not covered elsewhere, with two test hooks in fake mode** (T-0105, F2 of the T-0093 plan; follows 128).
+   - **Which rows.** 1.5 (the click), 3.5, 4.1, 5.1, 5.2, 5.3, 9.5 (the refresh), 9.7 and 9.8 got a flow each, named "row N: …". 1.3, 1.4, 2.5, 3.6, 4.2 and 9.9 already had one, which the checklist now names. Rejected: copying those into the new file.
+   - **Time without waiting.** `e2e:clock` runs the half-minute checks (the slot given up after a wait, daily automations) as if a given time had passed, so 3.5 and 4.1 take a second instead of ten minutes or one. `Automations.tick` takes the time to check against for that, and the next run is counted from it. Rejected: a shorter hold setting (the setting is whole minutes, and the checks still run every 30 s).
+   - **Nothing opens during a test.** With fake agents, `open:path` and `open:external` keep what they were asked to open (`e2e:opened`) instead of starting an editor or a browser. Rejected: wrapping `window.ide.call` in the page, which the context bridge does not allow.
+   - **Restart.** The harness gained `restart()`: the same profile and port, a new process, the window driven again once drawn. The flow waits for the allowance in the state file before restarting, as a real quit writes only what was saved.

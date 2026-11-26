@@ -60,6 +60,8 @@ let win: BrowserWindow | null = null;
 let quitting = false;
 /** The "still running" notice was shown in this run. */
 let trayHinted = false;
+/** With fake agents (the end-to-end tests), what would have been opened on the computer, kept instead. */
+const e2eOpened: [string, string][] = [];
 
 /** The user's answer to a decision, from the inbox or a notification button. Set once the handlers exist. */
 let answerByUser: (id: string, ans: string) => void = () => {};
@@ -476,8 +478,12 @@ function registerIpc() {
   handle('account:plan', (id: string, plan: AccountPlan) => accounts.setPlan(id, plan));
   // A round of reading usage now (Settings' account menu, the popover's button). Accounts the server asked to wait are skipped.
   handle('usage:refresh', () => accounts.refreshAll());
-  handle('open:external', (url: string) => { if (/^https?:\/\//.test(url)) return shell.openExternal(url); });
+  handle('open:external', (url: string) => {
+    if (fakeMode()) { e2eOpened.push(['open:external', url]); return; }
+    if (/^https?:\/\//.test(url)) return shell.openExternal(url);
+  });
   handle('open:path', async (p: string) => {
+    if (fakeMode()) { e2eOpened.push(['open:path', p]); return; }
     // A path an agent reported may be a program or a script: those are shown in their folder, not run.
     let dir = false;
     try { dir = fs.statSync(p).isDirectory(); } catch { /* openPath says it is missing */ }
@@ -533,6 +539,10 @@ async function boot() {
   if (fakeMode()) {
     handle('diag:text', () => diagnostics());
     handle('pr:check', () => checkPrs({ full: true }));
+    // The half-minute checks run as if `ms` had passed: a slot given up after a long wait, a daily automation's time.
+    handle('e2e:clock', (ms: number) => { const now = Date.now() + Number(ms); workers.sweepWaiting(now); automations.tick(new Date(now)); });
+    // What a test run would have opened on the computer (open:path, open:external keep it instead).
+    handle('e2e:opened', () => e2eOpened);
   }
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);

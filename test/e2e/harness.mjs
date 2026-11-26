@@ -121,10 +121,23 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
   }
 
   const port = await freePort();
-  const log = fs.openSync(path.join(dir, 'app.log'), 'w');
-  const child = spawn(electron, ['.', `--remote-debugging-port=${port}`, '--hidden'], {
-    cwd: root, stdio: ['ignore', log, log],
-    env: { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile, ELECTRON_ENABLE_LOGGING: '1', ...env },
+  // The same profile and port each time, so restart() brings back the app a user would find after quitting it.
+  const startApp = () => {
+    const log = fs.openSync(path.join(dir, 'app.log'), 'a');
+    return spawn(electron, ['.', `--remote-debugging-port=${port}`, '--hidden'], {
+      cwd: root, stdio: ['ignore', log, log],
+      env: { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile, ELECTRON_ENABLE_LOGGING: '1', ...env },
+    });
+  };
+  let child = startApp();
+  /** Ends the app and waits until it is gone; a quit that hangs is ended for good. */
+  const endApp = () => new Promise((r) => {
+    // This app, not whichever one `child` names by the time the timer fires (restart() starts the next at once).
+    const c = child;
+    if (c.exitCode !== null || c.signalCode !== null) { r(); return; }
+    const hung = setTimeout(() => { c.kill('SIGKILL'); r(); }, 3000);
+    c.once('exit', () => { clearTimeout(hung); r(); });
+    c.kill();
   });
 
   let ws;
@@ -199,6 +212,8 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
         const m = await ask('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(file, Buffer.from(m.result.data, 'base64'));
       },
+      /** A raw DevTools protocol call on this page (a drop of files, for one). */
+      cdp: ask,
       close: () => sock.close(),
     };
   }
@@ -218,6 +233,14 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
   // Its height stays the window's own, so the pointer still reaches the bottom of the page. Here too, a failure
   // stops the app before it is reported.
   try {
+    await widen();
+  } catch (e) {
+    try { ws.close(); } catch { /* closed */ }
+    child.kill('SIGKILL');
+    throw Object.assign(e, { dir, home });
+  }
+
+  async function widen() {
     await evaluate(PROBE);
     if (await evaluate('window.innerWidth') < 1100) {
       const before = await evaluate('__e2e.resized');
@@ -232,13 +255,24 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
         await sleep(50);
       }
     }
-  } catch (e) {
-    try { ws.close(); } catch { /* closed */ }
-    child.kill('SIGKILL');
-    throw Object.assign(e, { dir, home });
   }
 
-  return {
+  /** Changes the gh stand-in's file (a PR, who is signed in) under the lock the stand-in takes. */
+  async function ghEdit(change) {
+    const lock = `${ghFile}.lock`;
+    for (let i = 0; ; i++) {
+      try { fs.mkdirSync(lock); break; } catch { if (i > 400) throw new Error('the gh stand-in lock was never free'); await sleep(15); }
+    }
+    try {
+      const db = JSON.parse(fs.readFileSync(ghFile, 'utf8'));
+      change(db);
+      // Whole and renamed, as the stand-in writes it, so a reader never sees half of it.
+      fs.writeFileSync(`${ghFile}.tmp`, JSON.stringify(db));
+      fs.renameSync(`${ghFile}.tmp`, ghFile);
+    } finally { fs.rmdirSync(lock); }
+  }
+
+  const app = {
     dir, home, evaluate, until,
     /** Says something to the Dispatcher, as typing in the chat does. */
     say: (text) => evaluate(`await window.ide.call('chat:send', ${JSON.stringify(text)}, []); return 1;`),
@@ -335,19 +369,9 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     workerLog: (wid) => evaluate(`return (await window.ide.call('worker:log', ${JSON.stringify(wid)})).items.map((x) => x.text).join('\\n');`),
     gh: () => JSON.parse(fs.readFileSync(ghFile, 'utf8')),
     /** Changes one PR in the stand-in's file (CI, review, conflicts), under the lock the stand-in takes. */
-    async ghPr(url, fields) {
-      const lock = `${ghFile}.lock`;
-      for (let i = 0; ; i++) {
-        try { fs.mkdirSync(lock); break; } catch { if (i > 400) throw new Error('the gh stand-in lock was never free'); await sleep(15); }
-      }
-      try {
-        const db = JSON.parse(fs.readFileSync(ghFile, 'utf8'));
-        db.prs[url] = { state: 'OPEN', mergeable: 'MERGEABLE', reviewDecision: 'APPROVED', checks: [], ...db.prs[url], ...fields };
-        // Whole and renamed, as the stand-in writes it, so a reader never sees half of it.
-        fs.writeFileSync(`${ghFile}.tmp`, JSON.stringify(db));
-        fs.renameSync(`${ghFile}.tmp`, ghFile);
-      } finally { fs.rmdirSync(lock); }
-    },
+    ghPr: (url, fields) => ghEdit((db) => { db.prs[url] = { state: 'OPEN', mergeable: 'MERGEABLE', reviewDecision: 'APPROVED', checks: [], ...db.prs[url], ...fields }; }),
+    /** Changes the stand-in's file: `change` gets its contents to change in place. */
+    ghEdit,
     /** Saves a picture of the window, for looking at a screen while writing a test. */
     async shot(file, width = 1440, height = 900) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
@@ -417,13 +441,31 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
         await sleep(250);
       }
     },
+    /**
+     * Ends the app and starts it again on the same profile, as quitting and opening it does, then drives the new
+     * window once it is drawn. What the app saved is what it finds; wait for it on disk before calling this.
+     */
+    async restart() {
+      try { quick?.close(); } catch { /* closed */ }
+      quick = null;
+      await endApp();
+      child = startApp();
+      try {
+        await app.reconnect(undefined, 40_000);
+        await widen();
+      } catch (e) {
+        // As at launch: a new app that never came up is not left running.
+        child.kill('SIGKILL');
+        throw Object.assign(e, { dir, home });
+      }
+    },
     async stop() {
       try { quick?.close(); } catch { /* closed */ }
       try { ws.close(); } catch { /* closed */ }
-      child.kill();
       // A quit that hangs is ended for good, so nothing outlives the test.
-      await new Promise((r) => { child.once('exit', r); setTimeout(() => { child.kill('SIGKILL'); r(); }, 3000); });
+      await endApp();
       for (let i = 0; i < 5; i++) { try { fs.rmSync(dir, { recursive: true, force: true }); break; } catch { await sleep(300); } }
     },
   };
+  return app;
 }
