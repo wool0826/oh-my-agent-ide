@@ -1,4 +1,6 @@
 // The chat with the Dispatcher and its right sidebar: decisions, comparisons, bundles, results, memos, automations, and attachments.
+import { middleName } from '../../shared/middleName';
+import { refreshFind } from './find';
 import type { Automation, Memo } from '../../shared/types';
 import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, RiskTag, Task } from '../../shared/types';
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
@@ -411,6 +413,8 @@ export function renderChat(force = false, older = false) {
     }
     let one = n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
     if (canRoot(c)) one = rootAttr(one, c.id);
+    // Which message it is, for a search that goes to one (find.ts).
+    one = one.replace(/^<(\w+) /, `<$1 data-msg="${esc(c.id)}" `);
     pieces.push(one);
   }
   if (br !== null) pieces.push(br + '</div>');
@@ -419,6 +423,7 @@ export function renderChat(force = false, older = false) {
   if (!all.length) pieces = [s.setupNeeded ? setupHtml() : `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><div class="starts">${STARTS.map((key) => `<button type="button" class="btn" data-action="chat-start" data-text="${esc(t(key))}">${t(key)}</button>`).join('')}</div></div>`];
   ui.chatSeen = tail;
   setThread(th, pieces, nearBottom || force, older);
+  refreshFind('chat-thread');
   relight(th);
   markReplyTarget('chat');
   watchTop(th, () => void olderChat());
@@ -1160,7 +1165,7 @@ export function renderChips(box: Box) {
   const el = $(box === 'chat' ? '#chat-files' : '#ws-files');
   const files = ui.attach[box];
   el.hidden = !files.length;
-  el.innerHTML = files.map((f, i) => `<span class="fchip" data-tip="${esc(f)}">${sym('s-doc')}<span>${esc(base(f))}</span><button type="button" data-action="unattach" data-box="${box}" data-i="${i}" aria-label="${t('remove')}"><svg><use href="#s-x"/></svg></button></span>`).join('');
+  el.innerHTML = files.map((f, i) => `<span class="fchip" data-tip="${esc(f)}">${sym('s-doc')}<span class="fn">${esc(middleName(base(f)))}</span><button type="button" data-action="unattach" data-box="${box}" data-i="${i}" aria-label="${t('remove')}" data-tip="${t('remove')}"><svg><use href="#s-x"/></svg></button></span>`).join('');
   updateSendButton();
 }
 

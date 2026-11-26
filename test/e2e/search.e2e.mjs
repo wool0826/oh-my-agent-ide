@@ -49,14 +49,35 @@ flow('the palette finds something said and shows the chat from that message', {}
   await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'pineapple fridays'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
   // The row is picked by its words and clicked in the same look, so it cannot be another row drawn in its place.
   await app.until("const el = [...document.querySelectorAll('.cmdk-it')].find((x) => x.innerText.includes('no pineapple on Fridays')); el?.click(); return !!el;", 'the message among the results', 20_000, "[...document.querySelectorAll('.cmdk-it')].map((x) => x.innerText.replace(/\\s+/g, ' ')).join(' / ')");
-  // Read in the same look that finds it: the bubble blinks, and the mark is taken off again a moment later.
-  const found = await app.until("const f = document.querySelector('#chat-thread .found'); return f && JSON.stringify({ text: f.innerText, bub: f.matches('.bub'), blink: f.getAnimations().some((a) => a.animationName === 'found') });", 'the message marked in the chat');
-  const mark = JSON.parse(found);
-  assert.match(mark.text, /no pineapple on Fridays/);
-  assert.deepEqual([mark.bub, mark.blink], [true, true]);
+  // Every match is marked; the one in the message found is current, ringed, pulsing and in the middle of the thread.
+  const read = `const th = document.querySelector('#chat-thread'), cur = th.querySelector('mark.find.cur'), r = cur?.getBoundingClientRect(), tr = th.getBoundingClientRect();
+    return cur && JSON.stringify({ marks: th.querySelectorAll('mark.find').length, cur: cur.textContent, inBub: cur.closest('.bub')?.innerText ?? '',
+      pulse: cur.getAnimations().some((a) => a.animationName === 'hit-pulse'), middle: Math.abs((r.top + r.bottom) / 2 - (tr.top + tr.bottom) / 2) < tr.height / 3 || th.scrollTop === 0,
+      count: document.querySelector('.findbar .cnt')?.textContent, ticks: document.querySelectorAll('.find-ticks i').length, on: document.querySelectorAll('.find-ticks i.on').length });`;
+  const first = JSON.parse(await app.until(read, 'the matches marked in the chat'));
+  assert.match(first.inBub, /no pineapple on Fridays/);
+  assert.equal(first.cur.toLowerCase(), 'pineapple');
+  assert.equal(first.pulse, true);
+  assert.equal(first.middle, true);
+  assert.equal(first.count, `1/${first.marks}`);
+  assert.deepEqual([first.ticks, first.on], [first.marks, 1]);
   // The thread now starts at that message: what was said before it is above, not shown.
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Please remember the pineapple rule')"), false);
-  await app.until("!document.querySelector('#chat-thread .found')", 'the mark taken off', 8000);
+  // The bar's buttons are icons with names; Next moves the current match on.
+  const names = await app.evaluate("[...document.querySelectorAll('.findbar button')].map((b) => [b.getAttribute('aria-label'), b.dataset.tip, b.innerText.trim()].join('|'))");
+  assert.deepEqual(names, ['Previous match|Previous match|', 'Next match|Next match|', 'Close search|Close search|']);
+  await app.click('.findbar [data-action="find-next"]');
+  const next = JSON.parse(await app.until(read, 'the next match'));
+  assert.deepEqual([next.count, next.cur], [`2/${first.marks}`, 'Fridays']);
+  // A new message draws the thread again, and may show what was said before: the current match stays the same word.
+  await app.say('@fake say Another word.');
+  await app.until("document.querySelector('#chat-thread').innerText.includes('Another word.')", 'the new message');
+  const after = JSON.parse(await app.until(read, 'the marks after a redraw'));
+  assert.equal(after.cur, 'Fridays');
+  assert.match(after.inBub, /^Noted: no pineapple on Fridays/);
+  // Escape closes the search and takes the marks off.
+  await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return 1;");
+  await app.until("!document.querySelector('#chat-thread mark.find') && !document.querySelector('.findbar') && !document.querySelector('.find-ticks')", 'the search closed');
 });
 
 flow('the quick message box completes a repository name, sends to the Dispatcher and remembers the line', { repos: ['billing', 'docs'] }, async (app) => {

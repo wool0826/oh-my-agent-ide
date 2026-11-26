@@ -27,6 +27,7 @@ import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad
 import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
+import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
@@ -322,6 +323,9 @@ export async function act(el: HTMLElement, e: Event) {
     case 'away-dismiss': setAway(null); renderChatInspector(); break;
     case 'cmdk-open': openPalette(); break;
     case 'cmdk-close': closePalette(); break;
+    case 'find-prev': stepFind(-1); break;
+    case 'find-next': stepFind(1); break;
+    case 'find-close': closeFind(); break;
     case 'cmdk-run': runPalette(Number(el.dataset.i)); break;
     case 'reveal-memory': await call('open:path', `${S!.settings.home}/memory`); break;
     case 'reveal-claude': if (ui.claude) await call('open:path', ui.claude.home); break;
@@ -1182,6 +1186,7 @@ export function init() {
       }
       if (ui.settingsShown && (ui.accRemove || ui.accMenu || ui.accRename)) { ui.accRemove = ui.accMenu = ui.accRename = null; openSettings(); return; }
       if (ui.settingsShown) { closeSettings(); return; }
+      if (findOpen()) { closeFind(); return; }
       if (ui.memoDel) { askMemoDel(null); return; }
       if (ui.mergeAsk) { ui.mergeAsk = null; renderAll(true); return; }
       if (ui.diffDraft) { ui.diffDraft = null; const w = worker(ui.wSel); if (w) renderDiff(w); return; }

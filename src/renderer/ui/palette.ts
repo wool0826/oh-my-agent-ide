@@ -8,6 +8,7 @@ import { type View } from '../../shared/history';
 import { act, openWorker } from '../app';
 import { chatAll, renderChat, renderChatInspector } from './chat';
 import { closePop } from './controls';
+import { startFind } from './find';
 import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, taskLabel, toast, ui, when, worker, workerTask } from './core';
 import { go } from './history';
 import { layerClose, layerOpen } from './layer';
@@ -127,20 +128,17 @@ export function searchSaid(q: string) {
     cmdk.saidFor = query;
     cmdk.said = hits.map((h, i) => ({
       id: `said:${i}`, group: t('cmdk.said'), title: h.snippet, hint: `${h.where === 'chat' ? t('nav.chat') : h.where} · ${when(h.ts)}`, icon: sym('s-chat'), searchOnly: true,
-      run: () => (h.where === 'chat' ? void jumpToChat(h.id) : openWorker(h.where)),
+      run: () => (h.where === 'chat' ? void jumpToChat(h.id, query) : jumpToWorker(h.where, query)),
     }));
     renderPalette(cmdk.q, true);
   })(), 180);
 }
 
-/** How long a message found by a search blinks (styles.css, .found: three blinks of 600 ms). */
-const FOUND_MS = 3 * 600 + 200;
-
 /**
- * Shows the chat from a message on, loading older pages until it is there (at most 40), and makes it blink a few
- * times so the eye finds it.
+ * Shows the chat from a message on, loading older pages until it is there (at most 40), and marks what was searched
+ * for in it: every match, with the first one in that message current and in the middle of the thread (find.ts).
  */
-export async function jumpToChat(id: string): Promise<boolean> {
+export async function jumpToChat(id: string, query = ''): Promise<boolean> {
   go({ view: 'chat' });
   for (let i = 0; i < 40 && !chatAll().some((c) => c.id === id); i++) {
     const first = chatAll()[0]?.id;
@@ -153,16 +151,17 @@ export async function jumpToChat(id: string): Promise<boolean> {
   ui.chatFrom = id;
   ui.lastChatKey = '';
   renderChat(false, true);
-  // The thread now starts at the message, so the first message box in it is the one (a bubble, a card, a line).
-  const hit = $('#chat-thread').querySelector<HTMLElement>('.bub, .attach, .event, .sh-run, .hand');
-  hit?.scrollIntoView({ block: 'start' });
-  if (hit) {
-    hit.classList.remove('found');
-    void hit.offsetWidth;
-    hit.classList.add('found');
-    setTimeout(() => hit.classList.remove('found'), FOUND_MS);
-  }
+  startFind('chat-thread', query, id);
+  // Nothing to mark (the words are in a card's hidden detail): the message itself comes to the middle.
+  const th = $('#chat-thread');
+  if (!th.querySelector('mark.find')) th.querySelector<HTMLElement>(`[data-msg="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' });
   return true;
+}
+
+/** A Worker's conversation with what was searched for marked, its newest match current. */
+export function jumpToWorker(id: string, query: string) {
+  go({ view: 'worker', wSel: id, wOpen: true, wTab: 'chat' });
+  startFind('ws-thread', query, '');
 }
 
 export function markPalette(scroll = true) {

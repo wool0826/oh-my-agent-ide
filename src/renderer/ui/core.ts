@@ -1,5 +1,6 @@
 // What every screen shares: the state the window holds, the bridge to the main process, text, small HTML helpers, scrolling, paging and sound.
 /* eslint-disable @typescript-eslint/no-explicit-any -- IPC answers are typed by the caller (call<T>), any by default. */
+import { middleName } from '../../shared/middleName';
 import { NOTES } from '../../shared/sounds';
 import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
 import { currentTask } from '../../shared/currentTask';
@@ -333,7 +334,7 @@ export function userText(text: string): string {
   const i = text.indexOf('\n\n[Attached files]\n');
   if (i < 0) return linkify(esc(text));
   const files = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
-  return `${linkify(esc(text.slice(0, i)))}<span class="sent-files">${files.map((f) => `<a class="fchip" data-action="reveal" data-path="${esc(f)}" data-tip="${esc(f)}">${esc(base(f))}</a>`).join('')}</span>`;
+  return `${linkify(esc(text.slice(0, i)))}<span class="sent-files">${files.map((f) => `<a class="fchip" data-action="reveal" data-path="${esc(f)}" data-tip="${esc(f)}">${sym('s-doc')}<span class="fn">${esc(middleName(base(f)))}</span></a>`).join('')}</span>`;
 }
 
 export function oneLine(s: string, n = 120) {

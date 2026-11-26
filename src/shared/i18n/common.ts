@@ -51,6 +51,10 @@ export const en = {
   'cmdk.ins': 'Right sidebar: hide or show',
   'cmdk.tasks': 'Tasks',
   'cmdk.said': 'Said',
+  'find.bar': 'Matches',
+  'find.prev': 'Previous match',
+  'find.next': 'Next match',
+  'find.close': 'Close search',
 
   // time
   'time.today': 'Today {t}',
@@ -199,6 +203,10 @@ export const ko: Record<keyof typeof en, string> = {
   'cmdk.ins': '오른쪽 사이드바 숨기기·보이기',
   'cmdk.tasks': '작업',
   'cmdk.said': '대화 내용',
+  'find.bar': '찾은 곳',
+  'find.prev': '이전 일치',
+  'find.next': '다음 일치',
+  'find.close': '찾기 닫기',
 
   'time.today': '오늘 {t}',
   'time.now': '방금',
