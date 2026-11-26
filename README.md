@@ -119,6 +119,8 @@ Build output goes to `dist/`, installers to `release/`.
 - `npm run dist:win` builds the Windows installer.
 - `npm run dist:mac` builds the macOS dmg (on a Mac).
 - To keep settings and data in another folder, set `OMA_DATA_DIR=<folder>`. Its `settings.json` holds `home`.
+- The saved state is in `<home>/data`: `state.json` holds what is live, and chat that left it and tasks that ended are in `chat.jsonl` and `tasks-done.jsonl`, one record a line, only appended to. All three are copied to `data/backups` once a day and kept for a week.
+- A build older than that layout (0.7.0 and before) opens such a folder read-only. To go back to one, close the app and start it once with `--state-v1`: it writes everything into one `state.json` again, keeps the files it was put together from beside it, and quits.
 - To run without accounts or usage, set `OMA_FAKE_AGENT=1`: every agent follows the `@fake` lines of the message it gets (see `src/shared/fakeScript.ts`), asking for permissions and reporting results through the app's real paths. The toolbar shows "Fake agents".
 
 ### Layout
@@ -138,6 +140,7 @@ Build output goes to `dist/`, installers to `release/`.
 | `src/main/prchecks.ts` | Merge readiness from PR checks, which CI failures to hand back, log tails |
 | `src/main/attachments.ts` | Paths of files dropped into messages |
 | `src/main/memory.ts` | Markdown memory with git history |
+| `src/shared/stateSplit.ts`, `src/main/stateFiles.ts` | Where the saved state lives: what leaves `state.json` for `chat.jsonl` and `tasks-done.jsonl`, how the three read back as one state, and the way back to one file |
 | `src/shared/i18n.ts` | English and Korean UI text |
 | `src/shared/askWhy.ts` | Why each decision needs the user, for its card, sidebar row and notification |
 | `src/shared/routing.ts` | Which idle Worker takes a new task, or whether to create one |

@@ -47,6 +47,8 @@ import { closeQuick, destroyQuick, openQuick, releaseQuickKey, syncQuickKey } fr
 import { QUICK_ARG } from '../shared/quickKey';
 import { listJiraIssues, setJiraToken } from './jira';
 import { fakeMode } from './fake';
+import { V1_ARG } from '../shared/stateSplit';
+import { rollbackToV1 } from './stateFiles';
 import { lastPreflight, runPreflight } from './preflight';
 import { fixToolPath } from './toolpath';
 import { failedCount } from '../shared/preflight';
@@ -532,6 +534,12 @@ async function boot() {
     store.chat('error', ro.why === 'newer' ? t('state.newer', { version: ro.version }) : t('state.migrateFailed', { error: ro.error }));
   }
   if (store.migrated) log.info('state file migrated from version', store.migrated.from, 'copy kept at', store.migrated.copy);
+  // One of the two files beside state.json held fewer records than state.json counted: what the backups gave back.
+  for (const r of store.repaired) {
+    log.error('state file lost records', JSON.stringify(r));
+    store.chat('error', t(r.part === 'chat' ? 'state.chatDamaged' : 'state.tasksDamaged', { lost: r.restored + r.missing, restored: r.restored, missing: r.missing }));
+  }
+  if (store.skippedLines) log.warn('lines skipped in chat.jsonl and tasks-done.jsonl', store.skippedLines);
   store.backup();
   setInterval(() => store.backup(), 3600_000).unref();
   pruneDecisions();
@@ -605,13 +613,44 @@ function serveShots() {
   });
 }
 
+/**
+ * `--state-v1`: the saved state is written back as the one file an older build reads, and the app quits without
+ * opening (decision 213). Only the one running instance does it, so nothing else writes the files meanwhile.
+ */
+function backToV1() {
+  let said: string;
+  let failed = false;
+  try {
+    const r = rollbackToV1(paths());
+    log.info('state-v1', JSON.stringify(r));
+    if (r.kind === 'done') said = t('state.v1Done', { tasks: r.tasks, chat: r.chat });
+    else if (r.why === 'missing' || r.why === 'v1') said = t('state.v1Already');
+    else {
+      failed = true;
+      said = r.why === 'short' ? t('state.v1Short') : t('state.v1Failed', { error: r.why === 'newer' ? `format ${r.version}` : 'state.json cannot be read' });
+    }
+  } catch (e) {
+    log.error('state-v1 failed', e);
+    failed = true;
+    said = t('state.v1Failed', { error: e instanceof Error ? e.message : String(e) });
+  }
+  if (!fakeMode()) dialog.showMessageBoxSync({ type: failed ? 'error' : 'info', message: said });
+  app.exit(failed ? 1 : 0);
+}
+
 installCrashHandlers();
 protocol.registerSchemesAsPrivileged([{ scheme: SHOT_SCHEME, privileges: { standard: true, secure: true } }]);
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
+else if (process.argv.includes(V1_ARG)) void app.whenReady().then(backToV1);
 else {
   // A second launch shows the window; with --quick it opens the quick message box instead (for a launcher or a pinned shortcut).
-  app.on('second-instance', (_e, argv) => { if (argv.includes(QUICK_ARG)) openQuick(here); else showWindow(win); });
+  // One with --state-v1 wrote nothing back, because this app would write over it: the chat here says so.
+  app.on('second-instance', (_e, argv) => {
+    if (argv.includes(QUICK_ARG)) return openQuick(here);
+    if (argv.includes(V1_ARG) && store.loaded) store.chat('error', t('state.v1Running'));
+    showWindow(win);
+  });
   app.whenReady().then(async () => {
     registerIpc();
     serveShots();

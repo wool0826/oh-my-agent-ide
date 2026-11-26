@@ -51,9 +51,12 @@ flow('an unreadable state file is set aside and the newest backup is put back', 
   assert.match(await app.evaluate("document.querySelector('#chat-thread').innerText"), /the backup of 2026-11-01 was put back/);
   const data = fs.readdirSync(path.join(app.home, 'data'));
   assert.ok(data.some((n) => /^state-broken-\d+\.json$/.test(n)), `the unreadable file was not kept: ${data.join(', ')}`);
-  // Today's copy was made at launch, from the state that was put back.
-  const today = fs.readdirSync(path.join(app.home, 'data', 'backups')).sort().at(-1);
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(app.home, 'data', 'backups', today), 'utf8')).tasks.map((x) => x.title), ['Kept in the backup']);
+  // Today's copies were made at launch, from the state that was put back: the finished task is in the file for those.
+  const backups = path.join(app.home, 'data', 'backups');
+  const today = fs.readdirSync(backups).filter((n) => !n.includes('2026-11-0')).sort();
+  assert.deepEqual(today.map((n) => n.replace(/\d{4}-\d{2}-\d{2}/, 'DAY')), ['chat-DAY.jsonl', 'state-DAY.json', 'tasks-done-DAY.jsonl']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(backups, today[1]), 'utf8')).tasks, []);
+  assert.deepEqual(fs.readFileSync(path.join(backups, today[2]), 'utf8').trim().split('\n').map((l) => JSON.parse(l).title), ['Kept in the backup']);
 });
 
 flow('Settings shows what is missing on this computer and the command that fixes it', {

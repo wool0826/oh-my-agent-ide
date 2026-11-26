@@ -1,13 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { readJson, writeJsonAtomic, debounce, nowIso, ensureDir, uid, month } from './util';
-import { backupName, backupsNewestFirst, backupsToDrop, stateText } from '../shared/backup';
+import { isDeepStrictEqual } from 'node:util';
+import { writeJsonAtomic, debounce, nowIso, ensureDir, uid, month } from './util';
+import { backupDay, backupName, backupsNewestFirst, backupsToDrop, stateText, type BackupPart } from '../shared/backup';
 import { SEARCH_MIN, searchItems, type TextHit } from '../shared/textSearch';
 import { paths } from './paths';
 import { addSpend, type SessionSpend, type Spend } from '../shared/spend';
 import { PAGE, itemsBefore } from '../shared/paging';
-import { CHAIN, STATE_VERSION, migrate, preMigrationName, type MigrationChain } from '../shared/migrate';
+import { CHAIN, STATE_VERSION, migrate, preMigrationName, stateVersion, type MigrationChain } from '../shared/migrate';
+import {
+  SPLIT, applySealed, chatOrder, chatToDrop, coverCounters, expected, foldLines, foldToLines, joinState, noneSealed, repairFold,
+  sealedFrom, splitState, taskOrder, type Fold, type Sealed,
+} from '../shared/stateSplit';
+import { appendLines, asideName, readFold, copyAside, setAside, writeLines } from './stateFiles';
 import { readLogPage, searchLog } from './logFile';
 import { stampQueued } from '../shared/queue';
 import { stampHistory } from '../shared/retro';
@@ -23,8 +29,12 @@ export interface DispatcherState {
   sessionSpend?: SessionSpend | null;
 }
 
+/**
+ * The state as it is in memory. On disk state.json holds it without the tasks that ended and the older chat, which
+ * are in two files beside it (shared/stateSplit.ts); `chat` here is the newest SPLIT.chatKeep items.
+ */
 export interface Data {
-  version: 1;
+  version: number;
   counters: { worker: number; task: number };
   repos: Repo[];
   workers: Worker[];
@@ -49,8 +59,10 @@ export interface Data {
   mergeQueue?: MergeQueueEntry[];
 }
 
+type ChatPage = { items: ChatItem[]; more: boolean };
+
 const empty = (): Data => ({
-  version: 1,
+  version: STATE_VERSION,
   counters: { worker: 0, task: 0 },
   repos: [], workers: [], tasks: [], decisions: [], autoAnswers: [], memorySuggestions: [], chat: [],
   dispatcher: { sessionId: null, date: null, contextTokens: 0, accountId: null },
@@ -71,14 +83,28 @@ class Store extends EventEmitter {
   readOnly: { why: 'newer'; version: number } | { why: 'failed'; from: number; error: string } | null = null;
   /** Set by load() when the state was brought to this build's format: the version it had, and the copy kept of it. */
   migrated: { from: number; copy: string } | null = null;
+  /**
+   * Set by load() for each of the two appended files that had lost records: how many a backup gave back (and the
+   * day of the newest backup that gave some), and how many are still missing.
+   */
+  repaired: { part: 'chat' | 'tasks'; restored: number; missing: number; day: string | null }[] = [];
+  /** Lines of the two appended files that load() could not read and skipped. */
+  skippedLines = 0;
+
+  /** What chat.jsonl and tasks-done.jsonl hold, as last written or read: a record that differs from its line is appended again. */
+  private sealed: Sealed = noneSealed();
+  /** The chat in chat.jsonl that is older than the chat in memory, kept for a minute after a page or a search read it. */
+  private older: { key: string; items: Promise<ChatItem[]> } | null = null;
 
   /**
    * Reads the state. A file that holds something unreadable is set aside (never overwritten), and the newest
-   * backup that can be read takes its place; with none, the app starts empty and says so. A state saved in an
-   * older format is brought up to this one (shared/migrate.ts) after a copy of it is kept.
+   * backup that can be read takes its place; with none, the app starts empty and says so. From version 2 on,
+   * state.json is put together with the two files beside it. A state saved in an older format is brought up to
+   * this one (shared/migrate.ts) after a copy of it is kept.
    */
   load(chain: MigrationChain = CHAIN) {
-    const file = paths().state;
+    const p = paths();
+    const file = p.state;
     let text: string | null = null;
     this.restoredFrom = null;
     try { text = fs.readFileSync(file, 'utf8'); } catch { /* a first run */ }
@@ -100,11 +126,132 @@ class Store extends EventEmitter {
     }
     this.readOnly = null;
     this.migrated = null;
-    let raw = stateText(text) === 'ok' ? (JSON.parse(text!.replace(/^\uFEFF/, '')) as Record<string, unknown>) : {};
-    if (text !== null && stateText(text) === 'ok') raw = this.upgrade(raw, text, chain);
-    this.data = { ...empty(), ...raw } as Data;
+    this.repaired = [];
+    this.skippedLines = 0;
+    this.sealed = noneSealed();
+    this.older = null;
+    const had = text !== null && stateText(text) === 'ok';
+    let raw = had ? (JSON.parse(text!.replace(/^\uFEFF/, '')) as Record<string, unknown>) : {};
+    const onDisk = stateVersion(raw);
+    // The two files count when state.json is of a version that has them, when it is gone (they are all that is
+    // left), or when a backup from before them took its place (they hold what was saved after that day). Beside
+    // a version 1 file that was read as it is, they are what a first split that never finished left behind.
+    const files = [p.chatFile, p.tasksDone].some((f) => fs.existsSync(f));
+    const joined = had ? onDisk >= SPLIT.version || (!!this.restoredFrom && files) : files;
+    if (joined) raw = this.join(raw, onDisk <= chain.version);
+    if (had) raw = this.upgrade(raw, text!, chain);
+    this.data = coverCounters({ ...empty(), ...raw }) as unknown as Data;
     this.loaded = true;
-    if ((this.restoredFrom || this.migrated) && !this.readOnly) this.flush();
+    const from = (this.migrated as { from: number } | null)?.from; // set by upgrade()
+    if (!this.readOnly && from !== undefined && from < SPLIT.version) {
+      try {
+        this.firstSplit(joined);
+      } catch (e) {
+        // state.json was not written, so the state is still the one file it was.
+        this.readOnly = { why: 'failed', from, error: e instanceof Error ? e.message : String(e) };
+        this.migrated = null;
+        this.sealed = noneSealed();
+      }
+      this.dropOldChat();
+      return;
+    }
+    this.dropOldChat(joined ? this.sealed.chatCount : 0);
+    if ((this.restoredFrom || this.migrated || this.repaired.length) && !this.readOnly) this.flush();
+  }
+
+  /**
+   * state.json put together with the two files beside it. A file that holds fewer records than state.json counted
+   * when it was last written has lost some: with `repair` they are taken from the backups, newest first.
+   */
+  private join(main: Record<string, unknown>, repair: boolean): Record<string, unknown> {
+    const p = paths();
+    let tasks = readFold<Task>(p.tasksDone);
+    let chat = readFold<ChatItem>(p.chatFile);
+    this.skippedLines = tasks.bad + chat.bad;
+    if (repair) {
+      const want = expected(main);
+      if (tasks.items.length < want.tasks) tasks = this.repair('tasks', p.tasksDone, 'tasks-done', tasks, want.tasks, taskOrder);
+      if (chat.items.length < want.chat) chat = this.repair('chat', p.chatFile, 'chat', chat, want.chat, chatOrder);
+    }
+    this.sealed = sealedFrom(tasks, chat);
+    return joinState(main, tasks, chat);
+  }
+
+  /**
+   * A file that lost records, with the ones the backups still have. The file as it was found is kept beside it
+   * ("chat-broken-<time>.jsonl") and written anew; if that cannot be done, it is used as it is.
+   */
+  private repair<T extends { id: string }>(part: 'chat' | 'tasks', file: string, name: BackupPart, found: Fold<T>, want: number, order: (a: T, b: T) => number): Fold<T> {
+    let fold = found;
+    let restored = 0;
+    let day: string | null = null;
+    let names: string[] = [];
+    try { names = fs.readdirSync(paths().backups); } catch { /* no backups yet */ }
+    for (const n of backupsNewestFirst(names, name)) {
+      if (fold.items.length >= want) break;
+      const r = repairFold(fold, readFold<T>(path.join(paths().backups, n)), order);
+      if (r.restored) day ??= backupDay(n);
+      fold = r.fold;
+      restored += r.restored;
+    }
+    if (restored) {
+      try {
+        if (fs.existsSync(file)) fs.copyFileSync(file, asideName(file, 'broken', Date.now()));
+        writeLines(file, foldToLines(fold));
+      } catch {
+        fold = found;
+        restored = 0;
+        day = null;
+      }
+    }
+    this.repaired.push({ part, restored, missing: Math.max(0, want - fold.items.length), day });
+    return fold;
+  }
+
+  /**
+   * The first save in the split layout, from a state that was one file. The two files are written whole and read
+   * back: only when they and the new state.json give the state in memory again does state.json change, so until
+   * then the old file is still all there is to read and a start after a stop anywhere here begins again. Files left
+   * by such a stop are set aside first ("chat-before-v2-<time>.jsonl"). Files that were read into this state
+   * (`readIn`: a backup from before the split took the place of state.json) hold records nothing else has, so they
+   * are only copied and stay until the new ones take their names; when the split fails they are put back.
+   */
+  private firstSplit(readIn: boolean) {
+    const p = paths();
+    const now = Date.now();
+    const files = [p.chatFile, p.tasksDone];
+    const aside = files.map((f) => (readIn ? copyAside : setAside)(f, 'before-v2', now));
+    const split = splitState(this.data, noneSealed(), now);
+    try {
+      writeLines(p.tasksDone, split.taskLines);
+      writeLines(p.chatFile, split.chatLines);
+      const back = joinState(JSON.parse(JSON.stringify(split.main)), readFold<Task>(p.tasksDone), readFold<ChatItem>(p.chatFile));
+      if (!isDeepStrictEqual(back, JSON.parse(JSON.stringify(this.data)))) throw new Error('the files written did not read back as the state');
+      writeJsonAtomic(p.state, split.main);
+    } catch (e) {
+      files.forEach((f, i) => {
+        const was = readIn ? aside[i] : null;
+        try {
+          if (was) fs.renameSync(was, f);
+          else fs.rmSync(f, { force: true });
+        } catch { /* the file was never replaced, so it is still the one that was read */ }
+      });
+      throw e;
+    }
+    this.sealed = noneSealed();
+    applySealed(this.sealed, split, 'tasks');
+    applySealed(this.sealed, split, 'chat');
+  }
+
+  /**
+   * Memory holds the newest chat only. What leaves is in chat.jsonl: the first `fromFile` items right after a
+   * start, later the ones a save wrote there. Read-only, nothing is saved, so the oldest just go.
+   */
+  private dropOldChat(fromFile = 0) {
+    const chat = this.data.chat;
+    const over = chat.length - SPLIT.chatKeep;
+    const n = this.readOnly ? over : Math.max(Math.min(over, fromFile), chatToDrop(chat, this.sealed));
+    if (n > 0) for (const c of chat.splice(0, n)) this.sealed.chat.delete(c.id);
   }
 
   /**
@@ -139,20 +286,30 @@ class Store extends EventEmitter {
   }
 
   /**
-   * Once a day, the state as it is on disk is copied to data/backups, and the oldest copies beyond a week go.
-   * Called at launch and every hour; a day that already has its copy is left alone.
+   * Once a day, the state as it is on disk (state.json and the two files beside it) is copied to data/backups,
+   * and the oldest copies beyond a week go. Called at launch and every hour; a file that already has the day's
+   * copy is left alone.
    */
   backup(now = new Date()) {
     try {
-      const dir = paths().backups;
+      const p = paths();
+      const dir = p.backups;
       ensureDir(dir);
-      const target = path.join(dir, backupName(now));
-      if (fs.existsSync(target)) return;
-      let text: string | null = null;
-      try { text = fs.readFileSync(paths().state, 'utf8'); } catch { return; }
-      if (stateText(text) !== 'ok') return; // never keep a copy of a file that cannot be read
-      fs.writeFileSync(target, text);
-      for (const old of backupsToDrop(fs.readdirSync(dir))) fs.rmSync(path.join(dir, old), { force: true });
+      let made = false;
+      const copies: [BackupPart, string][] = [['state', p.state], ['chat', p.chatFile], ['tasks-done', p.tasksDone]];
+      for (const [part, file] of copies) {
+        const target = path.join(dir, backupName(now, part));
+        if (fs.existsSync(target)) continue;
+        try {
+          if (part === 'state') {
+            const text = fs.readFileSync(file, 'utf8');
+            if (stateText(text) !== 'ok') continue; // never keep a copy of a file that cannot be read
+            fs.writeFileSync(target, text);
+          } else fs.copyFileSync(file, target);
+          made = true;
+        } catch { /* no such file yet */ }
+      }
+      if (made) for (const old of backupsToDrop(fs.readdirSync(dir))) fs.rmSync(path.join(dir, old), { force: true });
     } catch { /* a backup that fails must not stop the app */ }
   }
 
@@ -165,10 +322,21 @@ class Store extends EventEmitter {
     this.emit('changed');
   }
 
-  /** Writes the state now. Nothing is written while it is read-only. */
+  /**
+   * Writes the state now: first the lines for the two appended files (tasks that ended, chat that left the tail,
+   * records that changed since their line), then state.json without them. In that order a record is never in
+   * neither, wherever the app stops. Nothing is written while it is read-only.
+   */
   flush() {
     if (this.readOnly) return;
-    writeJsonAtomic(paths().state, this.data);
+    const p = paths();
+    const split = splitState(this.data, this.sealed, Date.now());
+    appendLines(p.tasksDone, split.taskLines);
+    applySealed(this.sealed, split, 'tasks');
+    appendLines(p.chatFile, split.chatLines);
+    applySealed(this.sealed, split, 'chat');
+    writeJsonAtomic(p.state, split.main);
+    this.dropOldChat();
   }
 
   nextWorkerId() {
@@ -189,7 +357,8 @@ class Store extends EventEmitter {
     const item: ChatItem = { id: uid(), ts: nowIso(), kind, text, ref };
     if (replyTo) item.replyTo = replyTo;
     this.data.chat.push(item);
-    if (this.data.chat.length > 2000) this.data.chat.splice(0, this.data.chat.length - 2000);
+    // The oldest leave memory when a save has put them in the file (flush); read-only, nothing is saved.
+    if (this.readOnly) this.dropOldChat();
     this.changed();
     return item;
   }
@@ -216,15 +385,34 @@ class Store extends EventEmitter {
     return readLogPage(path.join(paths().workerLogs, `${workerId}.jsonl`), before, limit);
   }
 
+  /** Chat items chat.jsonl holds that are no longer in memory. */
+  private get olderCount() {
+    return this.sealed.chatCount - this.sealed.chat.size;
+  }
+
+  /** Those items, oldest first: the file is read whole, off the main thread's path, and kept for a minute. */
+  private olderChat(): Promise<ChatItem[]> {
+    const key = `${this.sealed.chatCount}:${this.data.chat[0]?.id ?? ''}`;
+    if (this.older?.key === key) return this.older.items;
+    const here = new Set(this.data.chat.map((c) => c.id));
+    const items = fs.promises.readFile(paths().chatFile, 'utf8').then((text) => foldLines<ChatItem>(text).items.filter((c) => !here.has(c.id)), () => []);
+    const held = { key, items };
+    this.older = held;
+    setTimeout(() => { if (this.older === held) this.older = null; }, 60_000).unref();
+    return items;
+  }
+
   /**
    * What was said that matches a query: the chat with the Dispatcher (what the user and it said) and each Worker's
-   * conversation, newest first. Workers that are not archived are read first; a Worker gives a few lines at most,
-   * read from the end of its log.
+   * conversation, newest first. The chat in memory is searched first, then the older chat in chat.jsonl. Workers
+   * that are not archived are read first; a Worker gives a few lines at most, read from the end of its log.
    */
   async searchText(query: string, limit = 24): Promise<TextHit[]> {
     if (query.trim().length < SEARCH_MIN) return [];
-    const said = this.data.chat.filter((c) => c.kind === 'user' || c.kind === 'dispatcher');
-    const out = searchItems(said, query, Math.ceil(limit / 2), (c) => c.id, 'chat');
+    const said = (c: ChatItem) => c.kind === 'user' || c.kind === 'dispatcher';
+    const half = Math.ceil(limit / 2);
+    const out = searchItems(this.data.chat.filter(said), query, half, (c) => c.id, 'chat');
+    if (out.length < half && this.olderCount > 0) out.push(...searchItems((await this.olderChat()).filter(said), query, half - out.length, (c) => c.id, 'chat'));
     const workers = [...this.data.workers].sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived') || b.lastActiveAt.localeCompare(a.lastActiveAt));
     for (const w of workers) {
       if (out.length >= limit) break;
@@ -233,9 +421,16 @@ class Store extends EventEmitter {
     return out.slice(0, limit);
   }
 
-  /** Up to `limit` chat items right before the one with id `before`, and whether there are more. */
-  chatPage(before: string, limit: number = PAGE.chat) {
-    return itemsBefore(this.data.chat, before, limit);
+  /**
+   * Up to `limit` chat items right before the one with id `before`, and whether there are more. A page that
+   * reaches past the chat in memory is read from chat.jsonl.
+   */
+  async chatPage(before: string, limit: number = PAGE.chat): Promise<ChatPage> {
+    const page = itemsBefore(this.data.chat, before, limit);
+    if (this.olderCount <= 0) return page;
+    // A full page from memory is the page; whether there is more before it is the file's to say.
+    if (page.items.length === limit) return { ...page, more: true };
+    return itemsBefore([...(await this.olderChat()), ...this.data.chat], before, limit);
   }
 
   /** Count Dispatcher spend for this month; it is kept apart from task spend. */

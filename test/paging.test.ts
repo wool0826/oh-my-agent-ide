@@ -100,11 +100,11 @@ test('store: a 1000-line Worker log reads a page at a time, and a torn line is s
   assert.deepEqual(await store.readLog('W-00'), { items: [], start: 0, total: 0 });
 });
 
-test('store: chat pages go back from an id', () => {
+test('store: chat pages go back from an id', async () => {
   store.data.chat = Array.from({ length: 450 }, (_, i): ChatItem => ({ id: `c${i}`, ts: new Date(i).toISOString(), kind: 'event', text: String(i) }));
-  const p = store.chatPage('c50');
+  const p = await store.chatPage('c50');
   assert.deepEqual([p.items.length, p.items[0].id, p.items[49].id, p.more], [50, 'c0', 'c49', false]);
-  const q = store.chatPage('c400', 100);
+  const q = await store.chatPage('c400', 100);
   assert.deepEqual([q.items[0].id, q.items[99].id, q.more], ['c300', 'c399', true]);
 });
 

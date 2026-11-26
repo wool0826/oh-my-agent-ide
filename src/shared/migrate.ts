@@ -2,8 +2,10 @@
 // the store (main/store.ts) keeps a copy of the file before the first step of a launch, puts it back when a step
 // throws, and opens a file saved by a newer build read-only.
 
+import { toSplit } from './stateSplit';
+
 /** The state format this build reads and writes. */
-export const STATE_VERSION = 1 as const;
+export const STATE_VERSION = 2 as const;
 
 /** One step: a state of version N in, the same state as version N+1 out (or changed in place). */
 export type MigrationStep = (state: Record<string, unknown>) => Record<string, unknown> | void;
@@ -15,8 +17,11 @@ export interface MigrationChain {
   steps: Readonly<Record<number, MigrationStep>>;
 }
 
-/** The chain this build applies on load. No steps yet: version 1 is the first format. */
-export const CHAIN: MigrationChain = { version: STATE_VERSION, steps: {} };
+/**
+ * The chain this build applies on load. 1 → 2: chat and finished tasks leave state.json for two appended files
+ * (shared/stateSplit.ts). From version 2 on a step gets the state put together from all three files.
+ */
+export const CHAIN: MigrationChain = { version: STATE_VERSION, steps: { 1: toSplit } };
 
 export type MigrationResult =
   | { kind: 'current'; state: Record<string, unknown> }

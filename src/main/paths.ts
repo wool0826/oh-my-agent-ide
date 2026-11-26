@@ -16,6 +16,9 @@ export function paths() {
     plugin: path.join(home, 'plugin'),
     data: path.join(home, 'data'),
     state: path.join(home, 'data', 'state.json'),
+    /** Chat that left state.json and tasks that ended, one record a line, only appended to (shared/stateSplit.ts). */
+    chatFile: path.join(home, 'data', 'chat.jsonl'),
+    tasksDone: path.join(home, 'data', 'tasks-done.jsonl'),
     backups: path.join(home, 'data', 'backups'),
     workerLogs: path.join(home, 'data', 'workers'),
     appLog: path.join(home, 'data', 'app.log'),
