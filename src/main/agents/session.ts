@@ -101,6 +101,9 @@ export const LIMIT_RE = /rate.?limit|usage limit|limit reached|\b429\b|5-hour|we
 /** Turn ends Claude Code reports for a turn that was interrupted. */
 const ABORTED = new Set(['aborted_streaming', 'aborted_tools']);
 
+/** A Worker's report line (workerPrompt.ts parseResult): what no compaction writes. */
+const REPORT_RE = /^\s*(?:RESULT|BLOCKED):/im;
+
 /** The session's flag settings plus the app's context window, so Claude Code compacts by itself before reaching it. */
 /** A settings file path (a string) is passed as is: neither the context window nor the connector switch is added. */
 export function sessionSettings(settings: Options['settings'], connectors?: boolean): Options['settings'] {
@@ -456,10 +459,12 @@ export class AgentSession {
       case 'result': {
         const isError = m.subtype !== 'success' || (m as any).is_error;
         const text = m.subtype === 'success' ? (m.result ?? '') : (m.errors ?? []).join('\n');
-        const internal = this.internalTurn || this.pendingInternal > 0;
+        const finalText = this.turnText.length ? this.turnText[this.turnText.length - 1] : text;
+        // A report is never a compaction's: the agent's own turn was taken for one because the /compact went in while
+        // Claude Code was already on that turn (T-0134). The compaction's own result is still to come.
+        const internal = (this.internalTurn || this.pendingInternal > 0) && !REPORT_RE.test(finalText || text);
         if (internal) this.pendingInternal = Math.max(0, this.pendingInternal - 1);
         this.internalTurn = false;
-        const finalText = this.turnText.length ? this.turnText[this.turnText.length - 1] : text;
         this.turnText = [];
         this.countSpend(m);
         this.endComment();
@@ -518,7 +523,9 @@ export class AgentSession {
         // After onTurnEnd, so the owner's threshold sees what the turn settled (a finished task).
         const compactAt = this.cfg.compactAt?.() ?? COMPACT_AT;
         // Not again right after a compaction that left the context above the threshold.
-        if (!internal && !isError && shouldCompact(this.contextTokens, this.compactFloor, compactAt) && !this.busy) {
+        // Nor after a turn that said nothing: Claude Code ends one for a notice (a shell the last session left) while
+        // the message sent with it may still be on its way into the next turn.
+        if (!internal && !isError && !!(finalText || text).trim() && shouldCompact(this.contextTokens, this.compactFloor, compactAt) && !this.busy) {
           log.info(`[${this.cfg.label}] context ${this.contextTokens} >= ${compactAt}, compacting`);
           this.requestCompact();
         }

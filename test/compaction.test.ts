@@ -348,3 +348,46 @@ test("the app's /compact asks to keep what matters for the session's role; witho
   assert.deepEqual(sent(), [compactCommand(DISPATCHER_COMPACT)]);
   dispatcher.close();
 });
+
+/** A session that also keeps every turn end it reports. */
+function openWithTurns() {
+  const events: CompactEvent[] = [];
+  const ends: { text: string; internal: boolean }[] = [];
+  const s = new AgentSession({ label: 'S', model: 'claude-opus-5-5', cwd: tmp, systemAppend: '', accountId: 'a1', resume: null }, {
+    onCompact: (e) => events.push(e),
+    onTurnEnd: (r) => ends.push({ text: r.text, internal: r.internal }),
+  });
+  s.start();
+  return { s, events, ends };
+}
+
+test("a report that ends after a /compact went out is the agent's turn, and the compaction after it is still the compaction's (T-0134)", () => {
+  const { s, events, ends } = openWithTurns();
+  s.send('Task one');
+  feed(s, assistant(COMPACT_AT));
+  feed(s, result());
+  assert.deepEqual(sent(), ['Task one', '/compact']);
+  // Claude Code was already on the next message when the /compact went in: that turn ends first, with a report.
+  const report = 'RESULT: Merged\nPR: https://github.com/o/r/pull/180';
+  feed(s, assistant(COMPACT_AT + 100, report));
+  feed(s, result({ result: report }));
+  assert.deepEqual(ends.at(-1), { text: report, internal: false });
+  assert.equal(events.some((e) => e.phase === 'failed'), false, 'the report is no failed compaction');
+  feed(s, status({ status: 'compacting' }));
+  feed(s, boundary(COMPACT_AT + 100, 9_000));
+  feed(s, result());
+  assert.deepEqual(ends.at(-1), { text: '', internal: true });
+  assert.deepEqual(events.at(-1), { phase: 'done', from: COMPACT_AT + 100, to: 9_000 });
+});
+
+test('a turn that said nothing starts no compaction, even above the threshold; the next turn that says something does', () => {
+  const { s } = openWithTurns();
+  s.send('Task one');
+  feed(s, assistant(COMPACT_AT, ''));
+  feed(s, result());
+  assert.deepEqual(sent(), ['Task one'], 'a turn Claude Code ends for a notice may have the next message behind it');
+  s.send('Go on');
+  feed(s, assistant(COMPACT_AT));
+  feed(s, result());
+  assert.deepEqual(sent(), ['Task one', 'Go on', '/compact']);
+});

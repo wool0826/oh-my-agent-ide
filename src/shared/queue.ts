@@ -75,6 +75,24 @@ export function afterDependency(dep: Pick<Task, 'status' | 'prUrl' | 'prState'> 
   return 'wait';
 }
 
+/** A PR GitHub lists for a branch (`gh pr list --json url,state`). */
+export interface BranchPr { url: string; state: string }
+
+/**
+ * Ask GitHub for the PR of a finished task's branch before the tasks waiting on it start (T-0136): its Worker may have
+ * opened one without a RESULT line naming it. Once per finish, and not on a local-only repository (no PRs there).
+ */
+export function branchPrDue(dep: Pick<Task, 'kind' | 'branch' | 'repo' | 'prUrl' | 'status'>, local: boolean, checked: boolean): boolean {
+  return !checked && !local && dep.status === 'done' && dep.kind === 'code' && !!dep.branch && !!dep.repo && !dep.prUrl;
+}
+
+/** The task's PR among its branch's: an open one, else a merged one. A closed PR was given up, so it is not the task's. */
+export function pickBranchPr(list: unknown): { url: string; state: 'OPEN' | 'MERGED' } | null {
+  const prs = Array.isArray(list) ? list.filter((p): p is BranchPr => typeof p?.url === 'string' && /\/pull\/\d+$/.test(p.url)) : [];
+  const pr = prs.find((p) => p.state === 'OPEN') ?? prs.find((p) => p.state === 'MERGED');
+  return pr ? { url: pr.url, state: pr.state as 'OPEN' | 'MERGED' } : null;
+}
+
 /** Why the tasks blocked on `dep` are cancelled (afterDependency said cancel): its PR was closed, it is gone, or it failed. */
 export type CancelWhy = 'closed' | 'failed' | 'gone';
 

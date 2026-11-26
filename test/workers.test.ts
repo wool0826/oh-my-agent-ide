@@ -202,6 +202,92 @@ test('on restart while every account is limited, no Worker is left running', () 
   assert.equal(sent.size, 0);
 });
 
+/**
+ * T-0134 (W-05 T-0096, PR #171): the task's PR is open but named in no RESULT yet, a background `gh run view` loop
+ * waits on CI, and a follower waits with after_task_id on the same Worker. A limit pauses it.
+ */
+function limitScene() {
+  const w = addWorker({ sessionId: 'sid' });
+  const dep = addTask(w, { title: 'CI 1', kind: 'code', branch: 'agent/t-x' });
+  const next = addTask(w, { title: 'CI 2', kind: 'code', branch: 'agent/t-y', status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  const s = workers.ensureSession(w)!;
+  limit(true);
+  s.ev.onLimited!();
+  return { w, dep, next, s };
+}
+const emptyTurn = { text: '', isError: false, internal: false, queued: false, background: false };
+const noPr = () => store.data.pendingUpdates.some((u) => /finished without a PR/.test(u));
+
+test('T-0134: the empty turn Claude Code ends on resume for a shell the last session left keeps the task open and its follower waiting', async () => {
+  const { w, dep, next, s } = limitScene();
+  limit(false);
+  workers.retryQueued();
+  assert.equal(dep.status, 'running');
+  s.ev.onTurnEnd!(emptyTurn);
+  await tick();
+  assert.deepEqual([dep.status, dep.finishedAt, next.status], ['running', null, 'blocked']);
+  assert.equal(sent.get(w.id)!.length, 1, 'nothing more than the resume message: no reminder, no task message for the follower');
+  assert.equal(noPr(), false);
+  // The Worker's real report names the PR: the follower waits for its merge.
+  s.ev.onTurnEnd!({ ...emptyTurn, text: 'RESULT: CI is green\nPR: https://github.com/o/r/pull/171' });
+  assert.deepEqual([dep.status, dep.prUrl, next.status], ['pr_open', 'https://github.com/o/r/pull/171', 'blocked']);
+});
+
+test('T-0134: the empty turn after an app restart keeps the task open too', () => {
+  const w = addWorker({ status: 'running', sessionId: 'sid' });
+  const dep = addTask(w, { kind: 'code', branch: 'agent/t-x' });
+  const next = addTask(w, { status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  workers.resumeAfterRestart();
+  assert.match(sent.get(w.id)![0], /app restarted/);
+  workers.sessions.get(w.id)!.ev.onTurnEnd!(emptyTurn);
+  assert.deepEqual([dep.status, next.status], ['running', 'blocked']);
+});
+
+test('T-0134: a turn with text but no RESULT is reminded once; the next one without RESULT finishes a task with nothing left open', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  s.ev.onTurnEnd!({ ...emptyTurn, text: 'Waiting for CI run 3 on PR #171.', background: true });
+  assert.equal(x.status, 'running', 'kept open while the background shell is alive');
+  assert.equal(sent.get(w.id), undefined);
+  s.ev.onTurnEnd!({ ...emptyTurn, text: 'Waiting for CI run 3 on PR #171.' });
+  assert.equal(x.status, 'running');
+  assert.match(sent.get(w.id)![0], new RegExp(`without the RESULT lines, so ${x.id} is still open`));
+  s.ev.onTurnEnd!({ ...emptyTurn, text: 'All done.' });
+  assert.equal(x.status, 'done', 'a Worker that forgets RESULT twice still ends its task');
+  assert.equal(sent.get(w.id)!.length, 1);
+});
+
+test('T-0134: after the reminder, a task with steps left stays open instead of finishing', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, { steps: [{ title: 'Code', doneAt: now }, { title: 'Merge', doneAt: null }] });
+  const s = workers.ensureSession(w)!;
+  s.ev.onTurnEnd!({ ...emptyTurn, text: 'Waiting for CI.' });
+  s.ev.onTurnEnd!({ ...emptyTurn, text: 'Still waiting for CI.' });
+  assert.deepEqual([x.status, x.finishedAt], ['running', null]);
+});
+
+test('T-0134: with the PR URL in turns without RESULT, the task ends pr_open after the reminder and its follower keeps waiting', () => {
+  const { w, dep, next, s } = limitScene();
+  limit(false);
+  workers.retryQueued();
+  const text = 'PR #171 (https://github.com/o/r/pull/171) is open; waiting for CI.';
+  s.ev.onTurnEnd!({ ...emptyTurn, text });
+  assert.deepEqual([dep.status, next.status], ['running', 'blocked']);
+  s.ev.onTurnEnd!({ ...emptyTurn, text });
+  assert.deepEqual([dep.status, dep.prUrl, next.status], ['pr_open', 'https://github.com/o/r/pull/171', 'blocked']);
+  assert.ok(w);
+});
+
+test('T-0134: a research task that reports without a PR still ends done and starts its follower', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const dep = addTask(w, { kind: 'other' });
+  const next = addTask(w, { status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  workers.ensureSession(w)!.ev.onTurnEnd!({ ...emptyTurn, text: 'RESULT: Wrote the report\nFILE: none' });
+  assert.deepEqual([dep.status, next.status], ['done', 'running']);
+  assert.equal(noPr(), true);
+});
+
 test('cancelling a paused task drops its held messages, nothing restarts it, and the Worker hears it once', async () => {
   const { w, x } = pausedWorker();
   const held = workers.held;
@@ -413,9 +499,9 @@ test('a Worker that waits on a background test run stays running on its open tas
   feed(s, agents(0, 1));
   assert.equal(w.statusText, 'Waiting for 1 background command to finish');
   // The run ends and Claude Code starts a turn by itself; this one reports.
-  feed(s, agents(0, 0), said('Tests pass.'));
+  feed(s, agents(0, 0), said('Tests pass.\nRESULT: Fixed it\nPR: none'));
   assert.equal(w.status, 'running');
-  feed(s, turnEnd('RESULT: Fixed it\nPR: none'));
+  feed(s, turnEnd('Tests pass.\nRESULT: Fixed it\nPR: none'));
   assert.equal(x.status, 'done');
   assert.equal(w.status, 'idle');
 });
@@ -780,7 +866,7 @@ test('a Worker that answers with the tool and ends its turn there is told to go 
   assert.equal(x.status, 'running', 'the turn that answered a question says nothing about the task');
   assert.ok(sent.get(w.id)![1].startsWith('[Dispatcher] Your answer was delivered.'), sent.get(w.id)![1]);
   assert.deepEqual(store.data.pendingUpdates, [`${w.id} answered your question "How far along are you?": Half way.`]);
-  // The next turn is its report, with the RESULT lines or without.
+  // The next turn is its report, with the RESULT lines or without: being told to go on was its one reminder.
   turn(s, 'All of it is done now.');
   assert.equal(x.status, 'done');
   assert.equal(sent.get(w.id)!.length, 2);

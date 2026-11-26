@@ -12,6 +12,9 @@ export const SLOT_FREE_MSG = 'Continue the task where you left off.';
 /** A Worker that answered a question mid-task and stopped: the answer is no task result. */
 export const GO_ON_MSG ='[Dispatcher] Your answer was delivered. Go on with your task where you left off, and report it with the RESULT lines when it is done.';
 
+/** The one reminder a Worker gets when a turn ended with neither RESULT nor BLOCKED, so its task is still open. */
+export const noResultMsg = (taskId: string) => `[Dispatcher] Your turn ended without the RESULT lines, so ${taskId} is still open. If it is done, report it now with the RESULT lines (with the PR line if you opened a PR); otherwise go on with it.`;
+
 /** The one reminder a Worker gets when its task sits open with nothing running it (sweepStalled). */
 export const stallMsg = (taskId: string, min: number, shells = false) => `[Dispatcher] Your task ${taskId} is still open, but your session has been idle for ${min} min with ${shells ? 'only background commands running. If one is a server or hung, stop it and go on; if a run is still useful, say so with tell_dispatcher' : 'nothing running'}. Go on with it where you left off. If you are waiting for something, say what with tell_dispatcher; when the task is done, report it with the RESULT lines.`;
 

@@ -3,13 +3,16 @@ import { limitResetText, t } from '../../i18n';
 import { cachedModels } from '../../models';
 import { loadSettings } from '../../settings';
 import { store } from '../../store';
-import { nowIso } from '../../util';
+import { log } from '../../log';
+import { ghEnv } from '../../repos';
+import { nowIso, run } from '../../util';
 import { needsPlan, taskStarted } from '../workerPrompt';
 import { RESUME_MSG, stallMsg } from '../workerText';
 import type { WorkerManager, WorkerSession } from '../workers';
 import { WORKER_TASK_COMPACT } from '../../../shared/context';
 import { providerOf } from '../../../shared/models';
-import { afterDependency, cancelWhy, describeCancel } from '../../../shared/queue';
+import { isLocalRepo } from '../../../shared/localRepo';
+import { afterDependency, branchPrDue, cancelWhy, describeCancel, pickBranchPr } from '../../../shared/queue';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../../shared/slots';
 import { isStalled } from '../../../shared/stall';
 import { setStatus } from '../../../shared/taskStatus';
@@ -63,8 +66,39 @@ export function onPrSettled(m: WorkerManager, doneTask: Task, merged: boolean) {
  * afterDependency says. Without this, a dependency that finished without a PR, or failed, would hold them forever.
  */
 export function followUp(m: WorkerManager, dep: Task) {
+  const waits = store.data.tasks.some((x) => x.status === 'blocked' && x.afterTaskId === dep.id);
+  const repo = dep.repo ? store.repo(dep.repo) : null;
+  if (waits && branchPrDue(dep, isLocalRepo(repo), m.branchChecked.has(dep.id))) return void adoptBranchPr(m, dep);
   const how = afterDependency(dep);
   if (how !== 'wait') settleBlocked(m, dep, how);
+}
+
+/**
+ * A code task finished with no PR known, and tasks wait on it: GitHub may know one its Worker opened without naming
+ * it in a RESULT line (T-0136). It is recorded (an open one makes the task pr_open), then the waiting tasks settle
+ * as afterDependency says. When gh cannot tell, they start as before.
+ */
+async function adoptBranchPr(m: WorkerManager, dep: Task) {
+  m.branchChecked.add(dep.id);
+  const w = dep.workerId ? store.worker(dep.workerId) : null;
+  const cwd = w?.cwd ?? store.repo(dep.repo!)?.path;
+  const r = await run('gh', ['pr', 'list', '--head', dep.branch!, '--state', 'all', '--json', 'url,state', '--limit', '10'], { cwd, env: ghEnv(), timeoutMs: 60_000 });
+  let list: unknown;
+  try { list = r.code === 0 ? JSON.parse(r.stdout) : null; } catch { list = null; }
+  const pr = pickBranchPr(list);
+  const cur = store.task(dep.id);
+  if (!cur) return;
+  if (pr && !cur.prUrl && cur.status === 'done') {
+    cur.prUrl = pr.url;
+    cur.prState = pr.state;
+    if (pr.state === 'OPEN') setStatus(cur, 'pr_open');
+    cur.reviewSyncedAt ??= nowIso();
+    cur.updatedAt = nowIso();
+    log.info(`[${cur.workerId}] ${cur.id} has ${pr.state === 'OPEN' ? 'open' : 'merged'} PR ${pr.url} on ${cur.branch}; its report named none`);
+    store.pushUpdate(`${cur.id} "${cur.title}" finished without naming a PR, but its branch ${cur.branch} has ${pr.state === 'OPEN' ? 'open' : 'merged'} PR ${pr.url}; it is recorded${pr.state === 'OPEN' ? ' and the tasks waiting on it wait for its merge' : ''}.`);
+    store.changed();
+  }
+  followUp(m, cur);
 }
 
 /** Every blocked task whose dependency already ended, as saved state may hold (one that ended before this check existed). */

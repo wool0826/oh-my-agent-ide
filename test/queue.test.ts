@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { afterDependency, cancelSet, cancelWhy, describeCancel, followersOf, hasOpenPr, isQueued, statusAfterCancel } from '../src/shared/queue';
+import { afterDependency, branchPrDue, cancelSet, cancelWhy, describeCancel, followersOf, hasOpenPr, isQueued, pickBranchPr, statusAfterCancel } from '../src/shared/queue';
 import type { Task } from '../src/shared/types';
 
 function task(id: string, patch: Partial<Task> = {}): Task {
@@ -104,4 +104,26 @@ test('queue: blocked tasks are cancelled because the task they wait for had its 
   assert.equal(cancelWhy(task('T-1', { prState: 'CLOSED' }), false), 'closed');
   assert.equal(cancelWhy(task('T-1'), false), 'gone');
   assert.equal(cancelWhy(task('T-1', { status: 'failed' }), true), 'failed');
+});
+
+test('branchPrDue: a code task done on a branch with no PR known asks GitHub once before its followers start', () => {
+  const done = task('T-1', { status: 'done' });
+  assert.equal(branchPrDue(done, false, false), true);
+  assert.equal(branchPrDue(done, false, true), false, 'already asked for this finish');
+  assert.equal(branchPrDue(done, true, false), false, 'a local-only repository has no PRs');
+  assert.equal(branchPrDue({ ...done, prUrl: 'https://github.com/o/r/pull/1' }, false, false), false);
+  assert.equal(branchPrDue({ ...done, kind: 'other' }, false, false), false, 'a research task ends without a PR as before');
+  assert.equal(branchPrDue({ ...done, branch: null }, false, false), false);
+  assert.equal(branchPrDue({ ...done, status: 'failed' }, false, false), false);
+});
+
+test('pickBranchPr: an open PR first, then a merged one; a closed one or nothing readable is no PR', () => {
+  const open = { url: 'https://github.com/o/r/pull/2', state: 'OPEN' };
+  const merged = { url: 'https://github.com/o/r/pull/1', state: 'MERGED' };
+  const closed = { url: 'https://github.com/o/r/pull/3', state: 'CLOSED' };
+  assert.deepEqual(pickBranchPr([closed, merged, open]), open);
+  assert.deepEqual(pickBranchPr([closed, merged]), merged);
+  assert.equal(pickBranchPr([closed]), null);
+  assert.equal(pickBranchPr(null), null);
+  assert.equal(pickBranchPr([{ url: 'not a PR', state: 'OPEN' }]), null);
 });
