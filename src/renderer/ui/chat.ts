@@ -305,6 +305,7 @@ function relight(th: HTMLElement) {
   const hovered = [...th.querySelectorAll<HTMLElement>(':hover')].pop();
   const focused = th.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
   if (hovered || focused) lightBranch(th, hovered ?? focused);
+  else unlight(th);
 }
 
 /** The branches follow the pointer and the focus, and R on a message starts a reply to it (or to its branch's root). */
@@ -361,7 +362,8 @@ export function renderChat(force = false, older = false) {
   if (!force && !older && key === ui.lastChatKey && hands === ui.lastHandKey) return;
   ui.lastChatKey = key;
   ui.lastHandKey = hands;
-  let html = earlier ? olderBtn('chat', ui.loadingOlder.has('chat')) : '';
+  // Pieces of whole elements, so those that stay the same keep theirs (setThread).
+  let pieces: string[] = earlier ? [olderBtn('chat', ui.loadingOlder.has('chat'))] : [];
   let last = 0;
   const folded = handoutFolded(runs);
   // The same error said again right after itself (e.g. every account at its limit) shows once with a count.
@@ -387,37 +389,37 @@ export function renderChat(force = false, older = false) {
   const layout = branchLayout(ix);
   const threadOf = (r: number) => (ix.replies.get(r) ?? []).map((j) => items[j].c);
   const mark = seenAt >= 0 ? seenAt + 1 : -1;
-  let open = false;
+  // The branch being drawn: one piece with its replies, closed when the next message is not on it.
+  let br: string | null = null;
   for (let i = 0; i < items.length; i++) {
     const { c, n } = items[i];
     const b = layout[i];
-    if (open && (!b || b.start)) { html += '</div>'; open = false; }
+    if (br !== null && (!b || b.start)) { pieces.push(br + '</div>'); br = null; }
     // The "new" marker goes in before the message; a reply's goes inside its branch, which stays right under its root.
     const fresh = i === mark ? NEW_FROM : '';
-    if (!b || b.late && b.start) html += fresh;
+    if ((!b || b.late && b.start) && fresh) pieces.push(fresh);
     const ts = Date.parse(c.ts);
     // No time line inside a branch, or between a root and the branch right under it.
-    if ((!b || b.late && b.start) && ts - last > 30 * 60_000) html += `<span class="stamp">${hhmm(c.ts)}</span>`;
+    if ((!b || b.late && b.start) && ts - last > 30 * 60_000) pieces.push(`<span class="stamp">${hhmm(c.ts)}</span>`);
     last = ts;
     if (b) {
       const r = items[b.root].c;
       // A late branch had its "new" marker before its time line; a near one keeps it inside, under its card.
-      if (b.start) html += `<div class="br${b.late ? ' late' : ''}" data-k="${esc(r.id)}" role="group" aria-label="${esc(t('chat.repliesTo', { title: rootWhat(r, 60) }))}">${b.late ? branchTag(r) : fresh}`;
-      else html += fresh;
-      open = true;
-      html += branchRow(c, r, threadOf(b.root));
+      if (b.start) br = `<div class="br${b.late ? ' late' : ''}" data-k="${esc(r.id)}" role="group" aria-label="${esc(t('chat.repliesTo', { title: rootWhat(r, 60) }))}">${b.late ? branchTag(r) : fresh}`;
+      else br = (br ?? '') + fresh;
+      br += branchRow(c, r, threadOf(b.root));
       continue;
     }
     let one = n > 1 ? chatItemHtml(c).replace(/<\/span><\/span>$/, ` <b class="times">×${n}</b></span></span>`) : chatItemHtml(c);
     if (canRoot(c)) one = rootAttr(one, c.id);
-    html += one;
+    pieces.push(one);
   }
-  if (open) html += '</div>';
+  if (br !== null) pieces.push(br + '</div>');
   // A first start: a few starts that fill the composer for the user to finish. Nothing is sent.
   // With no account nothing can be handed out yet: the steps that get there instead (A1).
-  if (!all.length) html = s.setupNeeded ? setupHtml() : `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><div class="starts">${STARTS.map((key) => `<button type="button" class="btn" data-action="chat-start" data-text="${esc(t(key))}">${t(key)}</button>`).join('')}</div></div>`;
+  if (!all.length) pieces = [s.setupNeeded ? setupHtml() : `<div class="empty-view">${sym('s-chat')}<b>${t('chat.emptyTitle')}</b><div class="starts">${STARTS.map((key) => `<button type="button" class="btn" data-action="chat-start" data-text="${esc(t(key))}">${t(key)}</button>`).join('')}</div></div>`];
   ui.chatSeen = tail;
-  setThread(th, html, nearBottom || force, older);
+  setThread(th, pieces, nearBottom || force, older);
   relight(th);
   markReplyTarget('chat');
   watchTop(th, () => void olderChat());

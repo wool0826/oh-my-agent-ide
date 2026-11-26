@@ -167,6 +167,17 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
   }
 
   /**
+   * A picture of the window. A capture waits for the window's next frame, and a hidden window with nothing new to
+   * show makes none (a state update draws only the panels that changed, decision 216): the page changes for two
+   * frames after the request, so one comes.
+   */
+  async function capture(params = {}) {
+    const shot = send('Page.captureScreenshot', { format: 'png', ...params });
+    await evaluate("document.body.style.opacity = '0.999'; requestAnimationFrame(() => requestAnimationFrame(() => { document.body.style.opacity = ''; })); 1").catch(() => {});
+    return shot;
+  }
+
+  /**
    * Waits until the expression is truthy in the page and returns its value. `show`, a page expression, says what the
    * failure message shows of the page (the sidebars by default).
    */
@@ -279,6 +290,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     say: (text) => evaluate(`await window.ide.call('chat:send', ${JSON.stringify(text)}, []); return 1;`),
     click: (selector) => evaluate(`const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('No element: ' + ${JSON.stringify(selector)}); el.click(); return 1;`),
     state: () => evaluate("return await window.ide.call('state');"),
+    capture,
     /** A raw DevTools protocol call (IME composition, for one). */
     cdp: send,
     /** Presses a key as the keyboard does (trusted events to the focused element). modifiers: 2 Ctrl, 4 Meta. */
@@ -388,7 +400,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
       fs.mkdirSync(out, { recursive: true });
       fs.writeFileSync(path.join(out, 'error.txt'), String(err?.stack ?? err));
       try {
-        const m = await within(send('Page.captureScreenshot', { format: 'png' }), 10_000, 'the screenshot');
+        const m = await within(capture(), 10_000, 'the screenshot');
         if (m.result?.data) fs.writeFileSync(path.join(out, 'screenshot.png'), Buffer.from(m.result.data, 'base64'));
       } catch (e) { fs.writeFileSync(path.join(out, 'screenshot.txt'), String(e.message)); }
       try {

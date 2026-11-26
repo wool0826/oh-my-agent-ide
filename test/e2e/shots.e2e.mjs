@@ -14,7 +14,7 @@ flow('a report\'s screenshots show as before/after thumbnails that open at full 
   const dir = path.join(app.home, 'shots');
   fs.mkdirSync(dir);
   const before = path.join(dir, 'card-before.png'), after = path.join(dir, 'card-after.png'), note = path.join(dir, 'notes.md');
-  const png = Buffer.from((await app.cdp('Page.captureScreenshot', { format: 'png' })).result.data, 'base64');
+  const png = Buffer.from((await app.capture()).result.data, 'base64');
   fs.writeFileSync(before, png);
   fs.writeFileSync(after, png);
   fs.writeFileSync(note, 'notes');

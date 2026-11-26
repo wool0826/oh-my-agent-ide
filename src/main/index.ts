@@ -57,6 +57,7 @@ import { diagnostics, exportDiagnostics } from './diagnostics';
 import { beginRun, installCrashHandlers, noticeLastRun, watchWindow } from './crash';
 import { effectiveTheme, windowColors } from '../shared/theme';
 import { SHOT_SCHEME, shotPath } from '../shared/shots';
+import { StateSender } from '../shared/stateSync';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let win: BrowserWindow | null = null;
@@ -170,11 +171,14 @@ function scheduleLimitRetry() {
   }, Math.max(1_000, at - Date.now() + 5_000));
 }
 
+/** What the window holds, so a push sends only the parts that changed since (shared/stateSync.ts). */
+const sender = new StateSender();
+
 function pushState() {
   if (pushTimer) return;
   pushTimer = setTimeout(() => {
     pushTimer = null;
-    win?.webContents.send('state', snapshot());
+    if (win) win.webContents.send('state', sender.next(snapshot()));
     syncTray();
   }, 120);
 }
@@ -261,6 +265,8 @@ function handle(channel: string, fn: (...args: any[]) => any) {
 
 function registerIpc() {
   handle('state', () => snapshot());
+  // The whole state, numbered: the window asks for it when it loads and when it missed a message.
+  handle('state:full', () => sender.full(snapshot()));
   // A side question: its own session and thread, never the Dispatcher's (main/side.ts).
   handle('side:send', (text: string, model?: string | null, repo?: string | null) => side.send(text, model, repo));
   handle('side:stop', () => side.stop());
