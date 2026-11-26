@@ -7,7 +7,7 @@ import { createTask, dispatcher, readWorker, systemPrompt } from '../src/main/ag
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
-import type { Worker } from '../src/shared/types';
+import type { Task, Worker } from '../src/shared/types';
 
 // Settings and the IDE home live in a temp folder. Nothing here reads them until a test runs.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-dispatcher-'));
@@ -249,6 +249,21 @@ test('a task that could not be handed to a Worker fails with the error instead o
   assert.equal(x.status, 'failed');
   assert.match(x.summary ?? '', /W-404/);
   assert.ok(store.data.chat.some((c) => c.kind === 'error' && c.ref === x.id && c.text.startsWith('Could not start "Lost"')));
+});
+
+test('create_task: a Worker still on a task takes a new one only after it, never started beside it', async () => {
+  const at = new Date().toISOString();
+  store.data.workers.push({ id: 'W-8', title: 'Worker', model: 'claude-opus-5-5', accountId: null, sessionId: null, cwd: tmp, repo: null, status: 'running', statusText: '', contextTokens: 0, taskIds: ['T-1'], createdAt: at, lastActiveAt: at, knowledge: '' });
+  store.data.tasks.push({ id: 'T-1', title: 'First', prompt: '', kind: 'other', repo: null, workerId: 'W-8', status: 'running', branch: null, prUrl: null, prState: null, summary: null, files: [], createdAt: at, updatedAt: at, startedAt: at, finishedAt: null, reviewSyncedAt: null, seenCommentIds: [] } as Task);
+  await assert.rejects(createTask({ title: 'Second', prompt: 'Do it.', kind: 'other', worker_id: 'W-8' }), /W-8 is still on T-1 \(running\)\. Give it the new task with after_task_id: T-1/);
+  assert.deepEqual(store.data.tasks.map((x) => x.id), ['T-1'], 'no task was made');
+  // Its PR already merged: after_task_id waits for nothing, so the advice is not to use it again.
+  Object.assign(store.data.tasks[0], { prUrl: 'https://github.com/o/r/pull/1', prState: 'MERGED' });
+  await assert.rejects(createTask({ title: 'Second', prompt: 'Do it.', kind: 'other', worker_id: 'W-8', after_task_id: 'T-1' }), /PR of T-1 is already merged, so there is nothing to wait for\. Send more instructions/);
+  Object.assign(store.data.tasks[0], { prUrl: null, prState: null });
+  const { task } = await createTask({ title: 'Second', prompt: 'Do it.', kind: 'other', worker_id: 'W-8', after_task_id: 'T-1' });
+  assert.equal(task.status, 'blocked');
+  assert.deepEqual(store.data.workers[0].taskIds, ['T-1', task.id]);
 });
 
 test('a Dispatcher turn the user stopped shows as stopped, not as a red error; a real failure still does', async () => {

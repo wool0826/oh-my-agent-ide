@@ -97,10 +97,10 @@ export function steps(m: WorkerManager, w: Worker, op: StepsOp): string {
   const steps = task.steps!;
   const v = stepView(task)!;
   if (op.kind === 'set') {
-    store.log(w.id, 'event', t('log.steps', { list: steps.map((s, i) => `${i + 1}. ${s.title}`).join(', ') }));
+    store.log(w.id, 'event', t('log.steps', { list: steps.map((s, i) => `${i + 1}. ${s.title}`).join(', ') }), task.id);
   } else if (v.done !== before?.done) {
     const n = Number(op.step);
-    store.log(w.id, 'event', t('log.stepDone', { n, done: v.done, total: v.total, title: steps[n - 1].title }));
+    store.log(w.id, 'event', t('log.stepDone', { n, done: v.done, total: v.total, title: steps[n - 1].title }), task.id);
     const prefix = `${w.id} (${task.id}) progress:`;
     mergeProgress(store.data.pendingUpdates, prefix, `${prefix} step ${n} done "${steps[n - 1].title}" (${v.done}/${v.total} done); ${v.allDone ? 'all steps done' : `next "${v.current}"`}.`);
   }

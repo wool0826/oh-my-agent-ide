@@ -1,6 +1,7 @@
 // End-to-end flows: Workers and their tasks: hand-outs, results, failures, slots, compaction and what is typed for each.
 // Each flow starts the built app on its own empty profile with fake agents and a stand-in for gh. Run with `npm run e2e`.
 import assert from 'node:assert/strict';
+import os from 'node:os';
 import { flow } from './harness.mjs';
 
 const task = (state, title) => state.tasks.find((x) => x.title === title);
@@ -159,4 +160,25 @@ flow('what is typed for one Worker waits for that Worker while another one is op
   assert.equal(await app.evaluate("document.querySelector('#ws-thread').innerText.includes('For the second')"), false);
   await open(b);
   assert.equal(await typed(), '');
+});
+
+// A Worker running T-1, with T-2 chained after it on the same Worker (after_task_id): T-2 is last in its taskIds.
+const NOW = new Date().toISOString();
+const seeded = (id, more) => ({ id, title: `${id} title`, prompt: '', kind: 'other', repo: null, workerId: 'W-01', status: 'running', branch: null, prUrl: null, prState: null, summary: null, files: [], createdAt: NOW, updatedAt: NOW, startedAt: null, finishedAt: null, steps: null, ...more });
+/** The Worker declares three steps on its task, marks one, and stays in its turn while the window is looked at. */
+const STEPS_SCRIPT = ['@fake steps Read the code | Change it | Report', '@fake step 1', '@fake wait 20000', '@fake result Done.'].join('\n');
+const chained = JSON.stringify({
+  version: 1,
+  workers: [{ id: 'W-01', title: 'T-1 title', model: 'opus', accountId: null, sessionId: null, cwd: os.tmpdir(), repo: null, status: 'running', statusText: '', contextTokens: 0, taskIds: ['T-1', 'T-2'], createdAt: NOW, lastActiveAt: NOW, knowledge: '' }],
+  tasks: [seeded('T-1', { prompt: STEPS_SCRIPT }), seeded('T-2', { status: 'blocked', afterTaskId: 'T-1', prompt: '@fake result Done.' })],
+  counters: { task: 2, worker: 1 },
+});
+
+flow('a follow-up chained after the running task on the same Worker does not hide that task or its steps', { files: { 'data/state.json': chained } }, async (app) => {
+  await app.until("window.ide.call('state').then((s) => s.tasks.find((t) => t.id === 'T-1')?.steps?.filter((x) => x.doneAt).length === 1)", 'T-1 has its steps, one done');
+  const s = await app.state();
+  assert.deepEqual(s.tasks.filter((t) => t.steps?.length).map((t) => t.id), ['T-1'], 'main put the steps on the running task');
+  assert.deepEqual(s.openTasks, { 'W-01': 'T-1' });
+  // The row of the Running list names the running task and draws its Stepper, not the follow-up waiting after it.
+  await app.until("const r = document.querySelector('#side .row[data-id=\"W-01\"]'); return r?.querySelector('.t b')?.textContent === 'T-1 title' && !!r.querySelector('.stp');", 'the W-01 row names T-1 and draws its Stepper');
 });

@@ -19,6 +19,7 @@ import { t } from '../i18n';
 import { ensureDir, nowIso, oneLine } from '../util';
 import { artifactCommentLine } from '../../shared/artifactComment';
 import type { Task, Worker } from '../../shared/types';
+import { currentTask, openTask } from '../../shared/currentTask';
 import { FakeSession } from './fakeSession';
 import { fakeMode } from '../fake';
 import { addSpend, hasSpend } from '../../shared/spend';
@@ -107,12 +108,9 @@ export class WorkerManager {
     return null;
   }
 
+  /** Its open task (shared/currentTask.ts, the rule the window draws it with), or null. */
   currentTask(w: Worker): Task | null {
-    for (let i = w.taskIds.length - 1; i >= 0; i--) {
-      const x = store.task(w.taskIds[i]);
-      if (x && (x.status === 'running' || x.status === 'waiting' || x.status === 'queued')) return x;
-    }
-    return null;
+    return openTask(w, (id) => store.task(id));
   }
 
   async create(opts: { title: string; repo: string | null; model: string }): Promise<Worker> {
@@ -216,7 +214,7 @@ export class WorkerManager {
       onSpend: (turn, session) => {
         w.sessionSpend = session;
         // A turn outside any open task (a message to an idle Worker) counts toward its latest task.
-        const task = this.currentTask(w) ?? (w.taskIds.length ? store.task(w.taskIds[w.taskIds.length - 1]) : null);
+        const task = currentTask(w, (id) => store.task(id));
         if (task && hasSpend(turn)) task.spend = addSpend(task.spend, turn);
         store.changed();
       },

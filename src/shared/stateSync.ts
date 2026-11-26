@@ -194,6 +194,7 @@ export const PART_PANELS: Record<Part, readonly Panel[]> = {
   usageClock: ['frame', 'usage'],
   workers: ['frame', 'chat', 'chatIns', 'workers', 'repos', 'cancel'],
   tasks: ['frame', 'chat', 'chatIns', 'workers', 'repos', 'cancel'],
+  openTasks: ['frame'],
   mergeQueue: ['frame', 'chat', 'chatIns', 'workers'],
   decisions: ['frame', 'chat', 'chatIns', 'workers'],
   autoAnswers: ['chat', 'chatIns', 'workers'],

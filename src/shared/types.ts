@@ -368,6 +368,8 @@ export interface WorkerLogItem {
   ts: string;
   from: 'dispatcher' | 'worker' | 'user' | 'event' | 'auto';
   text: string;
+  /** The task a set_steps or step_done event wrote to. */
+  task?: string;
 }
 
 /** A page of a Worker's log: `items` are lines `start` to `start + items.length` of its `total` (decision 85). */
@@ -507,6 +509,8 @@ export interface AppState {
   repos: Repo[];
   workers: Worker[];
   tasks: Task[];
+  /** Each Worker's open task as main sees it (shared/currentTask.ts), for the Workers that have one. */
+  openTasks?: Record<string, string>;
   /** The merge queue, in order, with the PRs that left it (shared/mergeQueue.ts). */
   mergeQueue: MergeQueueEntry[];
   decisions: Decision[];

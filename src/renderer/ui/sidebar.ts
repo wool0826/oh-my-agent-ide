@@ -1,5 +1,6 @@
 // The left sidebar: what waits for the user, what runs, PRs in review, the queue and the history.
-import type { Task, Worker, AccountView } from '../../shared/types';
+import type { AppState, Task, Worker, AccountView } from '../../shared/types';
+import { drawnMismatch } from '../../shared/currentTask';
 import { isQueued } from '../../shared/queue';
 import { canStop } from '../../shared/canStop';
 import { doneMask, stepper, stepView } from '../../shared/steps';
@@ -19,14 +20,14 @@ import { applyWidths } from './resize';
 import { narrowLayout } from '../../shared/panelWidth';
 import { ageHtml, tickDecisions } from './chat';
 import { quietUntil } from '../../shared/notifyRules';
-import { $, ago, awaitsDispatcher, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, S, store, stored, sym, t, task, ui, when } from './core';
+import { $, ago, awaitsDispatcher, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, S, store, stored, sym, t, task, tryCall, ui, when, workerTask } from './core';
 import { setTip } from './tip';
 import { segc } from './settings';
 import { queueCtx } from './workers';
 import { shownStalled } from '../../shared/stall';
 
 export function workerIcon(w: Worker) {
-  const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+  const x = workerTask(w);
   // A Worker whose last task failed is drawn as failed, not idle (shared/workerState.ts).
   const glyph = { run: 'run', ask: 'ask', stalled: 'ask', failed: 'err', archived: 'arch', asked: 'wait', queued: 'wait', pr: 'pr', done: 'done', stopped: 'idle', idle: 'idle' } as const;
   return ic(glyph[workerState(w, x)]);
@@ -46,16 +47,31 @@ export function renderDnd() {
   if (mark.dataset.tip !== label) { mark.dataset.tip = label; mark.setAttribute('aria-label', label); }
 }
 
+/** Workers already logged as drawn with another task than main's, so each disagreement is logged once. */
+const warned = new Set<string>();
+
+/** A Worker drawn with an open task other than main's: the window's copy of the state disagrees with main's. */
+function warnDrawn(s: AppState) {
+  if (!s.openTasks) return;
+  for (const w of s.workers) {
+    const d = drawnMismatch(w, task, s.openTasks[w.id] ?? null);
+    const key = d && `${w.id} ${d.drawn} ${d.main}`;
+    if (!d || !key || warned.has(key)) continue;
+    warned.add(key);
+    void tryCall('app:warn', `${w.id} is drawn with open task ${d.drawn ?? 'none'}, main has ${d.main ?? 'none'}`);
+  }
+}
+
 export function renderSidebar() {
   const s = S!;
   renderDnd();
+  warnDrawn(s);
   const pending = s.decisions.filter((d) => d.status === 'pending');
-  const lastTask = (w: Worker) => (w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null);
   // A Worker that waits for the Dispatcher's answer is listed too: its task is open and holds a slot.
-  const running = s.workers.filter((w) => canStop(w, lastTask(w)));
+  const running = s.workers.filter((w) => canStop(w, workerTask(w)));
   // A Worker stopped by an error is not running; it waits for someone to tell it to continue. A failed turn leaves
   // its Worker idle with a failed task, which counts the same.
-  const failed = s.workers.filter((w) => lastFailed(w, lastTask(w)));
+  const failed = s.workers.filter((w) => lastFailed(w, workerTask(w)));
   // One row per PR, even when a follow-up task recorded the same PR.
   const prs = prsInReview(s.tasks);
   const queued = s.tasks.filter(isQueued);
@@ -79,7 +95,7 @@ export function renderSidebar() {
     return `<div tabindex="0" role="button" class="row drow${sel ? ' sel' : ''}"${sel ? ' aria-current="true"' : ''} data-action="goto-decision" data-id="${d.id}"${d.reason ? ` data-tip="${esc(reasonText(d.reason))}"` : ''}>${ic('ask')}<span class="t"><b>${esc(oneLine(askLine(d), 160))}</b><small>${esc(small)}</small></span>${ageHtml(d)}</div>`;
   }).join('');
   const workerRow = (w: Worker, grouped = false) => {
-    const x = lastTask(w);
+    const x = workerTask(w);
     const what = x?.title ?? w.title;
     const stalled = shownStalled(w);
     const waits = w.status === 'waiting' || awaitsDispatcher(x) || stalled;
@@ -224,7 +240,7 @@ function stepsTip(x: Task) {
 export function workerActs(w: Worker) {
   const btn = (action: string, icon: string, label: string, cls: string, extra = '') =>
     `<button type="button" class="row-act ${cls}" data-action="${action}" data-id="${esc(w.id)}" data-tip="${esc(label)}" aria-label="${esc(label)}"${extra}><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
-  const x = w.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+  const x = workerTask(w);
   // While its Stop is on its way, the button waits instead of sending it twice.
   const busy = ui.stopping.has(w.id);
   const stop = canStop(w, x) ? btn('worker-stop', 's-stop16', t('wk.stopWho', { id: w.id }), 'stop', busy ? ' disabled aria-busy="true"' : '') : '';

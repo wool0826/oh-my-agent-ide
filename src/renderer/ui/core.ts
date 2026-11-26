@@ -1,7 +1,8 @@
 // What every screen shares: the state the window holds, the bridge to the main process, text, small HTML helpers, scrolling, paging and sound.
 /* eslint-disable @typescript-eslint/no-explicit-any -- IPC answers are typed by the caller (call<T>), any by default. */
 import { NOTES } from '../../shared/sounds';
-import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, WorkerLogItem, SoundName, Lang } from '../../shared/types';
+import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
+import { currentTask } from '../../shared/currentTask';
 import type { SideView } from '../../shared/side';
 import type { TermView } from '../../shared/terminal';
 import { tr, type Key } from '../../shared/i18n';
@@ -428,6 +429,8 @@ export function shortPath(p: string, keep = 3) {
 export function base(p: string) { return p.split(/[\\/]/).filter(Boolean).pop() ?? p; }
 
 export const task = (id: string | null | undefined) => (id ? S?.tasks.find((x) => x.id === id) ?? null : null);
+/** The task a Worker is shown with: its open task, otherwise its latest (shared/currentTask.ts, as main picks it). */
+export const workerTask = (w: Pick<Worker, 'taskIds'>) => currentTask(w, task);
 /** Every task the window knows of, open and finished. */
 export const allTasks = (): readonly Task[] => S?.tasks ?? [];
 

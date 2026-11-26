@@ -11,6 +11,7 @@ import { workers, modelLabel } from './workers';
 import { accounts } from '../accounts';
 import { store } from '../store';
 import { automations } from '../automations';
+import { busyWith } from '../../shared/currentTask';
 import { COMPARE_NOTE, compareModels } from '../../shared/compare';
 import { createDecision } from '../decisions';
 import { remember, searchMemory, memoryDigest } from '../memory';
@@ -135,6 +136,16 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     }
     if (dep.prState !== 'MERGED') after = dep.id;
   }
+  // A Worker still on a task takes a new one only after it: started now, the new task would take over its steps and result.
+  const named = a.worker_id ? store.worker(a.worker_id) : null;
+  const busy = named ? busyWith(named, (id) => store.task(id), after) : null;
+  if (named && busy && a.after_task_id && !after) {
+    // Its PR is merged, so after_task_id waits for nothing and the same call would be refused again.
+    throw new Error(`${named.id} is still on ${busy.id} (${busy.status}), and the PR of ${a.after_task_id} is already merged, so there is nothing to wait for. Send more instructions for the current work with send_to_worker, or leave out worker_id to use another Worker.`);
+  }
+  if (named && busy) {
+    throw new Error(`${named.id} is still on ${busy.id} (${busy.status}). Give it the new task with after_task_id: ${busy.id} (or a task already chained after it) so it starts once that one is done, send more instructions for the current work with send_to_worker, or leave out worker_id to use another Worker.`);
+  }
   const s = loadSettings();
   const model = a.model_id ?? (a.model === 'fable' ? s.designModel : s.workerModel);
   const task: Task = {
@@ -226,7 +237,7 @@ function boardTools(d: Dispatcher) {
         const ws = store.data.workers.filter((w) => a.include_archived || w.status !== 'archived');
         return ok(ws.length ? ws.map((w) => workerLine(w.id)).join('\n') : 'No Workers.');
       }),
-      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context. With after_task_id the task waits until that task\'s PR is merged, then starts automatically; if that task finishes without a PR it starts then, and if it fails or its PR is closed unmerged the waiting task is cancelled and you are told.', {
+      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context; a Worker that still has an open task (running, waiting for an answer, or queued) takes a new task only with after_task_id on that task (or on one already chained after it), otherwise the call fails. With after_task_id the task waits until that task\'s PR is merged, then starts automatically; if that task finishes without a PR it starts then, and if it fails or its PR is closed unmerged the waiting task is cancelled and you are told.', {
         title: z.string().describe('Short task name'),
         prompt: z.string().describe('Instructions for the Worker: background, desired result, definition of done. Include any attached file paths.'),
         kind: z.enum(['code', 'other']).describe('code: change a repository and open a PR. other: research, documents, reports, UI mock-ups. A code task that adds a screen or changes a screen\'s structure comes only after a mock-up task (other) and the user\'s pick in the decision inbox, with the chosen option\'s link in its prompt; small fixes (wording, spacing, colours, a bug) go straight to code.'),
@@ -397,7 +408,7 @@ export function systemPrompt(codex = false) {
     '',
     'Role',
     '1. Split requests into tasks and hand them to Workers with create_task. Do not edit code or do long research yourself; a quick look at a repository to route work is fine.',
-    '2. Prefer Workers that already know the code. More instructions on work in progress go to its Worker with send_to_worker. For a new task, create_task without worker_id hands it to the idle Worker that best knows the repository (related past tasks, room left in its context) and creates a new Worker only when none fits. Give worker_id yourself to continue a specific thread of work (same PR, a follow-up); list_workers says under "New work" whether a Worker can take it, and do not pick one marked near compaction or busy. Use new_worker only when the user asks for a fresh Worker. Several independent tasks at once go to different Workers by themselves.',
+    '2. Prefer Workers that already know the code. More instructions on work in progress go to its Worker with send_to_worker. For a new task, create_task without worker_id hands it to the idle Worker that best knows the repository (related past tasks, room left in its context) and creates a new Worker only when none fits. Give worker_id yourself to continue a specific thread of work (same PR, a follow-up); list_workers says under "New work" whether a Worker can take it, and do not pick one marked near compaction or busy (to line up more work behind the task of a busy Worker, use after_task_id on that task). Use new_worker only when the user asks for a fresh Worker. Several independent tasks at once go to different Workers by themselves.',
     '3. If the user names a repo with @name, use it; otherwise pick by description. If unclear, ask with request_decision. Requests like "register this" use register_repo.',
     '4. Model: opus by default; fable only for deep design work such as architecture or large structural changes.',
     '5. Put anything the user must decide into the decision inbox with request_decision. Ask back in chat only when you cannot understand the request.',

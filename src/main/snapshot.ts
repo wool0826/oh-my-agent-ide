@@ -13,6 +13,7 @@ import { lastPreflight } from './preflight';
 import { failedCount } from '../shared/preflight';
 import { month } from './util';
 import { CHAT_SNAPSHOT } from '../shared/paging';
+import { openTaskIds } from '../shared/currentTask';
 import type { AppState } from '../shared/types';
 
 /** What a restart into a downloaded update would wait for. */
@@ -21,6 +22,7 @@ export const updateBlockers = () => applyBlockers({ workers: store.data.workers,
 /** The state the window shows. */
 export function snapshot(): AppState {
   const d = store.data;
+  const byId = new Map(d.tasks.map((x) => [x.id, x]));
   return {
     ready: true,
     // Fake agents need no account; an end-to-end test of the first run asks for the account screen (OMA_E2E_NO_ACCOUNT).
@@ -31,6 +33,7 @@ export function snapshot(): AppState {
     repos: d.repos,
     workers: d.workers,
     tasks: d.tasks,
+    openTasks: openTaskIds(d.workers, (id) => byId.get(id)),
     mergeQueue: d.mergeQueue ?? [],
     decisions: d.decisions,
     autoAnswers: d.autoAnswers,

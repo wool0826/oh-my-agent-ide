@@ -31,3 +31,42 @@ export function canReopen(last: Pick<Task, 'status' | 'finishedAt' | 'updatedAt'
   if (!at || now - Date.parse(at) > REOPEN_MS) return false;
   return last.prState !== 'MERGED' && last.prState !== 'CLOSED';
 }
+
+/** A task whose status changed since it was last seen: what the app log says about it. */
+export interface StatusMove { id: string; from: TaskStatus; to: TaskStatus; pr: boolean }
+
+/**
+ * The tasks whose status changed since `seen` was last brought up to date, which this does. A task seen for the
+ * first time is not a move; one no longer in the list is forgotten.
+ */
+export function statusMoves(seen: Map<string, TaskStatus>, tasks: readonly Pick<Task, 'id' | 'status' | 'prUrl'>[]): StatusMove[] {
+  const out: StatusMove[] = [];
+  for (const x of tasks) {
+    const from = seen.get(x.id);
+    if (from && from !== x.status) out.push({ id: x.id, from, to: x.status, pr: !!x.prUrl });
+    seen.set(x.id, x.status);
+  }
+  if (seen.size > tasks.length) {
+    const ids = new Set(tasks.map((x) => x.id));
+    for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
+  }
+  return out;
+}
+
+/** The app log's line for a move, e.g. `task T-1 running -> done (PR: no) via finish < onResult`. */
+export function moveLine(x: StatusMove, via: string): string {
+  return `task ${x.id} ${x.from} -> ${x.to} (PR: ${x.pr ? 'yes' : 'no'}) via ${via}`;
+}
+
+/**
+ * The functions on a stack below `fn`, nearest first and at most `n`: which code changed a task, for the app log.
+ * Anonymous frames, Array methods and the methods of `fn`'s own class (the store calling itself) are left out.
+ */
+export function callers(stack: string, fn: string, n = 3): string {
+  const names = stack.split('\n').map((l) => /^\s*at (?:async )?(?:new )?([^\s(]+) \(/.exec(l)?.[1] ?? null);
+  const from = names.findIndex((x) => x?.split('.').pop() === fn);
+  const self = from >= 0 ? names[from] ?? '' : '';
+  const own = self.includes('.') ? self.slice(0, self.lastIndexOf('.') + 1) : null;
+  const out = names.slice(from + 1).filter((x): x is string => !!x && !(own && x.startsWith(own)) && !/^Array\.|^<anonymous>$/.test(x));
+  return out.slice(0, n).join(' < ') || 'unknown';
+}

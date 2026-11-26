@@ -23,7 +23,7 @@ import { closeShot, markBrokenShot, openShot, shotOpen, showShot, stepShot } fro
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
-import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, task, toast, tryCall, ui, worker, skipSameHtml, userActed } from './ui/core';
+import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
@@ -1202,7 +1202,7 @@ export function init() {
     const x = e.clientX || r.left + 16, y = e.clientY || r.bottom;
     if (el.dataset.ctx === 'worker') {
       const w = worker(id);
-      const cur = w?.taskIds.length ? task(w.taskIds[w.taskIds.length - 1]) : null;
+      const cur = w ? workerTask(w) : null;
       menu.dataset.for = 'worker';
       menu.innerHTML = `<button class="menu-item" role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && canStop(w, cur) ? `<button class="menu-item" role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
       openCtxMenu(x, y);

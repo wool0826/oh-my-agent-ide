@@ -17,8 +17,10 @@ import { appendLines, asideName, readFold, copyAside, setAside, writeLines } fro
 import { readLogPage, searchLog } from './logFile';
 import { stampQueued } from '../shared/queue';
 import { stampHistory } from '../shared/retro';
+import { callers, moveLine, statusMoves } from '../shared/taskStatus';
+import { log } from './log';
 import type { Memo, Automation, MergeQueueEntry, ShellScript } from '../shared/types';
-import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, Worker, WorkerLogItem } from '../shared/types';
+import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, TaskStatus, Worker, WorkerLogItem } from '../shared/types';
 
 export interface DispatcherState {
   sessionId: string | null; date: string | null; contextTokens: number; accountId: string | null;
@@ -142,6 +144,9 @@ class Store extends EventEmitter {
     if (had) raw = this.upgrade(raw, text!, chain);
     this.data = coverCounters({ ...empty(), ...raw }) as unknown as Data;
     this.loaded = true;
+    // What the tasks' statuses are now, so only later changes are logged (a state that cannot be read has no list).
+    this.seenStatus.clear();
+    if (Array.isArray(this.data.tasks)) statusMoves(this.seenStatus, this.data.tasks);
     const from = (this.migrated as { from: number } | null)?.from; // set by upgrade()
     if (!this.readOnly && from !== undefined && from < SPLIT.version) {
       try {
@@ -315,11 +320,23 @@ class Store extends EventEmitter {
 
   private persist = debounce(() => this.flush(), 300);
 
+  /** Each task's status when changed() last ran, to log the moves (logMoves). */
+  private seenStatus = new Map<string, TaskStatus>();
+
   changed() {
     stampQueued(this.data.tasks);
     stampHistory(this.data.tasks, nowIso());
+    this.logMoves();
     this.persist();
     this.emit('changed');
+  }
+
+  /** Every change of a task's status goes to the app log, with whether it has a PR and the code that changed it. */
+  private logMoves() {
+    const moves = statusMoves(this.seenStatus, this.data.tasks);
+    if (!moves.length) return;
+    const via = callers(new Error().stack ?? '', 'logMoves');
+    for (const x of moves) log.info(moveLine(x, via));
   }
 
   /**
@@ -370,8 +387,8 @@ class Store extends EventEmitter {
     return item;
   }
 
-  log(workerId: string, from: WorkerLogItem['from'], text: string) {
-    const item: WorkerLogItem = { ts: nowIso(), from, text };
+  log(workerId: string, from: WorkerLogItem['from'], text: string, task?: string) {
+    const item: WorkerLogItem = { ts: nowIso(), from, text, ...(task ? { task } : {}) };
     ensureDir(paths().workerLogs);
     fs.appendFileSync(path.join(paths().workerLogs, `${workerId}.jsonl`), JSON.stringify(item) + '\n', 'utf8');
     this.emit('workerLog', workerId, item);
