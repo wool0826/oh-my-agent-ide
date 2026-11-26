@@ -59,7 +59,7 @@ export const scale = {
     // The macOS traffic lights (trafficLightPosition x in src/main/index.ts): 12px buttons with 8px gaps are 52px wide,
     // and macOS 26 draws them larger (about 60px), so the wider figure is kept. Things at the top left of the window
     // start at --lights-end, which styles.css sets on macOS outside full screen only.
-    'lights-x': '22px', 'lights-w': '60px', 'lights-gap': '14px',
+    'lights-x': '22px', 'lights-w': '52px', 'lights-gap': '14px',
   },
   dur: { instant: '80ms', fast: '120ms', base: '180ms', slow: '300ms', glide: '460ms', spin: '1000ms', attention: '1100ms' },
   ease: {

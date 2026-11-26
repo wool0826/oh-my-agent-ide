@@ -198,7 +198,7 @@ function createWindow() {
     // Matches --bg-canvas, so nothing flashes before the page paints its backdrop.
     backgroundColor: look.background,
     titleBarStyle: mac ? 'hiddenInset' : 'hidden',
-    // Inside the floating sidebar panel. Keep x in step with --lights-x in tokens.css.
+    // Inside the floating sidebar panel. Keep x in step with --lights-x in tokens.css (test/trafficLights.test.ts).
     trafficLightPosition: mac ? { x: 22, y: 22 } : undefined,
     titleBarOverlay: mac ? undefined : { color: '#00000000', symbolColor: look.symbol, height: 44 },
     webPreferences: {
