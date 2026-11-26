@@ -111,6 +111,7 @@ function undoClear(u?: (typeof ui.undo)[number]) {
 
 export function openWorker(id: string) {
   if (!id) return;
+  ui.qSel = null;
   go({ view: 'worker', wSel: id, wOpen: true });
 }
 

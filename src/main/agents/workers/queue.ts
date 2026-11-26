@@ -92,6 +92,8 @@ export function enqueue(m: WorkerManager, task: Task, how: 'blocked' | 'slot' | 
  */
 export function startLate(m: WorkerManager, task: Task, dep: Task | null = null) {
   if (task.workerId || m.binding.has(task.id)) return;
+  // A chained task that then waited for a slot or a limit still prefers the Worker of its dependency.
+  dep ??= task.afterTaskId ? store.task(task.afterTaskId) ?? null : null;
   const model = task.model ?? loadSettings().workerModel;
   if (!slotFree(m)) return waitUnassigned(task, 'slot');
   if (!accountFree(model)) return waitUnassigned(task, 'limit');

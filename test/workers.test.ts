@@ -820,6 +820,34 @@ test('waiting without a Worker: after a restart, a chained task whose dependency
   assert.deepEqual([x.workerId, x.status], [a.id, 'running']);
 });
 
+test('waiting without a Worker: a chained task that then waited for a slot still starts on the Worker of its dependency', async () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker();
+  const busy = addWorker({ status: 'running' });
+  const run = addTask(busy, { ...area, status: 'running' });
+  const d = addTask(a, { ...area, status: 'pr_open', prUrl: 'https://github.com/o/r/pull/9', prState: 'OPEN' });
+  const x = chained(d);
+  merge(d);
+  assert.deepEqual([x.workerId, x.status, x.queueReason], [null, 'queued', 'slot']);
+  busy.status = 'idle';
+  run.status = 'done';
+  workers.fillSlots();
+  await settle();
+  assert.deepEqual([x.workerId, x.status], [a.id, 'running']);
+  assert.ok(store.data.pendingUpdates.some((u) => String(u).includes(`went to ${a.id} (the Worker of ${d.id}) and started`)));
+});
+
+test('waiting without a Worker: a task cancelled while its new Worker is made stays cancelled; that Worker is left idle', async () => {
+  const x = unbound('slot');
+  workers.fillSlots();
+  await workers.cancelTask(x.id, 'user');
+  await settle();
+  assert.deepEqual([x.status, x.workerId], ['cancelled', null]);
+  assert.equal(store.data.workers.length, 1);
+  assert.equal(store.data.workers[0].status, 'idle');
+  assert.deepEqual(store.data.workers[0].taskIds, []);
+});
+
 test('waiting without a Worker: a saved blocked task that already has a Worker still starts on it', async () => {
   const a = addWorker();
   const b = addWorker();
