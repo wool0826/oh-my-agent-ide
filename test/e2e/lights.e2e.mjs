@@ -6,7 +6,7 @@ import { flow } from './harness.mjs';
 
 // In the page: what the layout should be for a box, from the same tokens styles.css reads, and what it is. Returns
 // '' when they match, or what differs.
-const PROBE = `window.__lights = (box) => {
+const PROBE = `window.__lights = (box, rail) => {
   const css = getComputedStyle(document.body), px = (n) => parseFloat(css.getPropertyValue(n));
   const k = { x: px('--lights-x'), gap: px('--lights-gap'), inset: px('--panel-inset'), barH: px('--toolbar-h'), padMax: px('--space-12') };
   const full = document.body.classList.contains('fullscreen');
@@ -17,23 +17,25 @@ const PROBE = `window.__lights = (box) => {
   near('bar padding-top', parseFloat(getComputedStyle(bar).paddingTop), pad);
   const back = document.querySelector('.settings-win .sback');
   if (back) near('back button left', back.getBoundingClientRect().left, Math.max(16, end));
-  else if (document.querySelector('#win').classList.contains('side-min')) {
+  else if (rail && !document.querySelector('#win').classList.contains('side-min')) bad.push('no rail');
+  else if (rail) {
     const s = document.querySelector('.sidebar').getBoundingClientRect();
     if (full) near('rail right', s.right, 60);
     else near('rail panel middle', (s.left + s.right) / 2, box.w / 2);
     const first = [...document.querySelector('.toolbar').children].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().left);
-    if (!full && Math.min(...first) < end - 0.5) bad.push('toolbar starts at ' + Math.min(...first) + ' before ' + end);
+    if (!first.length) bad.push('no toolbar controls');
+    else if (!full && Math.min(...first) < end - 0.5) bad.push('toolbar starts at ' + Math.min(...first) + ' before ' + end);
   }
   return bad.join('; ');
 }; 1`;
-const check = (box) => `return window.__lights(${JSON.stringify(box)}) || 'ok'`;
+const check = (box, rail) => `return window.__lights(${JSON.stringify(box)}, ${rail}) || 'ok'`;
 
 /** Waits until the layout matches the box (the grid animates), and fails with what differs. */
-async function settle(app, box, what) {
-  await app.until(`return (() => { const r = window.__lights(${JSON.stringify(box)}); window.__lastLights = r; return !r; })()`, what, 10_000).catch(async (e) => {
+async function settle(app, box, what, rail = false) {
+  await app.until(`return (() => { const r = window.__lights(${JSON.stringify(box)}, ${rail}); window.__lastLights = r; return !r; })()`, what, 10_000).catch(async (e) => {
     throw new Error(`${e.message}\nDiffers: ${await app.evaluate('return window.__lastLights')}`);
   });
-  assert.equal(await app.evaluate(check(box)), 'ok', what);
+  assert.equal(await app.evaluate(check(box, rail)), 'ok', what);
 }
 
 flow('macOS: the back button, the collapsed rail and the bars follow the box the window reports around the traffic lights', {}, async (app) => {
@@ -46,7 +48,7 @@ flow('macOS: the back button, the collapsed rail and the bars follow the box the
     console.log(`traffic lights box on this Mac: ${box.w}×${box.h}`);
     for (const w of [1320, 900]) {
       await app.size(w, 860);
-      await settle(app, box, `the layout for the real box at ${w}px`);
+      await settle(app, box, `the layout for the real box at ${w}px`, w < 960);
     }
     await app.click('[data-action="open-settings"]');
     await settle(app, box, 'the back button after the real lights');
@@ -60,16 +62,24 @@ flow('macOS: the back button, the collapsed rail and the bars follow the box the
     await app.evaluate(`document.body.style.setProperty('--lights-box-w', '${box.w}px'); document.body.style.setProperty('--lights-box-h', '${box.h}px'); 1`);
     for (const w of [1320, 900, 760]) {
       await app.size(w, 860);
-      await settle(app, box, `${box.w}×${box.h} at ${w}px`);
+      await settle(app, box, `${box.w}×${box.h} at ${w}px`, w < 960);
       await app.click('[data-action="open-settings"]');
       await settle(app, box, `${box.w}×${box.h} at ${w}px in Settings`);
       await app.click('[data-action="close-settings"]');
     }
   }
+  // Fixed numbers for macOS 15's box, so a formula changed the same way here and in styles.css still fails.
+  await app.evaluate("document.body.style.setProperty('--lights-box-w', '98px'); document.body.style.setProperty('--lights-box-h', '60px'); 1");
+  await app.size(900, 860);
+  await app.until("return Math.abs(document.querySelector('.sidebar').getBoundingClientRect().right - 90) < 0.5", 'the rail of the 98px box ending at 90');
+  assert.equal(await app.evaluate("return getComputedStyle(document.querySelector('.toolbar')).paddingTop"), '8px');
+  await app.click('[data-action="open-settings"]');
+  await app.until("return Math.abs(document.querySelector('.settings-win .sback')?.getBoundingClientRect().left - 90) < 0.5", 'the back button of the 98px box at 90');
+  await app.click('[data-action="close-settings"]');
   // Full screen hides the lights: no room kept for them, the plain 60px rail.
   await app.evaluate("document.body.classList.add('fullscreen'); 1");
   await app.size(900, 860);
-  await settle(app, { w: 124, h: 72 }, 'full screen in the rail');
+  await settle(app, { w: 124, h: 72 }, 'full screen in the rail', true);
   await app.click('[data-action="open-settings"]');
   await settle(app, { w: 124, h: 72 }, 'full screen in Settings');
 });

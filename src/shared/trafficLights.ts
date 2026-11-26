@@ -17,7 +17,7 @@ export interface LightsBox { w: number; h: number }
 /** The tokens the layout reads, in px. */
 export interface LightsTokens { lightsX: number; gap: number; inset: number; toolbarH: number; padMax: number }
 
-/** Where things go around the lights, the way styles.css computes it from the box. */
+/** Where things go around the lights. styles.css computes the same from the box (test/trafficLights.test.ts checks its rules). */
 export interface LightsLayout {
   /** The zoom button's right edge. */
   zoomRight: number;

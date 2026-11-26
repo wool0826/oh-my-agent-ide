@@ -1108,11 +1108,12 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 236. **On macOS the page lays out from the box the window reports around the traffic lights, not from token guesses** (T-0145, follows 199 and 214).
     - Cause: Settings' back button sat at `--lights-x + --lights-w + --lights-gap` (88pt). AppKit draws the buttons from `trafficLightPosition` plus its own frames, and 214 moved x from 22 to 27 on macOS 26, so the zoom button ended about 1pt from the button. The rail centred a 52pt guess, not the frames.
     - Now: `titleBarOverlay: true` on macOS makes Electron report the button box: x margin + frames + x margin wide (`env(titlebar-area-x)`), and the buttons' height plus the y margin twice (`env(titlebar-area-height)`). `styles.css` reads it as `--lights-box-w/-h`:
-      - the Settings back button and a toolbar after the rail start at `box-w − x + 14`
+      - the Settings back button and a toolbar after the rail start at `box-w − --lights-x + --lights-gap`
       - the rail's panel is centred on the box (`--rail-w: box-w − inset`)
-      - the toolbar and Settings bars get `box-h − 52` (0–12) top padding, so their middle line is the lights' middle
+      - the toolbar and Settings bars get `box-h − --toolbar-h` (0 to `--space-12`) top padding, so their middle line is the lights' middle
+      - `box-w` is never less than `2 × --lights-x`, in case a 0-wide box is reported before the buttons are laid out
     - The window puts the lights at x 22 on every version again. With the layout following the frames, the macOS 26 pad of 214 had no job left, and it cost the room in Settings. The tokens stay only as the fallback when nothing is reported. Full screen keeps no clearance and the 60px rail.
-    - `true`, not an object: a height centres the lights in it and moves them (electron#49183). Leaving full screen sets the position again so the box is sent at once.
+    - Read from Electron 45's `native_window_mac.mm` and `window_buttons_proxy.mm`. `true`, not an object: a height centres the lights in it and moves them (electron#49183). Leaving full screen sets the position again, which makes Electron send the box. That it arrives before the first frame is not checked on a Mac; until it does, the token fallback applies.
     - Checked by `test/trafficLights.test.ts` (rules, formula) and `test/e2e/lights.e2e.mjs`: stand-in boxes on every runner, plus the real reported box on the macOS runner.
     - Rejected:
       - Measuring in the main process: Electron has no API for the button frames.

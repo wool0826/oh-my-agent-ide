@@ -91,7 +91,8 @@ button { font: inherit; }
    left edge to --lights-x past the zoom button, and the buttons' height plus their top margin on both sides. The tokens
    are only the fallback when the window reports nothing. In full screen the lights are hidden. */
 .platform-darwin:not(.fullscreen) {
-  --lights-box-w: env(titlebar-area-x, calc(2 * var(--lights-x) + var(--lights-w)));
+  /* Never narrower than the margins alone: a box reported before the window lays out the buttons can be 0 wide. */
+  --lights-box-w: max(env(titlebar-area-x, calc(2 * var(--lights-x) + var(--lights-w))), calc(2 * var(--lights-x)));
   --lights-box-h: env(titlebar-area-height, var(--toolbar-h));
 }
 /* Where content may start at the top left: clear of the traffic lights on macOS, the window edge elsewhere. */

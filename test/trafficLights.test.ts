@@ -36,6 +36,10 @@ test('trafficLights: on macOS the window reports the lights\' box to the page wi
   assert.match(main, /leave-full-screen[^\n]*setWindowButtonPosition/);
 });
 
+test('trafficLights: a 98×60 box (macOS 15) gives the back button at 90, an 88px rail and 8px of padding', () => {
+  assert.deepEqual(lightsLayout({ w: 98, h: 60 }, k), { zoomRight: 76, end: 90, railW: 90, toolbarPad: 8 });
+});
+
 test('trafficLights: the Settings back button keeps the gap after the zoom button, whatever the frames', () => {
   for (const [name, b] of Object.entries(boxes)) {
     const l = lightsLayout(b, k);
@@ -72,7 +76,7 @@ test('trafficLights: styles.css computes the same from env(titlebar-area-*), wit
     return decl.trim();
   };
   const mac = '.platform-darwin:not(.fullscreen)';
-  assert.equal(rule(mac, '--lights-box-w'), 'env(titlebar-area-x, calc(2 * var(--lights-x) + var(--lights-w)))');
+  assert.equal(rule(mac, '--lights-box-w'), 'max(env(titlebar-area-x, calc(2 * var(--lights-x) + var(--lights-w))), calc(2 * var(--lights-x)))');
   assert.equal(rule(mac, '--lights-box-h'), 'env(titlebar-area-height, var(--toolbar-h))');
   assert.equal(rule(mac, '--lights-end'), 'calc(var(--lights-box-w) - var(--lights-x) + var(--lights-gap))');
   assert.equal(rule(mac, '--lights-pad'), 'clamp(0px, calc(var(--lights-box-h) - var(--toolbar-h)), var(--space-12))');
