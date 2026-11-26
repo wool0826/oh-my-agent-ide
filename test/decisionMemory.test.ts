@@ -84,7 +84,24 @@ test('decisionMemory: clean-up drops noise and second copies, keeps the first co
   ].join('\n'));
   // Cleaned once, there is nothing left to take out, and the text is handed back as it was.
   assert.deepEqual(cleanDecisionFile(r.text), { text: r.text, removed: 0, noise: 0, repeats: 0 });
-  assert.equal(cleanDecisionFile(before.replace(/\n/g, '\r\n')).removed, 4, 'lines ended with CRLF too');
+  const crlf = cleanDecisionFile(before.replace(/\n/g, '\r\n'));
+  assert.deepEqual([crlf.removed, crlf.text], [4, r.text.replace(/\n/g, '\r\n')], 'a file with CRLF keeps CRLF');
+});
+
+test('decisionMemory: an answer that changed back stays, so the file ends on the answer that holds now', () => {
+  const lines = ['- Dispatcher: Push the tag? → hold _(2026-11-24)_', '- Dispatcher: Push the tag? → push _(2026-11-25)_', '- Dispatcher: Push the tag? → hold _(2026-11-26)_'];
+  assert.equal(cleanDecisionFile(lines.join('\n')).removed, 0);
+  assert.equal(alreadySaved(lines.slice(0, 2).join('\n'), 'Dispatcher: Push the tag? → hold'), false);
+  assert.equal(alreadySaved(lines.join('\n'), 'Dispatcher: Push the tag? → hold'), true);
+});
+
+test('decisionMemory: lines the Dispatcher or the user wrote are kept unless they repeat', () => {
+  for (const line of [
+    '- Continue? → Yes _(2026-11-26)_',
+    '- W-06: Run this command? → Allow',
+    '- Always run `npm run lint` before a PR.',
+  ]) assert.equal(noiseLine(line), false, line);
+  assert.equal(cleanDecisionFile('- Always lint.\n- Use pnpm.\n- Always lint. _(2026-11-26)_\n').removed, 1);
 });
 
 test('decisionMemory: a decision saved on another day is already saved', () => {

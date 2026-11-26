@@ -63,10 +63,29 @@ export function noiseLine(line: string): boolean {
 /** What two saves of the same entry share: the text without its date and source. */
 export const entryKey = (entry: string) => norm(entry.split('\n').map((l) => l.replace(STAMP, '')).join('\n'));
 
-/** Whether a file already holds this entry (`- <text>`), saved on any day. */
+/**
+ * What a later entry may replace: for a decision line, who asked and the question (a new answer to it is news, the
+ * same answer again is not); for any other entry, the entry itself.
+ */
+const topicKey = (entry: string) => {
+  const m = LINE.exec(entry.trimEnd());
+  return m ? `q:${norm(`${m[1]}: ${m[2]}`)}` : `e:${entryKey(entry)}`;
+};
+
+/** Each topic's latest entry in a file, as entryKey has it. */
+function latest(text: string): Map<string, string> {
+  const last = new Map<string, string>();
+  for (const e of entries(text)) if (e.bullet) last.set(topicKey(e.text), entryKey(e.text));
+  return last;
+}
+
+/**
+ * Whether saving this entry (`- <text>`) again would repeat the file: the latest entry on its topic, saved on any day,
+ * says the same. An answer that changed back (A, then B, then A) is saved, so the file ends on what holds now.
+ */
 export function alreadySaved(fileText: string, text: string): boolean {
-  const key = entryKey(`- ${text.trim().replace(/\n/g, '\n  ')}`);
-  return entries(fileText).some((e) => e.bullet && entryKey(e.text) === key);
+  const entry = `- ${text.trim().replace(/\n/g, '\n  ')} _(2000-01-01)_`;
+  return latest(fileText).get(topicKey(entry)) === entryKey(entry);
 }
 
 /** A file's lines grouped as entries: a `- ` line with the indented lines under it, or any other single line. */
@@ -80,20 +99,25 @@ function entries(text: string): { text: string; bullet: boolean }[] {
   return out;
 }
 
-/** A decisions file without the lines noiseLine finds and without second copies of an entry; `removed` counts both. */
+/**
+ * A decisions file without the lines noiseLine finds and without repeats: an entry that says what the entry before it
+ * on the same topic said (alreadySaved). `removed` counts both. Lines keep the file's own line ends.
+ */
 export function cleanDecisionFile(text: string): { text: string; removed: number; noise: number; repeats: number } {
-  const seen = new Set<string>();
+  const last = new Map<string, string>();
   const kept: string[] = [];
   let noise = 0;
   let repeats = 0;
   for (const e of entries(text)) {
     if (!e.bullet) { kept.push(e.text); continue; }
     if (noiseLine(e.text)) { noise++; continue; }
+    const topic = topicKey(e.text);
     const key = entryKey(e.text);
-    if (seen.has(key)) { repeats++; continue; }
-    seen.add(key);
+    if (last.get(topic) === key) { repeats++; continue; }
+    last.set(topic, key);
     kept.push(e.text);
   }
   const removed = noise + repeats;
-  return { text: removed ? kept.join('\n') : text, removed, noise, repeats };
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  return { text: removed ? kept.join('\n').replace(/\n/g, eol) : text, removed, noise, repeats };
 }
