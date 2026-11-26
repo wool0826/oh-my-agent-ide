@@ -17,6 +17,8 @@ const oneFile = (tasks, chat) => JSON.stringify({ version: 1, counters: { worker
 
 const inData = (app, name) => path.join(app.home, 'data', name);
 const saved = (app) => JSON.parse(fs.readFileSync(inData(app, 'state.json'), 'utf8'));
+/** The same while the app may be writing it: null when it cannot be read this moment. */
+const savedNow = (app) => { try { return saved(app); } catch { return null; } };
 const lines = (app, name) => fs.readFileSync(inData(app, name), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const named = (app, start) => fs.readdirSync(path.join(app.home, 'data')).filter((n) => n.startsWith(start));
 
@@ -52,7 +54,7 @@ flow('a state saved as one file is split at the first start, and the lists, the 
   await app.until(`const s = await window.ide.call('state'); return s.tasks.some((t) => t.id === 'T-0041' && t.status === 'done');`, 'the new task finished as T-0041');
   await app.until(`return (await window.ide.call('state')).chat.some((c) => c.kind === 'result' && c.text.includes('Done after the split.'));`, 'its result in the chat');
   // What the app finds after a restart is what it saved: wait for the new task on disk.
-  for (const end = Date.now() + 20_000; !saved(app).tasks.some((t) => t.id === 'T-0041' && t.status === 'done');) {
+  for (const end = Date.now() + 20_000; !savedNow(app)?.tasks.some((t) => t.id === 'T-0041' && t.status === 'done');) {
     if (Date.now() > end) throw new Error('The new task was never saved.');
     await new Promise((r) => setTimeout(r, 100));
   }
@@ -74,8 +76,8 @@ flow('started with --state-v1 the app writes the state back as one file and quit
   files: { 'data/state.json': SHORT },
 }, async (app) => {
   assert.deepEqual([saved(app).version, lines(app, 'chat.jsonl').length, lines(app, 'tasks-done.jsonl').length], [2, 100, 5]);
-  // Beside a running app nothing is done: the app that runs would write over it.
-  await app.once(['--state-v1'], { beside: true });
+  // Beside a running app nothing is done (the app that runs would write over it), and the start ends as a failure.
+  assert.equal(await app.once(['--state-v1'], { beside: true }), 1);
   assert.equal(saved(app).version, 2);
   assert.deepEqual(named(app, 'state-v2-before-v1-'), []);
   // With the app closed, one file holds everything again and the files it came from are kept.
@@ -126,7 +128,7 @@ flow('a file beside state.json that lost records gets them back from a backup, a
   assert.equal(named(app, 'chat-broken-').length, 1);
   assert.deepEqual(saved(app).sealed, { chat: 2, tasks: 2 });
   // It is said once. What the app finds after a restart is what it saved: wait for the two notices on disk.
-  for (const end = Date.now() + 20_000; saved(app).chat.filter((c) => c.kind === 'error').length < 2;) {
+  for (const end = Date.now() + 20_000; !(savedNow(app)?.chat.filter((c) => c.kind === 'error').length >= 2);) {
     if (Date.now() > end) throw new Error('The notices were never saved.');
     await new Promise((r) => setTimeout(r, 100));
   }

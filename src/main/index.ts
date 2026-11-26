@@ -627,7 +627,7 @@ function backToV1() {
     else if (r.why === 'missing' || r.why === 'v1') said = t('state.v1Already');
     else {
       failed = true;
-      said = t('state.v1Failed', { error: r.why === 'newer' ? `format ${r.version}` : 'state.json cannot be read' });
+      said = r.why === 'short' ? t('state.v1Short') : t('state.v1Failed', { error: r.why === 'newer' ? `format ${r.version}` : 'state.json cannot be read' });
     }
   } catch (e) {
     log.error('state-v1 failed', e);
@@ -641,8 +641,15 @@ function backToV1() {
 installCrashHandlers();
 protocol.registerSchemesAsPrivileged([{ scheme: SHOT_SCHEME, privileges: { standard: true, secure: true } }]);
 const single = app.requestSingleInstanceLock();
-if (!single) app.quit();
-else if (process.argv.includes(V1_ARG)) void app.whenReady().then(backToV1);
+if (!single) {
+  // Beside a running app nothing is written back (that app would write over it), and whoever asked is told.
+  if (process.argv.includes(V1_ARG)) {
+    void app.whenReady().then(() => {
+      if (!fakeMode()) dialog.showMessageBoxSync({ type: 'error', message: t('state.v1Running') });
+      app.exit(1);
+    });
+  } else app.quit();
+} else if (process.argv.includes(V1_ARG)) void app.whenReady().then(backToV1);
 else {
   // A second launch shows the window; with --quick it opens the quick message box instead (for a launcher or a pinned shortcut).
   app.on('second-instance', (_e, argv) => { if (argv.includes(QUICK_ARG)) openQuick(here); else showWindow(win); });

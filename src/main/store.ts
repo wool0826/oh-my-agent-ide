@@ -13,7 +13,7 @@ import {
   SPLIT, applySealed, chatOrder, chatToDrop, coverCounters, expected, foldLines, foldToLines, joinState, noneSealed, repairFold,
   sealedFrom, splitState, taskOrder, type Fold, type Sealed,
 } from '../shared/stateSplit';
-import { appendLines, asideName, readFold, setAside, writeLines } from './stateFiles';
+import { appendLines, asideName, readFold, copyAside, setAside, writeLines } from './stateFiles';
 import { readLogPage, searchLog } from './logFile';
 import { stampQueued } from '../shared/queue';
 import { stampHistory } from '../shared/retro';
@@ -145,7 +145,7 @@ class Store extends EventEmitter {
     const from = (this.migrated as { from: number } | null)?.from; // set by upgrade()
     if (!this.readOnly && from !== undefined && from < SPLIT.version) {
       try {
-        this.firstSplit();
+        this.firstSplit(joined);
       } catch (e) {
         // state.json was not written, so the state is still the one file it was.
         this.readOnly = { why: 'failed', from, error: e instanceof Error ? e.message : String(e) };
@@ -212,12 +212,15 @@ class Store extends EventEmitter {
    * The first save in the split layout, from a state that was one file. The two files are written whole and read
    * back: only when they and the new state.json give the state in memory again does state.json change, so until
    * then the old file is still all there is to read and a start after a stop anywhere here begins again. Files left
-   * by such a stop are set aside first ("chat-before-v2-<time>.jsonl").
+   * by such a stop are set aside first ("chat-before-v2-<time>.jsonl"). Files that were read into this state
+   * (`readIn`: a backup from before the split took the place of state.json) hold records nothing else has, so they
+   * are only copied and stay until the new ones take their names; when the split fails they are put back.
    */
-  private firstSplit() {
+  private firstSplit(readIn: boolean) {
     const p = paths();
     const now = Date.now();
-    for (const f of [p.chatFile, p.tasksDone]) setAside(f, 'before-v2', now);
+    const files = [p.chatFile, p.tasksDone];
+    const aside = files.map((f) => (readIn ? copyAside : setAside)(f, 'before-v2', now));
     const split = splitState(this.data, noneSealed(), now);
     try {
       writeLines(p.tasksDone, split.taskLines);
@@ -226,7 +229,13 @@ class Store extends EventEmitter {
       if (!isDeepStrictEqual(back, JSON.parse(JSON.stringify(this.data)))) throw new Error('the files written did not read back as the state');
       writeJsonAtomic(p.state, split.main);
     } catch (e) {
-      for (const f of [p.chatFile, p.tasksDone]) fs.rmSync(f, { force: true });
+      files.forEach((f, i) => {
+        const was = readIn ? aside[i] : null;
+        try {
+          if (was) fs.renameSync(was, f);
+          else fs.rmSync(f, { force: true });
+        } catch { /* the file was never replaced, so it is still the one that was read */ }
+      });
       throw e;
     }
     this.sealed = noneSealed();

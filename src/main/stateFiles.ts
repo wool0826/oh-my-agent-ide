@@ -3,7 +3,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { emptyFold, foldLines, joinState, toV1, type Fold } from '../shared/stateSplit';
+import { emptyFold, expected, foldLines, joinState, toV1, type Fold } from '../shared/stateSplit';
 import { stateVersion } from '../shared/migrate';
 import { stateText } from '../shared/backup';
 import type { ChatItem, Task } from '../shared/types';
@@ -50,19 +50,33 @@ export function writeLines(file: string, lines: readonly string[]): void {
   } finally {
     fs.closeSync(fd);
   }
-  fs.renameSync(tmp, file);
+  try {
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
 }
 
-/** "chat.jsonl" set aside as "chat-<tag>-<now>.jsonl" beside it; null when there is no such file. */
+/** The name "chat.jsonl" gets beside itself: "chat-<tag>-<now>.jsonl". */
 export function asideName(file: string, tag: string, now: number): string {
   const ext = path.extname(file);
   return path.join(path.dirname(file), `${path.basename(file, ext)}-${tag}-${now}${ext}`);
 }
 
+/** Moves a file to its name aside and gives that name; null when there is no such file. */
 export function setAside(file: string, tag: string, now: number): string | null {
   if (!fs.existsSync(file)) return null;
   const to = asideName(file, tag, now);
   fs.renameSync(file, to);
+  return to;
+}
+
+/** The same, but the file stays where it is too. */
+export function copyAside(file: string, tag: string, now: number): string | null {
+  if (!fs.existsSync(file)) return null;
+  const to = asideName(file, tag, now);
+  fs.copyFileSync(file, to);
   return to;
 }
 
@@ -71,8 +85,12 @@ export interface StatePaths { state: string; chatFile: string; tasksDone: string
 export type Rollback =
   /** state.json is one file of version 1 again; the files it was put together from are kept under these names. */
   | { kind: 'done'; kept: string[]; tasks: number; chat: number }
-  /** Nothing to do, or nothing that may be done: no state, one that is version 1 already, one that cannot be read, one from a newer build. */
-  | { kind: 'none'; why: 'missing' | 'v1' | 'broken' | 'newer'; version?: number };
+  /**
+   * Nothing to do, or nothing that may be done: no state, one that is version 1 already, one that cannot be read, one
+   * from a newer build, or files that hold fewer records than state.json counts (`short`: a start of the app puts
+   * them back from the backups first; written back as they are, the one file would be without them).
+   */
+  | { kind: 'none'; why: 'missing' | 'v1' | 'broken' | 'newer' | 'short'; version?: number };
 
 /**
  * The way back to a build that reads one file (`--state-v1`): the three files are put together and written as
@@ -89,7 +107,11 @@ export function rollbackToV1(p: StatePaths, now = Date.now()): Rollback {
   const version = stateVersion(main);
   if (version === 1) return { kind: 'none', why: 'v1' };
   if (version > 2) return { kind: 'none', why: 'newer', version };
-  const whole = toV1(joinState(main, readFold<Task>(p.tasksDone), readFold<ChatItem>(p.chatFile)));
+  const tasks = readFold<Task>(p.tasksDone);
+  const chat = readFold<ChatItem>(p.chatFile);
+  const want = expected(main);
+  if (tasks.items.length < want.tasks || chat.items.length < want.chat) return { kind: 'none', why: 'short' };
+  const whole = toV1(joinState(main, tasks, chat));
   const kept = [asideName(p.state, 'v2-before-v1', now)];
   fs.copyFileSync(p.state, kept[0]);
   const tmp = `${p.state}.${process.pid}.tmp`;

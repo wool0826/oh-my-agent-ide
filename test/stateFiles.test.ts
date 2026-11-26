@@ -355,6 +355,29 @@ test('store: a version 1 backup put back beside newer files takes their records 
   assert.deepEqual(whole(), had);
 });
 
+test('store: a first split that stops after a backup took the place of state.json leaves the files it read where they were', () => {
+  seed({ folder: 'v2' });
+  appendLines(paths().tasksDone, [JSON.stringify(task(9))]);
+  fs.mkdirSync(paths().backups, { recursive: true });
+  fs.writeFileSync(path.join(paths().backups, 'state-2026-11-19.json'), fixture('v1-history.json'));
+  fs.writeFileSync(paths().state, 'not a state');
+  const files = () => [paths().chatFile, paths().tasksDone].map(text);
+  const before = files();
+  // Wherever it stops, the two files still hold what was saved since the backup: nothing else does.
+  for (const at of ['tasks-done.jsonl', 'chat.jsonl', 'state.json'] as const) {
+    failing(at, () => store.load());
+    assert.deepEqual(store.readOnly, { why: 'failed', from: 1, error: `stopped before ${at}` });
+    assert.deepEqual(files(), before, `stopped before ${at}`);
+    assert.equal(text(paths().state), 'not a state');
+    assert.deepEqual(ids(store.data.tasks), ['T-0001', 'T-0002', 'T-0003', 'T-0004', 'T-0005', 'T-0009'], 'and the state is there to look at');
+  }
+  store.load();
+  assert.equal(store.readOnly, null);
+  assert.deepEqual(ids(store.data.tasks), ['T-0001', 'T-0002', 'T-0003', 'T-0004', 'T-0005', 'T-0009']);
+  assert.deepEqual(ids(store.data.chat), ['c1', 'c2', 'c3', 'c4', 'c5', 'c6']);
+  assert.deepEqual(ids(doneFile().items), ['T-0001', 'T-0002', 'T-0004', 'T-0009']);
+});
+
 test('store: a state from a newer build is read with its files and nothing is touched', () => {
   seed({ folder: 'v2-damaged' });
   fs.writeFileSync(paths().state, JSON.stringify({ ...JSON.parse(fixture('v2/state.json')), version: 3 }, null, 2));
@@ -426,6 +449,15 @@ test('store: the way back is not taken from a state it cannot read or does not k
   seed({ state: fixture('v3-newer.json') });
   assert.deepEqual(rollbackToV1(paths()), { kind: 'none', why: 'newer', version: 3 });
   assert.equal(text(paths().state), fixture('v3-newer.json'));
+  // Files that lost records would give one file without them: a start puts them back first.
+  seed({ folder: 'v2-damaged' });
+  const damaged = text(paths().state);
+  assert.deepEqual(rollbackToV1(paths()), { kind: 'none', why: 'short' });
+  assert.deepEqual([text(paths().state), fs.existsSync(paths().chatFile), inData('state-v2-before-v1-')], [damaged, true, []]);
+  store.load();
+  const repaired = whole();
+  assert.equal(rollbackToV1(paths()).kind, 'done');
+  assert.deepEqual(JSON.parse(text(paths().state)), { ...repaired, version: 1 });
   // After work in the split layout, with a task reopened and one still unsettled, everything is in the one file.
   seed({ folder: 'v2' });
   store.load();
