@@ -160,8 +160,8 @@ function focusNav(nav: string | null) {
 }
 
 /**
- * Keys on an item of the right sidebar's list: ↑/↓, Home and End go to another item, which is selected when it can be; on one that can be and is not selected yet, ↑/↓ select it
- * first. Delete or Backspace clears a result or an auto-answer. True when the key was used.
+ * Keys on an item of the right sidebar's list: ↑/↓, Home and End go to another item, which is selected when it can
+ * be; on one that can be and is not selected yet, ↑/↓ select it first. Delete or Backspace clears a result or an auto-answer. True when the key was used.
  */
 function listKeys(e: KeyboardEvent, el: HTMLElement): boolean {
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return false;

@@ -10,6 +10,8 @@ test('parseWidth: a stored number is kept within limits; anything else is the de
   assert.equal(parseWidth('side', '300.6'), 301);
   assert.equal(parseWidth('side', '20'), PANELS.side.min);
   assert.equal(parseWidth('ins', '9999'), PANELS.ins.max);
+  // A width stored when the right sidebar could reach 960 comes back at 640.
+  assert.equal(parseWidth('ins', '960'), 640);
   for (const raw of [null, undefined, '', 'wide', 'NaN']) {
     assert.equal(parseWidth('side', raw), PANELS.side.def, String(raw));
     assert.equal(parseWidth('ins', raw), PANELS.ins.def, String(raw));
