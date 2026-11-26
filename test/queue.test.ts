@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { afterDependency, cancelSet, describeCancel, followersOf, hasOpenPr, isQueued, statusAfterCancel } from '../src/shared/queue';
+import { afterDependency, cancelSet, cancelWhy, describeCancel, followersOf, hasOpenPr, isQueued, statusAfterCancel } from '../src/shared/queue';
 import type { Task } from '../src/shared/types';
 
 function task(id: string, patch: Partial<Task> = {}): Task {
@@ -97,4 +97,11 @@ test('queue: a blocked task waits while its dependency runs or has an open PR, s
   assert.equal(afterDependency(task('T-1', { status: 'failed' })), 'cancel');
   assert.equal(afterDependency(task('T-1', { status: 'cancelled' })), 'cancel');
   assert.equal(afterDependency(undefined), 'cancel');
+});
+
+test('queue: blocked tasks are cancelled because the task they wait for had its PR closed, is gone, or failed', () => {
+  assert.equal(cancelWhy(task('T-1', { prState: 'CLOSED' }), true), 'closed');
+  assert.equal(cancelWhy(task('T-1', { prState: 'CLOSED' }), false), 'closed');
+  assert.equal(cancelWhy(task('T-1'), false), 'gone');
+  assert.equal(cancelWhy(task('T-1', { status: 'failed' }), true), 'failed');
 });

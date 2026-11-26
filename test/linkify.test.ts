@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkUrl, linkify, reportLinks, resultLinkList, shortUrls, urlEnd } from '../src/shared/linkify';
+import { linkUrl, linkify, mergeLinks, reportLinks, resultLinkList, shortUrls, urlEnd } from '../src/shared/linkify';
 
 const PR = 'https://github.com/wool0826/oh-my-agent-ide/pull/27';
 const a = (url: string) => `<a tabindex="0" role="link" data-action="open-url" data-href="${url}">${url}</a>`;
@@ -110,4 +110,11 @@ test('a kept link reads back its URL, titled or not', () => {
   assert.equal(linkUrl('https://claude.ai/artifact/abc'), 'https://claude.ai/artifact/abc');
   // Percent-encoded full-width text in a URL stays in it.
   assert.deepEqual(reportLinks('https://example.com/a%EF%BC%8Cb?q=%E3%80%81').map((l) => l.url), ['https://example.com/a%EF%BC%8Cb?q=%E3%80%81']);
+});
+
+test('linkify: the links of a task add up over its reports, once per URL and without its own PR', () => {
+  const doc = 'https://claude.ai/artifact/abc';
+  assert.deepEqual(mergeLinks(null, [doc, PR], PR), [doc]);
+  assert.deepEqual(mergeLinks([doc], [`[Plan](${doc})`, 'https://example.com/b'], PR), [`[Plan](${doc})`, 'https://example.com/b']);
+  assert.deepEqual(mergeLinks([doc], [], null), [doc]);
 });

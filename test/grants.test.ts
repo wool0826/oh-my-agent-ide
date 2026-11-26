@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanAskOff, grantScope, hasGrant, withGrant, withoutGrant } from '../src/shared/grants';
+import { answerLabel, cleanAskOff, grantScope, hasGrant, permissionOptions, withGrant, withoutGrant } from '../src/shared/grants';
+import type { Say } from '../src/shared/askWhy';
+import { tr } from '../src/shared/i18n';
+import { ALLOW, ALLOW_TASK, DENY } from '../src/shared/types';
 
 const key = (tool: string, input: unknown) => grantScope(tool, input)?.key ?? null;
 
@@ -75,4 +78,18 @@ test('a grant is kept once on its task and can be taken back', () => {
   assert.equal(hasGrant({ grants: withoutGrant(list, a.key) }, a.key), false);
   assert.equal(hasGrant(null, a.key), false);
   assert.equal(hasGrant({}, a.key), false);
+});
+
+test('grants: a permission offers Allow and Deny, and Allow for this task only with what it covers', () => {
+  assert.deepEqual(permissionOptions(null), [{ label: ALLOW }, { label: DENY }]);
+  const scope = grantScope('Bash', { command: 'npm test' })!;
+  assert.deepEqual(permissionOptions(scope), [{ label: ALLOW }, { label: DENY }, { label: ALLOW_TASK, description: scope.label }]);
+});
+
+test('grants: an answer is shown as its button, and words the user typed as they are', () => {
+  const en: Say = (k, v) => tr('en', k, v);
+  assert.equal(answerLabel(en, ALLOW), tr('en', 'allow'));
+  assert.equal(answerLabel(en, ALLOW_TASK), tr('en', 'allowTask'));
+  assert.equal(answerLabel(en, DENY), tr('en', 'deny'));
+  assert.equal(answerLabel(en, 'Use the staging database instead.'), 'Use the staging database instead.');
 });

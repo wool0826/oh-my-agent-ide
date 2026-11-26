@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { AgentSession, sessionSettings, type CompactEvent } from '../src/main/agents/session';
 import { workers } from '../src/main/agents/workers';
+import { startTask } from '../src/main/agents/workers/queue';
 import { dispatcher } from '../src/main/agents/dispatcher';
 import { accounts } from '../src/main/accounts';
 import { store } from '../src/main/store';
@@ -229,7 +230,7 @@ test('a Worker is not compacted when its task finishes, only before its next tas
   const next: Task = { ...x, id: 'T-2', title: 'Next', prompt: 'Do the next thing.', status: 'running', startedAt: undefined };
   store.data.tasks.push(next);
   w.taskIds.push(next.id);
-  (workers as unknown as { startTask(w: Worker, s: unknown, t: Task): void }).startTask(w, s, next);
+  startTask(workers, w, s, next);
   await tick();
   assert.deepEqual(sent().slice(3), [compactCommand(WORKER_COMPACT)]);
   feed(s, boundary(WORKER_TASK_COMPACT + 27_000, 30_000));
@@ -246,7 +247,7 @@ test('a new task under the threshold, or hardly grown since the last compaction,
   const start = async (id: string) => {
     const t: Task = { ...x, id, title: id, status: 'running', startedAt: undefined };
     store.data.tasks.push(t);
-    (workers as unknown as { startTask(w: Worker, s: unknown, t: Task): void }).startTask(w, s, t);
+    startTask(workers, w, s, t);
     await tick();
   };
   s.contextTokens = WORKER_TASK_COMPACT - 1;
