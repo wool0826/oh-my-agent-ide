@@ -36,7 +36,7 @@ button { font: inherit; }
 .nodrag, .drag button, .drag input { -webkit-app-region: no-drag; }
 /* Layers over the window: Electron hit-tests drag regions before the page, so the toolbar and .lights under a scrim
    would still drag (or maximize) the window. Each layer cancels them where it lies; a .drag inside one adds its own back. */
-#dlg, #cmdk, .settings-win, .dlg-back, .dlg, .cmdk, .pop, .ctxmenu, .upop, .click-catch, .tip, .win.ins-over .inspector { -webkit-app-region: no-drag; }
+#dlg, #cmdk, .settings-win, .dlg-back, .dlg, .cmdk, .pop, .ctxmenu, .upop, .click-catch { -webkit-app-region: no-drag; }
 [hidden] { display: none !important; }
 .c-red { color: var(--state-error); } .c-blue { color: var(--state-run); } .c-green { color: var(--state-done); } .c-orange { color: var(--state-wait); } .c-gray { color: var(--state-idle); } .c-purple { color: var(--state-review); } .c-indigo { color: var(--kind-repo); } .c-pink { color: var(--kind-pref); } .c-teal { color: var(--kind-doc); }
 /* PR state, as on GitHub: open green, merged purple, closed gray (the --pr-* tokens at the end of tokens.css) */
