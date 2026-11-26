@@ -22,3 +22,19 @@ flow('a chat message keeps the elements of the messages before it, until the use
   assert.equal(await app.evaluate('return window.__first.isConnected;'), false, 'the first message drawn again');
   assert.ok(await app.evaluate(`return !!${mine('First message')};`), 'and still shown');
 });
+
+flow('text typed into the composer leaves the other panels as they are; a key anywhere else draws them all at the next update', {}, async (app) => {
+  await app.until("!!document.querySelector('#chat-ins .seg')", 'the app ready');
+  // A panel written again loses the mark: a write of the same HTML goes through only after the user acted.
+  const kept = "document.getElementById('chat-ins').firstElementChild?.dataset.kept === '1'";
+  await app.evaluate("document.getElementById('chat-ins').firstElementChild.dataset.kept = '1'; return 1;");
+  await app.evaluate("const i = document.getElementById('chat-input'); i.dispatchEvent(new InputEvent('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 1;");
+  await app.say('Typed message\n@fake say Typed answered.');
+  await app.until(answered('Typed answered.'), 'the answer, the Dispatcher idle');
+  assert.equal(await app.evaluate(kept), true, 'the right sidebar kept its elements');
+
+  await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })); return 1;");
+  await app.say('Another message\n@fake say Another answered.');
+  await app.until(answered('Another answered.'), 'the second answer, the Dispatcher idle');
+  assert.equal(await app.evaluate(kept), false, 'the right sidebar written again');
+});

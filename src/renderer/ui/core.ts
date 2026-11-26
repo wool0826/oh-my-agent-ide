@@ -20,7 +20,7 @@ import { init } from '../app';
 import { go, screen, show } from './history';
 import { ms } from './sidebar';
 import { keepThreadFocus } from './thread';
-import { receive, type Held, type Part, type StateMsg } from '../../shared/stateSync';
+import { countsAsAct, receive, type Held, type Part, type StateMsg } from '../../shared/stateSync';
 
 declare global {
   interface Window {
@@ -596,7 +596,11 @@ export function keepInputs(root: HTMLElement, render: () => void) {
 
 /** Goes up each time the user does something, so the next draw of every panel is a real one. */
 let drawTurn = 0;
-export function userActed() { drawTurn++; }
+export function userActed(e?: Event) {
+  const k = e instanceof KeyboardEvent ? e : null;
+  const field = e?.target instanceof HTMLElement ? e.target.id : '';
+  if (!e || countsAsAct({ type: e.type, field, key: k?.key, mods: !!k && (k.ctrlKey || k.metaKey || k.altKey) })) drawTurn++;
+}
 
 /** The draw turn at the last state update that drew every panel. */
 let wholeTurn = 0;

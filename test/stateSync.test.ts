@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { applyChanges, changedParts, diffState, panelsFor, PART_PANELS, receive, StateSender, type Held, type Part, type StateMsg } from '../src/shared/stateSync';
+import { applyChanges, changedParts, countsAsAct, diffState, panelsFor, PART_PANELS, receive, StateSender, type Held, type Part, type StateMsg } from '../src/shared/stateSync';
 import type { AppState, ChatItem } from '../src/shared/types';
 
 // States a run of the app with fake agents went through (tasks, a failure, a decision, a memo, a script, cleared results).
@@ -170,4 +170,19 @@ test('stateSync: every part of the state names the panels that read it', () => {
   assert.equal(panelsFor(['settings']).size, 11);
   assert.deepEqual([...panelsFor(['chat'])], ['chat']);
   assert.deepEqual([...panelsFor(['results', 'memos'])], ['chatIns']);
+});
+
+test('stateSync: text typed into a composer leaves the panels as they are; anything else draws them all at the next update', () => {
+  for (const field of ['chat-input', 'ws-input']) {
+    assert.equal(countsAsAct({ type: 'input', field }), false, `${field} input`);
+    for (const key of ['a', 'Enter', 'Backspace', 'ArrowUp', 'Shift']) assert.equal(countsAsAct({ type: 'keydown', field, key }), false, `${field} ${key}`);
+    for (const key of ['Tab', 'Escape']) assert.equal(countsAsAct({ type: 'keydown', field, key }), true, `${field} ${key}`);
+    assert.equal(countsAsAct({ type: 'keydown', field, key: 'k', mods: true }), true, `${field} Ctrl+K`);
+    for (const type of ['click', 'drop', 'contextmenu', 'change']) assert.equal(countsAsAct({ type, field }), true, `${field} ${type}`);
+  }
+  // Typing anywhere else still counts: a memo field, a search box, the page.
+  for (const field of ['memo-new', 'cmdk-q', '']) {
+    assert.equal(countsAsAct({ type: 'input', field }), true, `${field || 'page'} input`);
+    assert.equal(countsAsAct({ type: 'keydown', field, key: 'a' }), true, `${field || 'page'} key`);
+  }
 });

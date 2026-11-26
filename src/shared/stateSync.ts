@@ -214,3 +214,22 @@ export function panelsFor(parts: Iterable<Part>): Set<Panel> {
   for (const p of parts) for (const x of PART_PANELS[p] ?? ALL) out.add(x);
   return out;
 }
+
+/** Something the user did, as `userActed` in ui/core.ts sees it: the event, the id of its target, a key and whether Ctrl, Alt or Meta was held. */
+export interface Act { type: string; field: string; key?: string; mods?: boolean }
+
+/** The composers' fields: what is typed in them changes only the composer, which no state update draws. */
+const COMPOSERS = new Set(['chat-input', 'ws-input']);
+
+/**
+ * Whether the next state update draws every panel (decision 140: handlers change the page by hand and count on the
+ * draw to put it right). Text typed into a composer, Enter included, does not: its handlers change only the
+ * composer, and a typed chat message then draws only what it changed. A key with Ctrl, Alt or Meta, Tab and
+ * Escape still count, since the shortcuts and dialogs they reach are anywhere.
+ */
+export function countsAsAct(a: Act): boolean {
+  if (!COMPOSERS.has(a.field)) return true;
+  if (a.type === 'input') return false;
+  if (a.type !== 'keydown') return true;
+  return !!a.mods || a.key === 'Tab' || a.key === 'Escape';
+}
