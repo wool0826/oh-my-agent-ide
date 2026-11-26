@@ -1004,3 +1004,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - The same call on macOS and Windows, with no `process.platform` check: Electron maps it to a power assertion on macOS and to `SetThreadExecutionState` on Windows.
     - Rejected: `prevent-display-sleep`, which also keeps the screen on, more than a long run needs.
     - The setting is a new key in `settings.json` with a default, so older files need no migration. The note under it says that closing a laptop lid still sleeps; an app cannot stop that. The task asked for this note, so it is a deliberate exception to the rule against help sentences in the UI.
+
+218. **`--state-v1` writes back before ready and ends with `app.quit()`, never `app.exit` just after ready** (T-0124, follows 213).
+    - **Why:** the e2e flow crashed with 0xC0000005 in 3 of 7 Windows CI runs, each time after the write-back had finished (T-0123). All three crashes were a windowless process calling `app.exit` milliseconds after `ready`; the refused start beside a running app stopped crashing once it quit before ready.
+    - **Now:** the write-back needs no Electron and runs at start. Without a dialog to show (fake mode), the app quits before ready; otherwise it shows the dialog after ready, then quits. `app.quit` exits with 0 and `process.exitCode` is ignored, so a failure sets its 1 with `app.exit(1)` in `will-quit`.
+    - **Rejected:** accepting 0xC0000005 in the test, which would hide a crash in a path users run.
