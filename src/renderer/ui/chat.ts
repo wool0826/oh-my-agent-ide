@@ -29,6 +29,7 @@ import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { cardBrief } from '../../shared/brief';
 import { shellBlockHtml, shellKey } from './shell';
+import { fileChips, shotsOf } from './shotview';
 import { planPaste } from '../../shared/paste';
 import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker, workerTask } from './core';
 import { setTip } from './tip';
@@ -78,20 +79,25 @@ export function reportLinkHtml(l: ReportLink) {
 /** A report's text with its URLs as links, in the same color as the card's link row. */
 export const reportText = (s: string) => mdInline(s);
 
+/** A result's PR as a chip: its number and where it stands, then whether an open one is ready to merge. */
+function prChip(x: Task, url: string) {
+  const [tone, key, icon, color]: [string, Key, string, string] = x.prState === 'MERGED' ? ['review', 'res.prMerged', 's-merge', 'c-pr-merged']
+    : x.prState === 'CLOSED' ? ['', 'res.prClosed', 's-pr', 'c-pr-closed'] : ['pr-open', 'res.prOpen', 's-pr', 'c-pr-open'];
+  return `<a class="prchip" tabindex="0" role="link" data-action="open-url" data-href="${esc(url)}" data-tip="${esc(url)}">${sym(icon, color)}#${prNum(url)}<span class="pill"${pillTone(tone)}>${t(key)}</span></a>${prBadges(x)}`;
+}
+
 /**
- * The link row of a result: the URLs its report names (artifacts, other PRs) first, then the task's PR and files.
- * `text` is the report as the card shows it; the task's own summary and the links its report named are read too.
+ * What a result carries, drawn the same on its chat card, its inbox row and the Worker's summary (decision 232): its
+ * screenshots as before/after pairs with switches, its other files as chips, then one row with its PR, the URLs its
+ * report names, `acts` (buttons the place adds) and its cost. `text` is the report as the place shows it; the task's
+ * own summary and the links its report named are read too. `key` names the place, so its switches are its own.
  */
-export function resultLinks(x: Task | null, text?: string | null) {
-  const links = reportLinks([text, x?.summary, ...(x?.links ?? [])].filter(Boolean).join('\n'), [x?.prUrl]).map(reportLinkHtml);
-  if (x?.prUrl) {
-    const st = x.prState === 'MERGED' ? ` · ${t('pr.merged')}` : x.prState === 'CLOSED' ? ` · ${t('pr.closed')}` : '';
-    links.push(`<a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}${st} ↗</a>`);
-    const badges = prBadges(x);
-    if (badges) links.push(badges);
-  }
-  for (const f of x?.files ?? []) links.push(`<a tabindex="0" role="link" data-action="open-file" data-path="${esc(f)}" data-tip="${esc(f)}">${esc(base(f))}</a>`);
-  return links;
+export function resultParts(x: Task | null, text: string | null | undefined, key: string, acts = '') {
+  const { html: shots, rest } = shotsOf(x?.files ?? [], key);
+  const urls = reportLinks([text, x?.summary, ...(x?.links ?? [])].filter(Boolean).join('\n'), [x?.prUrl]).map(reportLinkHtml);
+  const lead = [x?.prUrl ? prChip(x, x.prUrl) : '', ...urls, acts].join('');
+  const spend = spendHtml(x?.spend, true);
+  return { media: shots + fileChips(rest), row: lead || spend ? `<span class="links racts">${lead}${spend ? `<span class="gap"></span>${spend}` : ''}</span>` : '' };
 }
 
 /** A task's spend, labeled as an API-equivalent estimate. Short: the cost only, tokens on hover. */
@@ -154,10 +160,17 @@ function failureHtml(c: ChatItem) {
   return `<div class="attach fail" data-task="${esc(x.id)}" data-src="card:${esc(x.id)}"><span class="tile">${sym('s-alert', 'c-red')}</span><span class="body"><b>${esc(x.title)}<span class="pill" data-tone="danger">${t('st.failed')}</span></b><span class="sm">${esc([w.id, w.repo ?? t('general'), at, why].filter(Boolean).join(' · '))}</span><span class="links">${go}<a tabindex="0" role="link" data-action="open-worker" data-id="${esc(w.id)}">${t('chat.viewWorker', { id: w.id })}</a>${replyLink(x, why, c.id)}</span></span></div>`;
 }
 
-/** "Reply" on a report card: the composer's reply chip quotes the report, and the message is filed under the card. */
-function replyLink(x: Task, text: string, card: string) {
-  return `<a tabindex="0" role="link" data-action="reply" data-box="chat" data-who="${esc(x.workerId ?? x.id)}" data-quote="${esc(replyExcerpt(`${x.title}: ${text}`))}" data-task="${esc(card)}" data-src="card:${esc(x.id)}">${t('chat.reply')}</a>`;
+/**
+ * "Reply" on a report card: the composer's reply chip quotes the report, and the message is filed under the card.
+ * `icon`: an icon-only button, as in a result card's action row.
+ */
+function replyLink(x: Task, text: string, card: string, icon = false) {
+  const data = `data-action="reply" data-box="chat" data-who="${esc(x.workerId ?? x.id)}" data-quote="${esc(replyExcerpt(`${x.title}: ${text}`))}" data-task="${esc(card)}" data-src="card:${esc(x.id)}"`;
+  return icon ? iconBtn('s-reply', t('chat.reply'), data) : `<a tabindex="0" role="link" ${data}>${t('chat.reply')}</a>`;
 }
+
+/** An icon-only button in a result's action row, named by its label for screen readers and on hover. */
+const iconBtn = (icon: string, label: string, data: string) => `<button type="button" class="btn btn-icon btn-sm btn-ghost" ${data} aria-label="${esc(label)}" data-tip="${esc(label)}">${sym(icon)}</button>`;
 
 /** The hand-out runs of the thread drawn last, by their first line (shared/handouts.ts). */
 let runs = new Map<string, ChatItem[]>();
@@ -223,10 +236,9 @@ export function chatItemHtml(c: ChatItem) {
     case 'shell': return shellBlockHtml(c);
     case 'result': {
       const x = task(c.ref);
-      const links = resultLinks(x, c.text);
-      if (x?.workerId) links.push(`<a tabindex="0" role="link" data-action="open-worker" data-id="${x.workerId}">${t('chat.viewWorker', { id: x.workerId })}</a>`);
-      if (x) links.push(replyLink(x, c.text, c.id));
-      return `<div class="attach" data-task="${esc(c.ref ?? '')}"${x ? ` data-src="card:${esc(x.id)}"` : ''}><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}${resultMeta(x)}</b><span class="sm">${reportText(plainStatus(c.text))}</span><span class="links">${links.join('')}</span>${spendHtml(x?.spend)}</span></div>`;
+      const conv = x?.workerId ? iconBtn('s-chat', t('chat.viewWorker', { id: x.workerId }), `data-action="open-worker" data-id="${esc(x.workerId)}"`) : '';
+      const p = resultParts(x, c.text, `card:${c.id}`, conv + (x ? replyLink(x, c.text, c.id, true) : ''));
+      return `<div class="attach" data-task="${esc(c.ref ?? '')}"${x ? ` data-src="card:${esc(x.id)}"` : ''}><span class="tile">${resultGlyph(x)}</span><span class="body"><b>${esc(x?.title ?? t('task'))}${resultMeta(x)}</b><span class="sm">${reportText(plainStatus(c.text))}</span>${p.media}${p.row}</span></div>`;
     }
   }
 }
@@ -902,8 +914,8 @@ export function renderChatInspector() {
     if (results.items.length) {
       html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.results')}</b><span class="gap"></span>${clearAllHtml('result')}</div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
-        const lk = resultLinks(x, c.text);
-        return `<div class="res" data-task="${esc(c.ref ?? '')}" data-nav="res:${esc(c.id)}" data-id="${esc(c.id)}" tabindex="-1"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${lk.length ? `<span class="lk">${lk.join('')}</span>` : ''}${resultMeta(x)}${resultSummary(c)}${spendHtml(x?.spend, true)}</span><span class="row-acts">${rowXHtml('result', c.id)}</span></div>`;
+        const p = resultParts(x, c.text, `res:${c.id}`);
+        return `<div class="res" data-task="${esc(c.ref ?? '')}" data-nav="res:${esc(c.id)}" data-id="${esc(c.id)}" tabindex="-1"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${resultMeta(x)}${resultSummary(c)}${p.media}${p.row}</span><span class="row-acts">${rowXHtml('result', c.id)}</span></div>`;
       }).join('')}${results.more}</div></div>`;
     }
     if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.auto')}</b><span class="gap"></span>${clearAllHtml('auto')}</div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;

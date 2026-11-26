@@ -1078,3 +1078,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 
 231. **The Dispatcher's progress line gives the count first and names every step by number: `3/6 done (just finished step 4 "d"); next step 3 "c".`** (T-0135, from the T-0131 report).
     - **Why:** `step 4 done (3/6 done)` read like a wrong count when steps were marked out of order.
+
+232. **A result shows one before/after pair per screen with Width and Theme switches, its other files as one-line chips, and an action row of PR chip, icon-only buttons and the cost** (T-0138, the user's option B of the T-0136 mock-up; follows the thumbnails of 204 and the chips of 227).
+- `shared/shots` `shotSets` groups a task's images by name: files that differ only by before/after, wide/narrow or dark/light are one screen. A name with none of these words is a set of its own. It replaces `reportShots`; `pickShot` takes the exact match, else a shot without that part (so a set without light pictures still shows its dark pair).
+- One renderer (`ui/shotview` `shotsOf` + `fileChips`, `ui/chat` `resultParts`) draws the chat card, the Inbox Results row, the Worker summary and the Worker report, so all four look the same. Each place keeps its own switch state, keyed by place and set, and a switch redraws only its set and keeps the focus.
+- A count with an image icon (tooltip "8 images") shows only when the switches hide some pictures. The lightbox has Version, Width and Theme switches and a strip of all the set's pictures.
+- The action row: a PR chip (`#N` and a Merged/Open/Closed pill), icon-only conversation and reply buttons with `aria-label` and `data-tip`, then the cost at the end with tokens in its tooltip.
+- Rejected: a before/after grid of every picture (option A: eight small pictures that look alike); the pictures folded behind a count (option C: nothing to see without a click); listing files as base-name links (the old row, which mixed files with actions).

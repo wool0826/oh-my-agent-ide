@@ -19,7 +19,7 @@ import { stepView, type StepView } from '../../shared/steps';
 import { askLine, plainStatus, stateCounts, workerLine, workerState, type WorkerState } from '../../shared/workerState';
 import { PAGE, threadStart } from '../../shared/paging';
 import { type WorkerFilter } from '../../shared/history';
-import { decisionHint, decisionHtml, prBadges, reportLinkHtml, resultLinks, spendHtml, tickDecisions, updateSendButton } from './chat';
+import { decisionHint, decisionHtml, prBadges, reportLinkHtml, resultParts, tickDecisions, updateSendButton } from './chat';
 import { linkUrl, linkify, reportLinks, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
@@ -161,7 +161,7 @@ export function renderWorkerList() {
 }
 
 /** A Worker's final report starts with RESULT:/PR:/FILE: lines; show them as a result header instead of raw protocol. */
-export function workerReport(text: string) {
+export function workerReport(text: string, key: string) {
   const lines = text.split('\n');
   const head: string[] = [];
   let i = 0;
@@ -171,7 +171,7 @@ export function workerReport(text: string) {
   const summary = val(head.find((l) => /^RESULT:/i.test(l))!);
   const pr = head.filter((l) => /^PR:/i.test(l)).map(val).map((v) => v.match(/https?:\/\/\S+\/pull\/\d+/)?.[0]).find(Boolean);
   // Image files show as before/after thumbnails under the header; the rest stay file links.
-  const shots = shotsOf(head.filter((l) => /^FILE:/i.test(l)).map(val).filter((v) => v && !/^https?:\/\//i.test(v)));
+  const shots = shotsOf(head.filter((l) => /^FILE:/i.test(l)).map(val).filter((v) => v && !/^https?:\/\//i.test(v)), key);
   const files = shots.rest;
   // LINK: lines, and a URL a FILE: line gave instead of a path, open in the browser.
   const urls = reportLinks(head.filter((l) => /^(LINK|FILE):/i.test(l)).join('\n'), [pr]);
@@ -188,7 +188,7 @@ export function workerReport(text: string) {
 export function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem | null) {
   switch (it.from) {
     case 'dispatcher': return `${prev?.from === 'dispatcher' ? '' : '<span class="who">Dispatcher</span>'}${replyable(`<div class="bub ai">${md(it.text)}</div>`, 'ws', 'Dispatcher', it.text, undefined, `log:${it.ts}`)}`;
-    case 'worker': return `${prev?.from === 'worker' ? '' : `<span class="who">${esc(wid)}</span>`}${replyable(`<div class="bub wk">${workerReport(it.text)}</div>`, 'ws', wid, it.text, undefined, `log:${it.ts}`)}`;
+    case 'worker': return `${prev?.from === 'worker' ? '' : `<span class="who">${esc(wid)}</span>`}${replyable(`<div class="bub wk">${workerReport(it.text, `rep:${wid}:${it.ts}`)}</div>`, 'ws', wid, it.text, undefined, `log:${it.ts}`)}`;
     case 'user': return `<div class="bub me">${userText(it.text)}</div>`;
     case 'auto': return `<span class="event self">${sym('s-check', 'c-green')}<span>${esc(it.text)}</span></span>`;
     default: return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(it.text))}</span></span>`;
@@ -291,7 +291,7 @@ export function renderSummary(w: Worker) {
     const mins = taskMinutes(x);
     const sv = stepView(x);
     const meta = [x.finishedAt ? hhmm(x.finishedAt) : x.startedAt ? hhmm(x.startedAt) : '', mins !== null ? t('sum.took', { t: tookText(mins) }) : '', sv ? t('sum.steps', { done: sv.done, total: sv.total }) : ''].filter(Boolean).join(' · ');
-    const links = resultLinks(x);
+    const parts = resultParts(x, null, `sum:${x.id}`);
     const tn = x.status === 'failed' && !x.stopped ? 'danger' : x.status === 'running' ? 'accent' : x.status === 'pr_open' ? 'pr-open' : x.status === 'done' ? 'success' : '';
     return `<article class="sum-task" data-task="${esc(x.id)}">
       <header><b>${esc(x.id)} ${esc(x.title)}</b><span class="pill"${pillTone(tn)}>${taskLabel(x)}</span></header>
@@ -299,9 +299,8 @@ export function renderSummary(w: Worker) {
       ${taskTimeHtml(x)}
       <details class="sum-ask"><summary><svg aria-hidden="true"><use href="#s-chev"/></svg>${t('sum.asked')}</summary><div class="sum-prompt">${esc(x.prompt.trim())}</div></details>
       ${x.summary ? `<div class="sum-report">${md(x.summary)}</div>` : ''}
-      ${links.length ? `<div class="sum-links">${links.join('')}</div>` : ''}
+      ${parts.media}${parts.row}
       ${taskPermsHtml(x)}
-      ${spendHtml(x.spend)}
     </article>`;
   }).join('');
   // Folds stay open over a re-render: each by its task and its place on the card.

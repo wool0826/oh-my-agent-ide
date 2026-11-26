@@ -183,7 +183,7 @@ flow('the sidebar tab labels show their text, not a bar from another screen\'s r
 flow('step rows grow with the text, link rows take a click 24px high, and a narrow card gives its title a line', { repos: ['billing'], settings: { fontSize: 20 } }, async (app) => {
   await app.size(1200, 760);
   await app.say(['Hello', '@fake task - First task with a rather long title that goes on', '@@fake steps Read the code | Write the change | Run the tests | Open the PR', '@@fake step 2',
-    '@@fake permission Bash: npm test', '@fake task - Second', '@@fake result Done.'].join('\n'));
+    '@@fake permission Bash: npm test', '@fake task - Second', '@@fake result Done.', '@@fake link https://example.com/notes'].join('\n'));
   await app.until("document.querySelectorAll('#chat-ins .dec').length === 1 && !!document.querySelector('#side .stp .s') && !!document.querySelector('#chat-thread .links a')", 'a decision, a step list and a result');
   // The largest text: a step's row is as high as its text, and the list is as high as its rows.
   const steps = JSON.parse(await app.evaluate(`const stp = document.querySelector('#side .stp');
