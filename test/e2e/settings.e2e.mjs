@@ -194,6 +194,36 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
     // eslint-disable-next-line no-restricted-syntax -- a round in the same millisecond as the last would leave checkedAt the same, so the wait below could not see it.
     await app.evaluate("await new Promise((r) => setTimeout(r, 20)); document.querySelector('#usage-pop .ubtn').click(); return 1;");
     await app.until(`return (await window.ide.call('state')).usageClock.checkedAt !== ${JSON.stringify(before)};`, 'a new round');
+    // A click on refresh leaves the focus in the popover; it still closes as the pointer leaves, by a press outside, and by Escape.
+    const shut = "document.querySelector('#usage-pop').hidden || document.querySelector('#usage-pop').classList.contains('out')";
+    const openAndRefresh = async () => {
+      await app.until(`return (await window.ide.call('state')).usageClock.running === false;`, 'no round running');
+      await app.hover('#usage .uacct');
+      await app.until("!document.querySelector('#usage-pop').hidden && !document.querySelector('#usage-pop').classList.contains('out')", 'the popover open');
+      await app.hover('#usage-pop .ubtn');
+      const p = await app.evaluate("const r = document.querySelector('#usage-pop .ubtn').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };");
+      await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', ...p, button: 'left', buttons: 1, clickCount: 1 });
+      await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', ...p, button: 'left', buttons: 0, clickCount: 1 });
+      assert.equal(await app.evaluate("document.activeElement?.closest('#usage-pop') ? 'in' : 'out'"), 'in');
+    };
+    // Low on the left of the content, away from the popover (it hangs below the rings, on the right).
+    const far = await app.evaluate("const r = document.querySelector('.content').getBoundingClientRect(); return { x: Math.round(r.left + 40), y: Math.round(r.bottom - 60) };");
+    await app.key('Escape', 'Escape', 27);
+    await app.until(`return ${shut};`, 'the popover closed before');
+    await openAndRefresh();
+    await app.hover(far);
+    await app.until(`return ${shut};`, 'the popover closed as the pointer left');
+    // The round's answer comes after the pointer left: the popover stays closed.
+    await app.until(`return (await window.ide.call('state')).usageClock.running === false;`, 'the round done');
+    assert.equal(await app.evaluate(`return ${shut};`), true);
+    await openAndRefresh();
+    await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', ...far, button: 'left', buttons: 1, clickCount: 1 });
+    await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', ...far, button: 'left', buttons: 0, clickCount: 1 });
+    // At once, not by the pointer's leave a moment later.
+    assert.equal(await app.evaluate(`return ${shut};`), true, 'the popover closed by a press outside');
+    await openAndRefresh();
+    await app.key('Escape', 'Escape', 27);
+    await app.until(`return ${shut};`, 'the popover closed by Escape');
     // The popover's buttons are reached with the keyboard from the rings, and Escape brings the focus back.
     await app.evaluate("document.querySelector('#usage').focus(); document.querySelector('#usage').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); return 1;");
     assert.equal(await app.evaluate("document.activeElement?.closest('#usage-pop') ? 'in' : 'out'"), 'in');

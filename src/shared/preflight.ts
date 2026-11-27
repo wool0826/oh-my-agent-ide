@@ -82,7 +82,7 @@ type Tr = (key: Key, vars?: Record<string, string | number>) => string;
 export const checkName = (c: Pick<Check, 'id' | 'host'>, t: Tr) => (c.id === 'ghAuth' ? t('pre.ghAuth', { host: c.host ?? '' }) : t(`pre.${c.id}` as Key));
 
 /**
- * A check as a summarised status row (decision 243): a short value on the row, and in its detail every message
+ * A check as a summarised status row (decision 246): a short value on the row, and in its detail every message
  * the long form had, the command to run and what was found, each whole.
  * `accounts` are the names of the registered accounts, listed under the account check.
  */

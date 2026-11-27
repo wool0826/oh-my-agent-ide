@@ -974,6 +974,8 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .srow .sval { min-width: 0; max-width: 320px; font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srow .sval.muted { color: var(--text-tertiary); }
 .srow .sval.bad { color: var(--warning-text); }
+.srow .tg-code { font-family: var(--font-mono); font-size: var(--fs-body); font-weight: 600; letter-spacing: 0.08em; color: var(--text-primary); }
+#tg-left { font-variant-numeric: tabular-nums; }
 .srow .sval.path { font-family: var(--font-mono); }
 .srow.vol > .lbl { flex: 0 0 auto; margin-right: var(--space-16); }
 .srow.vol .slider-wrap { flex: 1; }
@@ -1408,6 +1410,21 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .memo.script .facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-4) var(--space-12); margin: var(--space-4) 0 0; font-size: var(--fs-caption); line-height: var(--lh-ui); }
 .memo.script .facts dt { color: var(--text-secondary); }
 .memo.script .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+/* Copy (ui/copy.ts): in the action row, a tick for a moment once copied. A closed card shows it on hover and focus. */
+.mact.copied, .mact.copied:hover { background: var(--success-soft); color: var(--success-text); box-shadow: none; }
+.memo.script:not(.open) .script-copy { opacity: 0; transition: opacity var(--dur-fast); }
+.memo.script:not(.open):hover .script-copy, .memo.script:not(.open):focus-within .script-copy, .memo.script .script-copy.copied { opacity: 1; }
+/* A code block in a message: a bar with its language and a copy button that shows on hover and focus. */
+.code { margin: var(--space-4) 0; min-width: 0; }
+.code > pre { margin: 0; border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+.code-h { display: flex; align-items: center; gap: var(--space-6); min-height: var(--control-md); padding: 0 var(--space-2) 0 var(--space-10); border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: var(--surface-sunken); box-shadow: var(--well); font-family: var(--font-mono); font-size: var(--fs-caption2); color: var(--text-tertiary); }
+.code-h > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-copy { flex: none; width: var(--control-sm); height: var(--control-sm); padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity var(--dur-fast), color var(--dur-fast), background var(--dur-fast); }
+.code-copy svg { width: var(--icon-sm); height: var(--icon-sm); }
+.code:hover .code-copy, .code-copy:focus-visible, .code-copy.copied { opacity: 1; }
+.code-copy:hover { color: var(--text-primary); background: var(--surface-hover); }
+.code-copy:focus-visible { outline: var(--focus-outline); outline-offset: 0; }
+.code-copy.copied { color: var(--success-text); background: var(--success-soft); }
 .sh-run > header .sh-name { flex: 0 1 auto; max-width: 40%; font-size: var(--fs-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- checkpoints ---------- */
@@ -1599,7 +1616,7 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .scap .clear-x { vertical-align: middle; margin-left: var(--space-8); }
 #pre-rows > * + * { border-top: .5px solid var(--border-subtle); }
 .srows > * + * { border-top: .5px solid var(--border-subtle); }
-/* The summary line: its name, a pill per row that needs something, how many are fine, the disclosure (decision 243). */
+/* The summary line: its name, a pill per row that needs something, how many are fine, the disclosure (decision 246). */
 .ssum { display: flex; align-items: center; gap: var(--space-8); min-height: calc(var(--control-lg) + 2 * var(--space-8)); padding: var(--space-8) var(--space-16); box-sizing: border-box; }
 .ssum > .lbl { flex: 1 0 auto; font-size: var(--fs-body); color: var(--text-primary); }
 .ssum .pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-4) var(--space-6); min-width: 0; }
@@ -1914,6 +1931,40 @@ mark.find.cur.arrive { animation: hit-pulse calc(var(--dur-slow) * 2) var(--ease
 .tip > span { min-width: 0; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 14; overflow: hidden; }
 .tip > kbd { flex: none; padding: 0; background: none; font-size: var(--fs-caption2); font-weight: var(--fw-medium); color: var(--text-secondary); white-space: nowrap; }
 @media (forced-colors: active) { .tip { border: 1px solid CanvasText; } }
+/* A running task's card (ui/runCard.ts) beside the left sidebar. It never takes the pointer: the row under it stays clickable. */
+.tip.card { flex-direction: column; align-items: stretch; gap: var(--space-6); width: 296px; max-width: calc(100vw - 2 * var(--space-8)); padding: var(--space-10) var(--space-12); border-radius: var(--radius-lg); background: linear-gradient(var(--surface-overlay), var(--surface-overlay)), var(--bg-canvas); pointer-events: none; }
+.tip.card[data-side="right"] { translate: -2px 0; } .tip.card[data-side="left"] { translate: 2px 0; } .tip.card.on { translate: 0 0; }
+.rc-h { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.rc-h b { font-weight: 600; color: var(--text-primary); }
+.rc-h .ic { width: 14px; height: 14px; } .rc-h .ic svg { width: 13px; height: 13px; }
+.rc-h time { margin-left: auto; }
+.rc-t { font-weight: 600; font-size: var(--fs-body); line-height: var(--lh-body); overflow-wrap: anywhere; }
+.rc-p { display: flex; align-items: center; gap: var(--space-8); }
+.rc-p > span:last-child { font-size: var(--fs-caption2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.rc-pips { flex: 1; display: flex; gap: var(--space-2); }
+.rc-pips i { flex: 1; height: 4px; border-radius: var(--radius-full); background: var(--meter-track); }
+.rc-pips i.d { background: var(--state-run); opacity: .75; }
+.rc-pips i.c { background: var(--state-run); }
+.rc-pips.err i.c { background: var(--state-error); }
+.rc-steps { display: flex; flex-direction: column; margin: 0; padding: var(--space-6) 0 0; list-style: none; border-top: .5px solid var(--border-subtle); }
+.rc-steps li { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-caption2); line-height: 18px; color: var(--text-tertiary); }
+.rc-steps li > span { min-width: 0; overflow-wrap: anywhere; }
+.rc-steps i { flex: none; width: 10px; height: 10px; display: grid; place-items: center; }
+.rc-steps i svg { width: 10px; height: 10px; }
+.rc-steps li.todo i::after { content: ''; width: 4px; height: 4px; border-radius: var(--radius-full); background: var(--border-default); }
+.rc-steps li.done { color: var(--text-secondary); }
+.rc-steps li.cur { color: var(--text-primary); font-weight: 600; }
+.rc-steps li.cur i { color: var(--state-run); }
+.rc-steps.err li.cur, .rc-steps.err li.cur i { color: var(--danger-text); }
+.rc-now { display: flex; align-items: center; gap: var(--space-6); min-width: 0; font-size: var(--fs-caption2); color: var(--text-secondary); }
+.rc-now .sym { flex: none; font-size: var(--fs-caption); color: var(--text-tertiary); }
+.rc-now > span { min-width: 0; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-now.err, .rc-now.err .sym { color: var(--danger-text); }
+.rc-f { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.rc-chip { display: inline-flex; align-items: center; gap: var(--space-4); min-height: 20px; max-width: 100%; padding: 0 var(--space-8); border-radius: var(--radius-full); background: var(--surface-card); box-shadow: var(--rim); font-size: var(--fs-caption2); color: var(--text-secondary); box-sizing: border-box; }
+.rc-chip > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-chip .sym { font-size: var(--fs-caption); }
+.rc-chip.pr { color: var(--pr-open); } .rc-chip.pr > span { color: var(--text-primary); }
 .cstrip:has(> .cs-why) { flex-wrap: wrap; row-gap: var(--space-2); }
 /* A zero basis so a long command never wraps to a line of its own: it grows to its width at most, then cuts. */
 .cstrip:has(> .cs-why) > code { flex: 1 1 0%; max-width: max-content; }

@@ -6,6 +6,7 @@ import type { ShellScript } from '../../shared/types';
 import { esc, S, sym, t, toast, tryCall, ui, when } from './core';
 import { openPop } from './controls';
 import { rowHtml, slotHtml } from './panes';
+import { copyBtnHtml } from './copy';
 
 /** The open form's folder for each form ('new' or a script's id), until it is saved or cancelled. */
 const folders = new Map<string, string>();
@@ -38,20 +39,23 @@ function runBtn(s: ShellScript) {
   return `<button class="btn btn-primary script-run" data-action="script-run" data-id="${esc(s.id)}" aria-label="${esc(t('script.runAria', { name: s.name }))}">${sym('s-play')}${t('script.run')}</button>`;
 }
 
+/** Copies the whole command, however much of it the card shows. */
+const copyBtn = (s: ShellScript) => copyBtnHtml('script-copy', `script:${s.id}`, t('shell.copy'), 'mact script-copy', ` data-id="${esc(s.id)}"`);
+
 function scriptSlot(s: ShellScript) {
   const sel = ui.scriptSel === s.id;
   const edit = ui.scriptEdit === s.id;
   const where = whereLabel(s.repo);
   if (edit) return slotHtml(s.id, sel, `<div class="memo script open">${formHtml(s.id, s)}</div>`);
   if (!sel) {
-    const card = `<div class="memo script" data-action="pick" data-tab="script" data-id="${esc(s.id)}" data-focus="card-script-${esc(s.id)}" data-nav="script:${esc(s.id)}" tabindex="-1"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, false)}<span class="meta"><span class="script-where">${esc(where)}</span><span class="acts">${runBtn(s)}</span></span></div>`;
+    const card = `<div class="memo script" data-action="pick" data-tab="script" data-id="${esc(s.id)}" data-focus="card-script-${esc(s.id)}" data-nav="script:${esc(s.id)}" tabindex="-1"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, false)}<span class="meta"><span class="script-where">${esc(where)}</span><span class="acts">${copyBtn(s)}${runBtn(s)}</span></span></div>`;
     return slotHtml(s.id, false, card);
   }
   const sure = ui.memoDel === s.id;
   const act = (action: string, icon: string, label: string) => `<button class="mact" data-action="${action}" data-id="${esc(s.id)}" data-tip="${label}" aria-label="${label}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="script-remove" data-id="${esc(s.id)}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
   const facts = `<dl class="facts"><dt>${t('script.where')}</dt><dd>${esc(where)}</dd><dt>${t('auto.lastRun')}</dt><dd>${s.lastRunAt ? esc(when(s.lastRunAt)) : esc(t('auto.never'))}</dd></dl>`;
-  const card = `<div class="memo script open" data-nav="script:${esc(s.id)}" tabindex="-1"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, true)}${facts}<span class="meta">${runBtn(s)}<span class="gap"></span><span class="acts">${act('script-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
+  const card = `<div class="memo script open" data-nav="script:${esc(s.id)}" tabindex="-1"><p>${esc(s.name)}</p>${cmdHtml(s.cmd, true)}${facts}<span class="meta">${runBtn(s)}<span class="gap"></span><span class="acts">${copyBtn(s)}${act('script-edit', 's-pencil', t('memo.edit'))}${del}</span></span></div>`;
   return slotHtml(s.id, true, card);
 }
 

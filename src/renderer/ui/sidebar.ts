@@ -21,7 +21,9 @@ import { narrowLayout } from '../../shared/panelWidth';
 import { ageHtml, tickDecisions } from './chat';
 import { quietUntil } from '../../shared/notifyRules';
 import { $, ago, awaitsDispatcher, esc, finishedToday, hhmm, ic, isMac, locale, lv, meterLevel, oneLine, pct, prNum, S, store, stored, sym, t, task, tryCall, ui, when, workerTask } from './core';
-import { setTip } from './tip';
+import { setTip, setTipCards } from './tip';
+import { runCard } from '../../shared/runCard';
+import { runCardHtml } from './runCard';
 import { segc } from './settings';
 import { queueCtx } from './workers';
 import { shownStalled } from '../../shared/stall';
@@ -62,8 +64,13 @@ function warnDrawn(s: AppState) {
   }
 }
 
+/** The cards over the running rows (and the rail's Running button), by their data-tip-card key, as last drawn. */
+const cards = new Map<string, string>();
+setTipCards((key) => cards.get(key) ?? '');
+
 export function renderSidebar() {
   const s = S!;
+  cards.clear();
   renderDnd();
   warnDrawn(s);
   const pending = s.decisions.filter((d) => d.status === 'pending');
@@ -108,9 +115,14 @@ export function renderSidebar() {
     const state = w.status === 'waiting' ? t('st.waitingMe') : awaitsDispatcher(x) ? t('st.awaitDispatcher') : stalled ? t('st.stalled')
       : v ? stepText(t, v, failed) : ago(x?.updatedAt ?? w.lastActiveAt);
     const small = `${where} · ${state}`;
-    const tip = [failed ? plainStatus(w.status === 'error' ? w.statusText || x?.summary : x?.summary) : '', v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
+    const why = failed ? plainStatus(w.status === 'error' ? w.statusText || x?.summary : x?.summary) : '';
+    const tip = [why, v ? stepsTip(x!) : ''].filter(Boolean).join('\n\n');
+    // A running row's tooltip is a card (shared/runCard.ts): the whole title, every step, what it does now, branch and PR.
+    const card = grouped && x ? `run:${w.id}` : '';
+    if (card) cards.set(card, runCardHtml(runCard(x!, w, why)));
+    const hint = card ? ` data-tip-card="${esc(card)}"` : tip ? ` data-tip="${esc(tip)}"` : '';
     // The row's own button and its Stop/Open are side by side, not one inside the other (L14).
-    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${tip ? ` data-tip="${esc(tip)}"` : ''}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepperHtml(x!, failed ? 'err' : waits ? 'wait' : v.allDone ? 'all' : 'run') : ''}</span></button>${workerActs(w)}</div>`;
+    return `<div class="row split${selCls(w.id)}" data-ctx="worker" data-id="${w.id}"${hint}><button type="button" class="row-main" data-action="open-worker" data-id="${w.id}">${workerIcon(w)}<span class="t"><b>${esc(what)}</b><small>${esc(small)}</small>${v ? stepperHtml(x!, failed ? 'err' : waits ? 'wait' : v.allDone ? 'all' : 'run') : ''}</span></button>${workerActs(w)}</div>`;
   };
   // Running Workers get one area per repository; the heading carries the repository's name and how many run in it.
   const runRows = groupByRepo(running, (w) => w.repo).map((g) =>
@@ -161,11 +173,15 @@ export function renderSidebar() {
   </section>`;
   if (ui.sideMin) {
     // One glyph per section with its count; a section with nothing in it is left out, History always shows.
-    const rail = (kind: string, label: string, n: number, extra = '', ask = false) =>
-      `<button class="rail-b${extra}" data-action="side-toggle" data-tip="${esc(`${label} ${n}`)}" aria-label="${esc(`${label} ${n}`)}">${ic(kind)}<span class="n${ask ? ' ask' : ''}">${n}</span></button>`;
+    const rail = (kind: string, label: string, n: number, extra = '', ask = false, card = '') =>
+      `<button class="rail-b${extra}" data-action="side-toggle" ${card ? `data-tip-card="${card}"` : `data-tip="${esc(`${label} ${n}`)}"`} aria-label="${esc(`${label} ${n}`)}">${ic(kind)}<span class="n${ask ? ' ask' : ''}">${n}</span></button>`;
+    // Running: the card of the first running task, as in the list.
+    const first = running.find((w) => workerTask(w));
+    const firstTask = first ? workerTask(first) : null;
+    if (first && firstTask) cards.set('rail:run', runCardHtml(runCard(firstTask, first, lastFailed(first, firstTask) ? plainStatus(first.statusText || firstTask.summary) : '')));
     const live = [
       pending.length ? rail('ask', t('side.decisions'), pending.length, ' sec-dec', true) : '',
-      running.length ? rail('run', t('side.running'), running.length) : '',
+      running.length ? rail('run', t('side.running'), running.length, '', false, firstTask ? 'rail:run' : '') : '',
       prs.length ? rail('pr', t('side.prs'), prs.length) : '',
       queued.length ? rail('wait', t('side.queue'), queued.length) : '',
       failed.length ? rail('err', t('side.errors'), failed.length) : '',
@@ -383,8 +399,11 @@ function usagePopHtml() {
   return S!.accounts.map(usageCard).join('') + usageFootHtml();
 }
 
-/** The usage popover: every account's numbers while the pointer or the focus is on the rings or on the popover. */
-export const usagePop = { shown: false, hover: null as string | null, timer: 0, hideTimer: 0, html: '', quiet: false };
+/**
+ * The usage popover: every account's numbers while the pointer or the focus is on the rings or on the popover.
+ * `keys`: the focus in it came with the keyboard, so it holds the popover open; a click's focus does not.
+ */
+export const usagePop = { shown: false, hover: null as string | null, timer: 0, hideTimer: 0, html: '', quiet: false, keys: false };
 
 /** Opens the popover. Once it is open, moving between the rings only moves the mark (hoverUsage): nothing is drawn again. */
 export function showUsagePop() {
@@ -410,6 +429,7 @@ export function hideUsagePop() {
   if (!usagePop.shown) return;
   usagePop.shown = false;
   usagePop.hover = null;
+  usagePop.keys = false;
   const el = $('#usage-pop');
   clearTimeout(usagePop.timer);
   el.classList.remove('opening');
@@ -421,7 +441,7 @@ export function hideUsagePop() {
 export function hideUsageSoon() {
   clearTimeout(usagePop.hideTimer);
   usagePop.hideTimer = window.setTimeout(() => {
-    if ($('#usage-pop').matches(':hover') || $('#usage-pop').contains(document.activeElement)) return;
+    if ($('#usage-pop').matches(':hover') || (usagePop.keys && $('#usage-pop').contains(document.activeElement))) return;
     hideUsagePop();
   }, 200);
 }

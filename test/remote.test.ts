@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PAIR_TRIES, Seen, backoffMs, checkPair, fromOwner, isStale, looksLikeToken, makePairCode, maskToken, normPairCode,
+  PAIR_TRIES, Seen, backoffMs, checkPair, cleanTelegram, codeLeft, fromOwner, remoteStatus, isStale, looksLikeToken, makePairCode, maskToken, normPairCode,
   pairCodeIn, pairLink, personName, sameSecret, showPairCode, splitText, type Pairing, type TgUpdate,
 } from '../src/shared/remote';
 
@@ -148,4 +148,25 @@ test('remote: five strangers trying codes use up the code', () => {
   let p: Pairing | null = { code: 'ABCD6789', expiresAt: 2_000_000_000, tries: 0 };
   for (let i = 0; i < PAIR_TRIES; i++) p = checkPair(p, msg(100 + i, `/start GUESS${i}XYZ`), 0, 1_000_000_000).pairing;
   assert.equal(p, null);
+});
+
+test('remote: a hand-edited Telegram record is cleaned, and an owner name needs an owner', () => {
+  assert.deepEqual(cleanTelegram(null), { enabled: false, botId: null, botName: null, ownerId: null, ownerName: null });
+  assert.deepEqual(cleanTelegram({ enabled: 'yes', botId: '12', botName: 7, ownerId: null, ownerName: 'Eve' }), { enabled: false, botId: null, botName: null, ownerId: null, ownerName: null });
+  assert.deepEqual(cleanTelegram({ enabled: true, botId: 12, botName: 'b', ownerId: 42, ownerName: 'Me' }), { enabled: true, botId: 12, botName: 'b', ownerId: 42, ownerName: 'Me' });
+});
+
+test('remote: the status goes off, then token, then trouble, then pairing or connected', () => {
+  const s = (o: Partial<Parameters<typeof remoteStatus>[0]>) => remoteStatus({ enabled: true, tokenSet: true, ownerId: 42, trouble: null, ...o });
+  assert.equal(s({ enabled: false, trouble: 'invalid' }), 'off');
+  assert.equal(s({ tokenSet: false, trouble: 'invalid' }), 'token');
+  assert.equal(s({ trouble: 'elsewhere' }), 'elsewhere');
+  assert.equal(s({ ownerId: null }), 'pairing');
+  assert.equal(s({}), 'connected');
+});
+
+test('remote: the time left on a code is m:ss and never below zero', () => {
+  assert.equal(codeLeft(600_000, 0), '10:00');
+  assert.equal(codeLeft(61_500, 0), '1:02');
+  assert.equal(codeLeft(0, 5_000), '0:00');
 });

@@ -4,6 +4,7 @@ import { outParts, SHELL_FOLDED, shellClock, shellRisky, shellTook, tailLines } 
 import type { ChatItem } from '../../shared/types';
 import { $, call, esc, S, sym, t, ui } from './core';
 import { openPop, pop } from './controls';
+import { copyBtnHtml } from './copy';
 
 /** The composer goes into shell mode: the "!" leaves the text and the composer gets a warn ring, with Shell and the folder. */
 export function enterShell() {
@@ -156,7 +157,7 @@ export function shellBlockHtml(c: ChatItem) {
     : r.sent === 'queued' ? `<span class="sh-dlv wait"><i></i>${t('shell.queued')}</span>`
     : r.sent === 'off' ? `<span class="sh-dlv off">${t('shell.notSent')}</span>`
     : `<span class="sh-dlv wait"><i></i>${t(r.ask ? 'shell.willAsk' : 'shell.willSend')}</span>`;
-  const acts = r.running ? '' : `<span class="gap"></span><a tabindex="0" role="link" data-action="shell-copy" data-id="${esc(c.id)}">${t('shell.copy')}</a><a tabindex="0" role="link" data-action="shell-again" data-id="${esc(c.id)}">${t('shell.again')}</a>`;
+  const acts = r.running ? '' : `<span class="gap"></span>${copyBtnHtml('shell-copy', `shell:${c.id}`, t('shell.copyAll'), 'mact', ` data-id="${esc(c.id)}"`)}<a tabindex="0" role="link" data-action="shell-again" data-id="${esc(c.id)}">${t('shell.again')}</a>`;
   const out = shown ? `<pre class="sh-out">${outHtml(c.id, shown, r.err, keptLines - shownLines, r.running ? '<span class="sh-caret" aria-hidden="true"></span>' : '')}</pre>` : '';
   return `<div class="sh-run${r.running ? ' live' : ''}" data-id="${esc(c.id)}" role="group" aria-label="${esc(t('shell.blockAria', { cmd: r.cmd }))}"><header><span class="sh-bang" aria-hidden="true">!</span>${r.script ? `<b class="sh-name">${esc(r.script)}</b>` : ''}<code${lines.length > 1 ? ` data-tip="${esc(r.cmd)}"` : ''}>${esc(lines[0])}${lines.length > 1 ? ` <span class="sh-more">${t('script.moreLines', { n: lines.length - 1 })}</span>` : ''}</code><span class="sh-in">${t('shell.in', { where: esc(where) })}</span>${pill}${time}${stop}</header>${fold}${out}<footer>${dlv}${acts}</footer></div>`;
 }

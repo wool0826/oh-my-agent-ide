@@ -1,4 +1,4 @@
-// A summarised status group in Settings (decision 243): one summary line, the rows under it when opened, and a
+// A summarised status group in Settings (decision 246): one summary line, the rows under it when opened, and a
 // row's detail (each long value whole, with a copy button) under the row when that is opened. The rows come from
 // shared/statusSummary.ts; any group can draw its own items with statusRows and register how to draw them again.
 import { ordered, tally, type StatusField, type StatusItem, type StatusTone } from '../../shared/statusSummary';

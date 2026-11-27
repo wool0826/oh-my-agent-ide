@@ -10,6 +10,7 @@ import { tr, type Key } from '../../shared/i18n';
 import { modelLabel as labelFor } from '../../shared/models';
 import { linkify } from '../../shared/linkify';
 import { mdHtml } from '../../shared/markdown';
+import { copyBtnHtml } from './copy';
 import { type DiffNote } from '../../shared/diffComment';
 import { type Issue } from '../../shared/issues';
 import { type PermFilter } from '../../shared/retro';
@@ -321,7 +322,19 @@ export function setSendErr(box: 'chat' | 'ws', msg: string) {
 
 /** Agent markdown: code blocks, headings, lists, tables, bold, italics, links, line breaks (shared/markdown.ts). */
 export function md(src: string) {
-  return mdHtml(src);
+  return mdHtml(src, codeHead);
+}
+
+/** The bar over a code block in a message: its language and a copy button (app.ts, code-copy), keyed by its code. */
+function codeHead(lang: string, code: string) {
+  return `<div class="code-h"><span>${esc(lang)}</span>${copyBtnHtml('code-copy', `code:${textKey(code)}`, t('shell.copy'), 'code-copy')}</div>`;
+}
+
+/** A short key for a text (FNV-1a), the same each time it is drawn. */
+function textKey(s: string) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return `${(h >>> 0).toString(36)}${s.length.toString(36)}`;
 }
 
 /**

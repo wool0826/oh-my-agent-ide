@@ -11,15 +11,16 @@ import * as workers from './i18n/workers';
 import * as repos from './i18n/repos';
 import * as memory from './i18n/memory';
 import * as settings from './i18n/settings';
+import * as telegram from './i18n/telegram';
 
 /** Each area's dictionaries. A key belongs to one area only (test/i18n.test.ts checks it). */
-export const areas = { common, sidebar, chat, inspector, workers, repos, memory, settings };
+export const areas = { common, sidebar, chat, inspector, workers, repos, memory, settings, telegram };
 
-const en = { ...common.en, ...sidebar.en, ...chat.en, ...inspector.en, ...workers.en, ...repos.en, ...memory.en, ...settings.en };
+const en = { ...common.en, ...sidebar.en, ...chat.en, ...inspector.en, ...workers.en, ...repos.en, ...memory.en, ...settings.en, ...telegram.en };
 
 export type Key = keyof typeof en;
 
-const ko: Record<Key, string> = { ...common.ko, ...sidebar.ko, ...chat.ko, ...inspector.ko, ...workers.ko, ...repos.ko, ...memory.ko, ...settings.ko };
+const ko: Record<Key, string> = { ...common.ko, ...sidebar.ko, ...chat.ko, ...inspector.ko, ...workers.ko, ...repos.ko, ...memory.ko, ...settings.ko, ...telegram.ko };
 
 const dicts: Record<Lang, Record<Key, string>> = { en, ko };
 

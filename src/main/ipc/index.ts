@@ -7,6 +7,7 @@ import { registerRepoIpc } from './repos';
 import { registerMemoryIpc } from './memory';
 import { registerSettingsIpc } from './settings';
 import { registerAppIpc } from './app';
+import { registerTelegramIpc } from './telegram';
 
 export type { IpcContext } from './handle';
 export { userAnswer } from './decisions';
@@ -22,4 +23,5 @@ export function registerIpc(ctx: IpcContext) {
   registerMemoryIpc();
   registerSettingsIpc(ctx);
   registerAppIpc();
+  registerTelegramIpc();
 }

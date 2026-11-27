@@ -78,6 +78,12 @@ test('md: everything is escaped, headings and code blocks still work', () => {
   assert.equal(mdHtml('one\ntwo\n\nthree'), '<p>one<br>two</p><p>three</p>');
 });
 
+test('md: a code block gets the bar it is given, with its fence language and its code', () => {
+  const head = (lang: string, code: string) => `<b>${lang}|${code.length}</b>`;
+  assert.equal(mdHtml('Run:\n```sh\nnpm test\n```', head), '<p>Run:</p><div class="code"><b>sh|8</b><pre>npm test</pre></div>');
+  assert.equal(mdHtml('```\na < b\n```', head), '<div class="code"><b>|5</b><pre>a &lt; b</pre></div>');
+});
+
 test('md: [text](url) links, with brackets in the text and parentheses in the URL', () => {
   const a = (url: string, text: string) => `<a tabindex="0" role="link" data-action="open-url" data-href="${url}" title="${url}">${text}</a>`;
   assert.equal(mdHtml('Sources:\n- [Docs](https://x.dev/a)'), `<p>Sources:</p><ul><li>${a('https://x.dev/a', 'Docs')}</li></ul>`);

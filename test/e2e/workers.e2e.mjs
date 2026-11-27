@@ -192,3 +192,34 @@ flow('a follow-up chained after the running task on the same Worker does not hid
   // The row of the Running list names the running task and draws its Stepper, not the follow-up waiting after it.
   await app.until("const r = document.querySelector('#side .row[data-id=\"W-01\"]'); return r?.querySelector('.t b')?.textContent === 'T-1 title' && !!r.querySelector('.stp');", 'the W-01 row names T-1 and draws its Stepper');
 });
+
+flow('a running row shows a card with its whole title, its steps and what it does now, by hover or keyboard, and Esc closes it', {}, async (app) => {
+  const long = 'Lay out the left sidebar below a top strip, keep the traffic lights clear on macOS and check every narrow width';
+  await app.say(`@fake task - ${long}\n@@fake steps Reproduce | Fix the wait | Run e2e | Open PR\n@@fake step 1\n@@fake step 2\n@@fake tool gh pr checks 212 --watch\n@@fake wait 60000`);
+  await app.until("document.querySelector('#side .rg .row[data-tip-card]')?.innerText.includes('Run e2e')", 'the running row at step 3');
+  const CARD = "[document.querySelector('#tip')].find((t) => t.classList.contains('card') && t.classList.contains('on') && !t.hidden)";
+  await app.hover('#side .rg .row[data-tip-card] .row-main');
+  await app.until(`!!${CARD}?.querySelector('.rc-steps')`, 'the card on hover');
+  const c = await app.evaluate(`const t = ${CARD}; return { title: t.querySelector('.rc-t').textContent, steps: [...t.querySelectorAll('.rc-steps li')].map((l) => l.className + ' ' + l.textContent), now: t.querySelector('.rc-now').textContent, n: t.querySelector('.rc-p').textContent, icons: t.querySelectorAll('.rc-steps li.done svg, .rc-steps li.cur svg').length, clicks: getComputedStyle(t).pointerEvents };`);
+  assert.equal(c.title, long);
+  assert.deepEqual(c.steps, ['done 1. Reproduce', 'done 2. Fix the wait', 'cur 3. Run e2e', 'todo 4. Open PR']);
+  assert.match(c.now, /pr checks 212 --watch/);
+  assert.equal(c.n, '3/4');
+  assert.equal(c.icons, 3);
+  assert.equal(c.clicks, 'none');
+  await app.key('Escape', 'Escape', 27);
+  await app.until(`!${CARD}`, 'the card closed by Esc');
+  // A one-line title, opened from the keyboard: the card sits beside the sidebar, inside the window.
+  await app.say('@fake task - Fix tip\n@@fake wait 60000');
+  await app.until("[...document.querySelectorAll('#side .rg .row[data-tip-card]')].some((r) => r.innerText.includes('Fix tip'))", 'the second running row');
+  await app.hover({ x: 700, y: 500 });
+  await app.key('ShiftLeft', 'Shift', 16);
+  await app.evaluate("[...document.querySelectorAll('#side .rg .row[data-tip-card]')].find((r) => r.innerText.includes('Fix tip')).querySelector('.row-main').focus(); return 1;");
+  await app.until(`${CARD}?.querySelector('.rc-t')?.textContent === 'Fix tip'`, 'the one-line card on focus');
+  const box = await app.evaluate(`const r = ${CARD}.getBoundingClientRect(); return { left: r.left, right: r.right, side: document.querySelector('#side').getBoundingClientRect().right, w: innerWidth, steps: !!${CARD}.querySelector('.rc-steps') };`);
+  assert.ok(box.left >= box.side && box.right <= box.w, JSON.stringify(box));
+  assert.equal(box.steps, false);
+  assert.equal(await app.evaluate("return document.activeElement.getAttribute('aria-describedby');"), 'tip');
+  await app.key('Escape', 'Escape', 27);
+  await app.until(`!${CARD} && !document.activeElement.hasAttribute('aria-describedby')`, 'the card closed and the button as it was');
+});
