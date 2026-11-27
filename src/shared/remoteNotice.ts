@@ -4,26 +4,32 @@
 import type { Say } from './askWhy';
 import type { Decision } from './types';
 import { doneNotice } from './notifyRules';
+import type { Choice, TgButton } from './remoteDecision';
 
 export const REMOTE_EVENTS = ['decisions', 'results', 'prs', 'errors', 'replies'] as const;
 export type RemoteEvent = (typeof REMOTE_EVENTS)[number];
 /** `title`: who and what only. `summary`: also the result's summary, the question and links, never code or files. */
 export type RemoteLevel = 'title' | 'summary';
-/** `requests`: messages from the phone go to the Dispatcher (decision 250); off is notices only, as /lock leaves it. */
-export interface RemotePrefs { events: Record<RemoteEvent, boolean>; level: RemoteLevel; requests: boolean }
+/**
+ * `requests`: messages from the phone go to the Dispatcher (decision 250). `buttons`: decisions carry buttons and a
+ * reply answers them (decision 251). Off is notices only, as /lock leaves both.
+ */
+export interface RemotePrefs { events: Record<RemoteEvent, boolean>; level: RemoteLevel; requests: boolean; buttons: boolean }
 
-export const REMOTE_PREFS_DEFAULT: RemotePrefs = { events: { decisions: true, results: true, prs: true, errors: true, replies: true }, level: 'summary', requests: true };
+export const REMOTE_PREFS_DEFAULT: RemotePrefs = { events: { decisions: true, results: true, prs: true, errors: true, replies: true }, level: 'summary', requests: true, buttons: true };
 
 export function cleanPrefs(raw: unknown): RemotePrefs {
-  const r = (raw && typeof raw === 'object' ? raw : {}) as { events?: unknown; level?: unknown; requests?: unknown };
+  const r = (raw && typeof raw === 'object' ? raw : {}) as { events?: unknown; level?: unknown; requests?: unknown; buttons?: unknown };
   const ev = (r.events && typeof r.events === 'object' ? r.events : {}) as Record<string, unknown>;
   const events = Object.fromEntries(REMOTE_EVENTS.map((k) => [k, typeof ev[k] === 'boolean' ? ev[k] : REMOTE_PREFS_DEFAULT.events[k]])) as Record<RemoteEvent, boolean>;
-  return { events, level: r.level === 'title' ? 'title' : 'summary', requests: typeof r.requests === 'boolean' ? r.requests : REMOTE_PREFS_DEFAULT.requests };
+  return { events, level: r.level === 'title' ? 'title' : 'summary', requests: typeof r.requests === 'boolean' ? r.requests : REMOTE_PREFS_DEFAULT.requests,
+    buttons: typeof r.buttons === 'boolean' ? r.buttons : REMOTE_PREFS_DEFAULT.buttons };
 }
 
 /** Something worth a message to the phone, in plain fields so the rules need no store. */
 export type RemoteNews =
-  | { type: 'decision'; id: string; source: Decision['source']; who: string | null; title: string; detail: string; options: string[] }
+  /** `choices`: what its buttons answer (remoteDecision.ts); `plan`: a plan's text, sent only with its buttons. */
+  | { type: 'decision'; id: string; source: Decision['source']; who: string | null; title: string; detail: string; options: string[]; choices?: Choice[]; plan?: string }
   | { type: 'result'; task: string; who: string; title: string; summary: string; ok: boolean; label?: string; code?: boolean; prUrl?: string | null; links?: string[] }
   | { type: 'pr'; task: string; title: string; merged: boolean; prUrl: string | null }
   | { type: 'error'; text: string }
@@ -94,6 +100,8 @@ export function newsText(say: Say, n: RemoteNews, level: RemoteLevel): string {
         if (body && body !== line(n.title)) parts.push(body);
         if (n.options.length) parts.push(n.options.map((o) => `· ${line(o, 80)}`).join('\n'));
       }
+      // A plan is approved from the phone only after it is read there: its text comes with its buttons.
+      if (full && n.source === 'plan' && n.plan) parts.push(line(n.detail), plainText(n.plan, PLAN_MAX));
       return parts.join('\n\n');
     }
     case 'result': {
@@ -124,12 +132,19 @@ export function newsText(say: Say, n: RemoteNews, level: RemoteLevel): string {
 
 /** The longest Dispatcher answer sent: three Telegram messages (remote.ts splitText). */
 export const REPLY_MAX = 3 * 4000;
+/** A plan's text, leaving room for its heading in the same three messages. */
+const PLAN_MAX = REPLY_MAX - 600;
 
 /**
  * One message waiting to go. `urgent` ones (decisions) are the last to be dropped when the queue is full. `ref`: what
- * a reply to it on the phone is about (newsRef); `replyTo`: the phone's message it answers.
+ * a reply to it on the phone is about (newsRef); `replyTo`: the phone's message it answers; `buttons` go under its
+ * last part. `edit`: not a new message but a change to the bot's message with that id (its text, or with an empty
+ * text only its buttons taken off).
  */
-export interface Outgoing { key: string; group: string; text: string; silent: boolean; urgent: boolean; ref?: string; replyTo?: number }
+export interface Outgoing {
+  key: string; group: string; text: string; silent: boolean; urgent: boolean;
+  ref?: string; replyTo?: number; buttons?: TgButton[][]; edit?: number;
+}
 
 /**
  * What a reply on the phone to this news answers: the task for a result or a PR (its report's thread), the chat
@@ -165,7 +180,9 @@ export class SendQueue {
     for (const [k, at] of this.recent) if (now - at >= this.dedupeMs) this.recent.delete(k);
     if (this.recent.has(o.key)) return false;
     this.recent.set(o.key, now);
-    const same = [...this.items].reverse().find((x) => x.group === o.group);
+    // A message with buttons or an edit stays on its own: joined, its buttons would answer the wrong news.
+    const alone = (x: Outgoing) => !!x.buttons?.length || x.edit !== undefined;
+    const same = alone(o) ? undefined : [...this.items].reverse().find((x) => x.group === o.group && !alone(x));
     if (same && same.text.length + 2 + o.text.length <= this.mergeMax) {
       same.text = `${same.text}\n\n${o.text}`;
       same.silent &&= o.silent;
@@ -185,6 +202,14 @@ export class SendQueue {
     return true;
   }
 
+  /** Drops a waiting message with buttons about `ref` (a decision settled before it went); true when there was one. */
+  drop(ref: string): boolean {
+    const i = this.items.findIndex((x) => x.ref === ref && !!x.buttons?.length);
+    if (i < 0) return false;
+    this.forget(this.items.splice(i, 1)[0]);
+    return true;
+  }
+
   /** A message that will not go: its news counts as untold again. */
   forget(o: Outgoing) { for (const k of this.held.get(o) ?? [o.key]) this.recent.delete(k); }
 
@@ -196,6 +221,9 @@ export class SendQueue {
 }
 
 /** A decision as news: the option labels only, never their descriptions. */
-export function decisionNews(d: Pick<Decision, 'id' | 'source' | 'workerId' | 'title' | 'detail' | 'options'>): RemoteNews {
-  return { type: 'decision', id: d.id, source: d.source, who: d.workerId, title: d.title, detail: d.detail, options: d.options.map((o) => o.label) };
+export function decisionNews(d: Pick<Decision, 'id' | 'source' | 'workerId' | 'title' | 'detail' | 'options' | 'code'>, choices: Choice[] = []): RemoteNews {
+  return {
+    type: 'decision', id: d.id, source: d.source, who: d.workerId, title: d.title, detail: d.detail, options: d.options.map((o) => o.label),
+    choices, plan: d.source === 'plan' ? d.code ?? undefined : undefined,
+  };
 }

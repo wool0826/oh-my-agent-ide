@@ -8,6 +8,9 @@ import { inboxText, statusText } from '../../shared/remoteChat';
 import { Inbound } from './inbound';
 import { outbox } from './bridge';
 import { telegram } from './telegramLink';
+import { onDecisionSettled } from '../decisions';
+import { userAnswer } from '../ipc/decisions';
+import { shownAnswer } from '../../shared/remoteDecision';
 
 /** Update ids kept: as many as the poller remembers (remote.ts Seen). */
 const SEEN_MAX = 200;
@@ -27,9 +30,14 @@ export function wireRemote() {
       await dispatcher.stop();
       return was;
     },
-    lock: () => telegram.setPrefs({ requests: false }),
+    lock: () => telegram.setPrefs({ requests: false, buttons: false }),
     requests: () => telegram.prefs().requests,
-    answer: (text, to) => { outbox.answer(text, to); },
+    buttons: () => telegram.prefs().buttons,
+    answer: (text, to, buttons) => { outbox.answer(text, to, buttons); },
+    decision: (id) => store.data.decisions.find((d) => d.id === id) ?? null,
+    answerDecision: (id, ans) => userAnswer(id, ans, 'telegram'),
+    ack: (id, text) => { void telegram.ack(id, text); },
+    clearButtons: (id) => outbox.clearButtons(id),
     refOf: (id) => outbox.sent.get(id),
     statusText: () => statusText(t, { dispatcherBusy: dispatcher.busy, workers: store.data.workers, tasks: store.data.tasks, decisions: store.data.decisions }),
     inboxText: () => inboxText(t, store.data.decisions),
@@ -49,6 +57,8 @@ export function wireRemote() {
     flush: () => { try { store.flush(); } catch (e) { log.warn('telegram flush', (e as Error).message); } },
   });
   telegram.inbound = (u) => inbound.handle(u);
+  // Answered or withdrawn anywhere: its message on the phone loses its buttons (decision 251).
+  onDecisionSettled((d, answered) => outbox.settle(d.id, answered ? shownAnswer(t, d, d.answer ?? '') : null));
   // Update ids count per bot: another bot, or none, starts them over.
   telegram.onForget = () => {
     const r = remote();

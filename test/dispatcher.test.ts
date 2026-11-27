@@ -478,3 +478,11 @@ test('dispatcher: a turn that starts by itself answers on the phone only when th
   turn('Checked once more.');
   assert.deepEqual(phone, ['Pong.', 'Checked again.']);
 });
+
+test('dispatcher: a decision answered from the phone is taken up in a turn answered on the phone', async () => {
+  dispatcher.decisionAnswered('Ship it?', 'Yes', true);
+  turn('Shipping.');
+  dispatcher.decisionAnswered('Again?', 'No');
+  turn('Stopped.');
+  assert.deepEqual(phone, ['Shipping.']);
+});

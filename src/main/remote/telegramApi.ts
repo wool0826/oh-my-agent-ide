@@ -3,6 +3,7 @@
 // every failure becomes "method: code description" with any token shape masked.
 import { z } from 'zod';
 import { maskToken, type TgUpdate, type TgUser } from '../../shared/remote';
+import type { TgButton } from '../../shared/remoteDecision';
 
 /** The API's address; tests point it at a stand-in server with OMA_TELEGRAM_API, as OMA_DATA_DIR moves the data. */
 export const telegramBase = () => (process.env.OMA_TELEGRAM_API || 'https://api.telegram.org').replace(/\/+$/, '');
@@ -27,7 +28,13 @@ const message = z.object({
   forward_origin: z.object({ type: z.string() }).optional(),
   reply_to_message: z.object({ message_id: z.number() }).optional(),
 });
-const update = z.object({ update_id: z.number(), message: message.optional() });
+const callback = z.object({
+  id: z.string(),
+  from: user,
+  message: z.object({ message_id: z.number(), chat: z.object({ id: z.number(), type: z.string() }) }).optional(),
+  data: z.string().optional(),
+});
+const update = z.object({ update_id: z.number(), message: message.optional(), callback_query: callback.optional() });
 const reply = z.object({
   ok: z.boolean(),
   result: z.unknown().optional(),
@@ -49,7 +56,9 @@ function kindOf(status: number, telegram = true): TgErrorKind {
 }
 
 export interface CallOpts { timeoutMs?: number; signal?: AbortSignal }
-export interface SendOpts { silent?: boolean; replyTo?: number }
+export interface SendOpts { silent?: boolean; replyTo?: number; buttons?: TgButton[][] }
+
+const keyboard = (rows: TgButton[][]) => ({ inline_keyboard: rows.map((r) => r.map((b) => ({ text: b.text, callback_data: b.data }))) });
 
 export class TelegramApi {
   constructor(private readonly token: string, private readonly base = telegramBase()) {}
@@ -93,7 +102,7 @@ export class TelegramApi {
    * Telegram the ones before it were read, so they do not come again.
    */
   getUpdates(offset: number | null, timeout: number, o: CallOpts = {}): Promise<TgUpdate[]> {
-    const params: Record<string, unknown> = { timeout, allowed_updates: ['message'] };
+    const params: Record<string, unknown> = { timeout, allowed_updates: ['message', 'callback_query'] };
     if (offset !== null) params.offset = offset;
     // The request waits on the server, so it may take longer than the poll itself.
     // Each update is checked on its own: one the app cannot read comes back as its id alone, so the poller still
@@ -111,6 +120,21 @@ export class TelegramApi {
     const params: Record<string, unknown> = { chat_id: chatId, text, link_preview_options: { is_disabled: true } };
     if (s.silent) params.disable_notification = true;
     if (s.replyTo) params.reply_parameters = { message_id: s.replyTo, allow_sending_without_reply: true };
+    if (s.buttons?.length) params.reply_markup = keyboard(s.buttons);
     return this.call('sendMessage', params, message.pick({ message_id: true }), o);
+  }
+
+  /** Takes the buttons off one of the bot's messages, and with `text` puts that text in its place. */
+  async editMessage(chatId: number, messageId: number, text: string | null, o?: CallOpts): Promise<void> {
+    const base = { chat_id: chatId, message_id: messageId, reply_markup: keyboard([]) };
+    if (text === null) await this.call('editMessageReplyMarkup', base, z.unknown(), o);
+    else await this.call('editMessageText', { ...base, text, link_preview_options: { is_disabled: true } }, z.unknown(), o);
+  }
+
+  /** Ends a button press's spinner, with a short note shown over the chat. */
+  async answerCallbackQuery(id: string, text?: string, o?: CallOpts): Promise<void> {
+    const params: Record<string, unknown> = { callback_query_id: id };
+    if (text) params.text = text.slice(0, 200);
+    await this.call('answerCallbackQuery', params, z.unknown(), o);
   }
 }

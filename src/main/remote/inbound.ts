@@ -4,8 +4,10 @@
 // while the app was off) waits, kept with the state, until the owner says /run or /drop. The app wires it up in
 // remote/wire.ts.
 import type { Say } from '../../shared/askWhy';
-import { isStale, type TgMessage, type TgUpdate } from '../../shared/remote';
+import { isStale, type TgCallback, type TgMessage, type TgUpdate } from '../../shared/remote';
 import { InboundLimit, readInbound, type RemoteCommand } from '../../shared/remoteChat';
+import { HELD_DROP, HELD_RUN, answersByReply, readPress, remoteChoices, type TgButton } from '../../shared/remoteDecision';
+import type { Decision } from '../../shared/types';
 
 /** A message that waits for /run or /drop. */
 export interface HeldMessage { text: string; replyTo: string | null }
@@ -17,11 +19,20 @@ export interface InboundDeps {
   toDispatcher(text: string, replyTo: string | null): { held: boolean };
   /** Stops the Dispatcher's turn; true when one was running. */
   stop(): Promise<boolean>;
-  /** Turns requests from the phone off (/lock); only the desktop turns them on again. */
+  /** Turns requests and answers from the phone off (/lock); only the desktop turns them on again. */
   lock(): void;
   requests(): boolean;
-  /** The bot's answer, as a reply to the phone's message. */
-  answer(text: string, replyTo?: number): void;
+  /** Decisions carry buttons, and a reply to one answers it. */
+  buttons(): boolean;
+  /** The bot's answer, as a reply to the phone's message, with buttons under it. */
+  answer(text: string, replyTo?: number, buttons?: TgButton[][]): void;
+  decision(id: string): Pick<Decision, 'id' | 'source' | 'options' | 'status'> | null;
+  /** Answers a decision as the user, from the phone. */
+  answerDecision(id: string, answer: string): void;
+  /** Ends a button press's spinner, with a short note. */
+  ack(callbackId: string, text?: string): void;
+  /** Takes the buttons off one of the bot's messages. */
+  clearButtons(messageId: number): void;
   /** What the bot's message with this id was about (remoteNotice newsRef), if it is still known. */
   refOf(messageId: number | undefined): string | null;
   statusText(): string;
@@ -55,9 +66,48 @@ export class Inbound {
 
   async handle(u: TgUpdate) {
     const m = u.message;
-    if (!m || this.d.seen.has(u.update_id)) return;
+    const c = u.callback_query;
+    if ((!m && !c) || this.d.seen.has(u.update_id)) return;
     this.d.seen.add(u.update_id);
-    try { await this.take(m); } finally { this.d.flush(); }
+    try {
+      if (c) await this.press(c);
+      else await this.take(m!);
+    } finally { this.d.flush(); }
+  }
+
+  /** false when past the limit: "too many" is said once (as a reply to `msg`, or on the press). */
+  private allow(msg?: number, callback?: string): boolean {
+    if (this.limit.allow(this.d.now())) { this.slowTold = false; return true; }
+    const text = this.d.say('tg.r.slow');
+    if (callback) this.d.ack(callback, text);
+    else if (!this.slowTold) this.d.answer(text, msg);
+    this.slowTold = true;
+    return false;
+  }
+
+  /** A press on one of the bot's buttons: a decision's answer, or the held messages' send or drop. */
+  private async press(c: TgCallback) {
+    const { say } = this.d;
+    if (!this.allow(undefined, c.id)) return;
+    const p = readPress(c.data);
+    const msg = c.message?.message_id;
+    let note: string | undefined;
+    if (p?.kind === 'held') {
+      if (msg !== undefined) this.d.clearButtons(msg);
+      await this.command(p.run ? 'run' : 'drop', msg);
+    } else if (p?.kind === 'decision') {
+      const d = this.d.decision(p.id);
+      const choice = d?.status === 'pending' ? remoteChoices(say, d)[p.n] : undefined;
+      if (!this.d.buttons()) note = say('tg.r.answersOff');
+      else if (!d || !choice) {
+        note = say('tg.r.handled');
+        if (msg !== undefined) this.d.clearButtons(msg);
+      } else {
+        this.d.answerDecision(d.id, choice.answer);
+        note = choice.label;
+      }
+    }
+    this.d.ack(c.id, note);
   }
 
   private async take(m: TgMessage) {
@@ -65,26 +115,27 @@ export class Inbound {
     const r = readInbound(m);
     // /lock and /stop always go through; everything else, answers included, counts towards the limit.
     const urgent = r.kind === 'command' && (r.name === 'lock' || r.name === 'stop');
-    if (!urgent && !(r.kind === 'text' && isStale(m.date, this.d.now()))) {
-      if (!this.limit.allow(this.d.now())) {
-        if (!this.slowTold) this.d.answer(say('tg.r.slow'), m.message_id);
-        this.slowTold = true;
-        return;
-      }
-      this.slowTold = false;
-    }
+    if (!urgent && !(r.kind === 'text' && isStale(m.date, this.d.now())) && !this.allow(m.message_id)) return;
     if (r.kind === 'unsupported') return this.d.answer(say('tg.r.unsupported'), m.message_id);
     if (r.kind === 'command') return this.command(r.name, m.message_id);
-    if (!this.d.requests()) return this.d.answer(say('tg.r.locked'), m.message_id);
-    // A reply to a result or an answer goes into its thread; to a decision it is a plain message for now.
     const ref = this.d.refOf(m.reply_to_message?.message_id);
+    // A reply in the user's own words to a decision still waiting answers it (a permission only on the computer).
+    if (ref?.startsWith('d:') && !m.forward_origin && this.d.buttons()) {
+      const d = this.d.decision(ref.slice(2));
+      if (d?.status === 'pending') {
+        if (!answersByReply(d)) return this.d.answer(say('tg.r.desktopOnly'), m.message_id);
+        return this.d.answerDecision(d.id, r.text);
+      }
+    }
+    if (!this.d.requests()) return this.d.answer(say('tg.r.locked'), m.message_id);
+    // A reply to a result or an answer goes into its thread; to a settled decision it is a plain message.
     const to = ref && !ref.startsWith('d:') ? ref : null;
     if (isStale(m.date, this.d.now())) return this.hold(r.text, to);
     this.pass(r.text, to, m.message_id);
   }
 
   /** Hands words to the Dispatcher and says so when they wait; a failure is told, since the update is already taken. */
-  private pass(text: string, to: string | null, msg: number): boolean {
+  private pass(text: string, to: string | null, msg?: number): boolean {
     try {
       const { held } = this.d.toDispatcher(text, to);
       if (held) this.d.answer(this.d.say('tg.r.held'), msg);
@@ -95,7 +146,7 @@ export class Inbound {
     }
   }
 
-  private async command(name: RemoteCommand, msg: number) {
+  private async command(name: RemoteCommand, msg?: number) {
     const { say } = this.d;
     switch (name) {
       case 'status': return this.d.answer(this.d.statusText(), msg);
@@ -103,7 +154,7 @@ export class Inbound {
       case 'start': return this.d.answer(say('tg.msg.connected'), msg);
       case 'help': return this.d.answer(say('tg.r.help'), msg);
       case 'lock':
-        if (this.d.requests()) this.d.lock();
+        if (this.d.requests() || this.d.buttons()) this.d.lock();
         return this.d.answer(say('tg.r.lockedNow'), msg);
       case 'stop':
         if (!this.d.requests()) return this.d.answer(say('tg.r.locked'), msg);
@@ -132,7 +183,9 @@ export class Inbound {
     if (this.staleTimer) clearTimeout(this.staleTimer);
     this.staleTimer = setTimeout(() => {
       this.staleTimer = null;
-      if (this.stale.length) this.d.answer(this.d.say('tg.r.stale', { n: this.stale.length }));
+      if (!this.stale.length) return;
+      const { say } = this.d;
+      this.d.answer(say('tg.r.stale', { n: this.stale.length }), undefined, [[{ text: say('tg.b.run'), data: HELD_RUN }, { text: say('tg.b.drop'), data: HELD_DROP }]]);
     }, STALE_SETTLE_MS);
     this.staleTimer.unref?.();
   }

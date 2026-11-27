@@ -48,6 +48,7 @@ import { telegram } from './remote/telegramLink';
 import { tellRemote } from './remote/bridge';
 import { wireRemote } from './remote/wire';
 import { decisionNews } from '../shared/remoteNotice';
+import { remoteChoices } from '../shared/remoteDecision';
 import type { ChatItem } from '../shared/types';
 import { registerIpc, registerE2eIpc, userAnswer } from './ipc';
 
@@ -228,7 +229,7 @@ async function boot() {
     // Simple decisions carry their answers as buttons on the notification.
     const actions = notifyActions(d).map((a) => ({ text: 'key' in a.label ? t(a.label.key) : a.label.text, run: () => userAnswer(d.id, a.answer) }));
     notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d), actions, d.workerId ?? 'dispatcher');
-    tellRemote(decisionNews(d));
+    tellRemote(decisionNews(d, remoteChoices(t, d)));
   });
   onLateAnswer((d) => {
     if (d.workerId) {

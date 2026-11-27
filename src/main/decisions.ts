@@ -12,6 +12,15 @@ export function onDecisionCreated(fn: (d: Decision) => void) { onNew = fn; }
 /** An answer arrived for a decision whose waiter is gone (the app restarted). */
 export function onLateAnswer(fn: (d: Decision) => void) { onLate = fn; }
 
+const settled: ((d: Decision, answered: boolean) => void)[] = [];
+/** A decision was answered (`answered`) or withdrawn: its buttons elsewhere, such as on the phone, come off. */
+export function onDecisionSettled(fn: (d: Decision, answered: boolean) => void) { settled.push(fn); }
+function tellSettled(d: Decision, answered: boolean) {
+  for (const fn of settled) {
+    try { fn(d, answered); } catch { /* one listener's failure does not stop the answer */ }
+  }
+}
+
 export function createDecision(d: Omit<Decision, 'id' | 'status' | 'answer' | 'createdAt' | 'answeredAt'>): Decision {
   const dec: Decision = { ...d, id: uid(), status: 'pending', answer: null, createdAt: nowIso(), answeredAt: null };
   store.data.decisions.push(dec);
@@ -50,6 +59,7 @@ export function answer(id: string, ans: string) {
   const task = d.source === 'permission' && d.taskId ? store.task(d.taskId) : null;
   if (task) task.permissions = withPermission(task.permissions, { at: d.createdAt, answeredAt: d.answeredAt, code: d.code ?? d.title, answer: ans });
   store.changed();
+  tellSettled(d, true);
   const w = waiters.get(id);
   waiters.delete(id);
   if (w) w(ans);
@@ -60,8 +70,9 @@ export function answer(id: string, ans: string) {
 export function withdraw(id: string) {
   const i = store.data.decisions.findIndex((x) => x.id === id && x.status === 'pending');
   if (i >= 0) {
-    store.data.decisions.splice(i, 1);
+    const [d] = store.data.decisions.splice(i, 1);
     store.changed();
+    tellSettled(d, false);
   }
 }
 

@@ -810,12 +810,13 @@ class Dispatcher {
   }
 
   /** The user answered a question the Dispatcher posted. */
-  decisionAnswered(question: string, answer: string) {
+  decisionAnswered(question: string, answer: string, fromPhone = false) {
     const msg = `[Decision answer] Question: ${question}\nAnswer: ${answer}`;
     this.userSpoke();
+    if (fromPhone) this.lastVia = 'telegram';
     const s = this.open();
-    if (!s) { this.hold(msg, null); return; }
-    this.deliver(s, [msg]);
+    if (!s) { this.hold(msg, null, fromPhone); return; }
+    this.deliver(s, [msg], undefined, fromPhone || undefined);
   }
 
   /** A usage limit reset: continue the cut-off turn and send what was held, if an account is free now. */

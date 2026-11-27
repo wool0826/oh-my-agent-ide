@@ -8,6 +8,7 @@ import { Burst, inQuietHours } from '../../shared/notifyRules';
 import { backoffMs, splitText } from '../../shared/remote';
 import { SendQueue, newsEvent, newsGroup, newsKey, newsRef, newsText, type Outgoing, type RemoteNews, type RemotePrefs } from '../../shared/remoteNotice';
 import { SentRefs } from '../../shared/remoteChat';
+import { decisionButtons, settledLine, type TgButton } from '../../shared/remoteDecision';
 import type { Say } from '../../shared/askWhy';
 import type { SendOpts } from './telegramApi';
 import { TelegramError } from './telegramApi';
@@ -18,6 +19,8 @@ export interface Channel {
   readonly ready: boolean;
   prefs(): RemotePrefs;
   send(text: string, o?: SendOpts): Promise<number>;
+  /** Takes the buttons off one of the bot's messages; with `text`, changes its text too. */
+  edit(messageId: number, text: string | null): Promise<void>;
 }
 
 export interface OutboxOpts {
@@ -41,6 +44,8 @@ export class Outbox {
   readonly sent = new SentRefs();
   /** Ids for the bot's own answers, each its own message. */
   private answers = 0;
+  /** A decision's message with buttons on the phone (its last part), until the decision is settled. */
+  private asked = new Map<string, { id: number; text: string }>();
   private bursts = new Burst();
   private running = false;
   private lastSent = 0;
@@ -71,25 +76,53 @@ export class Outbox {
     const group = newsGroup(n);
     const at = this.now();
     const silent = this.quiet() || !this.bursts.allow(group, at);
-    const added = this.queue.add({ key: newsKey(n), group, text: newsText(this.say, n, p.level), silent, urgent: n.type === 'decision', ref: newsRef(n) }, at);
+    // A decision carries its answers as buttons while they are on; a plan only with its text, at the summary level.
+    let news = n;
+    let buttons: TgButton[][] | undefined;
+    if (n.type === 'decision') {
+      const offer = p.buttons && !!n.choices?.length && (n.source !== 'plan' || (p.level === 'summary' && !!n.plan));
+      if (offer) buttons = decisionButtons(n.id, n.choices!);
+      else news = { ...n, plan: undefined };
+    }
+    const added = this.queue.add({ key: newsKey(n), group, text: newsText(this.say, news, p.level), silent, urgent: n.type === 'decision', ref: newsRef(n), buttons }, at);
     if (added) this.kick();
     return added;
+  }
+
+  /**
+   * A decision was answered (`shown`, as the user reads it) or withdrawn (null): a message about it that has not gone
+   * yet is dropped, and one that went loses its buttons and says how it ended.
+   */
+  settle(id: string, shown: string | null) {
+    if (this.queue.drop(`d:${id}`)) return;
+    const a = this.asked.get(id);
+    if (!a) return;
+    this.asked.delete(id);
+    const end = settledLine(this.say, shown);
+    const text = `${a.text.slice(0, 4096 - end.length - 2)}\n\n${end}`;
+    if (this.queue.add({ key: `edit:${a.id}`, group: `edit:${a.id}`, text, silent: true, urgent: true, edit: a.id }, this.now())) this.kick();
+  }
+
+  /** Takes the buttons off one of the bot's messages (a press on one that no longer applies). */
+  clearButtons(messageId: number) {
+    for (const [id, a] of this.asked) if (a.id === messageId) this.asked.delete(id);
+    if (this.queue.add({ key: `clear:${messageId}`, group: `clear:${messageId}`, text: '', silent: true, urgent: true, edit: messageId }, this.now())) this.kick();
   }
 
   /**
    * The bot's own answer to a message from the phone (a command, a turned-away request), as a reply to it. It goes
    * whatever kinds of news are switched on; false when the channel is not ready.
    */
-  answer(text: string, replyTo?: number): boolean {
+  answer(text: string, replyTo?: number, buttons?: TgButton[][]): boolean {
     if (!this.ch.ready) return false;
     const key = `answer:${++this.answers}`;
-    const added = this.queue.add({ key, group: key, text, silent: false, urgent: true, replyTo }, this.now());
+    const added = this.queue.add({ key, group: key, text, silent: false, urgent: true, replyTo, buttons }, this.now());
     if (added) this.kick();
     return added;
   }
 
   /** Waiting messages are dropped (the channel was turned off or disconnected). */
-  clear() { this.queue.clear(); this.fails = 0; this.rates = 0; }
+  clear() { this.queue.clear(); this.asked.clear(); this.fails = 0; this.rates = 0; }
 
   /** Resolves when nothing waits and nothing is on its way (for tests). */
   async idle() { while (this.running || this.queue.size) await new Promise((r) => setTimeout(r, 5)); }
@@ -128,13 +161,21 @@ export class Outbox {
   /** null: sent or given up; a number: how long to wait before trying it again. */
   private async sendOne(o: Outgoing): Promise<number | null> {
     try {
-      // The bot sends plain text; long news goes in up to three parts.
-      let first = true;
-      for (const part of splitText(o.text)) {
-        const id = await this.ch.send(part, { silent: o.silent, replyTo: first ? o.replyTo : undefined });
-        first = false;
+      if (o.edit !== undefined) {
+        await this.ch.edit(o.edit, o.text || null);
+        this.lastSent = this.now();
+        this.fails = 0;
+        this.rates = 0;
+        return null;
+      }
+      // The bot sends plain text; long news goes in up to three parts, the buttons under the last.
+      const parts = splitText(o.text);
+      for (const [i, part] of parts.entries()) {
+        const last = i === parts.length - 1;
+        const id = await this.ch.send(part, { silent: o.silent, replyTo: i === 0 ? o.replyTo : undefined, buttons: last ? o.buttons : undefined });
         this.lastSent = this.now();
         if (o.ref) this.sent.add(id, o.ref);
+        if (last && o.buttons?.length && o.ref?.startsWith('d:')) this.asked.set(o.ref.slice(2), { id, text: part });
       }
       this.fails = 0;
       this.rates = 0;
