@@ -5,6 +5,7 @@ import type { UsageClock } from './usage';
 import type { UpdateView } from './update';
 import type { ChatEv } from './chatEvents';
 import type { SleepView } from './autoSleep';
+import type { TelegramView } from './remote';
 
 export type Lang = 'en' | 'ko';
 
@@ -528,6 +529,8 @@ export interface AppState {
   sleep?: SleepView;
   /** The newer version and how far it is (null with the update setting off). */
   update?: UpdateView | null;
+  /** The phone channel for Settings (shared/remote.ts); no token in it. */
+  telegram?: TelegramView;
   setupNeeded: boolean;
   settings: SettingsView;
   accounts: AccountView[];

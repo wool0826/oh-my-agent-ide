@@ -1169,3 +1169,12 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Copy: `navigator.clipboard.writeText` in the click, then `execCommand('copy')`. If both fail, the shown text is selected and a toast says so. The copied state is the icon, the aria-label and the hint, kept across redraws by key. It covers the saved script card (shown on hover or focus while folded), a `!` run (command and output; it was a text link before) and every code block in chat (a bar with its language).
     - Step markers are SVG icons (`s-tick`, `s-chev`, a CSS dot), not the mock-up's ✓ ▸ · characters. The time is the app's `ago()` format. The copied tick reuses `s-tick`.
     - Rejected: the native `title` (the app hints with `data-tip`), and a card that takes the pointer (it would block the rows under it).
+
+245. **Telegram is set up in Settings > Notifications: the token is checked with Telegram, kept only through safeStorage, and the bot belongs to the one private chat that sent the code and that the desktop then confirmed** (T-0155, follows 241).
+    - Turning it on shows one warning first (stored on Telegram servers, not end-to-end encrypted); the group otherwise has labels, fields, buttons and a status chip only.
+    - The token goes to the main process once and the field is cleared; settings.json keeps `telegramTokenEnc` (`enc:` from safeStorage) and `telegram` (bot id and name, owner id and name), and `settingsView()` leaves both out. Where safeStorage cannot encrypt, the token is refused rather than kept as `raw:` like the Jira token.
+    - A new token is checked with `getMe` before it is saved. The same bot keeps its owner; another bot needs pairing again.
+    - Polling runs only while a code is open (10 minutes). A matching code from a private chat does not pair by itself: the sender's name and id show with Connect and Reject, so a code read off the screen by someone else cannot take the bot. Reject opens a new code. Once paired the app only sends, so nothing reads the chat.
+    - A code that strangers used up shows as None with a New code button.
+    - A refused token on a send or at launch marks the link Token invalid and says so in the chat once; a new token clears it. Disconnect forgets the token, the bot and the owner (the token itself stays valid until it is revoked in BotFather).
+    - Rejected: pairing on the code alone (a shoulder-surfed code would be enough), polling all the time once paired (not needed until chat into the Dispatcher), a plain-text fallback for the token.

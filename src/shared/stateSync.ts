@@ -208,6 +208,7 @@ export const PART_PANELS: Record<Part, readonly Panel[]> = {
   runs: ['workers'],
   memorySync: ['memSync'],
   dispatcher: ['dispatcher', 'chat'],
+  telegram: [],
 };
 
 /** The panels to draw again for these changed parts. */

@@ -40,6 +40,10 @@ export interface Settings extends SettingsView {
   accounts: StoredAccount[];
   /** The Jira API token, encrypted like an account token. */
   jiraTokenEnc?: string;
+  /** The Telegram bot token, encrypted with safeStorage only (src/main/remote/telegramLink.ts). */
+  telegramTokenEnc?: string;
+  /** The bot and its owner (shared/remote.ts TelegramStored); the page gets AppState.telegram instead. */
+  telegram?: unknown;
 }
 
 export const dataDir = () => (process.env.OMA_DATA_DIR ? path.resolve(process.env.OMA_DATA_DIR) : app.getPath('userData'));
@@ -156,7 +160,9 @@ export function saveSettings() {
 
 export function updateSettings(patch: Partial<SettingsView>) {
   const s = loadSettings();
-  Object.assign(s, patch);
+  // A patch from the window never replaces what only the main process writes: accounts and stored tokens.
+  const { accounts: _a, jiraTokenEnc: _j, telegramTokenEnc: _t, telegram: _g, ...safe } = patch as Partial<Settings>;
+  Object.assign(s, safe);
   fix(s);
   saveSettings();
 }
@@ -175,7 +181,7 @@ export function decryptToken(enc: string): string {
 }
 
 export function settingsView(): SettingsView {
-  const { accounts: _a, jiraTokenEnc, ...rest } = loadSettings();
+  const { accounts: _a, jiraTokenEnc, telegramTokenEnc: _t, telegram: _g, ...rest } = loadSettings();
   return { ...rest, jiraTokenSet: !!jiraTokenEnc };
 }
 
