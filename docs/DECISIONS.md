@@ -1118,3 +1118,7 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Rejected:
       - Measuring in the main process: Electron has no API for the button frames.
       - Moving the back button below the lights strip: it changes the Settings layout to dodge the numbers.
+237. **Every layer over the window (dialog, scrim, palette, Settings sheet, menus, popovers) cancels the window's drag regions where it lies, and the picture viewer starts below the top bar** (T-0147).
+    - Cause: Electron hit-tests `-webkit-app-region: drag` before the page, so the toolbar and the sidebar's `.lights` strip kept dragging (and double-click maximizing) the window through a scrim. The picture viewer's 24px inset also put its top under the Windows caption buttons and the macOS traffic lights.
+    - Now those layers are `no-drag` in one rule next to `.drag`; a `.drag` inside one (the Settings sheet's bar) adds its own region back. The viewer's top inset is `--toolbar-h`. Native window controls stay usable.
+    - Rejected: `inert` on the window behind a dialog, because closing code gives the focus back to the opener in the same tick and an inert opener would refuse it; Tab is already kept inside a modal. Tooltips and the narrow-window drawer stay out of the rule: a tooltip is not modal, and the drawer starts below the bar.
