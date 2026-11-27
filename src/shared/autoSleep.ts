@@ -16,6 +16,8 @@ export interface SleepInput {
   decisions: { id: string; status: string }[];
   mergeQueue: { taskId: string }[];
   dispatcherBusy: boolean;
+  /** Worker news waits for a Dispatcher turn of its own (a report not yet handled, or held by a usage limit). */
+  dispatcherDue?: boolean;
   /** The user's shell runs still going whose result goes to the Dispatcher. */
   shellAsking: number;
 }
@@ -27,6 +29,7 @@ export interface SleepInput {
  */
 export function busyReason(s: SleepInput): string | null {
   if (s.dispatcherBusy) return 'Dispatcher in a turn';
+  if (s.dispatcherDue) return 'news waiting for a Dispatcher turn';
   const d = s.decisions.find((x) => x.status === 'pending');
   if (d) return `decision ${d.id} pending`;
   for (const t of s.tasks) {

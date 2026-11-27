@@ -209,7 +209,7 @@ async function boot() {
   store.on('changed', syncAwake);
   syncAwake();
   // "Sleep when done": armed by the user only, never saved; it lets go of the keep-awake blocker before sleeping.
-  autoSleep.init({ dispatcherBusy: () => dispatcher.busy, release: () => awake.release(), pushState });
+  autoSleep.init({ dispatcherBusy: () => dispatcher.busy, dispatcherDue: () => dispatcher.wakePending, release: () => awake.release(), pushState });
   store.on('changed', autoSleep.sync);
   repoEvents.on('progress', pushState);
   if (fakeMode()) registerE2eIpc(awake);

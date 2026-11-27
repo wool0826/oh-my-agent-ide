@@ -10,6 +10,7 @@ import { fakeMode } from './fake';
 
 interface Hooks {
   dispatcherBusy(): boolean;
+  dispatcherDue(): boolean;
   /** Lets go of the keep-awake blocker (shared/awake.ts). */
   release(): void;
   pushState(): void;
@@ -53,6 +54,7 @@ function input(): SleepInput {
     decisions: d.decisions,
     mergeQueue: d.mergeQueue ?? [],
     dispatcherBusy: hooks?.dispatcherBusy() ?? false,
+    dispatcherDue: hooks?.dispatcherDue() ?? false,
     shellAsking: shell.asking,
   };
 }

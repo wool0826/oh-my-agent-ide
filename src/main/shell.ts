@@ -165,7 +165,6 @@ class Shell {
     if (ask) this.asks.add(item.id);
     this.procs.set(item.id, startLine(run, where.cwd, () => this.pushSoon(), () => {
       this.procs.delete(item.id);
-      this.asks.delete(item.id);
       if (run.stopped) run.sent = 'off';
       else {
         run.sent = 'queued';
@@ -173,6 +172,8 @@ class Shell {
       }
       store.changed();
       if (run.ask && !run.stopped) store.emit('shell-done');
+      // Still counted until the Dispatcher took its turn for it, so "sleep when done" sees no gap in between.
+      if (this.asks.delete(item.id)) store.emit('changed');
     }));
     return item.id;
   }

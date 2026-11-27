@@ -497,6 +497,8 @@ class Dispatcher {
   private autoPaused = false;
 
   get busy() { return !!this.session?.busy; }
+  /** Worker news waits for a turn of its own (soon, or once a usage limit resets). */
+  get wakePending() { return this.wakeDue && store.data.pendingUpdates.length > 0; }
 
   /** The report the turn in progress answers: its messages go under that card in the chat (shared/thread.ts). */
   private replyTo: string | null = null;

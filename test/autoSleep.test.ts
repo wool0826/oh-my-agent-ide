@@ -27,6 +27,7 @@ test('autoSleep: what holds the sleep and what does not, state by state', () => 
     ['a pending decision', { decisions: [{ id: 'd1', status: 'pending' }] }, true],
     ['an answered decision', { decisions: [{ id: 'd1', status: 'answered' }] }, false],
     ['the Dispatcher in a turn', { dispatcherBusy: true }, true],
+    ['Worker news waiting for a Dispatcher turn', { dispatcherDue: true }, true],
     ['a running Worker', { workers: [{ id: 'W-1', status: 'running' }] }, true],
     ['a starting Worker', { workers: [{ id: 'W-1', status: 'starting' }] }, true],
     ['a waiting Worker', { workers: [{ id: 'W-1', status: 'waiting' }] }, true],
@@ -99,6 +100,14 @@ test('autoSleep: new work stops the countdown but keeps the arm, and a fresh one
   assert.equal(arm.view().until, S * 3);
   arm.sync(idle(), S * 3);
   assert.deepEqual(calls, ['notify', 'notify', 'release', 'sleep']);
+});
+
+test('autoSleep: work found by the tick at the end of the countdown stops it instead of sleeping', () => {
+  const { arm, calls } = rig();
+  arm.arm('toolbar', idle(), 0);
+  arm.sync(busy(), S + 500);
+  assert.ok(!calls.includes('sleep'));
+  assert.deepEqual(arm.view(), { armed: true, until: null });
 });
 
 test('autoSleep: never armed, it never sleeps', () => {
