@@ -13,6 +13,7 @@ import type { WorkerManager, WorkerSession } from '../workers';
 import { WORKER_TASK_COMPACT } from '../../../shared/context';
 import { providerOf } from '../../../shared/models';
 import { isLocalRepo } from '../../../shared/localRepo';
+import { branchPrOwned } from '../../../shared/prOwner';
 import { afterDependency, branchPrDue, cancelWhy, describeCancel, isQueued, pickBranchPr } from '../../../shared/queue';
 import { describePick, startWorker } from '../../../shared/routing';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../../shared/slots';
@@ -176,10 +177,11 @@ async function adoptBranchPr(m: WorkerManager, dep: Task) {
   const cwd = w?.cwd ?? store.repo(dep.repo!)?.path;
   if (!cwd) return followUp(m, dep);
   const finish = dep.finishedAt;
-  const r = await run('gh', ['pr', 'list', '--head', dep.branch!, '--state', 'all', '--json', 'url,state', '--limit', '10'], { cwd, env: ghEnv(), timeoutMs: 60_000 });
+  const r = await run('gh', ['pr', 'list', '--head', dep.branch!, '--state', 'all', '--json', 'url,state,headRefName,isCrossRepository', '--limit', '10'], { cwd, env: ghEnv(), timeoutMs: 60_000 });
   let list: unknown;
   try { list = r.code === 0 ? JSON.parse(r.stdout) : null; } catch { list = null; }
-  const pr = pickBranchPr(list);
+  const repo = store.repo(dep.repo!);
+  const pr = pickBranchPr(list, (p) => branchPrOwned(p, dep, repo));
   const cur = store.task(dep.id);
   // Reopened (or finished again) meanwhile: that finish settles what waits on it.
   if (!cur || cur.finishedAt !== finish || cur.status !== 'done') return;

@@ -9,6 +9,7 @@ import { log } from './log';
 import { automations } from './automations';
 import { ask, waitFor } from './decisions';
 import { MAX_CI_FIXES, ciFixBody, failedLogTail, parseChecks, planCiFix, readiness, runsOf, type Check, type RollupItem } from './prchecks';
+import { ownsPr } from '../shared/prOwner';
 import { adoptSeen, isBot, parsePages, prBusy, prsToWatch, type PrWatch } from '../shared/prs';
 import { MERGE_QUEUE, enqueue, headEntry, inPhase, leave, leftKey, leftNote, merged, newlyLeft, nextStep, prune, removeEntry, tickAfter, updateRefused, updating } from '../shared/mergeQueue';
 import { ciReason } from '../shared/askWhy';
@@ -28,6 +29,9 @@ import type { Decision, MergeQueueEntry, MergeQueueLeft, Task } from '../shared/
  */
 
 const parsePr = parsePrUrl;
+
+/** Tasks whose PR is theirs: a PR of another repository, or one a task without a branch cited, is never read (T-0150). */
+const ownPrTasks = () => store.data.tasks.filter((x) => ownsPr(x, x.repo ? store.repo(x.repo) : null));
 
 interface Comment { id: string; author: string; body: string; where: string }
 
@@ -353,7 +357,7 @@ async function stepQueue(entry: MergeQueueEntry): Promise<number | null> {
   const step = nextStep(cur, { state: j.state, headSha: head, behind, mergeable: j.mergeable ?? 'UNKNOWN', checks, names, busy }, Date.now());
   // The task the PR watch hands a conflict to, so the same conflict is not sent a second time by it.
   const conflict = () => {
-    const first = prsToWatch(store.data.tasks).find((w) => w.url.toLowerCase() === url.toLowerCase())?.tasks[0] ?? task;
+    const first = prsToWatch(ownPrTasks()).find((w) => w.url.toLowerCase() === url.toLowerCase())?.tasks[0] ?? task;
     sendConflict(first, true, head, j.baseRefOid ?? '', base);
   };
   switch (step.do) {
@@ -503,7 +507,7 @@ export async function checkPrs(opts: { full?: boolean } = {}): Promise<void> {
   try {
     await cleanUpLeft();
     // While a Worker is fixing review comments the task is "running"; still notice a merge.
-    const watches = prsToWatch(store.data.tasks);
+    const watches = prsToWatch(ownPrTasks());
     const full = isFullRound(Date.now(), lastFull, fullAsked);
     fullAsked = false;
     if (full) lastFull = Date.now();
@@ -539,7 +543,7 @@ export async function checkPrs(opts: { full?: boolean } = {}): Promise<void> {
 function schedule() {
   if (!started) return;
   if (timer) clearTimeout(timer);
-  const ms = nextPollDelay(prsToWatch(store.data.tasks).length > 0, failures);
+  const ms = nextPollDelay(prsToWatch(ownPrTasks()).length > 0, failures);
   dueAt = Date.now() + ms;
   timer = setTimeout(() => { timer = null; void checkPrs(); }, ms);
   timer.unref();
@@ -566,7 +570,7 @@ export function checkPrsNow(): Promise<boolean> {
  */
 export function prWatchChanged() {
   if (running || !timer || failures) return;
-  if (dueAt - Date.now() > PR_POLL.fast && prsToWatch(store.data.tasks).length) schedule();
+  if (dueAt - Date.now() > PR_POLL.fast && prsToWatch(ownPrTasks()).length) schedule();
 }
 
 export function startPrMonitor() {

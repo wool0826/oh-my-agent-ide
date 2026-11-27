@@ -8,6 +8,7 @@ import { notifyTaskEnd } from '../../notify';
 import { store } from '../../store';
 import { nowIso, oneLine } from '../../util';
 import { needsPlan, parseResult } from '../workerPrompt';
+import { pickTaskPr } from '../../../shared/prOwner';
 import { GO_ON_MSG, clip, noResultMsg } from '../workerText';
 import type { WorkerManager } from '../workers';
 import { checkpointLabel } from '../../../shared/checkpoints';
@@ -72,8 +73,13 @@ export function turnEnded(m: WorkerManager, w: Worker, text: string, isError: bo
 
 export function finalize(m: WorkerManager, w: Worker, task: Task, text: string, isError: boolean) {
   if (isError) return fail(m, w, task, text);
-  const parsed = parseResult(text, w.cwd);
   const repo = task.repo ? store.repo(task.repo) : null;
+  // Only a PR of the task's own repository is its PR; other URLs in the report are links (T-0150).
+  const parsed = parseResult(text, w.cwd, (urls) => {
+    const pr = pickTaskPr(urls, task, repo);
+    if (!pr && urls.length) log.info(`[${w.id}] ${task.id}: report names PRs that are not this task's, kept as links: ${urls.join(' ')}`);
+    return pr;
+  });
   // A local-only repository has no PR: the result is the branch the work is on, which the user merges.
   const local = task.kind === 'code' && isLocalRepo(repo) && !!task.branch;
   const prUrl = local ? null : parsed.prUrl;

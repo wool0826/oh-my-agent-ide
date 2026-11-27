@@ -51,6 +51,9 @@ function addWorker(over: Partial<Worker> = {}): Worker {
 }
 
 /** A task in the store; with a Worker, already assigned to it. */
+/** The repository the tests' PRs (github.com/o/r) belong to: only a code task on a branch there records one (T-0150). */
+const OWN = { kind: 'code', repo: 'own' } as const;
+
 function addTask(w: Worker | null, over: Partial<Task> = {}): Task {
   const x: Task = {
     id: `T-${++n}`, title: 'Task', prompt: 'Do it.', kind: 'other', repo: null, workerId: w?.id ?? null, status: 'running',
@@ -79,6 +82,7 @@ beforeEach(() => {
   sent.clear();
   limit(false);
   loadSettings().maxWorkers = 3;
+  if (!store.repo('own')) store.data.repos.push({ name: 'own', url: 'https://github.com/o/r.git', path: tmp, description: '', defaultBranch: 'main', addedAt: now });
 });
 
 test('a usage limit pauses the task: the Worker is idle and the task waits in the queue', () => {
@@ -208,8 +212,8 @@ test('on restart while every account is limited, no Worker is left running', () 
  */
 function limitScene() {
   const w = addWorker({ sessionId: 'sid' });
-  const dep = addTask(w, { title: 'CI 1', kind: 'code', branch: 'agent/t-x' });
-  const next = addTask(w, { title: 'CI 2', kind: 'code', branch: 'agent/t-y', status: 'blocked', afterTaskId: dep.id, startedAt: null });
+  const dep = addTask(w, { title: 'CI 1', ...OWN, branch: 'agent/t-x' });
+  const next = addTask(w, { title: 'CI 2', ...OWN, branch: 'agent/t-y', status: 'blocked', afterTaskId: dep.id, startedAt: null });
   const s = workers.ensureSession(w)!;
   limit(true);
   s.ev.onLimited!();
@@ -269,7 +273,7 @@ test('T-0134: after the reminder, a task with steps left stays open instead of f
 
 test('T-0136: a fix turn on a task whose PR is open ends pr_open after the reminder, not running until the merge', () => {
   const w = addWorker({ sessionId: 'sid' });
-  const x = addTask(w, { kind: 'code', branch: 'agent/t-x', prUrl: 'https://github.com/o/r/pull/9', prState: 'OPEN' });
+  const x = addTask(w, { ...OWN, branch: 'agent/t-x', prUrl: 'https://github.com/o/r/pull/9', prState: 'OPEN' });
   const s = workers.ensureSession(w)!;
   s.ev.onTurnEnd!({ ...emptyTurn, text: 'Pushed the CI fix.' });
   assert.equal(x.status, 'running');
@@ -677,7 +681,7 @@ test('review comments wait for a slot, then go out to the same Worker', () => {
   addTask(a);
   workers.ensureSession(a);
   const b = addWorker({ sessionId: 'sb' });
-  const pr = addTask(b, { status: 'pr_open', prUrl: 'https://github.com/o/r/pull/3', prState: 'OPEN', finishedAt: now, steps: [{ title: 'Code', doneAt: now }, { title: 'PR', doneAt: null }] });
+  const pr = addTask(b, { ...OWN, branch: 'agent/t-pr', status: 'pr_open', prUrl: 'https://github.com/o/r/pull/3', prState: 'OPEN', finishedAt: now, steps: [{ title: 'Code', doneAt: now }, { title: 'PR', doneAt: null }] });
   workers.sendReview(pr, '- @me (a.ts:1): rename this');
   assert.deepEqual([pr.status, pr.queueReason], ['queued', 'slot']);
   assert.equal(sent.get(b.id), undefined);
@@ -1354,7 +1358,7 @@ const askBash = (s: AgentSession, command: string, id: string) =>
 test('PR feedback for a finished task waits while its Worker is on another task, and settles its own task, not the other', () => {
   const pr = 'https://github.com/o/r/pull/1';
   const w = addWorker({ sessionId: 'sid' });
-  const a = addTask(w, { title: 'A', status: 'pr_open', prUrl: pr, prState: 'OPEN', branch: 'a', finishedAt: now });
+  const a = addTask(w, { title: 'A', ...OWN, status: 'pr_open', prUrl: pr, prState: 'OPEN', branch: 'a', finishedAt: now });
   const b = addTask(w, { title: 'B' });
   const s = workers.ensureSession(w)!;
   s.send('Working on B.');
@@ -1636,6 +1640,29 @@ test('Worker sessions get the claude.ai artifacts and connectors, unless they ar
   }
 });
 
+test('T-0150: a report citing a PR of another repository finishes done, with the PR as a link, on a code or a read-only task', () => {
+  const foreign = 'https://github.com/electron/electron/pull/51989';
+  for (const over of [{}, { ...OWN, branch: 'agent/t-c' }] as Partial<Task>[]) {
+    const w = addWorker({ sessionId: `s-${n}` });
+    const x = addTask(w, over);
+    const s = workers.ensureSession(w)!;
+    const text = `RESULT: Upstream bug (${foreign})\nPR: ${foreign}`;
+    feed(s, said(text), turnEnd(text));
+    assert.deepEqual([x.status, x.prUrl, x.prState], ['done', null, null]);
+    assert.ok(x.links?.includes(foreign));
+  }
+});
+
+test('T-0150: a fix turn that cites a PR of another repository keeps the task\'s own PR', () => {
+  const own = 'https://github.com/o/r/pull/12';
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, { ...OWN, branch: 'agent/t-k', prUrl: own, prState: 'OPEN' });
+  const s = workers.ensureSession(w)!;
+  const text = 'RESULT: Fixed, as in https://github.com/electron/electron/pull/51989';
+  feed(s, said(text), turnEnd(text));
+  assert.deepEqual([x.status, x.prUrl], ['pr_open', own]);
+});
+
 test('the artifact a report names under its RESULT line is kept with the result and told to the Dispatcher', () => {
   const w = addWorker({ sessionId: 'sid' });
   const x = addTask(w);
@@ -1650,7 +1677,7 @@ test('the artifact a report names under its RESULT line is kept with the result 
   feed(s, said('RESULT: Fixed a typo'), turnEnd('RESULT: Fixed a typo'));
   assert.deepEqual(x.links, ['https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7']);
   // One that names another adds it; the task's own PR is not listed again.
-  Object.assign(x, { status: 'running', prUrl: 'https://github.com/o/r/pull/3' });
+  Object.assign(x, { status: 'running', ...OWN, branch: 'agent/t-x', prUrl: 'https://github.com/o/r/pull/3' });
   const more = 'RESULT: Added a page\n\nSee https://github.com/o/r/pull/3 and https://claude.ai/artifact/second';
   feed(s, said(more), turnEnd(more));
   assert.deepEqual(x.links, ['https://claude.ai/artifact/2hL4515n1HmJCSDrwV96T7', 'https://claude.ai/artifact/second']);
