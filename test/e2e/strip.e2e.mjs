@@ -93,7 +93,7 @@ flow("the top strip crosses the window, the panels start below it, and nothing i
     const x = parseFloat(box);
     // As tall as the strip: that is the height the lights are centred in.
     assert.equal(box.split('×')[1], '44', box);
-    await everyWidth(app, { start: Math.max(68, x) + 8, end: 12, lights: x }, 'this Mac');
+    await everyWidth(app, { start: Math.max(78, x) + 8, end: 12, lights: x }, 'this Mac');
   } else {
     // The page's width is set by the test and the window's is not, so the reported box is read in the page each time.
     const real = "(() => { const o = navigator.windowControlsOverlay, r = o?.visible ? o.getTitlebarAreaRect() : null; const caps = r && r.width > 0 ? innerWidth - r.x - r.width : 0; const end = Math.max(150, caps + 12); return { start: 12, end, caps: end - 12 }; })()";
@@ -102,14 +102,14 @@ flow("the top strip crosses the window, the panels start below it, and nothing i
 
   // macOS with stand-in boxes: macOS 15's lights where the system puts them, wider ones (macOS 26), and an odd one.
   await system(app, 'platform-darwin');
-  for (const lights of [68, 82, 124]) {
+  for (const lights of [78, 92, 124]) {
     await app.evaluate(`document.body.style.setProperty('--strip-start', '${lights + 8}px'); 1`);
     await everyWidth(app, { start: lights + 8, end: 12, lights }, `macOS, lights ${lights}px wide`);
   }
-  // Before a Mac's window reports its box the strip keeps the smallest one clear. (A Mac reports its own, checked above.)
+  // Before a Mac's window reports its box the strip keeps the usual one clear (78: what macOS 15 reports). (A Mac reports its own, checked above.)
   if (!mac) {
     await system(app, 'platform-darwin');
-    await everyWidth(app, { start: 76, end: 12, lights: 68 }, 'macOS before the window reports');
+    await everyWidth(app, { start: 86, end: 12, lights: 78 }, 'macOS before the window reports');
   }
   // Full screen hides the lights: the strip starts at the window's edge.
   await system(app, 'platform-darwin');

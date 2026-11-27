@@ -229,7 +229,7 @@ Nested corners stay concentric (inner ≈ outer − padding).
 | `--row-min` | 44 | settings rows |
 | `--icon-sm/md/lg/hero` | 13/16/18/44 | in-button icons / glyph art / glyph box / empty states |
 | Layout | 272 · 344 · 44 · 8 | sidebar, inspector, top strip height, panel inset. The strip runs across the window and is as tall as the window's own buttons over it (`STRIP_H` in `src/shared/theme.ts`); both sidebars and the main column start below it |
-| `--strip-start` · `--strip-end` (in `styles.css`, not tokens) | 12 · 12 | where the top strip's content starts and ends. macOS outside full screen: start = the traffic lights' box as the window reports it (`env(titlebar-area-x)`, at least 68) + 8. Windows and Linux: end = the caption buttons as reported + 12, at least 150. Settings' strip starts at the same place |
+| `--strip-start` · `--strip-end` (in `styles.css`, not tokens) | 12 · 12 | where the top strip's content starts and ends. macOS outside full screen: start = the traffic lights' box as the window reports it (`env(titlebar-area-x)`, at least 78) + 8. Windows and Linux: end = the caption buttons as reported + 12, at least 150. Settings' strip starts at the same place |
 
 Targets smaller than 24px visually (chip remove 20, clear 24) get a transparent inset so the clickable area is ≥24×24 (WCAG 2.5.8). Link rows (`.linkbtn`, `.links a`, plan links) are one text line high and get the same 24px-high area through `::after`; links inside a sentence keep the height of their line.
 
