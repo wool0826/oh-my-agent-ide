@@ -384,7 +384,8 @@ function usagePopHtml() {
 }
 
 /** The usage popover: every account's numbers while the pointer or the focus is on the rings or on the popover. */
-export const usagePop = { shown: false, hover: null as string | null, timer: 0, hideTimer: 0, html: '', quiet: false };
+/** `keys`: the focus in it came with the keyboard, so it holds the popover open; a click's focus does not. */
+export const usagePop = { shown: false, hover: null as string | null, timer: 0, hideTimer: 0, html: '', quiet: false, keys: false };
 
 /** Opens the popover. Once it is open, moving between the rings only moves the mark (hoverUsage): nothing is drawn again. */
 export function showUsagePop() {
@@ -410,6 +411,7 @@ export function hideUsagePop() {
   if (!usagePop.shown) return;
   usagePop.shown = false;
   usagePop.hover = null;
+  usagePop.keys = false;
   const el = $('#usage-pop');
   clearTimeout(usagePop.timer);
   el.classList.remove('opening');
@@ -421,7 +423,7 @@ export function hideUsagePop() {
 export function hideUsageSoon() {
   clearTimeout(usagePop.hideTimer);
   usagePop.hideTimer = window.setTimeout(() => {
-    if ($('#usage-pop').matches(':hover') || $('#usage-pop').contains(document.activeElement)) return;
+    if ($('#usage-pop').matches(':hover') || (usagePop.keys && $('#usage-pop').contains(document.activeElement))) return;
     hideUsagePop();
   }, 200);
 }
