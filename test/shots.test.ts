@@ -71,6 +71,17 @@ test('shots: a shot without a partner follows the pairs, in the order it came', 
   assert.deepEqual(names(shots), ['c-before-dark.png', 'c-after-dark.png', 'c-dark.png', 'c-after-narrow.png', 'c-before-light.png']);
 });
 
+test('shots: a second before of the same variant has no after left and follows the pairs', () => {
+  const { shots, pairs } = orderShots(['/r/c-before-light.png', '/r/c-before-light.jpg', '/r/c-after-light.png'].map(shotOf));
+  assert.equal(pairs, 1);
+  assert.deepEqual(names(shots), ['c-before-light.png', 'c-after-light.png', 'c-before-light.jpg']);
+});
+
+test('shots: a name with no theme or width pairs with its own kind and comes after the themed pairs', () => {
+  const { shots } = orderShots(['/r/c-before.png', '/r/c-after.png', '/r/c-after-dark.png', '/r/c-before-dark.png', '/r/c-light.png'].map(shotOf));
+  assert.deepEqual(names(shots), ['c-before-dark.png', 'c-after-dark.png', 'c-before.png', 'c-after.png', 'c-light.png']);
+});
+
 test('shots: screens with a pair come first; images without one follow in the report\'s order', () => {
   const { sets } = shotSets(['/r/logo.png', '/r/menu-before.png', '/r/inbox-before.png', '/r/zz.png', '/r/inbox-after.png']);
   assert.deepEqual(sets.map((s) => names(s.shots)), [['inbox-before.png', 'inbox-after.png'], ['logo.png'], ['menu-before.png'], ['zz.png']]);
