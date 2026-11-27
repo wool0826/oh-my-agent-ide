@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { REUSE_MAX_CONTEXT, describePick, keywords, lateBind, newWorkLine, pickWorker, rankWorkers, reuseBlock, startWorker, type NewTask } from '../src/shared/routing';
+import { COMPACT_STALE_MS, REUSE_MAX_CONTEXT, contextCost, describePick, keywords, lateBind, newWorkLine, pickWorker, rankWorkers, reuseBlock, startWorker, type NewTask } from '../src/shared/routing';
 import { WORKER_TASK_COMPACT } from '../src/shared/context';
 import type { Task, Worker } from '../src/shared/types';
 
@@ -42,11 +42,11 @@ test('routing: a code task goes to an idle Worker on its repository, never one o
   assert.equal(pickWorker(ws, tasks, nt({ repo: null }), MODEL, NOW), null, 'a code task with no repository has no worktree to reuse');
 });
 
-test('routing: busy, open-work, near-compaction, archived and other-model Workers are left out', () => {
+test('routing: busy, open-work, compacting, archived and other-model Workers are left out', () => {
   const ws = [
     worker('W-01', { status: 'running' }),
     worker('W-02'),
-    worker('W-03', { contextTokens: REUSE_MAX_CONTEXT }),
+    worker('W-03', { compactingSince: hoursAgo(0.1) }),
     worker('W-04', { status: 'archived' }),
     worker('W-05', { model: 'claude-sonnet-5-5' }),
     worker('W-06', { status: 'error' }),
@@ -55,7 +55,9 @@ test('routing: busy, open-work, near-compaction, archived and other-model Worker
   assert.equal(pickWorker(ws, tasks, nt(), MODEL, NOW), null);
   assert.equal(reuseBlock(ws[0], tasks), 'busy');
   assert.equal(reuseBlock(ws[1], tasks), 'has open work');
-  assert.equal(reuseBlock(ws[2], tasks), `context ${REUSE_MAX_CONTEXT / 1000}K is near compaction`);
+  assert.equal(reuseBlock(ws[2], tasks, NOW), 'compacting its context');
+  // A compaction whose end never came does not hold the Worker for good.
+  assert.equal(reuseBlock(worker('W-03', { compactingSince: new Date(NOW - COMPACT_STALE_MS).toISOString() }), [], NOW), null);
   assert.equal(reuseBlock(ws[3], tasks), 'archived');
   assert.equal(reuseBlock(ws[5], tasks), 'stopped with an error');
   // A PR in review does not hold the Worker: review comments come back as a new turn on the same task.
@@ -65,8 +67,51 @@ test('routing: busy, open-work, near-compaction, archived and other-model Worker
 test('routing: the New work line says when an idle Worker is compacted before the task it takes', () => {
   assert.equal(newWorkLine(worker('W-01', { contextTokens: WORKER_TASK_COMPACT - 1 }), []), 'can take it');
   assert.equal(newWorkLine(worker('W-01', { contextTokens: 90_000 }), []), 'can take it (context 90K is compacted before it starts)');
-  assert.equal(newWorkLine(worker('W-01', { contextTokens: REUSE_MAX_CONTEXT }), []), `context ${REUSE_MAX_CONTEXT / 1000}K is near compaction`);
+  assert.equal(newWorkLine(worker('W-01', { contextTokens: 200_000 }), []), 'can take it (context 200K is compacted before it starts)');
   assert.equal(newWorkLine(worker('W-01', { status: 'running', contextTokens: 90_000 }), []), 'busy');
+});
+
+// T-0154: a Worker is compacted before a new task starts, so its context size alone never keeps it from the task.
+const SIZES = [10_000, 60_000, 150_000, 200_000];
+const relatedWork = (id: string) => task(`T-${id}`, { workerId: id, title: 'PR monitor shows merged PR state', summary: 'prmonitor merged twice' });
+const otherWork = (id: string) => task(`T-${id}`, { workerId: id, title: 'Scrollbar fades while scrolling' });
+
+test('routing: context 10K/60K/150K/200K, related or not, idle or compacting (T-0154)', () => {
+  for (const contextTokens of SIZES) {
+    for (const [what, work] of [['related', relatedWork], ['unrelated', otherWork]] as const) {
+      const idle = worker('W-01', { contextTokens });
+      const compacting = worker('W-01', { contextTokens, compactingSince: hoursAgo(0.1) });
+      const tasks = [work('W-01')];
+      const at = `${contextTokens / 1000}K ${what}`;
+      assert.equal(reuseBlock(idle, tasks, NOW), null, at);
+      assert.equal(pickWorker([idle], tasks, nt(), MODEL, NOW)?.worker.id, 'W-01', at);
+      assert.equal(newWorkLine(idle, tasks), contextTokens >= WORKER_TASK_COMPACT ? `can take it (context ${contextTokens / 1000}K is compacted before it starts)` : 'can take it', at);
+      assert.equal(reuseBlock(compacting, tasks, NOW), 'compacting its context', at);
+      assert.equal(pickWorker([compacting], tasks, nt(), MODEL, NOW), null, at);
+    }
+  }
+});
+
+test('routing: related context wins at any size; unrelated context costs more as it grows (T-0154)', () => {
+  for (const contextTokens of SIZES) {
+    const related = worker('W-01', { contextTokens });
+    const tasks = [relatedWork('W-01'), otherWork('W-02')];
+    assert.equal(pickWorker([related, worker('W-02', { contextTokens })], tasks, nt(), MODEL, NOW)?.worker.id, 'W-01', `${contextTokens / 1000}K`);
+    assert.equal(pickWorker([related, worker('W-02', { contextTokens: 10_000 })], tasks, nt(), MODEL, NOW)?.worker.id, 'W-01', `${contextTokens / 1000}K vs 10K`);
+  }
+  const costs = SIZES.map((contextTokens) => contextCost(worker('W-01', { contextTokens })));
+  assert.deepEqual(costs, [0.2, 1.6, 2.5, 3]);
+  const unrelated = SIZES.map((contextTokens, i) => worker(`W-0${i + 1}`, { contextTokens }));
+  const ranked = rankWorkers(unrelated, unrelated.map((w) => otherWork(w.id)), nt(), MODEL, NOW);
+  assert.deepEqual(ranked.map((c) => c.worker.contextTokens), SIZES);
+});
+
+test('routing: a Codex Worker is not compacted before the task, so from 150K it does not take new work by itself (T-0154)', () => {
+  const codex = 'gpt-5.5-codex';
+  assert.equal(newWorkLine(worker('W-01', { model: codex, contextTokens: 100_000 }), []), 'can take it');
+  assert.equal(contextCost(worker('W-01', { model: codex, contextTokens: 100_000 })), 2);
+  assert.equal(reuseBlock(worker('W-01', { model: codex, contextTokens: REUSE_MAX_CONTEXT }), []), 'context 150K cannot be compacted before it starts');
+  assert.equal(reuseBlock(worker('W-01', { contextTokens: REUSE_MAX_CONTEXT }), []), null, 'a Claude Worker is compacted first');
 });
 
 test('routing: the Worker that did related work wins over a fresher one', () => {
@@ -107,6 +152,7 @@ test('routing: the pick is explained for the Dispatcher', () => {
   const c = pickWorker([worker('W-02')], [task('T-2', { workerId: 'W-02', title: 'prmonitor merge cleanup' })], nt({ prompt: 'prmonitor merge' }), MODEL, NOW)!;
   assert.equal(describePick(c, 'demo'), 'knows demo from 1 task(s); related: prmonitor, merge; context 40K');
   assert.equal(describePick({ ...c, related: [] }, null), 'did related work; context 40K');
+  assert.equal(describePick({ ...c, worker: worker('W-02', { contextTokens: 150_000 }) }, 'demo'), 'knows demo from 1 task(s); related: prmonitor, merge; context 150K, compacted before it starts');
 });
 
 test('routing: a task that cannot start yet waits without a Worker; a pinned one is bound at once (T-0146)', () => {
@@ -126,9 +172,9 @@ test("routing: a chained task starts on its dependency's Worker when that one pa
   assert.equal(startWorker(ws, tasks, nt(), MODEL, null, NOW)?.worker.id, pickWorker(ws, tasks, nt(), MODEL, NOW)?.worker.id);
 });
 
-test('routing: a busy, other-model or full dependency Worker gives way to the usual pick', () => {
+test('routing: a busy, other-model or compacting dependency Worker gives way to the usual pick', () => {
   const tasks = [task('T-1', { workerId: 'W-01' }), task('T-2', { workerId: 'W-02' })];
-  for (const patch of [{ status: 'running' as const }, { model: 'claude-sonnet-5-5' }, { contextTokens: REUSE_MAX_CONTEXT + 1 }]) {
+  for (const patch of [{ status: 'running' as const }, { model: 'claude-sonnet-5-5' }, { compactingSince: hoursAgo(0.1) }]) {
     const ws = [worker('W-01'), worker('W-02', patch)];
     assert.equal(startWorker(ws, tasks, nt(), MODEL, 'W-02', NOW)?.worker.id, 'W-01', JSON.stringify(patch));
   }

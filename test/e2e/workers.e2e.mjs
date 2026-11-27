@@ -30,6 +30,7 @@ flow('a Worker is compacted before its next task, not when its task finishes', {
   assert.ok(at(/Compacting the conversation \(90K\)/) > at(/\[Task T-0002\]/), log);
   assert.ok(at(/Compacted the conversation \(90K → 23K\)/) < at(/RESULT: Polished/), log);
   assert.equal(s.workers.find((w) => w.id === first.workerId).contextTokens, 22500);
+  assert.ok(!s.workers.find((w) => w.id === first.workerId).compactingSince, 'no compaction left under way');
 });
 
 flow('a URL in a result is a short link on the card and a link in its words', {}, async (app) => {

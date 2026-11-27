@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { ASSIGN_MODES, type AssignMode } from '../../shared/accountPause';
-import { dialog } from 'electron';
+import { clipboard, dialog } from 'electron';
 import { handle, type IpcContext } from './handle';
 import { loadSettings, updateSettings } from '../settings';
 import { paths } from '../paths';
@@ -21,6 +21,8 @@ import type { AccountPlan, ClaudeInfo, SettingsView } from '../../shared/types';
 export function registerSettingsIpc(ctx: IpcContext) {
   handle('preflight:run', async () => { const r = await runPreflight(); ctx.pushState(); return r; });
   handle('diag:export', () => exportDiagnostics(ctx.win()));
+  // The main process's clipboard: it takes text without the window being focused, unlike navigator.clipboard.
+  handle('clipboard:write', async (text: string) => { await clipboard.writeText(String(text)); });
   handle('settings:save', (patch: Partial<SettingsView>) => {
     const before = loadSettings();
     // Compared with the folder in use: changing it and back again needs no restart.
