@@ -20,7 +20,7 @@ export function isLocalPath(p: string) {
 
 export type ShotRole = 'before' | 'after';
 
-/** The other parts a screenshot's name can vary by, each with its words in the order they are shown (decisions 232, 238). */
+/** The other parts a screenshot's name can vary by, each with its words in the order they are shown (decisions 232, 242). */
 export const SHOT_AXES = { width: ['wide', 'narrow'], theme: ['light', 'dark'] } as const;
 
 export type ShotAxis = keyof typeof SHOT_AXES;
@@ -32,7 +32,7 @@ export type ShotAxis = keyof typeof SHOT_AXES;
 export type Shot = { path: string; role: ShotRole | null; screen: string } & Record<ShotAxis, string | null>;
 
 const AXIS_NAMES = Object.keys(SHOT_AXES) as ShotAxis[];
-/** Which part orders the pairs first: every light pair, wide then narrow, ahead of every dark one (decision 238). */
+/** Which part orders the pairs first: every light pair, wide then narrow, ahead of every dark one (decision 242). */
 const VARIANT_ORDER: ShotAxis[] = ['theme', 'width'];
 
 const baseName = (p: string) => p.slice(Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')) + 1);
@@ -66,7 +66,7 @@ const axisRank = (a: ShotAxis, v: string | null) => (v === null ? SHOT_AXES[a].l
 const variantOf = (s: Shot) => AXIS_NAMES.map((a) => s[a] ?? '').join('|');
 
 /**
- * A screen's shots in the order they are shown (decision 238): pair by pair, each before right ahead of the after
+ * A screen's shots in the order they are shown (decision 242): pair by pair, each before right ahead of the after
  * of the same width and theme, light pairs ahead of dark ones and wide ahead of narrow within each. A shot left
  * without a partner (a before with no after, a name with neither word) follows the pairs, in the order it came.
  */
