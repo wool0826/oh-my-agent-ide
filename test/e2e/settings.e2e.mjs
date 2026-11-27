@@ -67,11 +67,33 @@ flow('Settings shows what is missing on this computer and the command that fixes
   await app.until("document.querySelector('.side-foot [data-action=\"open-settings\"]').classList.contains('has-issue')", 'the dot on the gear');
   await app.click('[data-action="open-settings"]');
   await app.click('[data-action="pane"][data-id="general"]');
-  await app.until("document.querySelectorAll('#pre-rows .pill').length >= 4", 'the status rows');
-  const rows = await app.evaluate("[...document.querySelectorAll('#pre-rows .srow')].map((r) => r.innerText.replace(/\\s+/g, ' ').trim())");
-  // What failed comes first, with why and its command; the rest are fine. Fake agents need no account.
-  assert.match(rows[0], /^GitHub sign-in: github\.company\.com Installed, but not signed in\. Run: gh auth login --hostname github\.company\.com Needed$/);
-  assert.deepEqual(rows.slice(1).map((r) => r.replace(/ OK$/, '')), ['git', 'GitHub CLI (gh)', 'GitHub sign-in: github.com', 'IDE home folder']);
+  await app.until("!!document.querySelector('#pre-rows .ssum')", 'the status summary');
+  // Closed: one line, with what needs something by name and how many are fine. Fake agents need no account.
+  const pills = "[...document.querySelectorAll('#pre-rows .ssum .pill')].map((p) => [p.textContent, p.dataset.tone])";
+  assert.deepEqual(await app.evaluate(pills), [['GitHub sign-in', 'danger'], ['OK 4', 'success']]);
+  assert.equal(await app.evaluate("document.querySelectorAll('#pre-rows .sitem').length"), 0);
+  // Open: what failed first, each row its state icon, its name and a short value; no sentence or command on the row.
+  await app.click('#pre-rows .ssum [data-action="status-fold"]');
+  await app.until("document.querySelectorAll('#pre-rows .sitem').length === 5", 'the five rows');
+  const rows = await app.evaluate("[...document.querySelectorAll('#pre-rows .sitem')].map((r) => [r.querySelector('.sic').getAttribute('aria-label'), r.querySelector('.lbl').textContent, r.querySelector('.v').textContent])");
+  assert.deepEqual(rows[0], ['Needed', 'GitHub sign-in: github.company.com', 'Not signed in']);
+  assert.deepEqual(rows.slice(1).map((r) => [r[0], r[1]]), [['OK', 'git'], ['OK', 'GitHub CLI (gh)'], ['OK', 'GitHub sign-in: github.com'], ['OK', 'IDE home folder']]);
+  assert.equal(await app.evaluate("document.activeElement?.dataset.v"), 'pre', 'the focus stays on the summary disclosure');
+  // A row opened: its detail holds the command and the message from gh whole, each with a copy button.
+  // Every disclosure and copy control is a real button, so Tab reaches it and Enter or Space presses it.
+  assert.deepEqual(await app.evaluate("[...new Set([...document.querySelectorAll('#pre-rows [data-action]')].map((b) => b.tagName + ':' + b.type))]"), ['BUTTON:button']);
+  const first = '#pre-rows .sitem [data-action="status-fold"]';
+  await app.click(first);
+  await app.until("!!document.querySelector('#pre-rows .sdet')", 'the first row open');
+  assert.equal(await app.evaluate(`document.querySelector('${first}').getAttribute('aria-expanded')`), 'true');
+  const kv = await app.evaluate("[...document.querySelectorAll('#pre-rows .skv dt')].map((d) => [d.textContent, d.nextElementSibling.textContent, d.nextElementSibling.nextElementSibling.getAttribute('aria-label')])");
+  assert.deepEqual(kv[0], ['Run', 'gh auth login --hostname github.company.com', 'Copy: Run']);
+  assert.equal(kv[1][0], 'Error');
+  await app.click('#pre-rows .skv [data-action="status-copy"]');
+  await app.until("(document.querySelector('.toast')?.innerText ?? '').includes('Copied')", 'the copied toast');
+  // Narrow: nothing runs out of the group sideways.
+  await app.size(900);
+  assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#pre-rows .ssum, #pre-rows .sitem, #pre-rows .sdet')].filter((r) => r.scrollWidth > r.clientWidth + 1).map((r) => r.className)"), []);
   assert.equal((await app.state()).preflightFailed, 1);
 });
 
@@ -220,8 +242,8 @@ flow('the repository list has columns, the sidebar sums up before a pick, and Se
   // Settings: every check is fine, so the status is one line; the home folder shows both of its ends.
   await app.click('[data-action="open-settings"]');
   await app.click('[data-action="pane"][data-id="general"]');
-  await app.until("!!document.querySelector('#pre-rows .pre-all')", 'the status on one line');
-  assert.match(await app.evaluate("document.querySelector('#pre-rows .pre-all .pill').textContent"), /^All \d OK$/);
+  await app.until("!!document.querySelector('#pre-rows .ssum')", 'the status on one line');
+  assert.match(await app.evaluate("[...document.querySelectorAll('#pre-rows .ssum .pill')].map((p) => p.textContent).join()"), /^All \d OK$/);
   const home = await app.evaluate("[document.querySelector('#set-home').value, document.querySelector('#set-home-v').textContent]");
   assert.ok(home[1].includes('…') && home[0].endsWith(home[1].split('…').pop()), `home shown as ${home[1]}`);
 });

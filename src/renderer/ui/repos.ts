@@ -1,14 +1,14 @@
 // The Repositories view with its issues, Jira issues, and the launch checks shown in Settings.
 import type { Repo } from '../../shared/types';
 import type { Task } from '../../shared/types';
-import { type Key } from '../../shared/i18n';
 import { prsInReview } from '../../shared/prs';
 import { ghRepoRef, type Issue } from '../../shared/issues';
 import { jiraBase, type JiraIssue } from '../../shared/jira';
-import { failedFirst, fixCommand, type Check } from '../../shared/preflight';
+import { checkItem, type Check } from '../../shared/preflight';
 import { PAGE } from '../../shared/paging';
 import { $, call, esc, ic, ide, keepInputs, keepScroll, paged, prNum, S, shortPath, skel, sym, t, taskLabel, toast, tryCall, ui, when } from './core';
 import { go } from './history';
+import { onStatusRedraw, redrawKeepingFocus, statusRows } from './status';
 
 export let jira: undefined | 'loading' | JiraIssue[] | { error: string };
 
@@ -58,29 +58,18 @@ export async function loadPreflight() {
   drawPreflight();
 }
 
-/** The rows of the Status group: each check with what was found, and for a failed one what to do about it. */
+/** The Status group: a summary line, and the checks under it when it is opened (decision 247). */
 export function preflightRows() {
   if (preflight === undefined || preflight === 'loading') return `<div class="srow" role="status" aria-label="${t('pre.checking')}"><span class="skel pre"><i></i></span></div>`;
-  const nameOf = (c: Check) => (c.id === 'ghAuth' ? t('pre.ghAuth', { host: c.host ?? '' }) : t(`pre.${c.id}` as Key));
-  // Everything fine is one line; the rows open up only when something needs doing (H1).
-  if (preflight.length && preflight.every((c) => c.ok)) {
-    const names = preflight.map(nameOf).join(', ');
-    return `<div class="srow pre-all"><span class="lbl" data-tip="${esc(names)}">${esc(names)}</span><span class="pre-r"><i class="pill" data-tone="success">${t('pre.allOk', { n: preflight.length })}</i></span></div>`;
-  }
-  return failedFirst(preflight).map((c) => {
-    const name = nameOf(c);
-    // The main process names the command for this OS (c.cmd); fixCommand covers results from before it did.
-    const cmd = c.ok ? null : (c.cmd ?? fixCommand(c));
-    // A missing tool and a tool that is there but not signed in read differently (gh: not installed vs `gh auth login`).
-    const why = c.ok ? '' : c.missing ? t('pre.missing') : c.id === 'ghAuth' ? t('pre.fix.ghAuth') : cmd ? '' : t(`pre.fix.${c.id}` as Key);
-    const fix = (why ? `<span class="pre-fix">${esc(why)}</span>` : '') + (cmd ? `<code class="pre-cmd">${esc(cmd)}</code>` : c.missing ? `<span class="pre-fix">${t(`pre.fix.${c.id}` as Key)}</span>` : '');
-    return `<div class="srow"><span class="lbl">${esc(name)}</span><span class="pre-r"${c.detail ? ` tabindex="0" data-tip="${esc(c.detail)}"` : ''}>${fix}<i class="pill" data-tone="${c.ok ? 'success' : 'danger'}">${t(c.ok ? 'pre.ok' : 'pre.fail')}</i></span></div>`;
-  }).join('');
+  const accounts = S?.accounts.map((a) => a.label) ?? [];
+  return statusRows('pre', t('pre.title'), preflight.map((c) => checkItem(c, t, accounts)));
 }
+
+onStatusRedraw('pre', () => drawPreflight());
 
 export function drawPreflight() {
   const el = document.getElementById('pre-rows');
-  if (el) el.innerHTML = preflightRows();
+  if (el) redrawKeepingFocus(el, preflightRows());
 }
 
 export function renderRepos() {
