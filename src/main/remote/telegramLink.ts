@@ -11,6 +11,7 @@ import {
   PAIR_TTL_MS, checkPair, cleanTelegram, looksLikeToken, makePairCode, pairLink, remoteStatus,
   type PairCandidate, type Pairing, type RemoteTrouble, type TelegramStored, type TelegramView, type TgUpdate,
 } from '../../shared/remote';
+import { cleanPrefs, type RemoteEvent, type RemoteLevel, type RemotePrefs } from '../../shared/remoteNotice';
 import { TelegramApi, TelegramError, type SendOpts } from './telegramApi';
 import { TelegramPoller, type PollState } from './telegram';
 
@@ -103,7 +104,19 @@ export class TelegramLink extends EventEmitter {
       link: code && c.botName ? pairLink(c.botName, code) : null,
       candidate: this.candidate,
       owner: c.ownerId === null ? null : { id: c.ownerId, name: c.ownerName ?? String(c.ownerId) },
+      prefs: c.prefs,
     };
+  }
+
+  /** What is sent and how much. */
+  prefs(): RemotePrefs { return this.cfg.prefs; }
+
+  /** Turns one kind of news on or off, or sets how much is sent. */
+  setPrefs(patch: { events?: Partial<Record<RemoteEvent, boolean>>; level?: RemoteLevel }) {
+    const c = this.cfg;
+    const prefs = cleanPrefs({ events: { ...c.prefs.events, ...patch.events }, level: patch.level ?? c.prefs.level });
+    this.store.save(this.store.load().tokenEnc, { ...c, prefs });
+    this.changed();
   }
 
   /** At launch: with a paired bot, check once that the token still works. */
@@ -207,7 +220,8 @@ export class TelegramLink extends EventEmitter {
   async disconnect() {
     this.gen++;
     await this.halt();
-    this.store.save('', { ...cleanTelegram(null), enabled: this.cfg.enabled });
+    const c = this.cfg;
+    this.store.save('', { ...cleanTelegram(null), enabled: c.enabled, prefs: c.prefs });
     this.api = null;
     this.trouble = null;
     log.info('telegram disconnected');

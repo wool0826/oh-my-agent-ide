@@ -966,6 +966,7 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .srow .sval.bad { color: var(--warning-text); }
 .srow .tg-code { font-family: var(--font-mono); font-size: var(--fs-body); font-weight: 600; letter-spacing: 0.08em; color: var(--text-primary); }
 #tg-left { font-variant-numeric: tabular-nums; }
+#tg-news { margin-top: var(--space-12); }
 .srow .sval.path { font-family: var(--font-mono); }
 .srow.pre-all > .lbl { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srow.vol > .lbl { flex: 0 0 auto; margin-right: var(--space-16); }
