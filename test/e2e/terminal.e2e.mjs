@@ -33,6 +33,40 @@ flow('a saved script shows its command, runs only from its Run button into the c
   await app.until("!document.querySelector('#chat-ins .memo.script')", 'the script deleted');
 });
 
+flow('copy buttons write a saved script, a run with its output and a code block, and show a tick for a while', {}, async (app) => {
+  await app.evaluate("window.__copied = []; navigator.clipboard.writeText = async (t) => { window.__copied.push(t); }; return 1;");
+  await app.click('[data-action="ins-tab"][data-v="script"]');
+  await app.until("!!document.querySelector('#chat-ins [data-keep=\"script-name-new\"]')", 'the new script form');
+  await app.evaluate("document.querySelector('#chat-ins [data-keep=\"script-name-new\"]').value = 'Say hello'; document.querySelector('#chat-ins [data-keep=\"script-cmd-new\"]').value = 'echo hello\\necho again'; return 1;");
+  await app.click('#chat-ins [data-action="script-save"][data-id="new"]');
+  await app.until("document.querySelectorAll('#chat-ins .memo.script').length === 1", 'the saved script');
+  // The script: its whole command, then a tick on an icon-only button that says so.
+  await app.evaluate("document.querySelector('#chat-ins .memo.script [data-action=\"script-copy\"]').click(); return 1;");
+  await app.until("window.__copied.length === 1", 'the script copied');
+  assert.equal(await app.evaluate('return window.__copied[0];'), 'echo hello\necho again');
+  await app.until("document.querySelector('#chat-ins [data-action=\"script-copy\"]')?.matches('.copied')", 'the copied tick');
+  const btn = await app.evaluate("const b = document.querySelector('#chat-ins [data-action=\"script-copy\"]'); return { use: b.querySelector('use').getAttribute('href'), label: b.getAttribute('aria-label'), text: b.innerText.trim() };");
+  assert.equal(btn.use, '#s-tick');
+  assert.equal(btn.label, 'Copied');
+  assert.equal(btn.text, '');
+  await app.until("!document.querySelector('#chat-ins [data-action=\"script-copy\"]').matches('.copied') && document.querySelector('#chat-ins [data-action=\"script-copy\"] use').getAttribute('href') === '#s-copy'", 'the copy icon back');
+  // A finished run: its command and its output.
+  await app.click('#chat-ins .memo.script [data-action="script-run"]');
+  await app.until("!!document.querySelector('#chat-thread .sh-run:not(.live) [data-action=\"shell-copy\"]')", 'the finished run');
+  await app.click('#chat-thread .sh-run [data-action="shell-copy"]');
+  await app.until("window.__copied.length === 2", 'the run copied');
+  assert.match(await app.evaluate('return window.__copied[1];'), /^\$ echo hello[\s\S]*hello[\s\S]*again/);
+  // A code block in a reply: only its code.
+  await app.say('@fake say Check: ```sh gh pr checks 212 --watch```');
+  await app.until("!!document.querySelector('#chat-thread .code [data-action=\"code-copy\"]')", 'the code block bar');
+  await app.evaluate("document.querySelector('#chat-thread .code [data-action=\"code-copy\"]').click(); return 1;");
+  await app.until("window.__copied.length === 3", 'the code copied');
+  assert.equal(await app.evaluate('return window.__copied[2].trim();'), 'gh pr checks 212 --watch');
+  // Refused by the clipboard: the code is selected instead.
+  await app.evaluate("navigator.clipboard.writeText = () => Promise.reject(new Error('denied')); document.execCommand = () => false; document.querySelector('#chat-thread .code [data-action=\"code-copy\"]').click(); return 1;");
+  await app.until("String(getSelection()).trim() === 'gh pr checks 212 --watch'", 'the code selected');
+});
+
 flow('the side terminal runs lines apart from the chat in the dock under it, recalls them with the up arrow, folds stderr and clears', {}, async (app) => {
   // Ctrl+` opens it with its input focused, in the dock between the chat and the composer.
   await app.key('Backquote', '`', 192, 2);

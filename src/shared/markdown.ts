@@ -162,10 +162,21 @@ function blockLines(lines: string[]): string {
   return out.join('');
 }
 
-/** Agent markdown as HTML. Everything is escaped first; only the tags made here are in the result. */
-export function mdHtml(src: string) {
-  const parts = String(src ?? '').split(/```[\w-]*\n?/);
-  return parts.map((p, i) => (i % 2 === 1 ? `<pre>${escHtml(p.replace(/\n$/, ''))}</pre>` : blocks(p))).join('');
+/**
+ * Agent markdown as HTML. Everything is escaped first; only the tags made here are in the result. `codeHead`, when
+ * given, draws a bar above each code block from its fence's language (empty without one) and its code; the two are
+ * wrapped together.
+ */
+export function mdHtml(src: string, codeHead?: (lang: string, code: string) => string) {
+  const text = String(src ?? '');
+  const fences = text.match(/```[\w-]*\n?/g) ?? [];
+  const parts = text.split(/```[\w-]*\n?/);
+  return parts.map((p, i) => {
+    if (i % 2 === 0) return blocks(p);
+    const code = p.replace(/\n$/, '');
+    const pre = `<pre>${escHtml(code)}</pre>`;
+    return codeHead ? `<div class="code">${codeHead(fences[i - 1].slice(3).trim(), code)}${pre}</div>` : pre;
+  }).join('');
 }
 
 /** One line of Markdown with no blocks: links (bare URLs too), bold, italics and code spans, escaped. */

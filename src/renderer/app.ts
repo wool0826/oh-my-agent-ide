@@ -36,6 +36,7 @@ import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, rend
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
 import { initTip } from './ui/tip';
+import { copyText } from './ui/copy';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
 import { bindDock } from './ui/dock';
 import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
@@ -245,7 +246,12 @@ export async function act(el: HTMLElement, e: Event) {
     case 'shell-fold': if (!ui.shellOpen.delete(id)) ui.shellOpen.add(id); renderChat(true); break;
     case 'shell-copy': {
       const r = S?.chat.find((c) => c.id === id)?.shell;
-      if (r) void navigator.clipboard.writeText(`$ ${r.cmd}\n${r.out}`).then(() => toast(t('sel.copied')), () => {});
+      if (r) void copyText(el, `$ ${r.cmd}\n${r.out}`);
+      break;
+    }
+    case 'code-copy': {
+      const pre = el.closest('.code')?.querySelector('pre');
+      if (pre) void copyText(el, pre.textContent ?? '', pre);
       break;
     }
     case 'shell-again': {
@@ -299,6 +305,12 @@ export async function act(el: HTMLElement, e: Event) {
     // Saved scripts (ui/scripts.ts). Run is the only way one starts.
     case 'script-save': await saveScript(id ?? 'new'); renderChatInspector(); break;
     case 'script-run': if (id) await runScript(id, el as HTMLButtonElement); break;
+    case 'script-copy': {
+      const cmd = S?.scripts?.find((x) => x.id === id)?.cmd;
+      // The open card shows all of it, so its text can be selected when the clipboard says no.
+      if (cmd != null) void copyText(el, cmd, el.closest('.memo.script.open')?.querySelector<HTMLElement>('.script-cmd') ?? null);
+      break;
+    }
     case 'script-cwd': pickScriptFolder(el, renderChatInspector); break;
     case 'script-edit': if (id) { editScript(id); renderChatInspector(); document.querySelector<HTMLInputElement>(`#chat-ins [data-keep="script-name-${CSS.escape(id)}"]`)?.focus(); } break;
     case 'script-edit-cancel': cancelScriptEdit(); renderChatInspector(); break;
