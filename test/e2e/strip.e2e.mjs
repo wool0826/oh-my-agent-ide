@@ -1,6 +1,6 @@
 // End-to-end flows: the top strip. It runs across the window, both sidebars and the main column start below it, and
 // it is the only row the window's own buttons lie over: the traffic lights at its start on macOS, the caption buttons
-// at its end elsewhere (decision 247, styles.css: --strip-start / --strip-end). Run with `npm run e2e`.
+// at its end elsewhere (decision 248, styles.css: --strip-start / --strip-end). Run with `npm run e2e`.
 import assert from 'node:assert/strict';
 import { flow } from './harness.mjs';
 
