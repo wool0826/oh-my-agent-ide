@@ -206,6 +206,39 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
     await app.evaluate("document.querySelector('#usage').focus(); document.querySelector('#usage').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); return 1;");
     assert.equal(await app.evaluate("document.activeElement?.closest('#usage-pop') ? 'in' : 'out'"), 'in');
   });
+
+  const two = [
+    acc('a', 'Team A', { fiveHour: win(30, at(70)), sevenDay: win(41, at(4500)), paused: false, pausedUntil: null }),
+    acc('b', 'Team B', { fiveHour: win(12, at(125)), sevenDay: win(20, at(1800)), paused: true, pausedUntil: null }),
+  ];
+  flow('an account is switched off in Settings: its ring leaves the toolbar, and with none on the app warns and turns all on again', { settings: { accounts: two } }, async (app) => {
+    // One ring for the account that is on, a count for the one that is off.
+    await app.until("document.querySelectorAll('#usage .uacct').length === 1", 'one ring');
+    assert.equal(await app.evaluate("document.querySelector('#usage .ucount')?.textContent"), '+1');
+    await app.click('[data-action="open-settings"]');
+    await app.click('[data-action="pane"][data-id="accounts"]');
+    await app.until("document.querySelectorAll('.acc-card').length === 2", 'the account cards');
+    assert.deepEqual(await app.evaluate("[...document.querySelectorAll('.acc-card')].map((c) => [c.classList.contains('off'), c.querySelector('[data-segc][aria-checked=\"true\"]').dataset.v, c.querySelector('.acc-state')?.textContent ?? ''])"),
+      [[false, 'on', ''], [true, 'off', 'Off']]);
+    assert.match(await app.evaluate("document.querySelector('.pane[data-pane=\"accounts\"] .scap small').textContent"), /^On 1 \/ 2$/);
+    // The switch is a radio group with a name, reached with the keyboard.
+    assert.equal(await app.evaluate("document.querySelector('.acc-card [role=radiogroup]').getAttribute('aria-label')"), 'Team A task assignment');
+    // Off for an hour: saved with its end, and shown until when.
+    await app.click('.acc-card [data-segc="acc-assign-a"][data-v="hour"]');
+    await app.until("const s = await window.ide.call('state'); const a = s.accounts.find((x) => x.id === 'a'); return a.paused && !!a.pausedUntil;", 'Team A off for an hour');
+    // Every account off: a warning in the toolbar, on the pane and above the chat's composer; no failure.
+    await app.until("!!document.querySelector('#usage .uwarn')", 'the toolbar warning');
+    assert.equal(await app.evaluate("document.querySelector('#usage .uwarn').textContent"), 'No account on');
+    await app.until("!!document.querySelector('.acc-banner[role=alert]')", 'the banner');
+    assert.match(await app.evaluate("document.querySelector('.acc-banner').textContent"), /^No account on · 0 waiting/);
+    assert.equal(await app.evaluate("document.querySelector('#chat-off').hidden"), false);
+    assert.equal(await app.evaluate("!!document.querySelector('#chat-off button[data-v=\"accounts\"] svg use[href=\"#s-person\"]')"), true);
+    // Turn all on: both on, saved, and the rings back.
+    await app.click('.acc-banner [data-action="acc-resume-all"]');
+    await app.until("const s = await window.ide.call('state'); return s.accounts.every((x) => !x.paused);", 'every account on');
+    await app.until("!document.querySelector('.acc-banner') && document.querySelector('#chat-off').hidden", 'the warnings gone');
+    await app.until("document.querySelectorAll('#usage .uacct').length === 2 && !document.querySelector('#usage .ucount')", 'both rings');
+  });
 }
 
 flow('the repository list has columns, the sidebar sums up before a pick, and Settings folds what is fine', { repos: ['demo', 'web'] }, async (app) => {

@@ -281,13 +281,29 @@ export function startTask(m: WorkerManager, w: Worker, s: WorkerSession, task: T
   store.changed();
 }
 
-/** Every account is held by a usage limit: the task waits in the queue until the first one resets. */
+/**
+ * What a Worker says while no account can take it: a usage limit holds every one, or every one is switched off in
+ * Settings (off for an hour: until it is back on). `held`: a message waits, not the task.
+ */
+function accountWaitText(w: Worker, held: boolean) {
+  const provider = providerOf(w.model, cachedModels().models);
+  const wait = accounts.wait(provider);
+  const time = limitResetText(accounts.nextFreeAt(provider));
+  if (wait?.kind === 'off') return { status: t('st.accountsOff'), log: t(held ? 'log.offHeld' : 'log.offWait') };
+  if (wait?.kind === 'pause') return { status: t('st.pauseUntil', { time }), log: t(held ? 'log.pauseHeld' : 'log.pauseWait', { time }) };
+  return { status: t('st.limitUntil', { time }), log: t(held ? 'log.limitHeld' : 'log.limitWait', { time }) };
+}
+
+/**
+ * No account can take the task now (every one is held by a usage limit or switched off): it waits in the queue until
+ * one can, without failing.
+ */
 export function pause(m: WorkerManager, w: Worker, task: Task | null) {
   if (task) { task.status = 'queued'; task.queueReason = 'limit'; task.updatedAt = nowIso(); }
-  const time = limitResetText(accounts.nextFreeAt(providerOf(w.model, cachedModels().models)));
+  const say = accountWaitText(w, false);
   w.status = 'idle';
-  w.statusText = t('st.limitUntil', { time });
-  store.log(w.id, 'event', t('log.limitWait', { time }));
+  w.statusText = say.status;
+  store.log(w.id, 'event', say.log);
   store.changed();
 }
 
@@ -325,9 +341,9 @@ export function hold(m: WorkerManager, w: Worker, msg: string) {
   // Its task cannot go on before the limit resets either (the session is gone), so it waits in the queue.
   const task = m.currentTask(w);
   if (task?.status === 'running') { task.status = 'queued'; task.queueReason = 'limit'; task.updatedAt = nowIso(); }
-  const time = limitResetText(accounts.nextFreeAt(providerOf(w.model, cachedModels().models)));
-  w.statusText = t('st.limitUntil', { time });
-  store.log(w.id, 'event', t('log.limitHeld', { time }));
+  const say = accountWaitText(w, true);
+  w.statusText = say.status;
+  store.log(w.id, 'event', say.log);
   store.changed();
 }
 

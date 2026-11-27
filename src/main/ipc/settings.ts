@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { ASSIGN_MODES, type AssignMode } from '../../shared/accountPause';
 import { dialog } from 'electron';
 import { handle, type IpcContext } from './handle';
 import { loadSettings, updateSettings } from '../settings';
@@ -68,6 +69,8 @@ export function registerSettingsIpc(ctx: IpcContext) {
   handle('account:remove', (id: string) => accounts.remove(id));
   handle('account:rename', (id: string, label: string) => accounts.rename(id, label));
   handle('account:plan', (id: string, plan: AccountPlan) => accounts.setPlan(id, plan));
+  handle('account:assign', (id: string, mode: string) => accounts.setAssign(id, ASSIGN_MODES.includes(mode as AssignMode) ? mode as AssignMode : 'on'));
+  handle('account:resumeAll', () => accounts.resumeAll());
   // A round of reading usage now (Settings' account menu, the popover's button). Accounts the server asked to wait are skipped.
   handle('usage:refresh', () => accounts.refreshAll());
   // Settings > Models asks for a fresh list (at most a minute old), its Refresh button for a new one;

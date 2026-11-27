@@ -69,6 +69,36 @@ test('queueWhy: once any account is free again the limit wait ends', () => {
   assert.equal(queueWhy(en, q, ctx(full, { accounts }))!.starts, 'The limit has reset; it starts when one of the 2 Worker slots frees up.');
 });
 
+test('queueWhy: with every account switched off it waits for one to be switched on', () => {
+  const q = T('L', { status: 'queued', queueReason: 'limit' });
+  const accounts = [{ label: 'Team A', limitedUntil: null, paused: true, pausedUntil: null }, { label: 'Team B', limitedUntil: null, paused: true, pausedUntil: null }];
+  const r = queueWhy(en, q, ctx([q], { accounts }))!;
+  assert.equal(r.why, 'Every account is switched off.');
+  assert.equal(r.starts, 'When an account is switched on in Settings.');
+  assert.equal(queueLine(en, q, ctx([q], { accounts }))!.text, 'waiting for an account');
+  assert.equal(queueLine(ko, q, ctx([q], { accounts }))!.text, '계정 대기');
+});
+
+test('queueWhy: an hour off names when the account is back on', () => {
+  const q = T('L', { status: 'queued', queueReason: 'limit' });
+  const accounts = [
+    { label: 'Team A', limitedUntil: null, paused: true, pausedUntil: null },
+    { label: 'Team B', limitedUntil: null, paused: true, pausedUntil: new Date(NOW + 45 * 60_000).toISOString() },
+  ];
+  const r = queueWhy(en, q, ctx([q], { accounts }))!;
+  assert.equal(r.why, 'Every account is switched off.');
+  assert.equal(r.starts, 'When Team B is back on at 12:45.');
+  // One account off and the other limited: the limit is what ends the wait.
+  const mixed = [{ label: 'Team A', limitedUntil: null, paused: true, pausedUntil: null }, { label: 'Team B', limitedUntil: new Date(NOW + 30 * 60_000).toISOString() }];
+  assert.equal(queueWhy(en, q, ctx([q], { accounts: mixed }))!.starts, 'When the Team B limit resets at 12:30.');
+});
+
+test('queueWhy: an account switched back on ends the wait', () => {
+  const q = T('L', { status: 'queued', queueReason: 'limit' });
+  const accounts = [{ label: 'Team A', limitedUntil: null, paused: false, pausedUntil: null }, { label: 'Team B', limitedUntil: null, paused: true, pausedUntil: null }];
+  assert.equal(queueWhy(en, q, ctx([q], { accounts }))!.starts, 'The limit has reset, so it starts shortly.');
+});
+
 test('queueWhy: a blocked task follows the state of the task it waits for', () => {
   const b = T('B', { status: 'blocked', afterTaskId: 'D' });
   const run = (dep: Task | null) => queueWhy(en, b, ctx(dep ? [dep, b] : [b]))!;

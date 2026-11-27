@@ -11,6 +11,7 @@ import { QUICK_KEY_DEFAULT, normalizeQuickKey } from '../shared/quickKey';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
 import { MAX_WORKERS_DEFAULT, WAIT_SLOT_DEFAULT, clampMaxWorkers, clampWaitSlot } from '../shared/slots';
 import { USAGE_INTERVAL_DEFAULT, clampUsageMins } from '../shared/usage';
+import { cleanPause } from '../shared/accountPause';
 
 export interface StoredAccount {
   id: string;
@@ -34,6 +35,10 @@ export interface StoredAccount {
   usageBackoffUntil?: string | null;
   /** The usage endpoint refused this token (an inference-only setup token): read usage from a one-token request instead. */
   usageProbe?: boolean;
+  /** Switched off in Settings: nothing new starts on it (shared/accountPause.ts). */
+  paused: boolean;
+  /** An hour's pause: when it ends. */
+  pausedUntil: string | null;
 }
 
 export interface Settings extends SettingsView {
@@ -147,6 +152,8 @@ function fixAccount(a: Partial<StoredAccount>): StoredAccount {
     lastError: a.lastError ?? null,
     usageBackoffUntil: a.usageBackoffUntil ?? null,
     usageProbe: a.usageProbe ?? false,
+    // Saved before the switch existed, or an hour that has passed: on.
+    ...cleanPause(a),
   };
 }
 

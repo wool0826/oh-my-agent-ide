@@ -25,7 +25,7 @@ import { fakeMode } from '../fake';
 import { addSpend, hasSpend } from '../../shared/spend';
 import { COMPACT_AT, kTokens } from '../../shared/context';
 import { WORKER_COMPACT } from '../../shared/compactInstructions';
-import { needsPlan, workerPrompt } from './workerPrompt';
+import { needsPlan, taskStarted, workerPrompt } from './workerPrompt';
 import { SHELL_OUTPUT_CHARS, type TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
 import { workerCodexTools, workerMemoryDir, workerTools, type StepsOp } from './workerTools';
 import * as archive from './workers/archive';
@@ -140,10 +140,14 @@ export class WorkerManager {
     return w;
   }
 
-  /** Open a session on a picked account if none is open. Null when a usage limit holds every account. */
+  /**
+   * Open a session on a picked account if none is open. Null when no account can carry it: a usage limit holds every
+   * one, or every one is switched off (then only a task already under way goes on, on the session it has).
+   */
   ensureSession(w: Worker): WorkerSession | null {
     const existing = this.sessions.get(w.id);
-    if (existing && !existing.closed) return existing.ready() ? existing : null;
+    const task = this.currentTask(w);
+    if (existing && !existing.closed) return existing.ready(!!task && taskStarted(w, task)) ? existing : null;
     // Fake agent mode: a scripted session with the Worker's real permission, question and plan handler. No account.
     if (fakeMode()) {
       const fake = new FakeSession({ label: w.id, model: w.model, cwd: w.cwd, accountId: null, resume: w.sessionId, steps: (op) => this.steps(w, op), canUseTool: permissions.permissionHandler(this, w), permissionMode: needsPlan(this.currentTask(w)) ? 'plan' : 'auto' }, this.sessionEvents(w));

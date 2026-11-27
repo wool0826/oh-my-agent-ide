@@ -215,6 +215,8 @@ async function boot() {
   if (fakeMode()) registerE2eIpc(awake);
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);
+  // An account switched back on (by hand or when its hour ends): work that waited for one goes on now.
+  accounts.on('resumed', retryAfterLimits);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
   side.onChange((v) => win?.webContents.send('side-state', v));
   terminal.onChange((v) => win?.webContents.send('term-state', v));
