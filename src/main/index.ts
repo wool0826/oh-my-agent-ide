@@ -46,6 +46,7 @@ import { StateSender } from '../shared/stateSync';
 import { snapshot } from './snapshot';
 import { telegram } from './remote/telegramLink';
 import { tellRemote } from './remote/bridge';
+import { wireRemote } from './remote/wire';
 import { decisionNews } from '../shared/remoteNotice';
 import type { ChatItem } from '../shared/types';
 import { registerIpc, registerE2eIpc, userAnswer } from './ipc';
@@ -244,13 +245,14 @@ async function boot() {
   telegram.on('invalid', () => store.chat('error', t('tg.err.revoked')));
   // A failed task goes to the phone as a result, not again as an error.
   store.on('chat-error', (item: ChatItem) => { if (item.ev?.k !== 'failed') tellRemote({ type: 'error', text: item.text }); });
+  wireRemote();
   void telegram.init();
   // A Worker that waits too long for an answer gives its slot to the queue (decision 118).
   setInterval(() => { workers.sweepWaiting(); workers.sweepStalled(); }, 30_000);
   startUpdateCheck(updateHooks);
   // What the app needs on this computer: checked once the window is up, so a missing tool shows before a task fails on it.
   setTimeout(() => void runPreflight().then(() => pushState()).catch((e) => log.warn('preflight', e)), 3_000);
-  automations.start((text) => dispatcher.send(text));
+  automations.start((text) => dispatcher.send(text, [], null, 'auto'));
   setInterval(retryAfterLimits, 2 * 60_000).unref();
   scheduleLimitRetry();
   setInterval(() => { workers.autoArchive(); pruneDecisions(); }, 60 * 60_000).unref();

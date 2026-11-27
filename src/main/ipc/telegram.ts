@@ -13,8 +13,9 @@ export function registerTelegramIpc() {
   handle('telegram:test', () => telegram.test());
   // One kind of news on or off ({ event, on }), or how much is sent ({ level }); anything else is ignored.
   handle('telegram:prefs', (p: unknown) => {
-    const r = (p && typeof p === 'object' ? p : {}) as { event?: unknown; on?: unknown; level?: unknown };
+    const r = (p && typeof p === 'object' ? p : {}) as { event?: unknown; on?: unknown; level?: unknown; requests?: unknown };
     if (typeof r.event === 'string' && typeof r.on === 'boolean' && (REMOTE_EVENTS as readonly string[]).includes(r.event)) telegram.setPrefs({ events: { [r.event as RemoteEvent]: r.on } });
     if (r.level === 'title' || r.level === 'summary') telegram.setPrefs({ level: r.level });
+    if (typeof r.requests === 'boolean') telegram.setPrefs({ requests: r.requests });
   });
 }

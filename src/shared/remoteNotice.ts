@@ -5,19 +5,20 @@ import type { Say } from './askWhy';
 import type { Decision } from './types';
 import { doneNotice } from './notifyRules';
 
-export const REMOTE_EVENTS = ['decisions', 'results', 'prs', 'errors'] as const;
+export const REMOTE_EVENTS = ['decisions', 'results', 'prs', 'errors', 'replies'] as const;
 export type RemoteEvent = (typeof REMOTE_EVENTS)[number];
 /** `title`: who and what only. `summary`: also the result's summary, the question and links, never code or files. */
 export type RemoteLevel = 'title' | 'summary';
-export interface RemotePrefs { events: Record<RemoteEvent, boolean>; level: RemoteLevel }
+/** `requests`: messages from the phone go to the Dispatcher (decision 250); off is notices only, as /lock leaves it. */
+export interface RemotePrefs { events: Record<RemoteEvent, boolean>; level: RemoteLevel; requests: boolean }
 
-export const REMOTE_PREFS_DEFAULT: RemotePrefs = { events: { decisions: true, results: true, prs: true, errors: true }, level: 'summary' };
+export const REMOTE_PREFS_DEFAULT: RemotePrefs = { events: { decisions: true, results: true, prs: true, errors: true, replies: true }, level: 'summary', requests: true };
 
 export function cleanPrefs(raw: unknown): RemotePrefs {
-  const r = (raw && typeof raw === 'object' ? raw : {}) as { events?: unknown; level?: unknown };
+  const r = (raw && typeof raw === 'object' ? raw : {}) as { events?: unknown; level?: unknown; requests?: unknown };
   const ev = (r.events && typeof r.events === 'object' ? r.events : {}) as Record<string, unknown>;
   const events = Object.fromEntries(REMOTE_EVENTS.map((k) => [k, typeof ev[k] === 'boolean' ? ev[k] : REMOTE_PREFS_DEFAULT.events[k]])) as Record<RemoteEvent, boolean>;
-  return { events, level: r.level === 'title' ? 'title' : 'summary' };
+  return { events, level: r.level === 'title' ? 'title' : 'summary', requests: typeof r.requests === 'boolean' ? r.requests : REMOTE_PREFS_DEFAULT.requests };
 }
 
 /** Something worth a message to the phone, in plain fields so the rules need no store. */
@@ -25,10 +26,12 @@ export type RemoteNews =
   | { type: 'decision'; id: string; source: Decision['source']; who: string | null; title: string; detail: string; options: string[] }
   | { type: 'result'; task: string; who: string; title: string; summary: string; ok: boolean; label?: string; code?: boolean; prUrl?: string | null; links?: string[] }
   | { type: 'pr'; task: string; title: string; merged: boolean; prUrl: string | null }
-  | { type: 'error'; text: string };
+  | { type: 'error'; text: string }
+  /** What the Dispatcher said in a turn the phone started (chat item `id`). */
+  | { type: 'reply'; id: string; text: string };
 
 export function newsEvent(n: RemoteNews): RemoteEvent {
-  return n.type === 'decision' ? 'decisions' : n.type === 'result' ? 'results' : n.type === 'pr' ? 'prs' : 'errors';
+  return n.type === 'decision' ? 'decisions' : n.type === 'result' ? 'results' : n.type === 'pr' ? 'prs' : n.type === 'reply' ? 'replies' : 'errors';
 }
 
 /** A short stable hash, so a key names a text without holding it. */
@@ -45,6 +48,7 @@ export function newsKey(n: RemoteNews): string {
     case 'result': return `result:${n.task}:${n.ok ? n.label ?? 'done' : 'failed'}:${hash(n.summary)}`;
     case 'pr': return `pr:${n.task}:${n.merged ? 'merged' : 'closed'}`;
     case 'error': return `error:${hash(n.text)}`;
+    case 'reply': return `reply:${n.id}`;
   }
 }
 
@@ -55,6 +59,7 @@ export function newsGroup(n: RemoteNews): string {
     case 'result': return n.ok ? `info:${n.who}` : `info:${n.who}:failed`;
     case 'pr': return 'pr';
     case 'error': return 'error';
+    case 'reply': return 'reply';
   }
 }
 
@@ -111,11 +116,33 @@ export function newsText(say: Say, n: RemoteNews, level: RemoteLevel): string {
     case 'error':
       // One line at either level: what follows it (stderr, output, paths) stays on the desktop.
       return [say('tg.n.error'), line(plainText(n.text, 600).split(/\r?\n/)[0] ?? '', 120)].filter(Boolean).join('\n\n');
+    case 'reply':
+      // The answer the phone asked for, at either level; code blocks stay on the desktop as everywhere else.
+      return plainText(n.text, REPLY_MAX);
   }
 }
 
-/** One message waiting to go. `urgent` ones (decisions) are the last to be dropped when the queue is full. */
-export interface Outgoing { key: string; group: string; text: string; silent: boolean; urgent: boolean }
+/** The longest Dispatcher answer sent: three Telegram messages (remote.ts splitText). */
+export const REPLY_MAX = 3 * 4000;
+
+/**
+ * One message waiting to go. `urgent` ones (decisions) are the last to be dropped when the queue is full. `ref`: what
+ * a reply to it on the phone is about (newsRef); `replyTo`: the phone's message it answers.
+ */
+export interface Outgoing { key: string; group: string; text: string; silent: boolean; urgent: boolean; ref?: string; replyTo?: number }
+
+/**
+ * What a reply on the phone to this news answers: the task for a result or a PR (its report's thread), the chat
+ * item for a Dispatcher answer, and `d:<id>` for a decision. Errors have none.
+ */
+export function newsRef(n: RemoteNews): string | undefined {
+  switch (n.type) {
+    case 'decision': return `d:${n.id}`;
+    case 'result': case 'pr': return n.task;
+    case 'reply': return n.id;
+    case 'error': return undefined;
+  }
+}
 
 export const QUEUE_MAX = 50;
 export const DEDUPE_MS = 10 * 60_000;
@@ -143,6 +170,8 @@ export class SendQueue {
       same.text = `${same.text}\n\n${o.text}`;
       same.silent &&= o.silent;
       same.urgent ||= o.urgent;
+      // A reply on the phone to the joined message answers the first news in it.
+      same.ref ??= o.ref;
       this.held.get(same)?.push(o.key);
       return true;
     }

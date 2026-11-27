@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  REMOTE_PREFS_DEFAULT, SendQueue, cleanPrefs, newsEvent, newsGroup, newsKey, newsText, plainText, type Outgoing, type RemoteNews,
+  REMOTE_PREFS_DEFAULT, SendQueue, cleanPrefs, newsEvent, newsGroup, newsKey, newsRef, newsText, plainText, type Outgoing, type RemoteNews,
 } from '../src/shared/remoteNotice';
 
 const say = ((k: string, v?: Record<string, string | number>) => `${k}${v ? JSON.stringify(v) : ''}`) as never;
@@ -11,7 +11,8 @@ const result: RemoteNews = { type: 'result', task: 'T-1', who: 'W-03', title: 'A
 
 test('remoteNotice: prefs default to every kind on and summaries; bad values fall back', () => {
   assert.deepEqual(cleanPrefs(null), REMOTE_PREFS_DEFAULT);
-  assert.deepEqual(cleanPrefs({ events: { prs: false, errors: 'no' }, level: 'title' }), { events: { decisions: true, results: true, prs: false, errors: true }, level: 'title' });
+  assert.deepEqual(cleanPrefs({ events: { prs: false, errors: 'no' }, level: 'title', requests: 'yes' }), { events: { decisions: true, results: true, prs: false, errors: true, replies: true }, level: 'title', requests: true });
+  assert.equal(cleanPrefs({ requests: false }).requests, false);
   assert.equal(cleanPrefs({ level: 'all' }).level, 'summary');
 });
 
@@ -113,4 +114,22 @@ test('remoteNotice: a full queue drops its oldest news that is not a decision', 
   assert.deepEqual(q.items.map((x) => x.key), ['d', 'b', 'c']);
   q.retry(out('z'));
   assert.equal(q.next()!.key, 'z');
+});
+
+test('remoteNotice: a Dispatcher answer is sent whole at either level, without code, and a reply to it finds it', () => {
+  const n: RemoteNews = { type: 'reply', id: 'c-9', text: 'Gave it to W-02.\n```\nsecret\n```' };
+  assert.equal(newsText((k) => k, n, 'title'), 'Gave it to W-02.\n…');
+  assert.equal(newsEvent(n), 'replies');
+  assert.equal(newsRef(n), 'c-9');
+  assert.equal(newsRef(result), 'T-1');
+  assert.equal(newsRef({ type: 'error', text: 'x' }), undefined);
+});
+
+test('remoteNotice: news joined into one message keeps the first one\'s reference', () => {
+  const q = new SendQueue();
+  const o = (key: string, ref: string): Outgoing => ({ key, group: 'reply', text: key, silent: false, urgent: false, ref });
+  q.add(o('a', 'c-1'), 0);
+  q.add(o('b', 'c-2'), 0);
+  assert.equal(q.size, 1);
+  assert.equal(q.next()!.ref, 'c-1');
 });

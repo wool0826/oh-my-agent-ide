@@ -208,3 +208,47 @@ test('telegramLink: nothing is sent while it is off', () => withLink(async (s, l
   await assert.rejects(link.test(), /not connected/);
   assert.equal(s.state.sent.length, 0);
 }, PAIRED));
+
+test('telegramLink: once paired, only the owner\'s private messages are handed on, and the pairing code is not', () => withLink(async (s, link) => {
+  const got: string[] = [];
+  link.inbound = (u) => { got.push(u.message?.text ?? ''); };
+  await link.setToken(s.token);
+  await until(() => polling(s), 'polling for the code');
+  const code = link.view().code!;
+  s.push(s.user(42, `/start ${code}`, { name: 'Owner' }));
+  await until(() => !!link.view().candidate, 'the candidate');
+  await link.confirm();
+  await until(() => polling(s), 'polling for requests');
+  s.push(s.user(777, 'run rm -rf', { name: 'Stranger' }));
+  s.push(s.user(42, 'in a group', { type: 'group' }));
+  s.push(s.user(42, 'fix the login bug'));
+  await until(() => got.length === 1, 'the owner\'s message');
+  assert.deepEqual(got, ['fix the login bug']);
+  assert.equal(link.dropped, 2);
+  // Nothing was answered to anyone but the owner.
+  assert.deepEqual([...new Set(s.state.sent.map((m) => m.chat_id))], [42]);
+}));
+
+test('telegramLink: requests off stops polling, and on again goes on after the last update read', () => withLink(async (s, link) => {
+  const got: string[] = [];
+  link.inbound = (u) => { got.push(u.message?.text ?? ''); };
+  await link.setToken(s.token);
+  link.syncPoll();
+  await until(() => polling(s), 'polling for requests');
+  s.push(s.user(42, 'one'));
+  await until(() => got.length === 1, 'the first message');
+  link.setPrefs({ requests: false });
+  await until(() => !polling(s), 'polling to stop');
+  link.setPrefs({ requests: true });
+  await until(() => polling(s), 'polling again');
+  s.push(s.user(42, 'two'));
+  await until(() => got.length === 2, 'the second message');
+  assert.deepEqual(got, ['one', 'two']);
+}, PAIRED));
+
+test('telegramLink: no handler, no polling once paired', () => withLink(async (s, link) => {
+  await link.setToken(s.token);
+  link.syncPoll();
+  assert.equal(polling(s), false);
+  assert.equal(s.state.calls.some((c) => c.method === 'getUpdates'), false);
+}, PAIRED));
