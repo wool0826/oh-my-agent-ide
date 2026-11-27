@@ -270,6 +270,8 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .tbtn:hover { color: var(--text-primary); }
 .tbtn:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .tbtn svg { width: var(--icon-md); height: var(--icon-md); }
+/* "Sleep when done" armed: the moon in accent with the 2px ring, no fill. */
+.tbtn[aria-pressed="true"] { color: var(--accent-text); box-shadow: 0 0 0 2px var(--accent), var(--shadow-2); }
 /* As a drawer's button it names the drawer, with its count inline (I1). */
 .tbtn .lbl { display: none; }
 .win.ins-over #ins-toggle { width: auto; grid-auto-flow: column; gap: var(--space-6); padding: 0 var(--space-12); font-size: var(--fs-caption); font-weight: 500; }
@@ -1113,6 +1115,9 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .toast .toast-x:hover { background: var(--text-secondary); color: var(--bg-canvas); }
 .toast .toast-x:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .toast .toast-x svg { width: 8px; height: 8px; }
+/* The "sleep when done" countdown: stays while it runs, with its moon and the cancel ✕. */
+.toast.sleep { padding-right: var(--space-8); font-variant-numeric: tabular-nums; }
+.toast.sleep > .sym { flex: none; width: var(--icon-sm); height: var(--icon-sm); color: var(--accent-text); }
 kbd { font: inherit; font-size: var(--fs-caption2); font-weight: 600; padding: 0 var(--space-4); border-radius: var(--radius-xs); background: var(--surface-code-inline); }
 
 /* scrollbars: shown only while their element scrolls, vertical and horizontal alike. app.ts (showBar) marks the

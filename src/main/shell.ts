@@ -142,7 +142,12 @@ export const newRun = (line: string, repo: string): ShellRun => ({ cmd: line, re
 
 class Shell {
   private procs = new Map<string, Running>();
+  /** Runs still going whose result goes to the Dispatcher (`ask`). */
+  private asks = new Set<string>();
   private pushTimer: NodeJS.Timeout | null = null;
+
+  /** How many runs still going will start a Dispatcher turn when they end. */
+  get asking() { return this.asks.size; }
 
   /**
    * Starts `cmd` in `repo` ('' or null for the IDE home). Returns the chat item's id.
@@ -157,6 +162,7 @@ class Shell {
     const run: ShellRun = { ...newRun(line, where.repo), ...(script ? { script } : {}), ...(ask ? { ask } : {}) };
     const item: ChatItem = store.chat('shell', line);
     item.shell = run;
+    if (ask) this.asks.add(item.id);
     this.procs.set(item.id, startLine(run, where.cwd, () => this.pushSoon(), () => {
       this.procs.delete(item.id);
       if (run.stopped) run.sent = 'off';
@@ -166,6 +172,8 @@ class Shell {
       }
       store.changed();
       if (run.ask && !run.stopped) store.emit('shell-done');
+      // Still counted until the Dispatcher took its turn for it, so "sleep when done" sees no gap in between.
+      if (this.asks.delete(item.id)) store.emit('changed');
     }));
     return item.id;
   }

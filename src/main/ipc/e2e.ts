@@ -3,6 +3,7 @@ import { workers } from '../agents/workers';
 import { automations } from '../automations';
 import { checkPrs, runMergeQueue } from '../prmonitor';
 import { diagnostics } from '../diagnostics';
+import { autoSleep } from '../sleep';
 
 /** With fake agents (the end-to-end tests), what would have been opened on the computer, kept instead. */
 export const e2eOpened: [string, string][] = [];
@@ -17,4 +18,7 @@ export function registerE2eIpc(awake: { readonly held: boolean }) {
   handle('e2e:opened', () => e2eOpened);
   handle('mq:run', () => runMergeQueue());
   handle('e2e:awake', () => awake.held);
+  // "Sleep when done": the countdown's clock moved on by `ms`, and how often the computer would have slept.
+  handle('e2e:sleepTick', (ms: number) => autoSleep.e2e.tick(Number(ms)));
+  handle('e2e:slept', () => autoSleep.e2e.slept);
 }

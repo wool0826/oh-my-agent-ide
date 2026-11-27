@@ -31,6 +31,7 @@ import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
+import { renderSleep, setSleep } from './ui/sleep';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
@@ -82,7 +83,7 @@ export function renderAll(force = false, parts: ReadonlySet<Part> | null = null)
   const focused = document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-action]') ? document.activeElement : null;
   const focusKey = focused ? focusSelector(focused.tagName, focused.dataset) ?? '' : '';
   const focusRoot = focused?.closest<HTMLElement>('.sidebar, .view');
-  if (draw('frame')) { applyPanels(); renderSidebar(); }
+  if (draw('frame')) { applyPanels(); renderSidebar(); renderSleep(); }
   if (draw('usage')) renderUsage();
   if (draw('dispatcher')) renderDispatcherStatus();
   if (draw('memSync')) renderMemSync();
@@ -321,6 +322,8 @@ export async function act(el: HTMLElement, e: Event) {
     case 'memo-remove': if (ui.memoDel === id) await removeMemo(id!); else askMemoDel(id ?? null); break;
     case 'done-toggle': ui.doneOpen = !ui.doneOpen; store('oma.doneOpen', ui.doneOpen); renderSidebar(); break;
     case 'ins-toggle': togglePanel('ins'); break;
+    case 'sleep-toggle': await setSleep(!S?.sleep?.armed); break;
+    case 'sleep-cancel': await setSleep(false); break;
     case 'away-dismiss': setAway(null); renderChatInspector(); break;
     case 'cmdk-open': openPalette(); break;
     case 'cmdk-close': closePalette(); break;

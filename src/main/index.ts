@@ -29,6 +29,7 @@ import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
 import { hasTray, showWindow, updateTray } from './tray';
 import { startUpdateCheck, holdInstallOnQuit } from './update';
 import { awakeHolder, shouldStayAwake } from '../shared/awake';
+import { autoSleep } from './sleep';
 import { destroyQuick, openQuick, releaseQuickKey, syncQuickKey } from './quick';
 import { QUICK_ARG } from '../shared/quickKey';
 import { fakeMode } from './fake';
@@ -207,6 +208,9 @@ async function boot() {
   store.on('changed', prWatchChanged);
   store.on('changed', syncAwake);
   syncAwake();
+  // "Sleep when done": armed by the user only, never saved; it lets go of the keep-awake blocker before sleeping.
+  autoSleep.init({ dispatcherBusy: () => dispatcher.busy, dispatcherDue: () => dispatcher.wakePending, release: () => awake.release(), pushState });
+  store.on('changed', autoSleep.sync);
   repoEvents.on('progress', pushState);
   if (fakeMode()) registerE2eIpc(awake);
   accounts.on('changed', pushState);

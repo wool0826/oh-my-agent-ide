@@ -10,8 +10,9 @@ import { applyUpdate, restartIntoUpdate } from '../update';
 import { updateBlockers } from '../snapshot';
 import { fakeMode } from '../fake';
 import { e2eOpened } from './e2e';
+import { autoSleep } from '../sleep';
 
-/** Opening links and files on the computer, pasted images, the version, and restarting into an update. */
+/** Opening links and files on the computer, pasted images, the version, restarting into an update, and sleep when done. */
 export function registerAppIpc() {
   handle('open:external', (url: string) => {
     if (fakeMode()) { e2eOpened.push(['open:external', url]); return; }
@@ -37,4 +38,6 @@ export function registerAppIpc() {
   handle('app:relaunch', () => { if (restartIntoUpdate(updateBlockers())) return; app.relaunch(); app.quit(); });
   // Restart into the downloaded update; refused (false) while a Worker, a queued task or the Dispatcher is working.
   handle('update:apply', () => applyUpdate(updateBlockers()));
+  // "Sleep when done" from the toolbar: on, or off (which also cancels a countdown).
+  handle('sleep:set', (on: boolean) => (on ? autoSleep.arm('toolbar') : autoSleep.disarm('toolbar')));
 }

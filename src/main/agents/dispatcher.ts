@@ -11,6 +11,8 @@ import { workers, modelLabel } from './workers';
 import { accounts } from '../accounts';
 import { store } from '../store';
 import { automations } from '../automations';
+import { autoSleep } from '../sleep';
+import { SLEEP_SECONDS } from '../../shared/autoSleep';
 import { busyWith } from '../../shared/currentTask';
 import { COMPARE_NOTE, compareModels } from '../../shared/compare';
 import { createDecision } from '../decisions';
@@ -416,6 +418,12 @@ function boardTools(d: Dispatcher) {
         return ok(list.length ? JSON.stringify(list, null, 2) : 'No automations.');
       }),
       tool('remove_automation', 'Delete an automation by its id (from list_automations).', { id: z.string() }, async (a) => (automations.remove(a.id) ? ok('Removed.') : fail('No such automation.'))),
+      tool('sleep_when_done', `Put the computer to sleep once all work is finished (on: true), or call that off (on: false). Use it only when the user asks for it in this conversation, never on your own. Once nothing is running, queued, blocked, waiting for the user or for CI, and your turn has ended, a ${SLEEP_SECONDS} s countdown shows in the window and can be cancelled there; it is then off again. It is not kept across restarts.`, { on: z.boolean() }, async (a) => {
+        const v = a.on ? autoSleep.arm('Dispatcher') : autoSleep.disarm('Dispatcher');
+        if (!v.armed) return ok('Off: the computer will not be put to sleep.');
+        const why = autoSleep.reason();
+        return ok(`On.${why ? ` Waiting for: ${why}.` : ' Nothing else is running, so the countdown starts once this turn ends.'}`);
+      }),
   ];
 }
 
@@ -489,6 +497,8 @@ class Dispatcher {
   private autoPaused = false;
 
   get busy() { return !!this.session?.busy; }
+  /** Worker news waits for a turn of its own (soon, or once a usage limit resets). */
+  get wakePending() { return this.wakeDue && store.data.pendingUpdates.length > 0; }
 
   /** The report the turn in progress answers: its messages go under that card in the chat (shared/thread.ts). */
   private replyTo: string | null = null;
