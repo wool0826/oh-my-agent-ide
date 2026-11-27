@@ -43,7 +43,7 @@ button { font: inherit; }
 .c-pr-open { color: var(--pr-open); } .c-pr-merged { color: var(--pr-merged); } .c-pr-closed { color: var(--pr-closed); }
 .selectable { user-select: text; }
 
-/* The top strip (.toolbar) runs across the window; both sidebars and the main column start below it (decision 248). */
+/* The top strip (.toolbar) runs across the window; both sidebars and the main column start below it (T-0159). */
 .win { height: 100vh; display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--inspector-w); grid-template-rows: var(--toolbar-h) minmax(0, 1fr); }
 /* Floating glass panels: inset from the window edge, rounded, lit along the top. */
 .sidebar, .inspector, .snav { background: var(--surface-sheen), var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-3); border-radius: var(--radius-xl); }
@@ -154,7 +154,7 @@ button { font: inherit; }
 :root[data-motion="reduced"] :is(.k-run svg, .side-sec.blink h4, .pulse, .dots i, .dec.flash, .res.flash, .attach.flash, .bub.flash, .pips i.c) { animation: none; }
 
 /* toolbar */
-/* The window's own buttons lie over the top strip and nothing else (decision 248): the traffic lights at its start on
+/* The window's own buttons lie over the top strip and nothing else (T-0159): the traffic lights at its start on
    macOS, the caption buttons at its end elsewhere. The strip's content keeps between --strip-start and --strip-end,
    which follow the box the window reports (titleBarOverlay → the titlebar-area-* values) and are never less than the
    smallest box (68px of lights, the 150px the caption buttons take at 100%), for a frame drawn before it reports one.

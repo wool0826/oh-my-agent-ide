@@ -1,23 +1,50 @@
 // Which Worker takes a new task when the Dispatcher does not name one: an idle Worker that already knows the
-// repository (and, better, the same area of it), with room left in its context and nothing else open.
-// A new Worker is created only when none fits. Shared so the rules can be tested without the app.
+// repository (and, better, the same area of it), with nothing else open. A fuller context costs it a little, never
+// the task by itself: the Worker is compacted before the task starts. A new Worker is created only when none fits.
+// Shared so the rules can be tested without the app.
 
 import { CONTEXT_WINDOW, WORKER_TASK_COMPACT, kTokens } from './context';
 import { memTerms } from './memorySuggest';
+import { providerOf } from './models';
 import type { Task, Worker } from './types';
 
 /**
- * A Worker at or above this context is not given new work by itself. It would be compacted before the new task
- * (from WORKER_TASK_COMPACT, src/shared/context.ts), which cuts most of the very context that made it worth reusing.
+ * Whether the app compacts a Worker on this model before it starts a new task (queue.startTask, compactFirst from
+ * WORKER_TASK_COMPACT): a Claude Code session is; a Codex thread is not, it compacts by itself as the context fills.
+ */
+export const compactsBeforeTask = (model: string) => providerOf(model) === 'claude';
+
+/**
+ * A Worker that cannot be compacted before a new task (Codex) is not given new work by itself from this context: it
+ * would carry it into the task and be compacted in the middle of it. A Worker compacted first has no such limit.
  */
 export const REUSE_MAX_CONTEXT = Math.round(CONTEXT_WINDOW * 0.6);
+
+/**
+ * A compaction that started longer ago than this no longer blocks the Worker: one whose end never arrived (a Codex
+ * thread that went quiet) must not keep it from work until a restart.
+ */
+export const COMPACT_STALE_MS = 15 * 60_000;
+
+/** What compacting before the task costs in the ranking: one more turn, and the detail the summary drops. */
+const COMPACT_COST = 1;
+
+/**
+ * How much a Worker's context counts against it. Carried into the task as it is, it costs 1 per 50K. Compacted first
+ * (from 60K), the task starts from a summary of 23K to 49K whatever the size, so it costs the compaction plus a little
+ * for its length (1.6 at 60K, 2.5 at 150K, 3 at 200K). Unrelated context is worse only because it earns no "related" points.
+ */
+export function contextCost(w: Pick<Worker, 'model' | 'contextTokens'>) {
+  if (compactsBeforeTask(w.model) && w.contextTokens >= WORKER_TASK_COMPACT) return COMPACT_COST + w.contextTokens / 100_000;
+  return w.contextTokens / 50_000;
+}
 
 /** Words shared with a Worker's past tasks before a task with no repository goes to it rather than to a new Worker. */
 const MIN_RELATED_NO_REPO = 2;
 
 export interface NewTask { title: string; prompt: string; kind: 'code' | 'other'; repo: string | null }
 
-type W = Pick<Worker, 'id' | 'status' | 'repo' | 'model' | 'contextTokens' | 'taskIds' | 'lastActiveAt'>;
+type W = Pick<Worker, 'id' | 'status' | 'repo' | 'model' | 'contextTokens' | 'taskIds' | 'lastActiveAt' | 'compactingSince'>;
 type T = Pick<Task, 'id' | 'title' | 'summary' | 'repo' | 'status' | 'workerId'>;
 
 export interface Candidate<X extends W = W> {
@@ -47,33 +74,40 @@ export function keywords(text: string): Set<string> {
 /** Open work keeps a Worker from taking more: a task running, waiting for an answer, queued, or waiting for a merge. */
 const OPEN = new Set<Task['status']>(['running', 'waiting', 'queued', 'blocked']);
 
-/** Why a Worker cannot take new work by itself right now, in English for the Dispatcher; null when it can. */
-export function reuseBlock(w: W, tasks: T[]): string | null {
+/** Whether the Worker is compacted before a new task starts: its context is summarized first. */
+const compactedFirst = (w: Pick<Worker, 'model' | 'contextTokens'>) => compactsBeforeTask(w.model) && w.contextTokens >= WORKER_TASK_COMPACT;
+
+/**
+ * Why a Worker cannot take new work by itself right now, in English for the Dispatcher; null when it can. Its context
+ * size alone is no reason: only a compaction under way, or a context that cannot be compacted before the task (T-0154).
+ */
+export function reuseBlock(w: W, tasks: T[], now = Date.now()): string | null {
   if (w.status === 'archived') return 'archived';
+  if (w.compactingSince && now - Date.parse(w.compactingSince) < COMPACT_STALE_MS) return 'compacting its context';
   if (w.status !== 'idle') return w.status === 'error' ? 'stopped with an error' : 'busy';
   if (tasks.some((x) => x.workerId === w.id && OPEN.has(x.status))) return 'has open work';
-  if (w.contextTokens >= REUSE_MAX_CONTEXT) return `context ${kTokens(w.contextTokens)} is near compaction`;
+  if (!compactsBeforeTask(w.model) && w.contextTokens >= REUSE_MAX_CONTEXT) return `context ${kTokens(w.contextTokens)} cannot be compacted before it starts`;
   return null;
 }
 
 /** The "New work" line of list_workers: whether the Worker can take a task, and that it is compacted first. */
-export function newWorkLine(w: W, tasks: T[]): string {
-  const block = reuseBlock(w, tasks);
+export function newWorkLine(w: W, tasks: T[], now = Date.now()): string {
+  const block = reuseBlock(w, tasks, now);
   if (block) return block;
-  return w.contextTokens >= WORKER_TASK_COMPACT ? `can take it (context ${kTokens(w.contextTokens)} is compacted before it starts)` : 'can take it';
+  return compactedFirst(w) ? `can take it (context ${kTokens(w.contextTokens)} is compacted before it starts)` : 'can take it';
 }
 
 /**
- * Idle Workers that can take the task, best first. They run the same model, hold no open work, and have room in their context.
+ * Idle Workers that can take the task, best first. They run the same model and hold no open work.
  * A code task needs the Worker's own repository (its worktree); another task with a repository needs a Worker that worked there;
  * a task with no repository needs one whose past tasks share a few words with it.
- * Score: shared words (the area), then past tasks in the repository, then recent activity, less a little for a fuller context.
+ * Score: shared words (the area), then past tasks in the repository, then recent activity, less contextCost.
  */
 export function rankWorkers<X extends W>(workers: X[], tasks: T[], nt: NewTask, model: string, now = Date.now()): Candidate<X>[] {
   const want = keywords(`${nt.title}\n${nt.prompt.slice(0, 4000)}`);
   const out: Candidate<X>[] = [];
   for (const w of workers) {
-    if (w.model !== model || reuseBlock(w, tasks)) continue;
+    if (w.model !== model || reuseBlock(w, tasks, now)) continue;
     const own = tasks.filter((x) => x.workerId === w.id);
     const repoTasks = nt.repo ? own.filter((x) => x.repo === nt.repo).length : 0;
     if (nt.kind === 'code' && (!nt.repo || w.repo !== nt.repo)) continue;
@@ -84,7 +118,7 @@ export function rankWorkers<X extends W>(workers: X[], tasks: T[], nt: NewTask, 
     if (!nt.repo && related.length < MIN_RELATED_NO_REPO) continue;
     const idleHours = (now - Date.parse(w.lastActiveAt)) / 3600_000;
     const recent = idleHours <= 24 ? 2 : idleHours <= 72 ? 1 : 0;
-    const score = 2 * Math.min(related.length, 6) + Math.min(repoTasks, 4) + recent - w.contextTokens / 50_000;
+    const score = 2 * Math.min(related.length, 6) + Math.min(repoTasks, 4) + recent - contextCost(w);
     out.push({ worker: w, score, related, repoTasks });
   }
   return out.sort((a, b) => b.score - a.score || a.worker.contextTokens - b.worker.contextTokens || b.worker.lastActiveAt.localeCompare(a.worker.lastActiveAt));
@@ -125,7 +159,7 @@ export function describePick(c: Candidate, repo: string | null): string {
   const parts = [
     repo ? `knows ${repo} from ${c.repoTasks} task(s)` : 'did related work',
     c.related.length ? `related: ${c.related.slice(0, 4).join(', ')}` : '',
-    `context ${kTokens(c.worker.contextTokens)}`,
+    `context ${kTokens(c.worker.contextTokens)}${compactedFirst(c.worker) ? ', compacted before it starts' : ''}`,
   ];
   return parts.filter(Boolean).join('; ');
 }

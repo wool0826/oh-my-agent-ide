@@ -241,6 +241,8 @@ export class WorkerManager {
         const stopped = st !== 'busy' && this.stopping.has(w.id);
         // A turn starts or ends: what the Worker said before belongs to another turn.
         this.said.delete(w.id);
+        // A compaction ends before the session goes idle; one cut short by an error or a closed session ends here.
+        if (st !== 'busy') w.compactingSince = null;
         if (st === 'busy') {
           if (w.status !== 'waiting') w.status = 'running';
           w.stalledAt = null;
@@ -297,6 +299,7 @@ export class WorkerManager {
       onResend: (texts) => texts.forEach((m) => messages.post(this, w, m)),
       // Shown in the Worker's conversation. A failed compaction leaves the task alone (it is retried later).
       onCompact: (e) => {
+        w.compactingSince = e.phase === 'start' ? nowIso() : null;
         if (e.phase === 'start') {
           w.statusText = t('st.compacting');
           store.log(w.id, 'event', t('log.compacting', { a: kTokens(e.tokens) }));
@@ -330,6 +333,7 @@ export class WorkerManager {
       s.close();
       this.sessions.delete(w.id);
       this.said.delete(w.id);
+      w.compactingSince = null;
     }
     // Idle first: failing the task frees the slot, and fillSlots may hand this Worker held feedback or queued work.
     w.status = 'idle';
