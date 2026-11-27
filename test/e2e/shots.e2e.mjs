@@ -185,7 +185,8 @@ flow('a result card shows one before/after pair of its screenshots, with switche
 flow('the images a user attaches get previews that open in the same view as a report\'s shots (T-0152)', {}, async (app) => {
   const dir = path.join(app.home, 'mine');
   fs.mkdirSync(dir);
-  const png = Buffer.from((await app.capture({ clip: { x: 0, y: 0, width: 160, height: 100, scale: 1 } })).result.data, 'base64');
+  // A 1×1 picture: a capture of a hidden window can wait for a frame that never comes.
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
   // A screenshot saved with an upper-case extension, and a note beside it.
   const upper = path.join(dir, 'Screenshot 2026-11-26 at 15.42.17 (2).PNG'), note = path.join(dir, 'notes.txt');
   fs.writeFileSync(upper, png);
