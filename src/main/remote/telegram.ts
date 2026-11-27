@@ -39,21 +39,26 @@ export class TelegramPoller {
     if (this.ctl) return;
     const ctl = new AbortController();
     this.ctl = ctl;
-    this.loop = this.run(ctl.signal).finally(() => { if (this.ctl === ctl) this.ctl = null; });
+    this.loop = this.run(ctl.signal).catch(() => { /* a throwing onState must not leave a rejection behind */ }).finally(() => { if (this.ctl === ctl) this.ctl = null; });
   }
 
   /** Stops the loop and waits until its last request has ended. */
   async stop() {
+    const loop = this.loop;
     this.ctl?.abort();
     this.ctl = null;
-    await this.loop;
     this.loop = null;
+    await loop;
   }
 
   private async run(signal: AbortSignal) {
     let fails = 0, conflicts = 0, state: PollState | null = null;
     // 'ok' is told once after a failure (or at the start); every failure is told.
-    const report = (s: PollState, err?: TelegramError) => { if (s === 'ok' && state === 'ok') return; state = s; this.o.onState(s, err); };
+    const report = (s: PollState, err?: TelegramError) => {
+      if (s === 'ok' && state === 'ok') return;
+      state = s;
+      try { this.o.onState(s, err); } catch { /* the listener logs its own failures */ }
+    };
     while (!signal.aborted) {
       let updates: TgUpdate[];
       try {
@@ -68,7 +73,8 @@ export class TelegramPoller {
         if (conflicts >= CONFLICTS_ELSEWHERE) { report('elsewhere', err); break; }
         fails++;
         report('retrying', err);
-        await pause(err.kind === 'rate' && err.retryAfter ? err.retryAfter * 1000 : (this.o.backoff ?? backoffMs)(fails), signal);
+        // retry_after is capped, so a wild value cannot park the loop for hours.
+        await pause(err.kind === 'rate' && err.retryAfter ? Math.min(err.retryAfter, 300) * 1000 : (this.o.backoff ?? backoffMs)(fails), signal);
         continue;
       }
       fails = 0;
@@ -77,6 +83,8 @@ export class TelegramPoller {
       for (const u of updates) {
         if (signal.aborted) return;
         // Asked for next time even when the handler throws: one bad update must not come back for ever.
+        // Ids far below the last one: Telegram started them over after a quiet week, so the old list means nothing.
+        if (this.offset !== null && u.update_id < this.offset - 1_000) this.seen = new Seen();
         this.offset = u.update_id + 1;
         if (!this.seen.add(u.update_id)) continue;
         try { await this.o.onUpdate(u); } catch { /* the handler logs its own failures */ }

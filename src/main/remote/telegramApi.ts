@@ -34,9 +34,12 @@ const reply = z.object({
   parameters: z.object({ retry_after: z.number().optional() }).optional(),
 });
 
-/** Which HTTP answers mean what. A refused token gives 401 (or 404 for one that is not a token at all). */
-function kindOf(status: number): TgErrorKind {
-  if (status === 401 || status === 404) return 'auth';
+/**
+ * Which answers mean what. A refused token gives 401, or 404 for one that is not a token at all; a 404 without
+ * Telegram's own reply (a proxy, a wrong OMA_TELEGRAM_API) is not about the token.
+ */
+function kindOf(status: number, telegram = true): TgErrorKind {
+  if (status === 401 || (status === 404 && telegram)) return 'auth';
   if (status === 409) return 'conflict';
   if (status === 429) return 'rate';
   if (status >= 500) return 'server';
@@ -68,7 +71,7 @@ export class TelegramApi {
       throw new TelegramError(method, 'network', null, o.signal?.aborted ? 'aborted' : timeout.aborted ? 'timed out' : (e as Error).name || 'failed');
     }
     const body = reply.safeParse(await res.json().catch(() => null));
-    if (!body.success) throw new TelegramError(method, res.ok ? 'bad' : kindOf(res.status), res.status, 'unreadable reply');
+    if (!body.success) throw new TelegramError(method, res.ok ? 'bad' : kindOf(res.status, false), res.status, 'unreadable reply');
     if (!res.ok || !body.data.ok) {
       const code = body.data.error_code ?? res.status;
       throw new TelegramError(method, kindOf(code), code, body.data.description ?? '', body.data.parameters?.retry_after ?? null);
@@ -91,7 +94,11 @@ export class TelegramApi {
     const params: Record<string, unknown> = { timeout, allowed_updates: ['message'] };
     if (offset !== null) params.offset = offset;
     // The request waits on the server, so it may take longer than the poll itself.
-    return this.call('getUpdates', params, z.array(update), { ...o, timeoutMs: o.timeoutMs ?? (timeout + 15) * 1000 });
+    // Each update is checked on its own: one the app cannot read comes back as its id alone, so the poller still
+    // moves past it instead of asking for it for ever.
+    const list = z.array(z.object({ update_id: z.number() }).passthrough());
+    return this.call('getUpdates', params, list, { ...o, timeoutMs: o.timeoutMs ?? (timeout + 15) * 1000 })
+      .then((us) => us.map((u) => { const r = update.safeParse(u); return r.success ? r.data : { update_id: u.update_id }; }));
   }
 
   /**

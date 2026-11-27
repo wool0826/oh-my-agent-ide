@@ -24,16 +24,22 @@ export function splitText(text: string, max = TG_TEXT_MAX, parts = 3, more = 'â€
   while (rest && out.length < parts) {
     if (rest.length <= max) { out.push(rest); rest = ''; break; }
     const head = rest.slice(0, max);
-    const cut = [head.lastIndexOf('\n\n'), head.lastIndexOf('\n'), head.lastIndexOf(' ')].find((i) => i > max / 2) ?? max;
+    const cut = [head.lastIndexOf('\n\n'), head.lastIndexOf('\n'), head.lastIndexOf(' ')].find((i) => i > max / 2) ?? safeCut(rest, max);
     out.push(rest.slice(0, cut).trimEnd());
     rest = rest.slice(cut).trimStart();
   }
   if (rest && out.length) {
     const tail = `\n${more}`;
     const last = out[out.length - 1];
-    out[out.length - 1] = (last.length + tail.length > max ? last.slice(0, max - tail.length) : last) + tail;
+    out[out.length - 1] = (last.length + tail.length > max ? last.slice(0, safeCut(last, max - tail.length)) : last) + tail;
   }
   return out;
+}
+
+/** `at`, or one less when that would split an emoji (a surrogate pair) in two. */
+function safeCut(s: string, at: number): number {
+  const c = s.charCodeAt(at - 1);
+  return c >= 0xd800 && c <= 0xdbff ? at - 1 : at;
 }
 
 /** A Bot API token: the bot's number, a colon, and its secret. */

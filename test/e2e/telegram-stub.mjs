@@ -21,8 +21,9 @@ export async function startTelegramStub({ token = STUB_TOKEN, bot = { id: 123456
   const err = (res, status, description, extra = {}) => reply(res, status, { ok: false, error_code: status, description, ...extra });
 
   const pending = (offset) => {
-    // An offset confirms everything before it, so those are gone for good.
-    if (offset != null) state.updates = state.updates.filter((u) => u.update_id >= offset);
+    // An offset confirms everything before it, so those are gone for good. Ids far below it are a new run, as
+    // Telegram starts after a quiet week, and stay.
+    if (offset != null) state.updates = state.updates.filter((u) => u.update_id >= offset || u.update_id < offset - 1_000);
     return state.updates;
   };
   const wake = () => {

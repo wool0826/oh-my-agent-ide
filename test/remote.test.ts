@@ -137,3 +137,15 @@ test('remote: messages older than ten minutes are stale', () => {
 test('remote: the wait after a failure doubles up to a minute', () => {
   assert.deepEqual([1, 2, 3, 7, 20].map((n) => backoffMs(n)), [1_000, 2_000, 4_000, 60_000, 60_000]);
 });
+
+test('remote: a cut never splits an emoji in two', () => {
+  const parts = splitText(`${'a'.repeat(99)}😀${'b'.repeat(50)}`, 100, 5);
+  assert.equal(parts[0], 'a'.repeat(99));
+  assert.ok(parts[1].startsWith('😀'));
+});
+
+test('remote: five strangers trying codes use up the code', () => {
+  let p: Pairing | null = { code: 'ABCD6789', expiresAt: 2_000_000_000, tries: 0 };
+  for (let i = 0; i < PAIR_TRIES; i++) p = checkPair(p, msg(100 + i, `/start GUESS${i}XYZ`), 0, 1_000_000_000).pairing;
+  assert.equal(p, null);
+});

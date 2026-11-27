@@ -164,3 +164,42 @@ test('telegramPoller: stop ends a poll that is waiting on the server', () => wit
   await pl.stop();
   assert.ok(Date.now() - t0 < 2_000);
 }));
+
+test('telegramApi: a 404 that is not from Telegram is not a refused token', async () => {
+  const http = await import('node:http');
+  const srv = http.createServer((_q, r) => { r.writeHead(404); r.end('nope'); });
+  await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+  const api = new TelegramApi('123456789:AAEhBP0av18q1wQ7abcdefghijklmnopqrst', `http://127.0.0.1:${(srv.address() as { port: number }).port}`);
+  try { await assert.rejects(api.getMe(), (e: TelegramError) => e.kind === 'bad' && e.code === 404); } finally { srv.close(); }
+});
+
+test('telegramPoller: an update the client cannot read is passed by, not asked for again', () => withStub(async (s, api) => {
+  const got: TgUpdate[] = [];
+  const pl = poller(api, got, []);
+  s.push({ message: { message_id: 'x' } });
+  s.push(s.user(42, 'fine'));
+  pl.start();
+  await until(() => got.some((u) => u.message?.text === 'fine'), 'the readable update');
+  await pl.stop();
+  assert.deepEqual(got.map((u) => u.message?.text), [undefined, 'fine']);
+}));
+
+test('telegramPoller: a listener that throws does not stop the loop with an unhandled rejection', () => withStub(async (s, api) => {
+  let n = 0;
+  const pl = new TelegramPoller(api, { onUpdate: () => { n++; }, onState: () => { throw new Error('listener'); }, timeoutSec: 1 });
+  pl.start();
+  s.push(s.user(42, 'x'));
+  await until(() => n === 1, 'the update');
+  await pl.stop();
+}));
+
+test('telegramPoller: ids that start over are not taken for ones already seen', () => withStub(async (s, api) => {
+  const got: TgUpdate[] = [];
+  const pl = poller(api, got, []);
+  pl.start();
+  s.push({ update_id: 5000, ...s.user(42, 'old') });
+  await until(() => got.length === 1, 'the first update');
+  s.push({ update_id: 3, ...s.user(42, 'new') });
+  await until(() => got.length === 2, 'the update after the ids started over');
+  await pl.stop();
+}));
