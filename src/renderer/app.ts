@@ -1053,7 +1053,7 @@ export function init() {
   });
   // A click in the popover (its refresh button, say) leaves the focus there; the pointer still closes it as it leaves.
   upop.addEventListener('pointerdown', () => { usagePop.keys = false; });
-  upop.addEventListener('keydown', () => { usagePop.keys = true; });
+  upop.addEventListener('keydown', (e) => { if (usagePop.shown && e.key !== 'Escape') usagePop.keys = true; });
   // A press anywhere else closes it, focused or not (a press on nothing focusable moves no focus to close it with).
   document.addEventListener('pointerdown', (e) => {
     const at = e.target as Node | null;

@@ -383,8 +383,10 @@ function usagePopHtml() {
   return S!.accounts.map(usageCard).join('') + usageFootHtml();
 }
 
-/** The usage popover: every account's numbers while the pointer or the focus is on the rings or on the popover. */
-/** `keys`: the focus in it came with the keyboard, so it holds the popover open; a click's focus does not. */
+/**
+ * The usage popover: every account's numbers while the pointer or the focus is on the rings or on the popover.
+ * `keys`: the focus in it came with the keyboard, so it holds the popover open; a click's focus does not.
+ */
 export const usagePop = { shown: false, hover: null as string | null, timer: 0, hideTimer: 0, html: '', quiet: false, keys: false };
 
 /** Opens the popover. Once it is open, moving between the rings only moves the mark (hoverUsage): nothing is drawn again. */
