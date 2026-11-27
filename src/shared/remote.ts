@@ -1,4 +1,4 @@
-// Rules for the phone channel (Telegram, decision 240): splitting long text, hiding the bot token, the pairing code
+// Rules for the phone channel (Telegram, decision 241): splitting long text, hiding the bot token, the pairing code
 // that binds the bot to its owner's chat, which updates count, and how long to wait before trying again.
 // Pure: the Bot API client is src/main/remote/telegramApi.ts, the polling loop src/main/remote/telegram.ts.
 

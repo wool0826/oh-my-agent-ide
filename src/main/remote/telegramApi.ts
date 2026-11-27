@@ -1,4 +1,4 @@
-// The Telegram Bot API over plain fetch (decision 240): no library, nothing listening, only calls out to
+// The Telegram Bot API over plain fetch (decision 241): no library, nothing listening, only calls out to
 // api.telegram.org. The token sits in the address, so no error, log line or thrown message here ever carries it:
 // every failure becomes "method: code description" with any token shape masked.
 import { z } from 'zod';

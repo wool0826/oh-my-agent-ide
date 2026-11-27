@@ -1,4 +1,4 @@
-// A stand-in for the Telegram Bot API on 127.0.0.1 (decision 240), as gh-stub.mjs stands in for gh. The app talks to
+// A stand-in for the Telegram Bot API on 127.0.0.1 (decision 241), as gh-stub.mjs stands in for gh. The app talks to
 // it through OMA_TELEGRAM_API. It knows one bot token, holds getUpdates open until an update comes (long polling),
 // answers an older getUpdates with 409 when a newer one arrives, as Telegram does, and can be told to fail.
 import http from 'node:http';

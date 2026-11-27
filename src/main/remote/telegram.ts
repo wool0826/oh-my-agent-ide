@@ -1,4 +1,4 @@
-// Long polling for Telegram updates (decision 240): one getUpdates at a time, each update handed on once, waits
+// Long polling for Telegram updates (decision 241): one getUpdates at a time, each update handed on once, waits
 // that grow after a failure, and a stop on a refused token or on another poller of the same bot.
 import { CONFLICTS_ELSEWHERE, Seen, backoffMs, type TgUpdate } from '../../shared/remote';
 import { TelegramError, type TelegramApi } from './telegramApi';
