@@ -1,7 +1,6 @@
 // The Repositories view with its issues, Jira issues, and the launch checks shown in Settings.
 import type { Repo } from '../../shared/types';
 import type { Task } from '../../shared/types';
-import { type Key } from '../../shared/i18n';
 import { prsInReview } from '../../shared/prs';
 import { ghRepoRef, type Issue } from '../../shared/issues';
 import { jiraBase, type JiraIssue } from '../../shared/jira';

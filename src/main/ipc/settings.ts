@@ -21,7 +21,7 @@ export function registerSettingsIpc(ctx: IpcContext) {
   handle('preflight:run', async () => { const r = await runPreflight(); ctx.pushState(); return r; });
   handle('diag:export', () => exportDiagnostics(ctx.win()));
   // The main process's clipboard: it takes text without the window being focused, unlike navigator.clipboard.
-  handle('clipboard:write', (text: string) => { clipboard.writeText(String(text)); });
+  handle('clipboard:write', async (text: string) => { await clipboard.writeText(String(text)); });
   handle('settings:save', (patch: Partial<SettingsView>) => {
     const before = loadSettings();
     // Compared with the folder in use: changing it and back again needs no restart.
