@@ -15,6 +15,7 @@ import { month } from './util';
 import { CHAT_SNAPSHOT } from '../shared/paging';
 import { openTaskIds } from '../shared/currentTask';
 import { autoSleep } from './sleep';
+import { telegram } from './remote/telegramLink';
 import type { AppState } from '../shared/types';
 
 /** What a restart into a downloaded update would wait for. */
@@ -52,6 +53,7 @@ export function snapshot(): AppState {
     preflightFailed: failedCount(lastPreflight() ?? []),
     repoAdding: addingRepo(),
     sleep: autoSleep.view(),
+    telegram: telegram.view(),
     dispatcher: { busy: dispatcher.busy, contextTokens: d.dispatcher.contextTokens, accountId: d.dispatcher.accountId, statusText: dispatcher.statusText, busySince: dispatcher.busySince, spend: d.dispatcher.spend?.[month()] ?? null },
   };
 }

@@ -45,6 +45,7 @@ import { SHOT_SCHEME } from '../shared/shots';
 import { serveShots } from './shots';
 import { StateSender } from '../shared/stateSync';
 import { snapshot } from './snapshot';
+import { telegram } from './remote/telegramLink';
 import { registerIpc, registerE2eIpc, userAnswer } from './ipc';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -236,6 +237,10 @@ async function boot() {
   void listModels(6 * 3600_000);
   workers.resumeAfterRestart();
   startPrMonitor();
+  // The phone channel (decision 241): off unless the user turned it on.
+  telegram.on('changed', pushState);
+  telegram.on('invalid', () => store.chat('error', t('tg.err.revoked')));
+  void telegram.init();
   // A Worker that waits too long for an answer gives its slot to the queue (decision 118).
   setInterval(() => { workers.sweepWaiting(); workers.sweepStalled(); }, 30_000);
   startUpdateCheck(updateHooks);
@@ -290,6 +295,7 @@ else {
     terminal.stopAll();
     side.reset();
     automations.stop();
+    void telegram.halt();
     workers.closeAll();
     dispatcher.close();
     awake.release();

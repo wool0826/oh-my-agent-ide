@@ -1,0 +1,250 @@
+// The Telegram bot as the app holds it (decision 245): its token encrypted with safeStorage, the pairing that binds
+// it to the owner's private chat, and its status. Polling runs only while a pairing code is open; once paired the
+// app only sends. Nothing here logs or returns the token, and no message text goes to the log.
+import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import { safeStorage } from 'electron';
+import { loadSettings, saveSettings } from '../settings';
+import { log } from '../log';
+import { t } from '../i18n';
+import {
+  PAIR_TTL_MS, checkPair, cleanTelegram, looksLikeToken, makePairCode, pairLink, remoteStatus,
+  type PairCandidate, type Pairing, type RemoteTrouble, type TelegramStored, type TelegramView, type TgUpdate,
+} from '../../shared/remote';
+import { TelegramApi, TelegramError, type SendOpts } from './telegramApi';
+import { TelegramPoller, type PollState } from './telegram';
+
+/** Where the token and the bot's record live; settings.json by default, a stand-in in tests. */
+export interface LinkStore {
+  load(): { tokenEnc: string; cfg: TelegramStored };
+  save(tokenEnc: string, cfg: TelegramStored): void;
+}
+
+/** Strict encryption: unlike encryptToken in settings.ts there is no plain fallback, so no safeStorage means no token. */
+export interface LinkCrypt {
+  available(): boolean;
+  encrypt(s: string): string;
+  decrypt(s: string): string;
+}
+
+const settingsStore: LinkStore = {
+  load() { const s = loadSettings(); return { tokenEnc: s.telegramTokenEnc ?? '', cfg: cleanTelegram(s.telegram) }; },
+  save(tokenEnc, cfg) { const s = loadSettings(); s.telegramTokenEnc = tokenEnc; s.telegram = cfg; saveSettings(); },
+};
+
+const safeCrypt: LinkCrypt = {
+  available: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (s) => `enc:${safeStorage.encryptString(s).toString('base64')}`,
+  decrypt: (s) => (s.startsWith('enc:') ? safeStorage.decryptString(Buffer.from(s.slice(4), 'base64')) : ''),
+};
+
+/** An error for the page: the client's own text is already free of the token. */
+function userError(e: unknown): Error {
+  if (e instanceof TelegramError) return new Error(e.kind === 'auth' ? t('tg.err.auth') : t('tg.err.reach', { msg: e.message }));
+  return e instanceof Error ? e : new Error(String(e));
+}
+
+export class TelegramLink extends EventEmitter {
+  private api: TelegramApi | null = null;
+  private poller: TelegramPoller | null = null;
+  private pairing: Pairing | null = null;
+  private openedAt = 0;
+  private candidate: PairCandidate | null = null;
+  private trouble: RemoteTrouble = null;
+  private expiry: NodeJS.Timeout | null = null;
+
+  constructor(private readonly store: LinkStore = settingsStore, private readonly crypt: LinkCrypt = safeCrypt, private readonly base?: string, private readonly pollSec = 50) {
+    super();
+  }
+
+  private get cfg(): TelegramStored { return this.store.load().cfg; }
+
+  private token(): string {
+    const enc = this.store.load().tokenEnc;
+    if (!enc) return '';
+    try { return this.crypt.decrypt(enc); } catch { return ''; }
+  }
+
+  private client(): TelegramApi | null {
+    if (!this.api) { const tok = this.token(); if (tok) this.api = new TelegramApi(tok, this.base); }
+    return this.api;
+  }
+
+  private changed() { this.emit('changed'); }
+
+  private setTrouble(tr: RemoteTrouble) {
+    if (tr === this.trouble) return;
+    const was = this.trouble;
+    this.trouble = tr;
+    // Told once when the token stops working, so the chat can say it.
+    if (tr === 'invalid' && was !== 'invalid') this.emit('invalid');
+    this.changed();
+  }
+
+  /** Is the bot paired and its token working, so messages can go? */
+  get ready(): boolean {
+    const c = this.cfg;
+    return c.enabled && c.ownerId !== null && this.trouble !== 'invalid' && !!this.client();
+  }
+
+  view(): TelegramView {
+    const c = this.cfg;
+    const tokenSet = !!this.store.load().tokenEnc;
+    const code = this.pairing && !this.candidate ? this.pairing.code : null;
+    return {
+      enabled: c.enabled,
+      status: remoteStatus({ enabled: c.enabled, tokenSet, ownerId: c.ownerId, trouble: this.trouble }),
+      tokenSet,
+      bot: c.botName,
+      code,
+      codeEnds: code ? this.pairing!.expiresAt : null,
+      link: code && c.botName ? pairLink(c.botName, code) : null,
+      candidate: this.candidate,
+      owner: c.ownerId === null ? null : { id: c.ownerId, name: c.ownerName ?? String(c.ownerId) },
+    };
+  }
+
+  /** At launch: with a paired bot, check once that the token still works. */
+  async init() {
+    const c = this.cfg;
+    if (!c.enabled || c.ownerId === null || !this.client()) return;
+    try { await this.client()!.getMe(); this.setTrouble(null); } catch (e) { this.noteFailure(e); }
+  }
+
+  /** Checks a new token with Telegram, then stores it encrypted. A different bot drops the old pairing. */
+  async setToken(raw: string) {
+    const tok = raw.trim();
+    if (!looksLikeToken(tok)) throw new Error(t('tg.err.token'));
+    if (!this.crypt.available()) throw new Error(t('tg.err.noCrypto'));
+    const api = new TelegramApi(tok, this.base);
+    const me = await api.getMe().catch((e) => { throw userError(e); });
+    await this.halt();
+    const c = this.cfg;
+    const same = c.botId === me.id;
+    const next: TelegramStored = { ...c, botId: me.id, botName: me.username, ownerId: same ? c.ownerId : null, ownerName: same ? c.ownerName : null };
+    this.store.save(this.crypt.encrypt(tok), next);
+    this.api = api;
+    this.trouble = null;
+    log.info('telegram token saved', { bot: me.username, kept: same && next.ownerId !== null });
+    if (next.enabled && next.ownerId === null) this.newCode();
+    this.changed();
+  }
+
+  async setEnabled(on: boolean) {
+    const c = this.cfg;
+    if (c.enabled === on) return;
+    this.store.save(this.store.load().tokenEnc, { ...c, enabled: on });
+    if (!on) await this.halt();
+    else if (c.ownerId === null && this.client()) this.newCode();
+    else void this.init();
+    this.changed();
+  }
+
+  /** Opens a new pairing code for 10 minutes and polls for it. */
+  newCode() {
+    const api = this.client();
+    const c = this.cfg;
+    if (!api || !c.enabled || c.ownerId !== null) throw new Error(t('tg.err.notReady'));
+    this.candidate = null;
+    this.openedAt = Date.now();
+    this.pairing = { code: makePairCode(crypto.randomBytes(8)), expiresAt: this.openedAt + PAIR_TTL_MS, tries: 0 };
+    if (this.expiry) clearTimeout(this.expiry);
+    this.expiry = setTimeout(() => { this.pairing = null; void this.stopPolling(); this.changed(); }, PAIR_TTL_MS);
+    this.expiry.unref?.();
+    if (!this.poller) this.poller = new TelegramPoller(api, { onUpdate: (u) => this.onUpdate(u), onState: (s) => this.onPoll(s), timeoutSec: this.pollSec });
+    this.poller.start();
+    this.changed();
+  }
+
+  private onPoll(s: PollState) {
+    this.setTrouble(s === 'ok' ? null : s);
+    if (s === 'invalid' || s === 'elsewhere') { this.pairing = null; this.poller = null; this.changed(); }
+  }
+
+  private onUpdate(u: TgUpdate) {
+    // Ids and sizes only: the text may be anyone's.
+    log.info('telegram update', { id: u.update_id, kind: u.message ? 'message' : 'other', len: u.message?.text?.length ?? 0 });
+    if (!this.pairing || this.candidate) return;
+    const r = checkPair(this.pairing, u, this.openedAt, Date.now());
+    this.pairing = r.pairing;
+    if (r.result === 'match') {
+      this.candidate = r.who!;
+      // Kept until the desktop says yes or no; nothing else needs reading meanwhile.
+      this.pairing = { code: '', expiresAt: Date.now() + PAIR_TTL_MS, tries: 0 };
+      void this.stopPolling();
+    } else if (!this.pairing) void this.stopPolling();
+    if (r.result !== 'ignore') log.info('telegram pairing', { result: r.result, left: this.pairing ? 'open' : 'closed' });
+    this.changed();
+  }
+
+  /** The user confirmed the person who sent the code: they become the owner, and the bot says hello. */
+  async confirm() {
+    const who = this.candidate;
+    if (!who) return;
+    this.candidate = null;
+    this.pairing = null;
+    if (this.expiry) { clearTimeout(this.expiry); this.expiry = null; }
+    this.store.save(this.store.load().tokenEnc, { ...this.cfg, ownerId: who.id, ownerName: who.name });
+    log.info('telegram paired');
+    this.changed();
+    await this.send(t('tg.msg.connected')).catch((e) => log.warn('telegram hello', (e as Error).message));
+  }
+
+  /** Not the right person: forget them and open a fresh code. */
+  reject() {
+    this.candidate = null;
+    this.pairing = null;
+    this.newCode();
+  }
+
+  /** Forgets the token, the bot and its owner. The token stays valid at Telegram until it is revoked in BotFather. */
+  async disconnect() {
+    await this.halt();
+    this.store.save('', { ...cleanTelegram(null), enabled: this.cfg.enabled });
+    this.api = null;
+    this.trouble = null;
+    log.info('telegram disconnected');
+    this.changed();
+  }
+
+  /** One message to the owner. Throws an error fit for the page; a refused token marks the link invalid. */
+  async send(text: string, o: SendOpts = {}): Promise<number> {
+    const c = this.cfg;
+    const api = this.client();
+    if (!api || c.ownerId === null) throw new Error(t('tg.err.notReady'));
+    try {
+      const r = await api.sendMessage(c.ownerId, text, o);
+      if (this.trouble === 'invalid' || this.trouble === 'retrying') this.setTrouble(null);
+      return r.message_id;
+    } catch (e) {
+      this.noteFailure(e);
+      throw e instanceof TelegramError ? e : userError(e);
+    }
+  }
+
+  /** The Settings button: a test message, with an error fit for the page. */
+  async test() {
+    await this.send(t('tg.msg.test')).catch((e) => { throw userError(e); });
+  }
+
+  private noteFailure(e: unknown) {
+    if (e instanceof TelegramError && e.kind === 'auth') this.setTrouble('invalid');
+    log.warn('telegram', e instanceof TelegramError ? e.message : 'failed');
+  }
+
+  private async stopPolling() {
+    const p = this.poller;
+    this.poller = null;
+    await p?.stop();
+  }
+
+  /** Stops everything that runs: polling and the code's timer. */
+  async halt() {
+    if (this.expiry) { clearTimeout(this.expiry); this.expiry = null; }
+    this.pairing = null;
+    this.candidate = null;
+    await this.stopPolling();
+  }
+}
+
+export const telegram = new TelegramLink();

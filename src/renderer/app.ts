@@ -31,6 +31,7 @@ import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira } from './ui/repos';
 import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
+import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
 import { renderSleep, setSleep } from './ui/sleep';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
@@ -227,6 +228,7 @@ async function clearOne(kind: 'result' | 'auto', id: string) {
 export async function act(el: HTMLElement, e: Event) {
   const a = el.dataset.action!;
   const id = el.dataset.id ?? '';
+  if (a.startsWith('tg-') && await telegramAction(a, el, () => openSettings())) return;
   switch (a) {
     case 'view': go({ view: el.dataset.v as View }); break;
     case 'worker-filter': go({ view: 'worker', wOpen: false, wFilter: (el.dataset.v || null) as WorkerFilter | null }); break;
@@ -981,6 +983,7 @@ export function init() {
     if (el.dataset.change === 'sound-kind') syncSoundRows();
     if (el.classList?.contains('step-v')) syncStep(el as unknown as HTMLInputElement, true);
     // The Jira token goes to the main process by itself and is cleared from the field: it is never part of the page's state.
+    if (el.id?.startsWith('tg-') && await telegramChange(el as unknown as HTMLInputElement, () => openSettings())) return;
     if (el.id === 'set-jtok') {
       const tok = (el as unknown as HTMLInputElement).value.trim();
       if (!tok) return;
@@ -1334,6 +1337,7 @@ export function init() {
     if (first) checkAway();
     renderAll(false, parts);
     if (ui.settingsShown && has('update', 'settings')) drawUpdate();
+    if (ui.settingsShown && has('telegram')) drawTelegram();
     if (!has('accounts', 'setupNeeded', 'settings')) return;
     // The settings sheet only depends on accounts; re-render it only when they change.
     const accKey = JSON.stringify(s.accounts) + s.setupNeeded;
