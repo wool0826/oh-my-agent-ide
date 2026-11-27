@@ -73,13 +73,21 @@ flow('the tooltip shows a control\'s name and shortcut on hover and on keyboard 
   // A corner of the window with no control and no text under it: the middle of the thread can hold a cut title.
   const AWAY = { x: 3, y: 3 };
   assert.ok(!(await tip()));
-  // Hover: after the delay, above the control, with the shortcut as a key and not in the sentence.
-  await app.hover('#side-toggle');
+  // Hover: after the delay, above the control.
+  await app.hover('.side-foot [data-action="open-settings"]');
   await tipOn('the tooltip on hover');
+  const above = await tip();
+  assert.equal(above.text, 'Settings');
+  assert.ok(above.bottom < (await box('.side-foot [data-action="open-settings"]')).top, 'above the control');
+  await app.hover(AWAY);
+  await app.until('!window.__tip()', 'the tooltip gone when the pointer leaves the control', 20_000, TIP);
+  // The shortcut is a key, not part of the sentence; in the top strip the tooltip sits below.
+  await app.hover('#side-toggle');
+  await tipOn('the tooltip on a control with a shortcut');
   const shown = await tip();
   assert.equal(shown.text, 'Collapse the sidebar');
   assert.equal(shown.key, `${mod}B`);
-  assert.ok(shown.bottom < (await box('#side-toggle')).top, 'above the control');
+  assert.ok(shown.top > (await box('#side-toggle')).bottom, 'below a control in the top strip');
   // The name is already the button's label: the tooltip does not describe it again.
   assert.equal(await app.evaluate("return document.querySelector('#side-toggle').getAttribute('aria-describedby') ?? '';"), '');
   assert.equal(await app.evaluate("return document.querySelector('#side-toggle').getAttribute('aria-keyshortcuts');"), process.platform === 'darwin' ? 'Meta+B' : 'Control+B');
@@ -260,10 +268,9 @@ flow('the app starts in the message field, the views are one Tab stop, and a nar
   await app.size(900, 760);
   b = JSON.parse(await app.until(`return document.querySelector('#win').classList.contains('side-min') && (() => { ${box} })()`, 'the rail at 900px'));
   assert.ok(b.main >= 520, JSON.stringify(b));
-  // On macOS the rail's panel is centred on the box the window reports around the traffic lights (lights.e2e.mjs);
-  // elsewhere it stays 60 wide, and the toolbar's controls end clear of the caption buttons (150px at 100%). The grid
-  // animates, so wait for it to settle.
-  await app.until("return (() => { const s = document.querySelector('.sidebar').getBoundingClientRect(); const mac = !!document.querySelector('.platform-darwin:not(.fullscreen)'); const css = getComputedStyle(document.body); const o = navigator.windowControlsOverlay; const box = o?.visible ? o.getTitlebarAreaRect().x : 2 * parseFloat(css.getPropertyValue('--lights-x')) + parseFloat(css.getPropertyValue('--lights-w')); return mac ? Math.abs((s.left + s.right) / 2 - box / 2) < 0.5 : Math.abs(s.right - 60) < 0.5; })()", 'the rail centred on the traffic lights on macOS, 60px elsewhere');
+  // The rail is 60 wide on every system (it starts below the top strip: strip.e2e.mjs), and the strip's controls end
+  // clear of the caption buttons (150px at 100%). The grid animates, so wait for it to settle.
+  await app.until("return Math.abs(document.querySelector('.sidebar').getBoundingClientRect().right - 60) < 0.5", 'the rail 60px wide');
   for (const w of [900, 760]) {
     await app.size(w, 760);
     const end = Number(await app.until(`return (() => { if (document.querySelector('.platform-darwin')) return 1; const r = Math.max(...[...document.querySelector('.toolbar').children].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right)); return r <= innerWidth - 150 + 0.5 ? String(r) : ''; })()`, `the toolbar clear of the caption buttons at ${w}px`));

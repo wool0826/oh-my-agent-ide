@@ -1,4 +1,5 @@
-// Screen comparison: the main screens (chat, Workers, Notifications, settings, palette) in the dark and the light theme,
+// Screen comparison: the main screens (chat, the same with the left sidebar as a rail, Workers, Notifications, settings,
+// palette) in the dark and the light theme,
 // drawn with fake agents, fixed data and a stopped clock at a fixed size, against the pictures in test/e2e/visual/.
 // Fonts draw differently on each system, so the pictures are of one system (BASE_OS) and the flows run only there;
 // CI runs them as their own job (visual), and `npm run e2e` leaves them out. Run with `npm run e2e:visual`; after a change that is meant to change the
@@ -106,6 +107,13 @@ for (const theme of ['dark', 'light']) {
 
     await app.until("document.querySelectorAll('#chat-thread .attach[data-task]').length >= 1", 'the chat with the result card');
     await shot('chat');
+
+    // The same screen with the left sidebar as a rail: the strip's button folds it and opens it again.
+    await app.click('#side-toggle');
+    await app.until("document.querySelector('#win').classList.contains('side-min')", 'the left sidebar as a rail');
+    await shot('rail');
+    await app.click('#side-toggle');
+    await app.until("!document.querySelector('#win').classList.contains('side-min')", 'the left sidebar open again');
 
     await app.click('button[data-v="worker"]');
     await app.until("!!document.querySelector('#wk-list .wrow [data-action=\"select-worker\"]')", 'the Workers list');
