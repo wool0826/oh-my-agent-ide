@@ -23,7 +23,6 @@ import { t } from './i18n';
 import { listModels, setSessionModelSource } from './models';
 import { log } from './log';
 import { windowIconFile } from '../shared/appIcon';
-import { LIGHTS_POSITION } from '../shared/trafficLights';
 import { notifyText } from '../shared/askWhy';
 import { HIDDEN_ARG, closeAction, trayCounts } from '../shared/tray';
 import { hasTray, showWindow, updateTray } from './tray';
@@ -40,7 +39,7 @@ import { retryAfterLimits, scheduleLimitRetry } from './limits';
 import { runPreflight } from './preflight';
 import { fixToolPath } from './toolpath';
 import { beginRun, installCrashHandlers, noticeLastRun, watchWindow } from './crash';
-import { effectiveTheme, windowColors } from '../shared/theme';
+import { effectiveTheme, windowButtons, windowColors } from '../shared/theme';
 import { SHOT_SCHEME } from '../shared/shots';
 import { serveShots } from './shots';
 import { StateSender } from '../shared/stateSync';
@@ -71,10 +70,11 @@ const updateHooks = {
 function applyTheme() {
   const theme = loadSettings().theme;
   nativeTheme.themeSource = theme;
-  const c = windowColors(effectiveTheme(theme, nativeTheme.shouldUseDarkColors));
+  const look = effectiveTheme(theme, nativeTheme.shouldUseDarkColors);
+  const c = windowColors(look);
   if (!win || win.isDestroyed()) return;
   win.setBackgroundColor(c.background);
-  if (process.platform !== 'darwin') { try { win.setTitleBarOverlay({ color: '#00000000', symbolColor: c.symbol, height: 44 }); } catch { /* no overlay on this platform */ } }
+  if (process.platform !== 'darwin') { try { win.setTitleBarOverlay(windowButtons(process.platform, look)); } catch { /* no overlay on this platform */ } }
 }
 
 function quitApp() {
@@ -120,7 +120,7 @@ function createWindow() {
   // Windows paints the window frame from the native theme, so it is set to the app's own: a dark app in a
   // light system otherwise gets a light outline and a 1px #f3f3f3 strip on its edges.
   nativeTheme.themeSource = loadSettings().theme;
-  const look = windowColors(effectiveTheme(loadSettings().theme, nativeTheme.shouldUseDarkColors));
+  const look = effectiveTheme(loadSettings().theme, nativeTheme.shouldUseDarkColors);
   win = new BrowserWindow({
     width: 1320,
     height: 860,
@@ -133,12 +133,10 @@ function createWindow() {
     // Started by the OS at sign-in: stay in the tray until asked for.
     show: !(process.argv.includes(HIDDEN_ARG) && loadSettings().background),
     // Matches --bg-canvas, so nothing flashes before the page paints its backdrop.
-    backgroundColor: look.background,
-    titleBarStyle: mac ? 'hiddenInset' : 'hidden',
-    // Inside the floating sidebar panel (--lights-x in tokens.css, test/trafficLights.test.ts).
-    trafficLightPosition: mac ? { ...LIGHTS_POSITION } : undefined,
-    // macOS: `true` only reports the lights' box to the page (env(titlebar-area-*)); a height would move them (electron#49183).
-    titleBarOverlay: mac ? true : { color: '#00000000', symbolColor: look.symbol, height: 44 },
+    backgroundColor: windowColors(look).background,
+    // No title bar of its own: the system's buttons lie over the page's top strip (src/shared/theme.ts).
+    titleBarStyle: 'hidden',
+    titleBarOverlay: windowButtons(process.platform, look),
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       contextIsolation: true,
@@ -172,8 +170,8 @@ function createWindow() {
   // macOS hides the traffic lights in full screen, so the page drops the room it keeps for them.
   const sendFullScreen = () => win?.webContents.send('fullscreen', win.isFullScreen());
   win.on('enter-full-screen', sendFullScreen);
-  // Setting the position again makes Electron send the lights' box to the page now, not at the next resize.
-  win.on('leave-full-screen', () => { if (mac) win?.setWindowButtonPosition({ ...LIGHTS_POSITION }); sendFullScreen(); });
+  // Setting the position (to the system's own) makes Electron send the lights' box to the page now, not at the next resize.
+  win.on('leave-full-screen', () => { if (mac) win?.setWindowButtonPosition(null); sendFullScreen(); });
   win.webContents.on('did-finish-load', sendFullScreen);
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);

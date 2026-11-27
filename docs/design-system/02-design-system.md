@@ -225,11 +225,11 @@ Nested corners stay concentric (inner ≈ outer − padding).
 |---|---|---|
 | `--control-sm` | 24 | small buttons, segment items, link chips, file chips, hover pencil; minimum hit target |
 | `--control-md` | 28 | default button, segmented control (24 + 2·2), stepper, dropdown, fields, menu items |
-| `--control-lg` | 32 | toolbar tab pill (28 + 2·2), send, search, settings nav, large buttons (Settings, dialogs) |
+| `--control-lg` | 32 | toolbar buttons, send, search, settings nav, large buttons (Settings, dialogs) |
 | `--row-min` | 44 | settings rows |
 | `--icon-sm/md/lg/hero` | 13/16/18/44 | in-button icons / glyph art / glyph box / empty states |
-| Layout | 272 · 344 · 52 · 8 | sidebar, inspector, toolbar height, panel inset (unchanged) |
-| `--lights-x/-w/-gap` | 22 · 52 · 14 | macOS traffic lights: where the close button starts (and the margin after zoom), a fallback width of the three buttons, the gap after them. The layout reads the box the window reports (`--lights-box-w/-h` from `env(titlebar-area-x/-height)`); what sits at the top left starts at `box-w − x + gap`, on macOS outside full screen only |
+| Layout | 272 · 344 · 44 · 8 | sidebar, inspector, top strip height, panel inset. The strip runs across the window and is as tall as the window's own buttons over it (`STRIP_H` in `src/shared/theme.ts`); both sidebars and the main column start below it |
+| `--strip-start` · `--strip-end` (in `styles.css`, not tokens) | 12 · 12 | where the top strip's content starts and ends. macOS outside full screen: start = the traffic lights' box as the window reports it (`env(titlebar-area-x)`, at least 68) + 8. Windows and Linux: end = the caption buttons as reported + 12, at least 150. Settings' strip starts at the same place |
 
 Targets smaller than 24px visually (chip remove 20, clear 24) get a transparent inset so the clickable area is ≥24×24 (WCAG 2.5.8). Link rows (`.linkbtn`, `.links a`, plan links) are one text line high and get the same 24px-high area through `::after`; links inside a sentence keep the height of their line.
 
@@ -297,7 +297,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - Replaced `.btn.def`, `.btn.danger`, `.btn.danger-fill`, `.btn.icon`, `.settings-win .btn`, `.foot-btn`, `.back`, `.segico` (round 1, group 6). `.hov` and `.clear-x` stay as behaviour classes on a `.btn.btn-icon.btn-sm`: they place the button and show it on hover, and carry no look of their own.
 
 ### Segmented control / tab pill — `.seg`
-- Track `--surface-track` + `--rim`, padding 2, items 24 tall (`.seg-lg` 28 for the toolbar and Worker tabs). `.seg-glass` adds panel glass + blur + `--shadow-2` (toolbar). `.seg-fill` stretches items equally (correction scope).
+- Track `--surface-track` + `--rim`, padding 2, items 24 tall (`.seg-lg` 28 for the Worker tabs). `.seg-glass` adds panel glass + blur + `--shadow-2` (toolbar). `.seg-fill` stretches items equally (correction scope).
 - Selected: glide pill (`::before`) with `--surface-thumb` + `--rim-strong` + `--shadow-1`; text `--text-primary` 600. Each item reserves its semibold width (`::after` with `data-label`), so selecting never shifts the layout.
 - Unselected: `--text-secondary` 500; hover `--text-primary`. Disabled 45%.
 - Works for `aria-pressed` (toolbar), `aria-checked` (radio groups) and `aria-selected` (tabs); the selected item is read from those attributes, there is no `.on` class. The glide script runs on every `.seg`, the former `.segc` and `.radios` included. The toolbar's tab pill keeps weight 500 when selected.
@@ -370,7 +370,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - `.dd-btn`: 28 capsule, min 180, up/down glyph; open state = pressed fill.
 
 ### Settings
-- Window: title bar 52 (title 15/600, centered over the panes, not the window; Back sits in the nav's column), nav panel 240 (glass), pane max 680 centered with a stable scrollbar gutter, pane title 24/700, group caption 12/600.
+- Window: the same 44 strip as the main window (title 15/600, centered over the panes, not the window; Back at the strip's start, after the traffic lights on macOS), nav panel 240 (glass), pane max 680 centered with a stable scrollbar gutter, pane title 24/700, group caption 12/600.
 - Status group: one row with every check's name and a success pill while all pass; the rows (failed first, with the fixing command) only when one fails. Folder paths are shortened in the middle (`C:\Users\…\oma\home`), full path in the tooltip.
 - Nav item 32, radius 10, icon 17; hover `--surface-hover`; current `--surface-selected` + rim + 600 + `--accent` icon; setup-needed dot `--danger`.
 - Group `.sgroup` radius 14 (same as inspector groups), rows min 44, padding 8/16, 0.5px separators.

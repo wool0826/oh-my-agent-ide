@@ -34,8 +34,8 @@ a:hover { text-decoration: underline; }
 button { font: inherit; }
 .drag { -webkit-app-region: drag; }
 .nodrag, .drag button, .drag input { -webkit-app-region: no-drag; }
-/* Layers over the window: Electron hit-tests drag regions before the page, so the toolbar and .lights under a scrim
-   would still drag (or maximize) the window. Each layer cancels them where it lies; a .drag inside one adds its own back. */
+/* Layers over the window: Electron hit-tests drag regions before the page, so the toolbar under a scrim would still
+   drag (or maximize) the window. Each layer cancels them where it lies; a .drag inside one adds its own back. */
 #dlg, #cmdk, .settings-win, .dlg-back, .dlg, .cmdk, .pop, .ctxmenu, .upop, .click-catch { -webkit-app-region: no-drag; }
 [hidden] { display: none !important; }
 .c-red { color: var(--state-error); } .c-blue { color: var(--state-run); } .c-green { color: var(--state-done); } .c-orange { color: var(--state-wait); } .c-gray { color: var(--state-idle); } .c-purple { color: var(--state-review); } .c-indigo { color: var(--kind-repo); } .c-pink { color: var(--kind-pref); } .c-teal { color: var(--kind-doc); }
@@ -43,15 +43,14 @@ button { font: inherit; }
 .c-pr-open { color: var(--pr-open); } .c-pr-merged { color: var(--pr-merged); } .c-pr-closed { color: var(--pr-closed); }
 .selectable { user-select: text; }
 
+/* The top strip (.toolbar) runs across the window; both sidebars and the main column start below it (decision 245). */
 .win { height: 100vh; display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--inspector-w); grid-template-rows: var(--toolbar-h) minmax(0, 1fr); }
 /* Floating glass panels: inset from the window edge, rounded, lit along the top. */
 .sidebar, .inspector, .snav { background: var(--surface-sheen), var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-3); border-radius: var(--radius-xl); }
 
 /* Both sidebars can be put away: the left one shrinks to a rail of section glyphs, the right one hides. */
-.win { --rail-w: 60px; transition: grid-template-columns var(--dur-slow) var(--ease-standard); }
-/* macOS: the rail's panel has the traffic lights' box (--lights-box-w, below) in its middle, so the lights are centred in it. */
-.platform-darwin:not(.fullscreen) .win { --rail-w: calc(var(--lights-box-w) - var(--panel-inset)); }
-.win.side-min { grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--inspector-w); }
+.win { --rail-w: 60px; --side-col: var(--sidebar-w); transition: grid-template-columns var(--dur-slow) var(--ease-standard); }
+.win.side-min { --side-col: var(--rail-w); grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--inspector-w); }
 .win.ins-min { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) 0; }
 .win.side-min.ins-min { grid-template-columns: var(--rail-w) minmax(0, 1fr) 0; }
 /* The right sidebar keeps its width while its column closes, so it slides out past the window edge instead of
@@ -73,7 +72,7 @@ button { font: inherit; }
 #rz-ins { grid-row: 2; grid-column: 3; justify-self: start; margin: 0 0 var(--panel-inset) calc(var(--panel-inset) / 2 - 4px); }
 .win.side-min #rz-side, .win.ins-min #rz-ins { display: none; }
 /* While dragged or while the window resizes, the columns follow at once. */
-.win.rz-still, .win.rz-still .inspector { transition: none; }
+.win.rz-still, .win.rz-still .inspector, .win.rz-still #views { transition: none; }
 .win.rz-drag, .win.rz-drag * { cursor: col-resize !important; user-select: none; }
 .win.rz-drag iframe, .win.rz-drag webview { pointer-events: none; }
 /* A narrow window (I1, ui/sidebar.ts applyNarrow): the right sidebar takes no column and opens as a drawer over the
@@ -87,24 +86,7 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) { .win.ins-over:not(.ins-min) .inspector { animation: none; } }
 
 /* sidebar */
-.sidebar { grid-row: 1 / 3; grid-column: 1; margin: var(--panel-inset) 0 var(--panel-inset) var(--panel-inset); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.lights { height: 44px; flex: none; }
-.platform-win32 .lights, .platform-linux .lights, .platform-darwin.fullscreen .lights { height: 12px; }
-/* The macOS traffic lights' box as the window reports it (titleBarOverlay, src/shared/trafficLights.ts): from the window's
-   left edge to --lights-x past the zoom button, and the buttons' height plus their top margin on both sides. The tokens
-   are only the fallback when the window reports nothing. In full screen the lights are hidden. */
-.platform-darwin:not(.fullscreen) {
-  /* Never narrower than the margins alone: a box reported before the window lays out the buttons can be 0 wide. */
-  --lights-box-w: max(env(titlebar-area-x, calc(2 * var(--lights-x) + var(--lights-w))), calc(2 * var(--lights-x)));
-  --lights-box-h: env(titlebar-area-height, var(--toolbar-h));
-}
-/* Where content may start at the top left: clear of the traffic lights on macOS, the window edge elsewhere. */
-body { --lights-end: 0px; --lights-pad: 0px; }
-.platform-darwin:not(.fullscreen) {
-  --lights-end: calc(var(--lights-box-w) - var(--lights-x) + var(--lights-gap));
-  /* Top padding of the bars beside the lights, so their middle line is the lights' middle. */
-  --lights-pad: clamp(0px, calc(var(--lights-box-h) - var(--toolbar-h)), var(--space-12));
-}
+.sidebar { grid-row: 2; grid-column: 1; margin: 0 0 var(--panel-inset) var(--panel-inset); padding-top: var(--space-10); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--space-10) var(--space-10); display: flex; flex-direction: column; gap: var(--space-12); }
 .side-sec h4 { margin: 0; font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); padding: 0 var(--space-8) var(--space-4); display: flex; align-items: center; gap: var(--space-6); }
 .side-sec.blink h4 { color: var(--accent-text); animation: pulse var(--dur-attention) var(--ease-in-out) 3; }
@@ -174,14 +156,20 @@ body { --lights-end: 0px; --lights-pad: 0px; }
 :root[data-motion="reduced"] :is(.k-run svg, .side-sec.blink h4, .pulse, .dots i, .dec.flash, .res.flash, .attach.flash, .bub.flash, .pips i.c) { animation: none; }
 
 /* toolbar */
-.toolbar { grid-row: 1; grid-column: 2 / 4; display: flex; align-items: center; gap: var(--space-12); padding: var(--lights-pad) var(--space-12) 0; white-space: nowrap; min-width: 0; }
-/* Clear of the caption buttons (titleBarOverlay) by their measured width, which varies with the display scale, and by
-   at least the 150px they take at 100%. The view tabs give way first when the row is short, so nothing runs under them. */
-.platform-win32 .toolbar, .platform-linux .toolbar { padding-right: max(150px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + var(--space-12))); }
-.platform-win32 .toolbar > #views, .platform-linux .toolbar > #views { flex: 0 1 auto; min-width: 0; overflow: clip; overflow-clip-margin: var(--space-4); }
-/* A collapsed sidebar is narrower than the traffic lights, so the toolbar starts after them. */
-.platform-darwin .win.side-min .toolbar { padding-left: max(var(--space-12), calc(var(--lights-end) - var(--rail-w))); }
+/* The window's own buttons lie over the top strip and nothing else (decision 245): the traffic lights at its start on
+   macOS, the caption buttons at its end elsewhere. The strip's content keeps between --strip-start and --strip-end,
+   which follow the box the window reports (titleBarOverlay → the titlebar-area-* values) and are never less than the
+   smallest box (68px of lights, the 150px the caption buttons take at 100%), for a frame drawn before it reports one.
+   In full screen macOS has no lights. Settings' strip (.stopbar) starts at the same place. */
+body { --strip-start: var(--space-12); --strip-end: var(--space-12); }
+.platform-darwin:not(.fullscreen) { --strip-start: calc(max(68px, env(titlebar-area-x, 0px)) + var(--space-8)); }
+.platform-win32, .platform-linux { --strip-end: max(150px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + var(--space-12))); }
+.toolbar, .stopbar { border-bottom: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--surface-panel) 55%, transparent); }
+.toolbar { grid-row: 1; grid-column: 1 / 4; display: flex; align-items: center; gap: var(--space-8); padding: 0 var(--strip-end) 0 var(--strip-start); white-space: nowrap; min-width: 0; }
 .toolbar > * { flex: none; }
+/* The view tabs start on the main column's line, or after the sidebar's button where that is further right (a rail
+   beside the traffic lights). They give way first when the row is short, so nothing runs under the window's buttons. */
+.toolbar > #views { flex: 0 1 auto; min-width: 0; overflow: clip; overflow-clip-margin: var(--space-4); margin-left: max(0px, calc(var(--side-col) + var(--space-12) - var(--strip-start) - var(--control-lg) - var(--space-8))); transition: margin-left var(--dur-slow) var(--ease-standard); }
 /* Segmented control and tab pill: one component (design system 2.9). The chosen segment is the one its ARIA state names. */
 .seg { position: relative; isolation: isolate; display: inline-flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-full); background: var(--surface-track); box-shadow: var(--rim); }
 .seg > button { min-height: var(--control-sm); padding: 0 var(--space-12); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font-size: var(--fs-caption); font-weight: 500; white-space: nowrap; cursor: pointer; transition: color var(--dur-base); }
@@ -267,6 +255,8 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .upop.opening .meter > i { transform-origin: 0 50%; animation: bar-in var(--dur-glide) var(--ease-standard) backwards; }
 @keyframes bar-in { from { scale: 0 1; } }
 .tbtn { position: relative; flex: none; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 0; border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+/* Plain: the glyph alone, for the sidebar's button at the strip's start. */
+.tbtn.plain { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
 .tbtn:hover { color: var(--text-primary); }
 .tbtn:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .tbtn svg { width: var(--icon-md); height: var(--icon-md); }
@@ -930,11 +920,11 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 
 /* settings: a full window — top bar, section list on the left, the chosen section centered on the right */
 .settings-win { position: fixed; inset: 0; z-index: var(--z-settings); background: var(--bg-backdrop); display: flex; flex-direction: column; }
-/* The title sits over the panes, on the axis of what they show; Back keeps the column of the nav (H1). */
-.stopbar { flex: none; height: var(--toolbar-h); display: grid; grid-template-columns: calc(var(--panel-inset) + var(--settings-nav-w)) minmax(0, 1fr); align-items: center; padding: var(--lights-pad) 0 0; }
-.stopbar > .sback { margin-left: var(--space-16); }
-.platform-darwin .stopbar > .sback { margin-left: max(var(--space-16), var(--lights-end)); }
-.stopbar h1 { margin: 0; justify-self: center; min-width: 0; font-size: var(--fs-headline); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The title sits over the panes, on the axis of what they show, cut before it would reach the caption buttons; Back
+   keeps the column of the nav (H1) and starts where the strip does. */
+.stopbar { flex: none; height: var(--toolbar-h); display: grid; grid-template-columns: calc(var(--panel-inset) + var(--settings-nav-w)) minmax(0, 1fr); align-items: center; }
+.stopbar > .sback { margin-left: var(--strip-start); }
+.stopbar h1 { margin: 0; justify-self: center; min-width: 0; max-width: calc(100% - 2 * var(--strip-end)); font-size: var(--fs-headline); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stopbar .sback { justify-self: start; padding-left: var(--space-6); }
 .stopbar .sback svg { width: var(--icon-md); height: var(--icon-md); }
 .stop-r { justify-self: end; display: flex; align-items: center; gap: var(--space-8); min-width: 0; }
