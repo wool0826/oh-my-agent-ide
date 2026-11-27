@@ -38,9 +38,10 @@ const PROBE = `window.__strip = (want) => {
       if (r.top < -0.5 || r.bottom > s.bottom + 0.5) bad.push(name + ' leaves the strip: ' + r.top + '–' + r.bottom);
       if (i && r.left < box(kids[i - 1]).right - 0.5) bad.push(name + ' overlaps ' + (kids[i - 1].id || kids[i - 1].className));
     });
-    // The view tabs start on the main column's line, or right after the sidebar's button where that is further right.
-    const views = document.querySelector('#views'), toggle = box(document.querySelector('#side-toggle'));
-    if (box(views).width + 1 >= views.scrollWidth) near('view tabs left', box(views).left, Math.max(box(main).left + 12, toggle.right + 8));
+    // The view tabs start on the main column's line, or right after the sidebar's button where that is further right;
+    // a short strip cuts their end, never moves their start.
+    const toggle = box(document.querySelector('#side-toggle'));
+    near('view tabs left', box(document.querySelector('#views')).left, Math.max(box(main).left + 12, toggle.right + 8));
   }
   // Under the window's own buttons there is the strip and nothing in it.
   const plain = (e) => e === document.documentElement || e === document.body || e.id === 'win' || e.id === 'sheet' || e === bar || e.classList.contains('stopbar');

@@ -925,7 +925,6 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .stopbar h1 { margin: 0; justify-self: center; min-width: 0; max-width: calc(100% - 2 * var(--strip-end)); font-size: var(--fs-headline); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stopbar .sback { justify-self: start; padding-left: var(--space-6); }
 .stopbar .sback svg { width: var(--icon-md); height: var(--icon-md); }
-.stop-r { justify-self: end; display: flex; align-items: center; gap: var(--space-8); min-width: 0; }
 .sbody { flex: 1; min-height: 0; display: flex; }
 .snav { flex: none; width: var(--settings-nav-w); margin: 0 0 var(--panel-inset) var(--panel-inset); padding: var(--space-12) var(--space-10); display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; }
 .ssearch { display: flex; align-items: center; gap: var(--space-6); height: var(--control-lg); padding: 0 var(--space-12); margin-bottom: var(--space-12); border-radius: var(--radius-full); background: var(--surface-sunken); box-shadow: var(--well); color: var(--text-tertiary); flex: none; }
