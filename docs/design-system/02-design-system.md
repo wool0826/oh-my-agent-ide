@@ -33,7 +33,7 @@ component    in components.css, built only from the two layers above
 - **Reduce transparency**: `prefers-reduced-transparency: reduce` or `data-transparency="reduced"` swaps every glass role for its `*-solid` partner and turns blur, wash and sheen off.
 - **Reduce motion**: `prefers-reduced-motion: reduce` or `data-motion="reduced"` sets all durations to 0; components also stop looping animations (spin, pulse, typing dots).
 - **Text size**: `--ui-font-size` (default 13px) drives `--px`; every type token is `calc(N * var(--px))`, as today.
-- **The app's copy**: `src/renderer/tokens.css` is `tokens/tokens.css` under a header comment, with nothing added (a unit test compares them). Every token the app uses is in `source/tokens.mjs`, including the names only the app needs (`--lights-*`, `--pr-*`, `--avatar-*`, `--on-accent-*`). To change a token: edit `source/tokens.mjs`, run `node source/build.mjs`, copy the file again.
+- **The app's copy**: `src/renderer/tokens.css` is `tokens/tokens.css` under a header comment, with nothing added (a unit test compares them). Every token the app uses is in `source/tokens.mjs`, including the names only the app needs (`--pr-*`, `--avatar-*`, `--on-accent-*`). To change a token: edit `source/tokens.mjs`, run `node source/build.mjs`, copy the file again.
 
 ## 2.3 Color
 
@@ -308,7 +308,7 @@ All states below are shown in `design-system.html` (forced with `.is-hover` / `.
 - Section header 11/600 `--text-tertiary`. When a decision arrives, the "Needs your decision" header turns `--accent-text` and pulses 3× (`--dur-attention`); red is for errors only.
 - Decision row (`.drow`): the glyph is a solid `--state-ask` disc with the "!" in `--text-on-ask`; the title clamps to two lines; second line "Worker · kind"; the age sits at the right.
 - Worker row while it runs: its step list under the title (see "Worker steps and queue").
-- Foot (`.side-foot`): ghost icon buttons at `btn-lg` with 18 glyphs: the gear at the left, the sidebar toggle at the right. While the do-not-disturb hours are on, a moon (`#dnd-mark`, `#s-moon`) sits beside the gear in the same neutral colour; its tooltip and name say "Do not disturb until 07:00" and it opens Settings on the alerts. With the sidebar folded the three stack.
+- Foot (`.side-foot`): ghost icon buttons at `btn-lg` with 18 glyphs: the gear at the left (the sidebar toggle is the first control of the top strip, a `.tbtn.plain`). While the do-not-disturb hours are on, a moon (`#dnd-mark`, `#s-moon`) sits beside the gear in the same neutral colour; its tooltip and name say "Do not disturb until 07:00" and it opens Settings on the alerts. With the sidebar folded the two stack.
 
 ### Pills, badges, tags — `.pill[data-tone]`, `.count`, `.diff-tag`
 - Pill 18 tall, 11/600, padding 0/8, tones (`data-tone`): neutral (none), `accent`, `danger`, `review`, `warning`, `success`, and the two app tones `pr-open` (an open PR) and `ask` (waits for the user, a solid fill).

@@ -28,7 +28,7 @@ export const STRIP_H = 44;
 export interface WindowButtons { height: number; color?: string; symbolColor?: string }
 
 /**
- * The window's own buttons, as tall as the top strip on every system (decision 245).
+ * The window's own buttons, as tall as the top strip on every system (decision 247).
  * - Windows and Linux: the caption buttons in the look's colour, over nothing of their own.
  * - macOS: the traffic lights, where the system puts them from the left. A height and no position is what makes
  *   Electron centre them in that height, whatever their size on that macOS; with a position too it does not, and
