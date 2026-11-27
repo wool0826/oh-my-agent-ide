@@ -52,6 +52,8 @@ export class TelegramLink extends EventEmitter {
   private candidate: PairCandidate | null = null;
   private trouble: RemoteTrouble = null;
   private expiry: NodeJS.Timeout | null = null;
+  /** Bumped by every change of token, switch or pairing: a token check that comes back after one is dropped. */
+  private gen = 0;
 
   constructor(private readonly store: LinkStore = settingsStore, private readonly crypt: LinkCrypt = safeCrypt, private readonly base?: string, private readonly pollSec = 50) {
     super();
@@ -116,8 +118,11 @@ export class TelegramLink extends EventEmitter {
     const tok = raw.trim();
     if (!looksLikeToken(tok)) throw new Error(t('tg.err.token'));
     if (!this.crypt.available()) throw new Error(t('tg.err.noCrypto'));
+    const gen = ++this.gen;
     const api = new TelegramApi(tok, this.base);
     const me = await api.getMe().catch((e) => { throw userError(e); });
+    // Disconnected, switched or given another token meanwhile: that came later and wins.
+    if (gen !== this.gen) return;
     await this.halt();
     const c = this.cfg;
     const same = c.botId === me.id;
@@ -133,6 +138,7 @@ export class TelegramLink extends EventEmitter {
   async setEnabled(on: boolean) {
     const c = this.cfg;
     if (c.enabled === on) return;
+    this.gen++;
     this.store.save(this.store.load().tokenEnc, { ...c, enabled: on });
     if (!on) await this.halt();
     else if (c.ownerId === null && this.client()) this.newCode();
@@ -199,6 +205,7 @@ export class TelegramLink extends EventEmitter {
 
   /** Forgets the token, the bot and its owner. The token stays valid at Telegram until it is revoked in BotFather. */
   async disconnect() {
+    this.gen++;
     await this.halt();
     this.store.save('', { ...cleanTelegram(null), enabled: this.cfg.enabled });
     this.api = null;
@@ -211,7 +218,7 @@ export class TelegramLink extends EventEmitter {
   async send(text: string, o: SendOpts = {}): Promise<number> {
     const c = this.cfg;
     const api = this.client();
-    if (!api || c.ownerId === null) throw new Error(t('tg.err.notReady'));
+    if (!api || !c.enabled || c.ownerId === null) throw new Error(t('tg.err.notReady'));
     try {
       const r = await api.sendMessage(c.ownerId, text, o);
       if (this.trouble === 'invalid' || this.trouble === 'retrying') this.setTrouble(null);

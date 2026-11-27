@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { TelegramLink, type LinkCrypt, type LinkStore } from '../src/main/remote/telegramLink';
+import { loadSettings, settingsView, updateSettings } from '../src/main/settings';
 import { cleanTelegram, type TelegramStored } from '../src/shared/remote';
 import { startTelegramStub, type TelegramStub } from './e2e/telegram-stub.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-telegram-'));
 process.env.OMA_DATA_DIR = tmp;
-fs.writeFileSync(path.join(tmp, 'settings.json'), JSON.stringify({ home: path.join(tmp, 'home'), language: 'en', accounts: [] }));
+fs.writeFileSync(path.join(tmp, 'settings.json'), JSON.stringify({ home: path.join(tmp, 'home'), language: 'en', accounts: [], telegramTokenEnc: 'enc:SECRET', telegram: { ownerId: 42 } }));
 
 async function until(ok: () => boolean, what: string, ms = 5_000) {
   const end = Date.now() + ms;
@@ -174,3 +175,36 @@ test('telegramLink: turning it off stops polling; disconnect forgets token, bot 
   assert.equal(link.view().status, 'token');
   await assert.rejects(link.send('x'), /not connected/);
 }));
+
+test('telegramLink: the window never reads the stored token or owner, and cannot overwrite them', () => {
+  const v = settingsView() as unknown as Record<string, unknown>;
+  assert.equal('telegramTokenEnc' in v || 'telegram' in v, false);
+  updateSettings({ telegramTokenEnc: 'enc:EVIL', telegram: { ownerId: 666 } } as never);
+  assert.equal(loadSettings().telegramTokenEnc, 'enc:SECRET');
+  assert.deepEqual(loadSettings().telegram, { ownerId: 42 });
+});
+
+test('telegramLink: a disconnect during the token check wins over it', () => withLink(async (s, link, box) => {
+  const saving = link.setToken(s.token);
+  await link.disconnect();
+  await saving;
+  assert.equal(box.tokenEnc, '');
+  assert.equal(link.view().status, 'token');
+}));
+
+test('telegramLink: a disconnect while a sender waits for Connect forgets them', () => withLink(async (s, link, box) => {
+  await link.setToken(s.token);
+  s.push(s.user(42, link.view().code!));
+  await until(() => !!link.view().candidate, 'the candidate');
+  await link.disconnect();
+  await link.confirm();
+  assert.equal(box.cfg.ownerId, null);
+  assert.equal(s.state.sent.length, 0);
+}));
+
+test('telegramLink: nothing is sent while it is off', () => withLink(async (s, link) => {
+  await link.setToken(s.token);
+  await link.setEnabled(false);
+  await assert.rejects(link.test(), /not connected/);
+  assert.equal(s.state.sent.length, 0);
+}, PAIRED));

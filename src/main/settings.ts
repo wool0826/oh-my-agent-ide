@@ -160,7 +160,9 @@ export function saveSettings() {
 
 export function updateSettings(patch: Partial<SettingsView>) {
   const s = loadSettings();
-  Object.assign(s, patch);
+  // A patch from the window never replaces what only the main process writes: accounts and stored tokens.
+  const { accounts: _a, jiraTokenEnc: _j, telegramTokenEnc: _t, telegram: _g, ...safe } = patch as Partial<Settings>;
+  Object.assign(s, safe);
   fix(s);
   saveSettings();
 }
