@@ -147,6 +147,7 @@ class Accounts extends EventEmitter {
     const s = loadSettings();
     s.accounts = s.accounts.filter((a) => a.id !== id);
     saveSettings();
+    this.armPause();
     this.emit('changed');
   }
 

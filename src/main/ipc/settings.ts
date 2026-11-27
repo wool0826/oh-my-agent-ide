@@ -69,7 +69,8 @@ export function registerSettingsIpc(ctx: IpcContext) {
   handle('account:remove', (id: string) => accounts.remove(id));
   handle('account:rename', (id: string, label: string) => accounts.rename(id, label));
   handle('account:plan', (id: string, plan: AccountPlan) => accounts.setPlan(id, plan));
-  handle('account:assign', (id: string, mode: string) => accounts.setAssign(id, ASSIGN_MODES.includes(mode as AssignMode) ? mode as AssignMode : 'on'));
+  // A value that is not a choice of the switch changes nothing (it must not switch an account back on).
+  handle('account:assign', (id: string, mode: string) => { if (ASSIGN_MODES.includes(mode as AssignMode)) accounts.setAssign(id, mode as AssignMode); });
   handle('account:resumeAll', () => accounts.resumeAll());
   // A round of reading usage now (Settings' account menu, the popover's button). Accounts the server asked to wait are skipped.
   handle('usage:refresh', () => accounts.refreshAll());
