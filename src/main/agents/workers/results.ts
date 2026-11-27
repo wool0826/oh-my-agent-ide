@@ -5,6 +5,7 @@ import { t } from '../../i18n';
 import { log } from '../../log';
 import { remember } from '../../memory';
 import { notifyTaskEnd } from '../../notify';
+import { tellRemote } from '../../remote/bridge';
 import { store } from '../../store';
 import { nowIso, oneLine } from '../../util';
 import { needsPlan, parseResult } from '../workerPrompt';
@@ -112,6 +113,7 @@ export function finalize(m: WorkerManager, w: Worker, task: Task, text: string, 
   if (firstFinish) remember('task', `${task.id} ${task.title} (${w.id}${w.repo ? `, ${w.repo}` : ''}) ${summary}${task.prUrl ? ` ${task.prUrl}` : ''}${task.links?.length ? ` ${task.links.join(' ')}` : ''}${hasSpend(task.spend) ? ` · ${t('spend.memo', spendVars(task.spend))}` : ''}`);
   const n = doneNotice(t, { who: w.id, title: task.title, summary, ok: true, label, code: task.kind === 'code', prUrl: task.prUrl });
   notifyTaskEnd(n.title, n.body, w.id, task.id);
+  tellRemote({ type: 'result', task: task.id, who: w.id, title: task.title, summary, ok: true, label, code: task.kind === 'code', prUrl: task.prUrl, links: task.links });
   followUp(m, task);
   store.changed();
   m.fillSlots();
@@ -137,6 +139,7 @@ export function fail(m: WorkerManager, w: Worker, task: Task, text: string) {
     const n = doneNotice(t, { who: w.id, title: task.title, summary: task.summary, ok: false, prUrl: task.prUrl });
     // Its own burst: a failure right after another end of this Worker is not swallowed.
     notifyTaskEnd(n.title, n.body, `${w.id}:failed`, task.id);
+    tellRemote({ type: 'result', task: task.id, who: w.id, title: task.title, summary: task.summary, ok: false, prUrl: task.prUrl });
   }
   followUp(m, task);
   m.fillSlots();

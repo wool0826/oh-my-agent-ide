@@ -1,8 +1,10 @@
-// Settings > Notifications > Telegram (decision 245): the switch, the bot token, the pairing code and the paired
-// account. The token goes to the main process once and is cleared from the field; the page never holds it.
+// Settings > Notifications > Telegram (decision 245): the switch, the bot token, the pairing code, the paired
+// account and what it is sent (decision 246). The token goes to the main process once and is cleared from the field; the page never holds it.
 import type { Key } from '../../shared/i18n';
 import { codeLeft, showPairCode, type TelegramView } from '../../shared/remote';
+import { REMOTE_EVENTS, type RemoteEvent } from '../../shared/remoteNotice';
 import { call, esc, S, sym, t, toast, tryCall } from './core';
+import { segc } from './settings';
 
 const TONE: Record<TelegramView['status'], string> = { off: '', token: 'warning', pairing: 'accent', connected: 'success', retrying: 'warning', invalid: 'danger', elsewhere: 'danger' };
 
@@ -34,9 +36,16 @@ function rows(v: TelegramView): string {
   return out.join('');
 }
 
+/** What goes to the phone once paired: a switch per kind of news, and how much of it. */
+function news(v: TelegramView): string {
+  const sw = (e: RemoteEvent) => `<div class="srow"><label class="lbl" for="tg-ev-${e}">${t(`tg.ev.${e}` as Key)}</label><input class="switch" id="tg-ev-${e}" type="checkbox" ${v.prefs.events[e] ? 'checked' : ''}></div>`;
+  const level = segc('tg-level', v.prefs.level, [{ value: 'title', label: t('tg.level.title') }, { value: 'summary', label: t('tg.level.summary') }], t('tg.level'));
+  return `${REMOTE_EVENTS.map(sw).join('')}<div class="srow"><span class="lbl">${t('tg.level')}</span>${level}</div>`;
+}
+
 function groupInner(v: TelegramView): string {
   const chip = v.status === 'off' ? '' : `<span class="pill" id="tg-st" role="status" data-tone="${TONE[v.status]}">${t(`tg.status.${v.status}` as Key)}</span>`;
-  return `<h3 class="scap">Telegram${chip}</h3><div class="sgrp">${rows(v)}</div>`;
+  return `<h3 class="scap">Telegram${chip}</h3><div class="sgrp">${rows(v)}</div>${v.enabled && v.owner ? `<div class="sgrp" id="tg-news">${news(v)}</div>` : ''}`;
 }
 
 /** The group in the Notifications pane. */
@@ -88,6 +97,8 @@ export async function telegramChange(el: HTMLInputElement, redraw: () => void): 
     if (el.checked) { el.checked = false; asking = true; redraw(); } else await call('telegram:enable', false);
     return true;
   }
+  if (el.id.startsWith('tg-ev-')) { await call('telegram:prefs', { event: el.id.slice(6), on: el.checked }); return true; }
+  if (el.id === 'tg-level') { await call('telegram:prefs', { level: el.value }); return true; }
   if (el.id === 'tg-tok') {
     const tok = el.value.trim();
     el.value = '';
