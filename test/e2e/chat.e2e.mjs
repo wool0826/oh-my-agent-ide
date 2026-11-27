@@ -159,7 +159,8 @@ flow('without an account the empty chat lists the steps to get started, and the 
 });
 
 flow('attached files with long names stay one-line chips that keep their extension', {}, async (app) => {
-  const names = ['KakaoTalk_20261126_154210123_attachment_button_wrap.png', '첨부버튼_두줄_깨짐_재현_화면_2026-11-26_오후_3시42분.png', 'Screenshot 2026-11-26 at 15.42.17 (2).png'];
+  // Not images: those are thumbnails (T-0152).
+  const names = ['KakaoTalk_20261126_154210123_attachment_button_wrap.pdf', '첨부버튼_두줄_깨짐_재현_화면_2026-11-26_오후_3시42분.pdf', 'Screenshot 2026-11-26 at 15.42.17 (2).pdf'];
   // Real files: a message keeps only attachments that exist.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-att-'));
   const files = names.map((n) => { const f = path.join(dir, n); fs.writeFileSync(f, 'x'); return f; });
@@ -174,9 +175,9 @@ flow('attached files with long names stay one-line chips that keep their extensi
     assert.equal(c.oneLine, true, `chip ${i} wraps: ${c.text}`);
     assert.equal(c.h, one, `chip ${i} is ${c.h}px high, not ${one}px`);
     assert.ok(c.w <= 240, `chip ${i} is ${c.w}px wide`);
-    assert.ok(c.text.endsWith('.png'), `chip ${i} lost its extension: ${c.text}`);
+    assert.ok(c.text.endsWith('.pdf'), `chip ${i} lost its extension: ${c.text}`);
     assert.equal(c.tip, files[i]);
     assert.equal(c.icon, true);
   });
-  assert.match(chips[0].text, /^KakaoTalk_.*….*\.png$/);
+  assert.match(chips[0].text, /^KakaoTalk_.*….*\.pdf$/);
 });

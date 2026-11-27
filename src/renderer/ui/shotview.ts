@@ -3,8 +3,8 @@
 // (wide/narrow, dark/light) are switches above it, on the card and in the opened view alike (decision 232).
 import type { Key } from '../../shared/i18n';
 import { middleName } from '../../shared/middleName';
-import { firstPick, pickShot, setView, shotSets, shotUrl, SHOT_AXES, type Shot, type ShotAxis, type ShotPick, type ShotRole, type ShotSet } from '../../shared/shots';
-import { $, base, esc, sym, t } from './core';
+import { firstPick, isImagePath, isLocalPath, pickShot, setView, shotSets, shotUrl, SHOT_AXES, type Shot, type ShotAxis, type ShotPick, type ShotRole, type ShotSet } from '../../shared/shots';
+import { $, base, esc, sentChip, sym, t } from './core';
 import { layerClose, layerOpen } from './layer';
 
 const ROLE_KEY: Record<ShotRole, Key> = { before: 'shot.before', after: 'shot.after' };
@@ -32,17 +32,43 @@ function pickOf(key: string, set: ShotSet): ShotPick {
  * (a card, an inbox row, a summary) so its switches are its own.
  */
 export function shotsOf(files: string[], key: string) {
-  const { sets, rest } = shotSets(files);
-  placed.delete(key);
+  const { sets, rest } = place(files, key);
   if (!sets.length) return { html: '', rest };
-  placed.set(key, sets);
+  return { html: `<div class="shots" data-key="${esc(key)}">${sets.map((s, i) => setHtml(key, i, s)).join('')}</div>`, rest };
+}
+
+/** A list's images grouped into sets and kept under `key`, for the opened view to step through. */
+function place(files: string[], key: string) {
+  const out = shotSets(files);
+  placed.delete(key);
+  if (!out.sets.length) return out;
+  placed.set(key, out.sets);
   // Places drawn long ago and gone from the screen are forgotten first, with their switches.
   if (placed.size > 400) {
     const old = placed.keys().next().value!;
     placed.delete(old);
     for (const p of picks.keys()) if (p.startsWith(`${old}|`)) picks.delete(p);
   }
-  return { html: `<div class="shots" data-key="${esc(key)}">${sets.map((s, i) => setHtml(key, i, s)).join('')}</div>`, rest };
+  return out;
+}
+
+/** The files a user sent with a message: its images as thumbnails, like a report's, and the rest as chips. */
+export function sentFiles(files: string[], key: string) {
+  const { html, rest } = shotsOf(files, key);
+  return `${html}${rest.length ? `<span class="sent-files">${rest.map(sentChip).join('')}</span>` : ''}`;
+}
+
+/**
+ * The images of a composer's attachments, kept under `key` so a chip's preview opens them. The function it returns
+ * gives a chip its preview, or nothing for a file that is not an image.
+ */
+export function placeAttached(files: string[], key: string) {
+  place(files, key);
+  return (f: string) => {
+    const p = f.trim();
+    if (!isImagePath(p) || !isLocalPath(p) || broken.has(p)) return '';
+    return `<button type="button" class="fthumb" data-action="shot-open" data-key="${esc(key)}" data-path="${esc(p)}" aria-label="${esc(base(p))}"><img src="${esc(shotUrl(p))}" alt="" draggable="false"></button>`;
+  };
 }
 
 /** Files that are not screenshots, as one-line chips that open them. */
@@ -76,9 +102,11 @@ function thumb(s: Shot, cap: string) {
 /** A thumbnail whose file is gone keeps its place, without a broken image. */
 export function markBrokenShot(e: Event) {
   const img = e.target;
-  const el = img instanceof HTMLImageElement ? img.closest<HTMLElement>('.shot') : null;
+  const el = img instanceof HTMLImageElement ? img.closest<HTMLElement>('.shot, .fthumb') : null;
   if (!el?.dataset.path) return;
   broken.add(el.dataset.path);
+  // An attachment whose image cannot be read is a file chip like any other.
+  if (el.classList.contains('fthumb')) { el.outerHTML = sym('s-doc'); return; }
   el.classList.add('broken');
   el.removeAttribute('data-action');
   el.setAttribute('aria-disabled', 'true');
@@ -110,7 +138,7 @@ export function shotOpen() {
 export function openShot(el: HTMLElement) {
   const root = $('#dlg');
   if (!root.hidden && !shotOpen()) return;
-  const sets = placed.get(el.closest<HTMLElement>('.shots')?.dataset.key ?? '') ?? [];
+  const sets = placed.get(el.dataset.key ?? el.closest<HTMLElement>('.shots')?.dataset.key ?? '') ?? [];
   items = sets.flatMap((set) => set.shots.map((shot) => ({ shot, set })));
   at = items.findIndex((x) => x.shot.path === el.dataset.path);
   if (at < 0) return;
