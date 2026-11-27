@@ -9,7 +9,7 @@ import { checkItem, type Check } from '../../shared/preflight';
 import { PAGE } from '../../shared/paging';
 import { $, call, esc, ic, ide, keepInputs, keepScroll, paged, prNum, S, shortPath, skel, sym, t, taskLabel, toast, tryCall, ui, when } from './core';
 import { go } from './history';
-import { onStatusRedraw, statusRows } from './status';
+import { onStatusRedraw, redrawKeepingFocus, statusRows } from './status';
 
 export let jira: undefined | 'loading' | JiraIssue[] | { error: string };
 
@@ -70,7 +70,7 @@ onStatusRedraw('pre', () => drawPreflight());
 
 export function drawPreflight() {
   const el = document.getElementById('pre-rows');
-  if (el) el.innerHTML = preflightRows();
+  if (el) redrawKeepingFocus(el, preflightRows());
 }
 
 export function renderRepos() {

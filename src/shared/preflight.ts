@@ -74,11 +74,6 @@ export async function ghChecks(exec: (args: string[], host?: string) => Promise<
   return out;
 }
 
-/** Failed checks first, in the order they are run; the rest after. */
-export function failedFirst(checks: readonly Check[]): Check[] {
-  return [...checks.filter((c) => !c.ok), ...checks.filter((c) => c.ok)];
-}
-
 export const failedCount = (checks: readonly Check[]) => checks.filter((c) => !c.ok).length;
 
 type Tr = (key: Key, vars?: Record<string, string | number>) => string;
@@ -105,7 +100,7 @@ export function checkItem(c: Check, t: Tr, accounts: readonly string[] = []): St
   const cmd = c.cmd ?? fixCommand(c);
   if (c.missing) {
     const searched = c.detail.replace(/^not found in PATH:\s*/, '');
-    return item(t('pre.v.missing'), [cmd ? { label: t('pre.k.install'), value: cmd, copy: true } : fix(), ...(searched ? [{ label: t('pre.k.searched'), value: searched, copy: true }] : [])]);
+    return item(t('pre.v.missing'), [...(cmd ? [{ label: t('pre.k.install'), value: cmd, copy: true }] : []), fix(), ...(searched ? [{ label: t('pre.k.searched'), value: searched, copy: true }] : [])]);
   }
   const error: StatusField[] = c.detail ? [{ label: t('pre.k.error'), value: c.detail, copy: true }] : [];
   if (c.id === 'ghAuth') return item(t('pre.v.signedOut'), [{ label: t('pre.k.run'), value: cmd!, copy: true }, ...error]);

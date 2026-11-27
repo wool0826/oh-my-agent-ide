@@ -56,5 +56,13 @@ export function copyStatus(el: HTMLElement) {
     toast(t('sel.copied'));
     el.classList.add('ok');
     setTimeout(() => el.classList.remove('ok'), 1500);
-  }, () => {});
+  }, () => toast(t('pre.copyFailed'), true));
+}
+
+/** Draws `el` again with `html` and keeps the focus on the same control when it was inside. */
+export function redrawKeepingFocus(el: HTMLElement, html: string) {
+  const a = document.activeElement as HTMLElement | null;
+  const sel = a && el.contains(a) && a.dataset.action ? `[data-action="${CSS.escape(a.dataset.action)}"][data-v="${CSS.escape(a.dataset.v ?? '')}"]` : '';
+  el.innerHTML = html;
+  if (sel) el.querySelector<HTMLElement>(sel)?.focus();
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkItem, failedCount, failedFirst, fixCommand, ghChecks, preflightPlan, toolCheck } from '../src/shared/preflight';
+import { checkItem, failedCount, fixCommand, ghChecks, preflightPlan, toolCheck } from '../src/shared/preflight';
 import { tr } from '../src/shared/i18n';
 
 test('the plan checks github.com, the company host when set, and Codex only when it is used', () => {
@@ -22,7 +22,6 @@ test('a failed sign-in names the command that fixes it', () => {
 
 test('what failed is listed first', () => {
   const checks = [{ id: 'git' as const, ok: true, detail: '' }, { id: 'gh' as const, ok: false, detail: '' }, { id: 'home' as const, ok: true, detail: '' }];
-  assert.deepEqual(failedFirst(checks).map((c) => c.id), ['gh', 'git', 'home']);
   assert.equal(failedCount(checks), 1);
 });
 
@@ -59,7 +58,7 @@ test('preflight: a missing tool reads "Not installed", with its install command 
   const searched = '/usr/bin:/bin:/usr/sbin:/opt/homebrew/bin:/opt/local/bin:/Users/me/.nix-profile/bin';
   const r = checkItem({ id: 'gh', ok: false, missing: true, detail: `not found in PATH: ${searched}`, cmd: 'brew install gh' }, en);
   assert.deepEqual([r.name, r.tone, r.short], ['GitHub CLI (gh)', 'bad', 'Not installed']);
-  assert.deepEqual(r.fields, [{ label: 'Install', value: 'brew install gh', copy: true }, { label: 'Searched', value: searched, copy: true }]);
+  assert.deepEqual(r.fields, [{ label: 'Install', value: 'brew install gh', copy: true }, { label: 'Fix', value: 'Install the GitHub CLI (cli.github.com), then press Check again.' }, { label: 'Searched', value: searched, copy: true }]);
 });
 
 test('preflight: a missing tool with no command for the OS keeps the words that say how to fix it', () => {
