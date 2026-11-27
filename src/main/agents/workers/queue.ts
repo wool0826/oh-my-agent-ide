@@ -448,6 +448,8 @@ export function resumeAfterRestart(m: WorkerManager) {
   const resume: { w: Worker; task: Task }[] = [];
   const failed: { w: Worker; task: Task }[] = [];
   for (const w of store.data.workers) {
+    // The compaction went with its session.
+    w.compacting = false;
     const task = m.currentTask(w);
     const inProgress = task && (task.status === 'running' || task.status === 'waiting');
     // An older version archived Workers mid-task; nobody will finish that task, so it failed.

@@ -90,6 +90,8 @@ export interface Worker {
   request?: OpenNote | null;
   /** Its task is open but nothing has run it for a while, even after a reminder (shared/stall.ts). Cleared by its next turn. */
   stalledAt?: string | null;
+  /** Its conversation is being compacted right now; it takes no new work until that ends. Cleared on app start. */
+  compacting?: boolean;
 }
 
 /** One step of a task's plan, as its Worker declared it; doneAt is set once the Worker reports it finished. */
