@@ -1,6 +1,7 @@
 // Rules for the phone channel (Telegram, decision 241): splitting long text, hiding the bot token, the pairing code
 // that binds the bot to its owner's chat, which updates count, and how long to wait before trying again.
 // Pure: the Bot API client is src/main/remote/telegramApi.ts, the polling loop src/main/remote/telegram.ts.
+import { cleanPrefs, type RemotePrefs } from './remoteNotice';
 
 /** The longest text one Telegram message may carry. */
 export const TG_TEXT_MAX = 4096;
@@ -167,6 +168,8 @@ export interface TelegramStored {
   botName: string | null;
   ownerId: number | null;
   ownerName: string | null;
+  /** What is sent and how much (shared/remoteNotice.ts). */
+  prefs: RemotePrefs;
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) ? v : null);
@@ -176,7 +179,7 @@ const str = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 200) : null
 export function cleanTelegram(raw: unknown): TelegramStored {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const ownerId = num(r.ownerId);
-  return { enabled: r.enabled === true, botId: num(r.botId), botName: str(r.botName), ownerId, ownerName: ownerId === null ? null : str(r.ownerName) };
+  return { enabled: r.enabled === true, botId: num(r.botId), botName: str(r.botName), ownerId, ownerName: ownerId === null ? null : str(r.ownerName), prefs: cleanPrefs(r.prefs) };
 }
 
 /** What Settings shows about the channel: no token, no secret, only whether one is stored. */
@@ -192,6 +195,7 @@ export interface TelegramView {
   /** Who sent the right code and waits for the desktop to confirm them. */
   candidate: PairCandidate | null;
   owner: PairCandidate | null;
+  prefs: RemotePrefs;
 }
 
 /** What the poller or the last send said, if anything went wrong. */

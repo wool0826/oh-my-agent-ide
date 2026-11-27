@@ -382,6 +382,8 @@ class Store extends EventEmitter {
     // The oldest leave memory when a save has put them in the file (flush); read-only, nothing is saved.
     if (this.readOnly) this.dropOldChat();
     this.changed();
+    // Told after the caller has finished the item (an event gets its parts right after), for the phone channel.
+    if (kind === 'error') queueMicrotask(() => this.emit('chat-error', item));
     return item;
   }
 

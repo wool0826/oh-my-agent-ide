@@ -4,6 +4,7 @@ import {
   PAIR_TRIES, Seen, backoffMs, checkPair, cleanTelegram, codeLeft, fromOwner, remoteStatus, isStale, looksLikeToken, makePairCode, maskToken, normPairCode,
   pairCodeIn, pairLink, personName, sameSecret, showPairCode, splitText, type Pairing, type TgUpdate,
 } from '../src/shared/remote';
+import { REMOTE_PREFS_DEFAULT } from '../src/shared/remoteNotice';
 
 const TOKEN = '123456789:AAEhBP0av18q1wQ7abcdefghijklmnopqrst';
 const msg = (from: number, text: string, o: { chat?: number; type?: string; date?: number; bot?: boolean } = {}): TgUpdate => ({
@@ -151,9 +152,9 @@ test('remote: five strangers trying codes use up the code', () => {
 });
 
 test('remote: a hand-edited Telegram record is cleaned, and an owner name needs an owner', () => {
-  assert.deepEqual(cleanTelegram(null), { enabled: false, botId: null, botName: null, ownerId: null, ownerName: null });
-  assert.deepEqual(cleanTelegram({ enabled: 'yes', botId: '12', botName: 7, ownerId: null, ownerName: 'Eve' }), { enabled: false, botId: null, botName: null, ownerId: null, ownerName: null });
-  assert.deepEqual(cleanTelegram({ enabled: true, botId: 12, botName: 'b', ownerId: 42, ownerName: 'Me' }), { enabled: true, botId: 12, botName: 'b', ownerId: 42, ownerName: 'Me' });
+  assert.deepEqual(cleanTelegram(null), { enabled: false, botId: null, botName: null, ownerId: null, ownerName: null, prefs: REMOTE_PREFS_DEFAULT });
+  assert.deepEqual(cleanTelegram({ enabled: 'yes', botId: '12', botName: 7, ownerId: null, ownerName: 'Eve' }), { enabled: false, botId: null, botName: null, ownerId: null, ownerName: null, prefs: REMOTE_PREFS_DEFAULT });
+  assert.deepEqual(cleanTelegram({ enabled: true, botId: 12, botName: 'b', ownerId: 42, ownerName: 'Me' }), { enabled: true, botId: 12, botName: 'b', ownerId: 42, ownerName: 'Me', prefs: REMOTE_PREFS_DEFAULT });
 });
 
 test('remote: the status goes off, then token, then trouble, then pairing or connected', () => {

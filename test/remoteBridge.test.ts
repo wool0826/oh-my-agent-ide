@@ -1,0 +1,121 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Outbox } from '../src/main/remote/bridge';
+import { TelegramLink, type LinkCrypt, type LinkStore } from '../src/main/remote/telegramLink';
+import { cleanTelegram, type TelegramStored } from '../src/shared/remote';
+import type { RemoteNews } from '../src/shared/remoteNotice';
+import { startTelegramStub, type TelegramStub } from './e2e/telegram-stub.mjs';
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-bridge-'));
+process.env.OMA_DATA_DIR = tmp;
+fs.writeFileSync(path.join(tmp, 'settings.json'), JSON.stringify({ home: path.join(tmp, 'home'), language: 'en', accounts: [] }));
+
+const crypt: LinkCrypt = { available: () => true, encrypt: (s) => `enc:${Buffer.from(s).toString('base64')}`, decrypt: (s) => Buffer.from(s.slice(4), 'base64').toString() };
+
+const result = (n = 1, o: Partial<Extract<RemoteNews, { type: 'result' }>> = {}): RemoteNews =>
+  ({ type: 'result', task: `T-${n}`, who: 'W-01', title: `Task ${n}`, summary: `Did ${n}.\n\`\`\`\nsecret code\n\`\`\``, ok: true, code: true, prUrl: `https://github.com/o/r/pull/${n}`, ...o });
+
+async function withOutbox(fn: (s: TelegramStub, box: Outbox, link: TelegramLink, cfg: { quiet: boolean }) => Promise<void>, stored: Partial<TelegramStored> = {}) {
+  const s = await startTelegramStub();
+  const cell = { tokenEnc: crypt.encrypt(s.token), cfg: { ...cleanTelegram(null), enabled: true, botId: 123456789, botName: 'stub_bot', ownerId: 42, ownerName: 'Owner', ...stored } };
+  const store: LinkStore = { load: () => ({ tokenEnc: cell.tokenEnc, cfg: { ...cell.cfg } }), save: (tokenEnc, c) => { cell.tokenEnc = tokenEnc; cell.cfg = { ...c }; } };
+  const link = new TelegramLink(store, crypt, s.url, 1);
+  const cfg = { quiet: false };
+  const box = new Outbox(link, { quiet: () => cfg.quiet, gapMs: 5, backoff: () => 5, tries: 3 });
+  try { await fn(s, box, link, cfg); } finally { await box.idle(); await link.halt(); await s.close(); }
+}
+
+test('remoteBridge: nothing is queued while Telegram is off or unpaired', () => withOutbox(async (s, box, link) => {
+  await link.setEnabled(false);
+  assert.equal(box.tell(result()), false);
+  await link.setEnabled(true);
+  await link.disconnect();
+  assert.equal(box.tell(result()), false);
+  assert.equal(s.state.sent.length, 0);
+}));
+
+test('remoteBridge: a result goes to the owner as plain text with its PR link and no code', () => withOutbox(async (s, box) => {
+  assert.equal(box.tell(result()), true);
+  await box.idle();
+  assert.equal(s.state.sent.length, 1);
+  const m = s.state.sent[0];
+  assert.equal(m.chat_id, 42);
+  assert.match(m.text, /^W-01 done · PR #1\n\nTask 1\n\nDid 1\./);
+  assert.match(m.text, /https:\/\/github\.com\/o\/r\/pull\/1$/);
+  assert.doesNotMatch(m.text, /secret code/);
+  assert.equal(m.disable_notification, undefined);
+}));
+
+test('remoteBridge: a kind switched off is not sent, and title only leaves out the summary and links', () => withOutbox(async (s, box, link) => {
+  link.setPrefs({ events: { results: false } });
+  assert.equal(box.tell(result()), false);
+  link.setPrefs({ events: { results: true }, level: 'title' });
+  box.tell(result(2));
+  await box.idle();
+  assert.equal(s.state.sent.length, 1);
+  assert.equal(s.state.sent[0].text, 'W-01 done · PR #2\n\nTask 2');
+}));
+
+test('remoteBridge: do-not-disturb hours and the rest of a burst come without a sound', () => withOutbox(async (s, box, _link, cfg) => {
+  cfg.quiet = true;
+  box.tell({ type: 'pr', task: 'T-9', title: 'Nine', merged: true, prUrl: null });
+  await box.idle();
+  cfg.quiet = false;
+  box.tell(result(1));
+  await box.idle();
+  box.tell(result(2));
+  await box.idle();
+  assert.deepEqual(s.state.sent.map((m) => m.disable_notification ?? false), [true, false, true]);
+}));
+
+test('remoteBridge: the same news twice is sent once; news of one burst still waiting joins one message', () => withOutbox(async (s, box) => {
+  s.failNext('sendMessage', 500, 'Internal Server Error');
+  box.tell(result(1));
+  box.tell(result(1));
+  box.tell({ type: 'error', text: 'Disk full' });
+  box.tell({ type: 'error', text: 'Network down' });
+  await box.idle();
+  assert.equal(s.state.sent.filter((m) => /Task 1/.test(m.text)).length, 1);
+  const errors = s.state.sent.filter((m) => /^Error/.test(m.text));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].text, /Disk full[\s\S]*Network down/);
+}));
+
+test('remoteBridge: a 429 waits its retry_after, then the message goes', () => withOutbox(async (s, box) => {
+  s.failNext('sendMessage', 429, 'Too Many Requests: retry after 1', { parameters: { retry_after: 1 } });
+  const t0 = Date.now();
+  box.tell(result());
+  await box.idle();
+  assert.equal(s.state.sent.length, 1);
+  assert.ok(Date.now() - t0 >= 950, 'waited about a second');
+}));
+
+test('remoteBridge: a message that keeps failing is dropped after its tries and the next one goes', () => withOutbox(async (s, box) => {
+  s.failNext('sendMessage', 502, 'Bad Gateway', {}, 3);
+  box.tell(result(1));
+  box.tell({ type: 'pr', task: 'T-2', title: 'Two', merged: false, prUrl: null });
+  await box.idle();
+  assert.deepEqual(s.state.sent.map((m) => m.text.split('\n')[0]), ['PR closed']);
+}));
+
+test('remoteBridge: a revoked token empties the queue and marks the link invalid', () => withOutbox(async (s, box, link) => {
+  s.revoke();
+  box.tell(result(1));
+  box.tell({ type: 'pr', task: 'T-2', title: 'Two', merged: true, prUrl: null });
+  await box.idle();
+  assert.equal(s.state.sent.length, 0);
+  assert.equal(box.queue.size, 0);
+  assert.equal(link.view().status, 'invalid');
+  assert.equal(box.tell(result(3)), false);
+}));
+
+test('remoteBridge: a burst too long for one message goes in parts of at most 4096 characters', () => withOutbox(async (s, box) => {
+  s.failNext('sendMessage', 500, 'Internal Server Error');
+  for (let i = 0; i < 9; i++) box.tell({ type: 'error', text: `${i} ${'x'.repeat(700)}` });
+  await box.idle();
+  assert.equal(s.state.sent.length, 3, 'the first alone, then the other eight in two parts');
+  assert.ok(s.state.sent.every((m) => m.text.length <= 4096));
+}));
