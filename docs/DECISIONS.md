@@ -1118,8 +1118,12 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Rejected:
       - Measuring in the main process: Electron has no API for the button frames.
       - Moving the back button below the lights strip: it changes the Settings layout to dodge the numbers.
+237. **Every layer over the window (dialog, scrim, palette, Settings sheet, menus, popovers) cancels the window's drag regions where it lies, and the picture viewer starts below the top bar** (T-0147).
+    - Cause: Electron hit-tests `-webkit-app-region: drag` before the page, so the toolbar and the sidebar's `.lights` strip kept dragging (and double-click maximizing) the window through a scrim. The picture viewer's 24px inset also put its top under the Windows caption buttons and the macOS traffic lights.
+    - Now those layers are `no-drag` in one rule next to `.drag`; a `.drag` inside one (the Settings sheet's bar) adds its own region back. The viewer's top inset is `--toolbar-h`. Native window controls stay usable.
+    - Rejected: `inert` on the window behind a dialog, because closing code gives the focus back to the opener in the same tick and an inert opener would refuse it; Tab is already kept inside a modal. Tooltips and the narrow-window drawer stay out of the rule: a tooltip is not modal, and the drawer starts below the bar.
 
-237. **A task that cannot start yet (after_task_id, no free slot, a usage limit) waits with no Worker; one is picked when it can start, and a chained task first tries the Worker of its dependency** (T-0146, option A of the T-0144 report; follows the reuse rule of `shared/routing.ts`).
+238. **A task that cannot start yet (after_task_id, no free slot, a usage limit) waits with no Worker; one is picked when it can start, and a chained task first tries the Worker of its dependency** (T-0146, option A of the T-0144 report; follows the reuse rule of `shared/routing.ts`).
     - Cause: `assign` bound every task at once, and `reuseBlock` counts blocked and queued tasks as open work. So an idle Worker was held by work that could not run, and the next task made a new Worker (12 of 22 on the user's machine).
     - Now `lateBind` decides at creation and `startWorker` at start, both pure in `shared/routing.ts`. `startLate` (workers/queue.ts) binds when the dependency settles, a slot frees (`fillSlots`) or a limit resets (`retryQueued`). Workers being set up count as used slots (`binding`), so the async create cannot overfill. The model chosen at creation is kept on the task (`Task.model`).
     - Kept eager: `worker_id` (a pin that reserves as before), `new_worker` and compare attempts. Saved blocked or queued tasks that already have a Worker keep it, with no state rewrite.
