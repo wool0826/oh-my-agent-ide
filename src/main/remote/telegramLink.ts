@@ -62,6 +62,10 @@ export class TelegramLink extends EventEmitter {
   dropped = 0;
   /** What handles the owner's messages once paired (remote/inbound.ts); none, and nothing is polled for them. */
   inbound: ((u: TgUpdate) => void | Promise<void>) | null = null;
+  /** Called when the bot changes or is disconnected: what was kept about its updates no longer applies. */
+  onForget: (() => void) | null = null;
+  /** A stop under way: a poller started meanwhile waits for it, or Telegram sees two getUpdates (409). */
+  private stopping: Promise<void> | null = null;
 
   constructor(private readonly store: LinkStore = settingsStore, private readonly crypt: LinkCrypt = safeCrypt, private readonly base?: string, private readonly pollSec = 50) {
     super();
@@ -151,10 +155,11 @@ export class TelegramLink extends EventEmitter {
     const next: TelegramStored = { ...c, botId: me.id, botName: me.username, ownerId: same ? c.ownerId : null, ownerName: same ? c.ownerName : null };
     this.store.save(this.crypt.encrypt(tok), next);
     this.api = api;
-    if (!same) this.offset = null;
+    if (!same) { this.offset = null; this.onForget?.(); }
     this.trouble = null;
     log.info('telegram token saved', { bot: me.username, kept: same && next.ownerId !== null });
     if (next.enabled && next.ownerId === null) this.newCode();
+    else this.syncPoll();
     this.changed();
   }
 
@@ -199,6 +204,10 @@ export class TelegramLink extends EventEmitter {
   }
 
   private startPolling(api: TelegramApi) {
+    if (!this.poller && this.stopping) {
+      void this.stopping.then(() => this.syncPoll());
+      return;
+    }
     if (!this.poller) this.poller = new TelegramPoller(api, { onUpdate: (u) => this.onUpdate(u), onState: (s) => this.onPoll(s), timeoutSec: this.pollSec, offset: this.offset });
     this.poller.start();
   }
@@ -262,6 +271,7 @@ export class TelegramLink extends EventEmitter {
     this.api = null;
     this.offset = null;
     this.trouble = null;
+    this.onForget?.();
     log.info('telegram disconnected');
     this.changed();
   }
@@ -294,10 +304,11 @@ export class TelegramLink extends EventEmitter {
   private async stopPolling() {
     const p = this.poller;
     this.poller = null;
-    // Taken before the wait too: a poller started meanwhile goes on from here.
-    if (p && p.nextOffset !== null) this.offset = p.nextOffset;
-    await p?.stop();
-    if (p && p.nextOffset !== null) this.offset = p.nextOffset;
+    if (!p) return this.stopping ?? undefined;
+    if (p.nextOffset !== null) this.offset = p.nextOffset;
+    const run = p.stop().then(() => { if (p.nextOffset !== null) this.offset = p.nextOffset; });
+    this.stopping = run;
+    try { await run; } finally { if (this.stopping === run) this.stopping = null; }
   }
 
   /** Stops everything that runs: polling and the code's timer. */

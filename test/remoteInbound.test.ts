@@ -1,18 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Inbound, type InboundDeps } from '../src/main/remote/inbound';
+import { Inbound, type HeldMessage, type InboundDeps } from '../src/main/remote/inbound';
 import type { TgUpdate } from '../src/shared/remote';
 
 const NOW = 1_800_000_000_000;
 
-function setup(o: { requests?: boolean; held?: boolean; busy?: boolean; refs?: Record<number, string> } = {}) {
+function setup(o: { requests?: boolean; held?: boolean; busy?: boolean; refs?: Record<number, string>; waiting?: HeldMessage[]; fail?: boolean } = {}) {
   const seen = new Set<number>();
+  const kept = { list: o.waiting ?? [] };
   const log = { sent: [] as { text: string; replyTo: string | null }[], answers: [] as { text: string; replyTo?: number }[], flushes: 0, locked: 0, stops: 0 };
   let requests = o.requests ?? true;
   const deps: InboundDeps = {
     say: (k, v) => (v ? `${k}(${Object.values(v).join(',')})` : k),
     now: () => NOW,
-    toDispatcher: (text, replyTo) => { log.sent.push({ text, replyTo }); return { held: !!o.held }; },
+    toDispatcher: (text, replyTo) => {
+      if (o.fail) throw new Error('no session');
+      log.sent.push({ text, replyTo });
+      return { held: !!o.held };
+    },
     stop: async () => { log.stops++; return !!o.busy; },
     lock: () => { log.locked++; requests = false; },
     requests: () => requests,
@@ -21,9 +26,10 @@ function setup(o: { requests?: boolean; held?: boolean; busy?: boolean; refs?: R
     statusText: () => 'STATUS',
     inboxText: () => 'INBOX',
     seen: { has: (id) => seen.has(id), add: (id) => { seen.add(id); } },
+    waiting: { load: () => kept.list, save: (l) => { kept.list = [...l]; } },
     flush: () => { log.flushes++; },
   };
-  return { inbound: new Inbound(deps), log };
+  return { inbound: new Inbound(deps), log, kept };
 }
 
 let next = 1;
@@ -91,11 +97,33 @@ test('remoteInbound: words that wait for a usage limit are said to wait', async 
   assert.deepEqual(log.answers.map((a) => a.text), ['tg.r.held']);
 });
 
-test('remoteInbound: past twenty a minute a message is turned away', async () => {
+test('remoteInbound: past twenty a minute a message or a command is turned away, said once; /lock still goes', async () => {
   const { inbound, log } = setup();
-  for (let i = 0; i < 21; i++) await inbound.handle(msg(`m${i}`));
+  for (let i = 0; i < 20; i++) await inbound.handle(msg(`m${i}`));
+  await inbound.handle(msg('m20'));
+  await inbound.handle(msg('/status'));
+  await inbound.handle(msg('/lock'));
   assert.equal(log.sent.length, 20);
-  assert.deepEqual(log.answers.map((a) => a.text), ['tg.r.slow']);
+  assert.deepEqual(log.answers.map((a) => a.text), ['tg.r.slow', 'tg.r.lockedNow']);
+});
+
+test('remoteInbound: words the Dispatcher could not take are said to have failed', async () => {
+  const { inbound, log } = setup({ fail: true });
+  await inbound.handle(msg('go'));
+  assert.deepEqual(log.answers.map((a) => a.text), ['tg.r.failed']);
+  assert.equal(log.flushes, 1);
+});
+
+test('remoteInbound: waiting messages are kept with the state and still there after a restart', async () => {
+  const old = Math.floor(NOW / 1000) - 3600;
+  const a = setup();
+  await a.inbound.handle(msg('while off', { date: old }));
+  assert.deepEqual(a.kept.list, [{ text: 'while off', replyTo: null }]);
+  const b = setup({ waiting: a.kept.list });
+  assert.equal(b.inbound.held, 1);
+  await b.inbound.handle(msg('/run'));
+  assert.deepEqual(b.log.sent, [{ text: 'while off', replyTo: null }]);
+  assert.deepEqual(b.kept.list, []);
 });
 
 test('remoteInbound: messages sent while the app was off wait; /run sends them as one, /drop drops them', async () => {

@@ -1,10 +1,14 @@
 // The owner's messages from the phone (decision 250), once TelegramLink has checked who sent them: each update is
 // taken once (its id is kept with the state, so one that comes again after a restart is dropped), commands are
 // answered here, and words go to the Dispatcher as a turn from the phone. A message older than ten minutes (sent
-// while the app was off) waits until the owner says /run or /drop. The app wires it up in remote/wire.ts.
+// while the app was off) waits, kept with the state, until the owner says /run or /drop. The app wires it up in
+// remote/wire.ts.
 import type { Say } from '../../shared/askWhy';
 import { isStale, type TgMessage, type TgUpdate } from '../../shared/remote';
 import { InboundLimit, readInbound, type RemoteCommand } from '../../shared/remoteChat';
+
+/** A message that waits for /run or /drop. */
+export interface HeldMessage { text: string; replyTo: string | null }
 
 export interface InboundDeps {
   say: Say;
@@ -24,6 +28,8 @@ export interface InboundDeps {
   inboxText(): string;
   /** The update ids already taken, kept with the state. */
   seen: { has(id: number): boolean; add(id: number): void };
+  /** The messages waiting for /run or /drop, kept with the state so a restart does not lose them. */
+  waiting: { load(): HeldMessage[]; save(list: HeldMessage[]): void };
   /** Writes the state now, so the chat line and the update's id are on disk before Telegram hears it was read. */
   flush(): void;
 }
@@ -35,10 +41,14 @@ const STALE_SETTLE_MS = 1_500;
 
 export class Inbound {
   private limit = new InboundLimit();
-  private stale: { text: string; replyTo: string | null }[] = [];
+  /** "Too many" is said once until a message goes through again. */
+  private slowTold = false;
+  private stale: HeldMessage[];
   private staleTimer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly d: InboundDeps) {}
+  constructor(private readonly d: InboundDeps) {
+    this.stale = d.waiting.load();
+  }
 
   /** Messages that wait for /run or /drop. */
   get held(): number { return this.stale.length; }
@@ -53,6 +63,16 @@ export class Inbound {
   private async take(m: TgMessage) {
     const { say } = this.d;
     const r = readInbound(m);
+    // /lock and /stop always go through; everything else, answers included, counts towards the limit.
+    const urgent = r.kind === 'command' && (r.name === 'lock' || r.name === 'stop');
+    if (!urgent && !(r.kind === 'text' && isStale(m.date, this.d.now()))) {
+      if (!this.limit.allow(this.d.now())) {
+        if (!this.slowTold) this.d.answer(say('tg.r.slow'), m.message_id);
+        this.slowTold = true;
+        return;
+      }
+      this.slowTold = false;
+    }
     if (r.kind === 'unsupported') return this.d.answer(say('tg.r.unsupported'), m.message_id);
     if (r.kind === 'command') return this.command(r.name, m.message_id);
     if (!this.d.requests()) return this.d.answer(say('tg.r.locked'), m.message_id);
@@ -60,9 +80,19 @@ export class Inbound {
     const ref = this.d.refOf(m.reply_to_message?.message_id);
     const to = ref && !ref.startsWith('d:') ? ref : null;
     if (isStale(m.date, this.d.now())) return this.hold(r.text, to);
-    if (!this.limit.allow(this.d.now())) return this.d.answer(say('tg.r.slow'), m.message_id);
-    const { held } = this.d.toDispatcher(r.text, to);
-    if (held) this.d.answer(say('tg.r.held'), m.message_id);
+    this.pass(r.text, to, m.message_id);
+  }
+
+  /** Hands words to the Dispatcher and says so when they wait; a failure is told, since the update is already taken. */
+  private pass(text: string, to: string | null, msg: number): boolean {
+    try {
+      const { held } = this.d.toDispatcher(text, to);
+      if (held) this.d.answer(this.d.say('tg.r.held'), msg);
+      return held;
+    } catch {
+      this.d.answer(this.d.say('tg.r.failed'), msg);
+      return true;
+    }
   }
 
   private async command(name: RemoteCommand, msg: number) {
@@ -89,8 +119,8 @@ export class Inbound {
         this.clearStale();
         // One turn for all of them, in the order they were sent; filed under a thread only when they all were.
         const to = list.every((x) => x.replyTo === list[0].replyTo) ? list[0].replyTo : null;
-        const { held } = this.d.toDispatcher(list.map((x) => x.text).join('\n\n'), to);
-        return this.d.answer(say(held ? 'tg.r.held' : 'tg.r.ran', { n: list.length }), msg);
+        if (!this.pass(list.map((x) => x.text).join('\n\n'), to, msg)) this.d.answer(say('tg.r.ran', { n: list.length }), msg);
+        return;
       }
     }
   }
@@ -98,6 +128,7 @@ export class Inbound {
   private hold(text: string, replyTo: string | null) {
     this.stale.push({ text, replyTo });
     if (this.stale.length > STALE_MAX) this.stale.shift();
+    this.d.waiting.save(this.stale);
     if (this.staleTimer) clearTimeout(this.staleTimer);
     this.staleTimer = setTimeout(() => {
       this.staleTimer = null;
@@ -106,9 +137,13 @@ export class Inbound {
     this.staleTimer.unref?.();
   }
 
+  /** The bot changed or was disconnected: the waiting messages were its. */
+  forget() { this.clearStale(); }
+
   private clearStale(): number {
     const n = this.stale.length;
     this.stale = [];
+    this.d.waiting.save(this.stale);
     if (this.staleTimer) { clearTimeout(this.staleTimer); this.staleTimer = null; }
     return n;
   }

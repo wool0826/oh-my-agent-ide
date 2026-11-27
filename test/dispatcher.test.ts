@@ -8,6 +8,7 @@ import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
 import type { Task, Worker } from '../src/shared/types';
+import { outbox } from '../src/main/remote/bridge';
 
 // Settings and the IDE home live in a temp folder. Nothing here reads them until a test runs.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-dispatcher-'));
@@ -36,6 +37,15 @@ function turn(text: string) {
   s.handle({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text }] } });
   s.handle({ type: 'result', subtype: 'success', is_error: false, result: text });
 }
+/** What would go to the phone. */
+let phone: string[] = [];
+outbox.tell = (n) => { if (n.type === 'reply') phone.push(n.text); return true; };
+/** The turn in progress says this; the session has more queued, so another turn follows. */
+function queuedTurn(text: string) {
+  const s = dispatcher.session as unknown as { handle(m: unknown): void; ev: { onTurnEnd(r: { queued: boolean }): void } };
+  s.handle({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text }] } });
+  s.ev.onTurnEnd({ queued: true });
+}
 /** Worker news worth a Dispatcher turn. */
 const news = (text: string) => store.pushUpdate(text, true);
 const said = () => store.data.chat.filter((c) => c.kind === 'dispatcher').map((c) => c.text);
@@ -47,8 +57,10 @@ store.on('wake', () => dispatcher.wake());
 beforeEach(() => {
   dispatcher.close();
   dispatcher.wakeDelay = WAIT_MS;
-  const d = dispatcher as unknown as { held: string[]; heldReply: unknown; cutOff: boolean; wakeDue: boolean; userSpoke(): void };
+  const d = dispatcher as unknown as { held: string[]; heldReply: unknown; cutOff: boolean; wakeDue: boolean; lastVia: string; userSpoke(): void };
   d.held = [];
+  d.lastVia = 'desktop';
+  phone = [];
   d.heldReply = undefined;
   d.cutOff = false;
   d.wakeDue = false;
@@ -411,4 +423,58 @@ test('the Claude Dispatcher is told about claude.ai artifacts and has the Artifa
   } finally {
     loadSettings().claudeConnectors = true;
   }
+});
+
+test('dispatcher: words from the phone are marked for the model, and only their turn is answered on the phone', async () => {
+  dispatcher.send('Fix the login', [], null, 'telegram');
+  assert.match(sent[0], /^\[From Telegram\]\nFix the login/);
+  assert.equal(store.data.chat.find((c) => c.kind === 'user')?.via, 'telegram');
+  turn('On it.');
+  dispatcher.send('And the docs');
+  turn('Sure.');
+  assert.deepEqual(phone, ['On it.']);
+});
+
+test('dispatcher: a message queued behind another turn takes its own origin when its turn comes', async () => {
+  dispatcher.send('From the desk');
+  dispatcher.send('From the phone', [], null, 'telegram');
+  queuedTurn('Desk answer.');
+  turn('Phone answer.');
+  dispatcher.send('Phone again', [], null, 'telegram');
+  dispatcher.send('Desk again');
+  queuedTurn('To the phone.');
+  turn('Desk only.');
+  // Queued together, a phone and a desk message are one turn, answered on both.
+  dispatcher.send('Busy at the desk');
+  dispatcher.send('From the phone', [], null, 'telegram');
+  dispatcher.send('And the desk');
+  queuedTurn('Desk.');
+  turn('Both.');
+  assert.deepEqual(phone, ['Phone answer.', 'To the phone.', 'Both.']);
+});
+
+test('dispatcher: words from the phone held by a usage limit are answered on the phone when they go', async () => {
+  dispatcher.send('Hello');
+  turn('Hi.');
+  limit(true);
+  dispatcher.close();
+  dispatcher.send('Still there?', [], null, 'telegram');
+  limit(false);
+  dispatcher.retryHeld();
+  turn('Yes.');
+  assert.deepEqual(phone, ['Yes.']);
+});
+
+test('dispatcher: a turn that starts by itself answers on the phone only when the user last wrote from it', async () => {
+  dispatcher.send('Daily check', [], null, 'auto');
+  turn('Checked.');
+  dispatcher.send('Ping', [], null, 'telegram');
+  turn('Pong.');
+  dispatcher.send('Daily check', [], null, 'auto');
+  turn('Checked again.');
+  dispatcher.send('Back at the desk');
+  turn('Welcome back.');
+  dispatcher.send('Daily check', [], null, 'auto');
+  turn('Checked once more.');
+  assert.deepEqual(phone, ['Pong.', 'Checked again.']);
 });

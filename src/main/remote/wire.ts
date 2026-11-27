@@ -13,7 +13,8 @@ import { telegram } from './telegramLink';
 const SEEN_MAX = 200;
 
 export function wireRemote() {
-  const seenList = () => ((store.data.remote ??= {}).telegramSeen ??= []);
+  const remote = () => (store.data.remote ??= {});
+  const seenList = () => (remote().telegramSeen ??= []);
   const inbound = new Inbound({
     say: t,
     now: Date.now,
@@ -41,8 +42,20 @@ export function wireRemote() {
         store.changed();
       },
     },
+    waiting: {
+      load: () => [...(remote().telegramHeld ?? [])],
+      save: (list) => { remote().telegramHeld = [...list]; store.changed(); },
+    },
     flush: () => { try { store.flush(); } catch (e) { log.warn('telegram flush', (e as Error).message); } },
   });
   telegram.inbound = (u) => inbound.handle(u);
+  // Update ids count per bot: another bot, or none, starts them over.
+  telegram.onForget = () => {
+    const r = remote();
+    r.telegramSeen = [];
+    r.telegramHeld = [];
+    inbound.forget();
+    store.changed();
+  };
   telegram.syncPoll();
 }
