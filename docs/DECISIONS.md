@@ -1186,3 +1186,20 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - The queue: the same news within 10 minutes is sent once (a key per decision, result, PR state or error text); 429 waits its `retry_after` (10 in a row drop the message); network and 5xx failures back off and drop the message after 5 tries; a refused token empties the queue (the link shows Token invalid); news in a dropped message counts as untold again; nothing more goes once the switch is off or the bot disconnected, even mid-gap; past 50 waiting, the oldest that is not a decision goes. Long text goes in up to three parts of 4096.
     - Sent even while the window is in front: the phone is the point of the channel, and the switches turn it off.
     - Rejected: hooking the OS notification functions (they skip a focused window and carry too little for a summary), and a store-wide chat listener for results (the result's task, PR and links are at hand where it ends).
+
+247. **An account can be switched off in Settings (on / 1 hour / off): nothing new starts on it, what runs there finishes (T-0158).**
+    - Chosen: mock-up 8B. A small segmented switch on each account card, the card faded while off, the off accounts' rings
+      left out of the toolbar with a `+n` count, one "Off n" line in the usage popover, and a warning (toolbar pill,
+      Settings banner with "Turn all on", a line above the chat's composer) only when every account is off.
+    - Stored as `paused` / `pausedUntil` on the account in settings.json; `cleanPause` (shared/accountPause.ts) reads an
+      account saved before the switch, or an hour that ended while the app was closed, as on. The hour ends by itself
+      (a timer in accounts.ts), so no one has to remember to switch it back.
+    - Routing: `chooseAccount` skips an off account; a session between turns on one moves to a free account the way
+      failover does; a turn in progress keeps its account (`sessionAccountStep`). With none on, a new task waits in
+      the queue with the usage limit's reason (`queueReason: 'limit'`, its texts say "switched off"), and switching one
+      on emits `resumed`, which runs the same retry as a limit reset (follows PR #205). Rejected: a new queue reason (it
+      would need its own retry path for the same wait).
+    - The Dispatcher reads the off accounts in `list_workers` and is told not to count them or promise when.
+    - Usage of an off account is still polled, so its figures are current when it comes back.
+    - Differences from the mock-up: a failed usage read is a pill whose tooltip holds the message, not a disclosure
+      row; the "Dispatcher assignment" table in the mock-up only explained the routing and is not built.
