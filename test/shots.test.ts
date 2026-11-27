@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { firstPick, isImagePath, isLocalPath, pickShot, setView, shotOf, shotPath, shotSets, shotUrl } from '../src/shared/shots';
+import { firstPick, isImagePath, isLocalPath, orderShots, pickShot, setView, shotOf, shotPath, shotSets, shotUrl } from '../src/shared/shots';
 
 test('shots: image files are told apart from the rest by their extension', () => {
-  for (const p of ['a.png', 'B.PNG', 'c.jpg', 'd.jpeg', 'e.gif', 'f.webp', ' g.png ']) assert.equal(isImagePath(p), true, p);
+  for (const p of ['a.png', 'B.PNG', 'c.jpg', 'd.jpeg', 'D.JPEG', 'e.gif', 'f.webp', ' g.png ', 'h.bmp', 'i.avif', 'j.jfif', 'k.Png']) assert.equal(isImagePath(p), true, p);
   for (const p of ['report.md', 'shot.png.txt', 'png', 'shots/', 'x.svg']) assert.equal(isImagePath(p), false, p);
 });
 
@@ -34,12 +34,57 @@ test('shots: the 8 shots of one screen are one set with a before/after pair and 
   const [set] = sets;
   assert.equal(set.screen, 'inbox');
   assert.deepEqual(set.roles, ['before', 'after']);
-  assert.deepEqual(set.axes, { width: ['wide', 'narrow'], theme: ['dark', 'light'] });
+  assert.deepEqual(set.axes, { width: ['wide', 'narrow'], theme: ['light', 'dark'] });
   const v = setView(set, firstPick(set));
-  assert.deepEqual(v.cols.map((c) => [c.role, c.shot?.path.split('\\').pop()]), [['before', 'before-inbox-wide-dark.png'], ['after', 'after-inbox-wide-dark.png']]);
+  assert.deepEqual(v.cols.map((c) => [c.role, c.shot?.path.split('\\').pop()]), [['before', 'before-inbox-wide-light.png'], ['after', 'after-inbox-wide-light.png']]);
   assert.equal(v.hidden, 6);
-  const n = setView(set, { width: 'narrow', theme: 'light' });
-  assert.deepEqual(n.cols.map((c) => c.shot?.path.split('\\').pop()), ['before-inbox-narrow-light.png', 'after-inbox-narrow-light.png']);
+  const n = setView(set, { width: 'narrow', theme: 'dark' });
+  assert.deepEqual(n.cols.map((c) => c.shot?.path.split('\\').pop()), ['before-inbox-narrow-dark.png', 'after-inbox-narrow-dark.png']);
+});
+
+const names = (shots: { path: string }[]) => shots.map((x) => x.path.split(/[\\/]/).pop());
+const ORDER = ['before-inbox-wide-light.png', 'after-inbox-wide-light.png', 'before-inbox-narrow-light.png', 'after-inbox-narrow-light.png',
+  'before-inbox-wide-dark.png', 'after-inbox-wide-dark.png', 'before-inbox-narrow-dark.png', 'after-inbox-narrow-dark.png'];
+
+test('shots: the 8 shots of one screen are shown pair by pair, light pairs first, each before right ahead of its after', () => {
+  assert.deepEqual(names(shotSets(EIGHT).sets[0].shots), ORDER);
+});
+
+test('shots: the pair order does not depend on the order the report names the shots in', () => {
+  // Every before first, then every after: the order that showed before, before, after, after.
+  const byRole = [...EIGHT.filter((p) => p.includes('\\before')), ...EIGHT.filter((p) => p.includes('\\after'))];
+  for (const files of [EIGHT, byRole, [...EIGHT].reverse(), [EIGHT[7], EIGHT[0], EIGHT[5], EIGHT[2], EIGHT[3], EIGHT[6], EIGHT[1], EIGHT[4]]]) {
+    assert.deepEqual(names(shotSets(files).sets[0].shots), ORDER);
+  }
+});
+
+test('shots: before light, after light, then before dark, after dark, whatever the case of the name', () => {
+  const files = ['/r/card-before-dark.png', '/r/card-before-light.png', '/r/card-after-dark.png', '/r/card-after-light.png'];
+  assert.deepEqual(names(shotSets(files).sets[0].shots), ['card-before-light.png', 'card-after-light.png', 'card-before-dark.png', 'card-after-dark.png']);
+  const upper = ['C:\\s\\CardBefore_Dark.PNG', 'C:\\s\\CardAfter_Dark.PNG', 'C:\\s\\CardBefore_Light.PNG', 'C:\\s\\CardAfter_Light.PNG'];
+  assert.deepEqual(names(shotSets(upper).sets[0].shots), ['CardBefore_Light.PNG', 'CardAfter_Light.PNG', 'CardBefore_Dark.PNG', 'CardAfter_Dark.PNG']);
+});
+
+test('shots: a shot without a partner follows the pairs, in the order it came', () => {
+  const { shots, pairs } = orderShots(['/r/c-dark.png', '/r/c-after-narrow.png', '/r/c-before-dark.png', '/r/c-before-light.png', '/r/c-after-dark.png'].map(shotOf));
+  assert.equal(pairs, 1);
+  assert.deepEqual(names(shots), ['c-before-dark.png', 'c-after-dark.png', 'c-dark.png', 'c-after-narrow.png', 'c-before-light.png']);
+});
+
+test('shots: a second before of the same variant has no after left and follows the pairs', () => {
+  const { shots, pairs } = orderShots(['/r/c-before-light.png', '/r/c-before-light.jpg', '/r/c-after-light.png'].map(shotOf));
+  assert.equal(pairs, 1);
+  assert.deepEqual(names(shots), ['c-before-light.png', 'c-after-light.png', 'c-before-light.jpg']);
+});
+
+test('shots: a name with no theme or width pairs with its own kind and comes after the themed pairs', () => {
+  const { shots } = orderShots(['/r/c-before.png', '/r/c-after.png', '/r/c-after-dark.png', '/r/c-before-dark.png', '/r/c-light.png'].map(shotOf));
+  assert.deepEqual(names(shots), ['c-before-dark.png', 'c-after-dark.png', 'c-before.png', 'c-after.png', 'c-light.png']);
+});
+
+test('shots: screens with a pair come first; images without one follow in the report\'s order', () => {
+  const { sets } = shotSets(['/r/logo.png', '/r/menu-before.png', '/r/inbox-before.png', '/r/zz.png', '/r/inbox-after.png']);
+  assert.deepEqual(sets.map((s) => names(s.shots)), [['inbox-before.png', 'inbox-after.png'], ['logo.png'], ['menu-before.png'], ['zz.png']]);
 });
 
 test('shots: one image is a set of one, with no switches', () => {
@@ -77,7 +122,7 @@ test('shots: images without any of the words are a set each, and a path named tw
 test('shots: a missing shot takes the closest one: a name without the part is half a match', () => {
   const { sets } = shotSets(['/r/card-before.png', '/r/card-after-dark.png', '/r/card-after-light.png']);
   const [set] = sets;
-  assert.deepEqual(set.axes, { theme: ['dark', 'light'] });
+  assert.deepEqual(set.axes, { theme: ['light', 'dark'] });
   assert.equal(pickShot(set, 'before', { theme: 'light' })?.path, '/r/card-before.png');
   assert.equal(pickShot(set, 'after', { theme: 'light' })?.path, '/r/card-after-light.png');
   assert.equal(pickShot(set, null, {}), null);

@@ -331,14 +331,20 @@ export function quoteHtml(who: string, quote: string) {
   return who === SIDE_WHO ? `<span class="bq">${inner}</span>` : `<button type="button" class="bq" data-action="goto-quote" data-who="${esc(who)}" data-quote="${esc(quote)}">${inner}</button>`;
 }
 
-/** A user message: plain text, with the "[Attached files]" block shown as file chips. */
-export function userText(text: string): string {
+/** A file sent with a message, as a chip that shows it in its folder. */
+export const sentChip = (f: string) => `<a class="fchip" data-action="reveal" data-path="${esc(f)}" data-tip="${esc(f)}">${sym('s-doc')}<span class="fn">${esc(middleName(base(f)))}</span></a>`;
+
+/**
+ * A user message: plain text, with the "[Attached files]" block drawn by `files` (`sentFiles`: images as
+ * thumbnails), or else as file chips.
+ */
+export function userText(text: string, files?: (paths: string[]) => string): string {
   const reply = parseReply(text);
-  if (reply) return `${quoteHtml(reply.who, reply.quote)}${userText(reply.body)}`;
+  if (reply) return `${quoteHtml(reply.who, reply.quote)}${userText(reply.body, files)}`;
   const i = text.indexOf('\n\n[Attached files]\n');
   if (i < 0) return linkify(esc(text));
-  const files = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
-  return `${linkify(esc(text.slice(0, i)))}<span class="sent-files">${files.map((f) => `<a class="fchip" data-action="reveal" data-path="${esc(f)}" data-tip="${esc(f)}">${sym('s-doc')}<span class="fn">${esc(middleName(base(f)))}</span></a>`).join('')}</span>`;
+  const paths = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
+  return `${linkify(esc(text.slice(0, i)))}${files ? files(paths) : `<span class="sent-files">${paths.map(sentChip).join('')}</span>`}`;
 }
 
 export function oneLine(s: string, n = 120) {

@@ -30,7 +30,7 @@ import { parseReply, replyExcerpt } from '../../shared/reply';
 import { decisionKeys, decisionKind, decisionLate, keepCard, slotClock, type DecisionKind } from '../../shared/decisionView';
 import { cardBrief } from '../../shared/brief';
 import { shellBlockHtml, shellKey } from './shell';
-import { fileChips, shotsOf } from './shotview';
+import { fileChips, placeAttached, sentFiles, shotsOf } from './shotview';
 import { planPaste } from '../../shared/paste';
 import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker, workerTask } from './core';
 import { setTip } from './tip';
@@ -297,7 +297,7 @@ function evBlockHtml(b: EvBlock<ChatItem>) {
 
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
-    case 'user': return `<div class="bub me">${userText(c.text)}</div>`;
+    case 'user': return `<div class="bub me">${userText(c.text, (f) => sentFiles(f, `me:${c.id}`))}</div>`;
     case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.id, c.id);
     case 'event': return isHandout(c) ? handoutHtml(c) : `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
@@ -333,7 +333,7 @@ function branchRow(c: ChatItem, root: ChatItem, thread: ChatItem[]) {
     const r = parseReply(c.text);
     const inView = !!r && ((r.who === rootWho(root) && (isReport(root) || r.quote === replyExcerpt(root.text)))
       || (r.who === 'Dispatcher' && thread.some((x) => x.kind === 'dispatcher' && replyExcerpt(x.text) === r.quote)));
-    if (r && inView) body = `<div class="bub me">${userText(r.body)}</div>`;
+    if (r && inView) body = `<div class="bub me">${userText(r.body, (f) => sentFiles(f, `me:${c.id}`))}</div>`;
   }
   const go = `<button type="button" class="br-go" data-action="reply-root" data-id="${esc(root.id)}" tabindex="-1" aria-label="${esc(t('reply.toRoot'))}"></button>`;
   return `<div class="br-r ${c.kind === 'user' ? 'me' : 'ai'}" data-k="${esc(root.id)}" data-id="${esc(c.id)}"><i class="el" aria-hidden="true"></i>${go}${body}</div>`;
@@ -1261,7 +1261,8 @@ export function renderChips(box: Box) {
   const el = $(box === 'chat' ? '#chat-files' : '#ws-files');
   const files = ui.attach[box];
   el.hidden = !files.length;
-  el.innerHTML = files.map((f, i) => `<span class="fchip" data-tip="${esc(f)}">${sym('s-doc')}<span class="fn">${esc(middleName(base(f)))}</span><button type="button" data-action="unattach" data-box="${box}" data-i="${i}" aria-label="${t('remove')}" data-tip="${t('remove')}"><svg><use href="#s-x"/></svg></button></span>`).join('');
+  const thumb = placeAttached(files, `compose:${box}`);
+  el.innerHTML = files.map((f, i) => `<span class="fchip" data-tip="${esc(f)}">${thumb(f) || sym('s-doc')}<span class="fn">${esc(middleName(base(f)))}</span><button type="button" data-action="unattach" data-box="${box}" data-i="${i}" aria-label="${t('remove')}" data-tip="${t('remove')}"><svg><use href="#s-x"/></svg></button></span>`).join('');
   updateSendButton();
 }
 
