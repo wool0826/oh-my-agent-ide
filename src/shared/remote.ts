@@ -1,6 +1,7 @@
 // Rules for the phone channel (Telegram, decision 241): splitting long text, hiding the bot token, the pairing code
 // that binds the bot to its owner's chat, which updates count, and how long to wait before trying again.
 // Pure: the Bot API client is src/main/remote/telegramApi.ts, the polling loop src/main/remote/telegram.ts.
+import { cleanPrefs, type RemotePrefs } from './remoteNotice';
 
 /** The longest text one Telegram message may carry. */
 export const TG_TEXT_MAX = 4096;
@@ -159,3 +160,57 @@ export function backoffMs(attempt: number, base = 1_000, max = 60_000): number {
 
 /** How many conflicts (another getUpdates on the same token) in a row mean another PC is using the bot. */
 export const CONFLICTS_ELSEWHERE = 3;
+
+/** What settings.json keeps about the bot besides its encrypted token (`telegramTokenEnc`). Never sent to the page as is. */
+export interface TelegramStored {
+  enabled: boolean;
+  botId: number | null;
+  botName: string | null;
+  ownerId: number | null;
+  ownerName: string | null;
+  /** What is sent and how much (shared/remoteNotice.ts). */
+  prefs: RemotePrefs;
+}
+
+const num = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) ? v : null);
+const str = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 200) : null);
+
+/** The stored part, from whatever a hand-edited settings.json holds. Off until the user turns it on. */
+export function cleanTelegram(raw: unknown): TelegramStored {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const ownerId = num(r.ownerId);
+  return { enabled: r.enabled === true, botId: num(r.botId), botName: str(r.botName), ownerId, ownerName: ownerId === null ? null : str(r.ownerName), prefs: cleanPrefs(r.prefs) };
+}
+
+/** What Settings shows about the channel: no token, no secret, only whether one is stored. */
+export interface TelegramView {
+  enabled: boolean;
+  status: RemoteStatus;
+  tokenSet: boolean;
+  bot: string | null;
+  /** The open pairing code, its end (ms) and its bot link; null when none is open. */
+  code: string | null;
+  codeEnds: number | null;
+  link: string | null;
+  /** Who sent the right code and waits for the desktop to confirm them. */
+  candidate: PairCandidate | null;
+  owner: PairCandidate | null;
+  prefs: RemotePrefs;
+}
+
+/** What the poller or the last send said, if anything went wrong. */
+export type RemoteTrouble = 'retrying' | 'invalid' | 'elsewhere' | null;
+
+/** The status chip: off, then a missing token, then trouble, then pairing, else connected. */
+export function remoteStatus(a: { enabled: boolean; tokenSet: boolean; ownerId: number | null; trouble: RemoteTrouble }): RemoteStatus {
+  if (!a.enabled) return 'off';
+  if (!a.tokenSet) return 'token';
+  if (a.trouble) return a.trouble;
+  return a.ownerId === null ? 'pairing' : 'connected';
+}
+
+/** The time left on a code as m:ss, never below 0:00. */
+export function codeLeft(ends: number, now: number): string {
+  const s = Math.max(0, Math.ceil((ends - now) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}

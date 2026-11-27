@@ -3,6 +3,7 @@ import { store } from './store';
 import { workers } from './agents/workers';
 import { cleanupBranch, ghEnv } from './repos';
 import { notifyInfo } from './notify';
+import { tellRemote } from './remote/bridge';
 import { t } from './i18n';
 import { run, nowIso } from './util';
 import { log } from './log';
@@ -82,6 +83,7 @@ export async function settle(watch: PrWatch<Task>, state: 'MERGED' | 'CLOSED', h
     const also = tasks.length > 1 ? ` (also recorded by ${tasks.slice(1).map((x) => x.id).join(', ')})` : '';
     store.pushUpdate(`${first.id} "${first.title}" PR ${merged ? 'merged' : 'closed without merging'}${also}; branch cleaned up`);
     notifyInfo(merged ? t('noti.merged') : t('noti.closed'), first.title, undefined, first.id);
+    tellRemote({ type: 'pr', task: first.id, title: first.title, merged, prUrl: first.prUrl ?? null });
   }
   // Tasks waiting (after_task_id) on any of them start, or are cancelled if the PR was closed. Before the branch
   // cleanup below, which fetches and pushes: the board and the waiting tasks should not wait for the network.

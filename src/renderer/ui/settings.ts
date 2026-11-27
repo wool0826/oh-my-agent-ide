@@ -20,6 +20,7 @@ import { renderMemSync } from './memory';
 import { loadPreflight, preflightRows } from './repos';
 import { ms, offText, untilText, usageWindows } from './sidebar';
 import { activeOf, allPaused, assignMode, runningOn } from '../../shared/accountPause';
+import { telegramClosed, telegramDialog, telegramGroup } from './telegram';
 
 /** Apply the UI font and text size as CSS variables. Also used for the live preview in Settings. */
 /** Puts the chosen appearance on the page; the tokens do the rest (tokens.css). */
@@ -412,14 +413,14 @@ export function settingsHtml() {
       ${row(t('set.fontSize'), 'set-fsize', `<button class="btn btn-lg" data-action="font-reset">${t('set.fontReset')}</button>${stepper('set-fsize', st.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, t('set.fontSize'))}`)}`)}
     <div class="fprev" aria-hidden="true"><span class="me">${t('set.preview1')}</span><span class="ai">${t('set.preview2')}</span></div>`;
 
-  const alerts = grp(`
+  const alerts = `${grp(`
       ${row(t('set.osNoti'), 'set-noti', `<input class="switch" id="set-noti" type="checkbox" ${st.notifications ? 'checked' : ''}>`)}
       ${row(t('set.notiResults'), 'set-nres', `<input class="switch" id="set-nres" type="checkbox" ${st.notifyDone ? 'checked' : ''}>`)}
       ${row(t('set.quiet'), 'set-qfrom', `<input class="inp time" id="set-qfrom" value="${esc(st.quietFrom)}" placeholder="--:--" inputmode="numeric" aria-label="${t('set.quietFrom')}"><span class="dash" aria-hidden="true">–</span><input class="inp time" id="set-qto" value="${esc(st.quietTo)}" placeholder="--:--" inputmode="numeric" aria-label="${t('set.quietTo')}">`)}
       ${row(t('set.sound'), 'set-sound', `<button class="btn btn-icon" data-action="sound-test" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-sound', st.sound, DECISION_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.sound'), 'data-change="sound-kind"')}`, 'wrap')}
       ${row(t('set.soundFile'), 'set-sfile', `<input class="inp w" id="set-sfile" value="${esc(st.customSound)}" placeholder="mp3, wav, ogg, m4a"><button class="btn btn-lg" data-action="pick-sound">${t('choose')}</button>`, 'custom-row')}
       ${row(t('set.doneSound'), 'set-dsound', `<button class="btn btn-icon" data-action="sound-test" data-v="done" data-tip="${t('set.soundTest')}" aria-label="${t('set.soundTest')}">${sym('s-play')}</button>${segc('set-dsound', st.doneSound, DONE_SOUNDS.map((x) => ({ value: x, label: t(`sound.${x}` as Key) })), t('set.doneSound'))}`, 'wrap dsound-row')}
-      ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`);
+      ${row(t('set.volume'), 'set-vol', slider('set-vol', st.soundVolume, t('set.volume')), 'vol')}`)}${telegramGroup()}`;
 
   const ci = ui.claude;
   const rulesText = !ci ? '…' : ci.rules.length ? ci.rules.join(', ') : t('set.claudeNoRules');
@@ -464,7 +465,8 @@ export function settingsHtml() {
     </div>
     ${ui.accMenu || ui.accRename ? '<div class="click-catch" data-action="acc-dismiss"></div>' : ''}
     ${removeDialog()}
-    ${restartDialog()}`;
+    ${restartDialog()}
+    ${telegramDialog()}`;
 }
 
 /** After the IDE home folder changes: it takes effect on the next launch. */
@@ -639,6 +641,7 @@ export function closeSettings() {
   ui.settingsShown = false;
   ui.accMenu = ui.accRename = ui.accRemove = null;
   ui.restartAsk = false;
+  telegramClosed();
   ui.setQ = '';
   const sheet = $('#sheet');
   const gone = () => { sheet.hidden = true; sheet.innerHTML = ''; sheet.classList.remove('closing'); };
