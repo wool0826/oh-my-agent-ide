@@ -390,6 +390,8 @@ export interface ChatItem {
   /** An event's parts, drawn as one row and folded with its neighbours (shared/chatEvents.ts). */
   ev?: ChatEv;
   cleared?: boolean;
+  /** kind 'user': sent from the phone (decision 250). */
+  via?: 'telegram';
 }
 
 export interface WorkerLogItem {

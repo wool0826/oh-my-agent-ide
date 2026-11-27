@@ -96,3 +96,40 @@ flow('once paired, a permission reaches the phone without its command, and the r
   assert.match(res, /Wrote the note\./);
   assert.ok(news().every((t) => !t.includes('left-pad')), 'no command body leaves');
 });
+
+/** Turns Telegram on with the stand-in's token and pairs the owner (id 42) through the IPC, as Settings does. */
+async function pair(app) {
+  await app.evaluate("await window.ide.call('telegram:enable', true); return 1;");
+  await app.evaluate(`await window.ide.call('telegram:token', ${JSON.stringify(tg.state.token)}); return 1;`);
+  const code = (await app.state()).telegram.code;
+  tg.push(tg.user(42, `/start ${code}`, { name: 'Owner' }));
+  await app.until("return !!(await window.ide.call('state')).telegram.candidate", 'the sender');
+  await app.evaluate("await window.ide.call('telegram:confirm'); return 1;");
+  await app.until("return (await window.ide.call('state')).telegram.status === 'connected'", 'connected');
+}
+
+flow('from the paired phone, words reach the Dispatcher and its answer comes back; strangers and desktop turns stay off the phone', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const from = tg.state.sent.length;
+  const mine = () => tg.state.sent.slice(from);
+  tg.push(tg.user(777, '@fake say I am not the owner', { name: 'Stranger' }));
+  tg.push(tg.user(42, '@fake say Gave it to W-01.'));
+  await app.until("return (await window.ide.call('state')).chat.some((m) => m.kind === 'user' && m.via === 'telegram')", 'the phone message in the chat');
+  await app.until("return !!document.querySelector('.bub.me .bub-via[aria-label=\"From Telegram\"]')", 'the phone mark on it');
+  await waitFor(() => mine().some((m) => m.text === 'Gave it to W-01.'), 'the answer on the phone');
+  const chat = (await app.state()).chat;
+  assert.ok(chat.every((m) => !m.text.includes('not the owner')), 'the stranger reached nothing');
+  assert.ok(tg.state.sent.every((m) => m.chat_id === 42), 'nobody but the owner is answered');
+
+  // Written on the desktop: the answer stays there.
+  await app.say('@fake say Desktop only.');
+  await app.until("return (await window.ide.call('state')).chat.some((m) => m.kind === 'dispatcher' && m.text === 'Desktop only.')", 'the desktop answer');
+  tg.push(tg.user(42, '/status'));
+  await waitFor(() => mine().some((m) => m.text.startsWith('Dispatcher · ')), 'the status on the phone');
+  assert.ok(mine().every((m) => !m.text.includes('Desktop only.')), 'a desktop turn is not sent to the phone');
+
+  // Locked from the phone: words are turned away, and the switch shows off in Settings.
+  tg.push(tg.user(42, '/lock'));
+  await waitFor(() => mine().some((m) => /^Locked/.test(m.text)), 'the lock answer');
+  await app.until("return (await window.ide.call('state')).telegram.prefs.requests === false", 'requests off');
+});

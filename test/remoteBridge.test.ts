@@ -166,3 +166,33 @@ test('remoteBridge: a burst too long for one message goes in several of at most 
   const all = s.state.sent.map((m) => m.text).join('\n');
   for (let i = 1; i <= 9; i++) assert.equal(all.split(`Task ${i}\n`).length - 1, 1, `Task ${i} once`);
 }));
+
+test('remoteBridge: a Dispatcher answer goes without its code, and a reply to it on the phone finds its chat item', () => withOutbox(async (s, box) => {
+  assert.equal(box.tell({ type: 'reply', id: 'c-1', text: 'Gave it to W-01.\n```\nrm -rf /\n```' }), true);
+  await box.idle();
+  assert.equal(s.state.sent.length, 1);
+  assert.equal(s.state.sent[0].text, 'Gave it to W-01.\n…');
+  assert.equal(box.sent.get(s.state.sent[0].message_id), 'c-1');
+}));
+
+test('remoteBridge: a result is remembered by its task, so a reply goes into the report\'s thread', () => withOutbox(async (s, box) => {
+  box.tell(result(7));
+  await box.idle();
+  assert.equal(box.sent.get(s.state.sent[0].message_id), 'T-7');
+}));
+
+test('remoteBridge: the bot\'s own answer goes as a reply to the phone\'s message, whatever news is switched off', () => withOutbox(async (s, box, link) => {
+  link.setPrefs({ events: { decisions: false, results: false, prs: false, errors: false, replies: false } });
+  assert.equal(box.answer('STATUS', 55), true);
+  assert.equal(box.answer('STATUS', 56), true, 'the same words twice are two answers');
+  await box.idle();
+  assert.deepEqual(s.state.sent.map((m) => [m.text, (m.reply_parameters as { message_id: number }).message_id]), [['STATUS', 55], ['STATUS', 56]]);
+}));
+
+test('remoteBridge: Dispatcher answers are switched off on their own', () => withOutbox(async (s, box, link) => {
+  link.setPrefs({ events: { replies: false } });
+  assert.equal(box.tell({ type: 'reply', id: 'c-2', text: 'hi' }), false);
+  assert.equal(box.tell(result(1)), true);
+  await box.idle();
+  assert.equal(s.state.sent.length, 1);
+}));

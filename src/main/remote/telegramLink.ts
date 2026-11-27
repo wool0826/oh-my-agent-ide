@@ -1,6 +1,7 @@
 // The Telegram bot as the app holds it (decision 245): its token encrypted with safeStorage, the pairing that binds
-// it to the owner's private chat, and its status. Polling runs only while a pairing code is open; once paired the
-// app only sends. Nothing here logs or returns the token, and no message text goes to the log.
+// it to the owner's private chat, and its status. Polling runs while a pairing code is open, and once paired while
+// requests from the phone are on (decision 250): then only the owner's private messages are handed on, the rest
+// dropped unanswered. Nothing here logs or returns the token, and no message text goes to the log.
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { safeStorage } from 'electron';
@@ -8,7 +9,7 @@ import { loadSettings, saveSettings } from '../settings';
 import { log } from '../log';
 import { t } from '../i18n';
 import {
-  PAIR_TTL_MS, checkPair, cleanTelegram, looksLikeToken, makePairCode, pairLink, remoteStatus,
+  PAIR_TTL_MS, checkPair, cleanTelegram, fromOwner, looksLikeToken, makePairCode, pairLink, remoteStatus,
   type PairCandidate, type Pairing, type RemoteTrouble, type TelegramStored, type TelegramView, type TgUpdate,
 } from '../../shared/remote';
 import { cleanPrefs, type RemoteEvent, type RemoteLevel, type RemotePrefs } from '../../shared/remoteNotice';
@@ -55,6 +56,16 @@ export class TelegramLink extends EventEmitter {
   private expiry: NodeJS.Timeout | null = null;
   /** Bumped by every change of token, switch or pairing: a token check that comes back after one is dropped. */
   private gen = 0;
+  /** Where the last poller stopped: the next one goes on from there instead of reading the same updates again. */
+  private offset: number | null = null;
+  /** Updates dropped because they were not the owner's private messages (counted, never read). */
+  dropped = 0;
+  /** What handles the owner's messages once paired (remote/inbound.ts); none, and nothing is polled for them. */
+  inbound: ((u: TgUpdate) => void | Promise<void>) | null = null;
+  /** Called when the bot changes or is disconnected: what was kept about its updates no longer applies. */
+  onForget: (() => void) | null = null;
+  /** A stop under way: a poller started meanwhile waits for it, or Telegram sees two getUpdates (409). */
+  private stopping: Promise<void> | null = null;
 
   constructor(private readonly store: LinkStore = settingsStore, private readonly crypt: LinkCrypt = safeCrypt, private readonly base?: string, private readonly pollSec = 50) {
     super();
@@ -111,11 +122,12 @@ export class TelegramLink extends EventEmitter {
   /** What is sent and how much. */
   prefs(): RemotePrefs { return this.cfg.prefs; }
 
-  /** Turns one kind of news on or off, or sets how much is sent. */
-  setPrefs(patch: { events?: Partial<Record<RemoteEvent, boolean>>; level?: RemoteLevel }) {
+  /** Turns one kind of news on or off, sets how much is sent, or whether the phone's messages are taken. */
+  setPrefs(patch: { events?: Partial<Record<RemoteEvent, boolean>>; level?: RemoteLevel; requests?: boolean }) {
     const c = this.cfg;
-    const prefs = cleanPrefs({ events: { ...c.prefs.events, ...patch.events }, level: patch.level ?? c.prefs.level });
+    const prefs = cleanPrefs({ events: { ...c.prefs.events, ...patch.events }, level: patch.level ?? c.prefs.level, requests: patch.requests ?? c.prefs.requests });
     this.store.save(this.store.load().tokenEnc, { ...c, prefs });
+    this.syncPoll();
     this.changed();
   }
 
@@ -124,6 +136,7 @@ export class TelegramLink extends EventEmitter {
     const c = this.cfg;
     if (!c.enabled || c.ownerId === null || !this.client()) return;
     try { await this.client()!.getMe(); this.setTrouble(null); } catch (e) { this.noteFailure(e); }
+    this.syncPoll();
   }
 
   /** Checks a new token with Telegram, then stores it encrypted. A different bot drops the old pairing. */
@@ -142,9 +155,11 @@ export class TelegramLink extends EventEmitter {
     const next: TelegramStored = { ...c, botId: me.id, botName: me.username, ownerId: same ? c.ownerId : null, ownerName: same ? c.ownerName : null };
     this.store.save(this.crypt.encrypt(tok), next);
     this.api = api;
+    if (!same) { this.offset = null; this.onForget?.(); }
     this.trouble = null;
     log.info('telegram token saved', { bot: me.username, kept: same && next.ownerId !== null });
     if (next.enabled && next.ownerId === null) this.newCode();
+    else this.syncPoll();
     this.changed();
   }
 
@@ -168,11 +183,33 @@ export class TelegramLink extends EventEmitter {
     this.openedAt = Date.now();
     this.pairing = { code: makePairCode(crypto.randomBytes(8)), expiresAt: this.openedAt + PAIR_TTL_MS, tries: 0 };
     if (this.expiry) clearTimeout(this.expiry);
-    this.expiry = setTimeout(() => { this.pairing = null; void this.stopPolling(); this.changed(); }, PAIR_TTL_MS);
+    this.expiry = setTimeout(() => { this.pairing = null; this.syncPoll(); this.changed(); }, PAIR_TTL_MS);
     this.expiry.unref?.();
-    if (!this.poller) this.poller = new TelegramPoller(api, { onUpdate: (u) => this.onUpdate(u), onState: (s) => this.onPoll(s), timeoutSec: this.pollSec });
-    this.poller.start();
+    this.startPolling(api);
     this.changed();
+  }
+
+  /** Is there something to read: an open code, or the owner's messages while requests are on? */
+  private wantsPoll(): boolean {
+    if (this.pairing && !this.candidate) return true;
+    const c = this.cfg;
+    return c.enabled && c.ownerId !== null && c.prefs.requests && !!this.inbound && this.trouble !== 'invalid' && this.trouble !== 'elsewhere';
+  }
+
+  /** Starts or stops polling to match wantsPoll. Never waits, so a handler of an update may call it. */
+  syncPoll() {
+    const api = this.client();
+    if (api && this.wantsPoll()) this.startPolling(api);
+    else if (this.poller) void this.stopPolling();
+  }
+
+  private startPolling(api: TelegramApi) {
+    if (!this.poller && this.stopping) {
+      void this.stopping.then(() => this.syncPoll());
+      return;
+    }
+    if (!this.poller) this.poller = new TelegramPoller(api, { onUpdate: (u) => this.onUpdate(u), onState: (s) => this.onPoll(s), timeoutSec: this.pollSec, offset: this.offset });
+    this.poller.start();
   }
 
   private onPoll(s: PollState) {
@@ -180,10 +217,18 @@ export class TelegramLink extends EventEmitter {
     if (s === 'invalid' || s === 'elsewhere') { this.pairing = null; this.poller = null; this.changed(); }
   }
 
-  private onUpdate(u: TgUpdate) {
+  private async onUpdate(u: TgUpdate) {
     // Ids and sizes only: the text may be anyone's.
     log.info('telegram update', { id: u.update_id, kind: u.message ? 'message' : 'other', len: u.message?.text?.length ?? 0 });
-    if (!this.pairing || this.candidate) return;
+    if (!this.pairing) {
+      const c = this.cfg;
+      if (c.ownerId === null || !this.inbound) return;
+      // Anyone but the owner in their private chat with the bot: no answer, so the bot gives nothing away.
+      if (!fromOwner(u, c.ownerId)) { this.dropped++; log.info('telegram dropped', { id: u.update_id, n: this.dropped }); return; }
+      await this.inbound(u);
+      return;
+    }
+    if (this.candidate) return;
     const r = checkPair(this.pairing, u, this.openedAt, Date.now());
     this.pairing = r.pairing;
     if (r.result === 'match') {
@@ -191,7 +236,7 @@ export class TelegramLink extends EventEmitter {
       // Kept until the desktop says yes or no; nothing else needs reading meanwhile.
       this.pairing = { code: '', expiresAt: Date.now() + PAIR_TTL_MS, tries: 0 };
       void this.stopPolling();
-    } else if (!this.pairing) void this.stopPolling();
+    } else if (!this.pairing) this.syncPoll();
     if (r.result !== 'ignore') log.info('telegram pairing', { result: r.result, left: this.pairing ? 'open' : 'closed' });
     this.changed();
   }
@@ -205,6 +250,7 @@ export class TelegramLink extends EventEmitter {
     if (this.expiry) { clearTimeout(this.expiry); this.expiry = null; }
     this.store.save(this.store.load().tokenEnc, { ...this.cfg, ownerId: who.id, ownerName: who.name });
     log.info('telegram paired');
+    this.syncPoll();
     this.changed();
     await this.send(t('tg.msg.connected')).catch((e) => log.warn('telegram hello', (e as Error).message));
   }
@@ -223,7 +269,9 @@ export class TelegramLink extends EventEmitter {
     const c = this.cfg;
     this.store.save('', { ...cleanTelegram(null), enabled: c.enabled, prefs: c.prefs });
     this.api = null;
+    this.offset = null;
     this.trouble = null;
+    this.onForget?.();
     log.info('telegram disconnected');
     this.changed();
   }
@@ -256,7 +304,11 @@ export class TelegramLink extends EventEmitter {
   private async stopPolling() {
     const p = this.poller;
     this.poller = null;
-    await p?.stop();
+    if (!p) return this.stopping ?? undefined;
+    if (p.nextOffset !== null) this.offset = p.nextOffset;
+    const run = p.stop().then(() => { if (p.nextOffset !== null) this.offset = p.nextOffset; });
+    this.stopping = run;
+    try { await run; } finally { if (this.stopping === run) this.stopping = null; }
   }
 
   /** Stops everything that runs: polling and the code's timer. */

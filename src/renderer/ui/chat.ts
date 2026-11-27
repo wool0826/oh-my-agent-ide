@@ -295,9 +295,14 @@ function evBlockHtml(b: EvBlock<ChatItem>) {
   return `<div class="evblk"><div class="evs fold${open ? ' open' : ''}" role="group" aria-label="${esc(label)}">${head}${body}</div>${pinned}</div>`;
 }
 
+/** A message sent from the phone (decision 250) carries a small phone mark. */
+function viaMark(c: ChatItem): string {
+  return c.via === 'telegram' ? `<span class="bub-via" role="img" aria-label="${esc(t('tg.chatVia'))}" data-tip="${esc(t('tg.chatVia'))}">${sym('s-phone')}</span>` : '';
+}
+
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
-    case 'user': return `<div class="bub me">${userText(c.text, (f) => sentFiles(f, `me:${c.id}`))}</div>`;
+    case 'user': return `<div class="bub me">${userText(c.text, (f) => sentFiles(f, `me:${c.id}`))}${viaMark(c)}</div>`;
     case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.id, c.id);
     case 'event': return isHandout(c) ? handoutHtml(c) : `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
@@ -333,7 +338,7 @@ function branchRow(c: ChatItem, root: ChatItem, thread: ChatItem[]) {
     const r = parseReply(c.text);
     const inView = !!r && ((r.who === rootWho(root) && (isReport(root) || r.quote === replyExcerpt(root.text)))
       || (r.who === 'Dispatcher' && thread.some((x) => x.kind === 'dispatcher' && replyExcerpt(x.text) === r.quote)));
-    if (r && inView) body = `<div class="bub me">${userText(r.body, (f) => sentFiles(f, `me:${c.id}`))}</div>`;
+    if (r && inView) body = `<div class="bub me">${userText(r.body, (f) => sentFiles(f, `me:${c.id}`))}${viaMark(c)}</div>`;
   }
   const go = `<button type="button" class="br-go" data-action="reply-root" data-id="${esc(root.id)}" tabindex="-1" aria-label="${esc(t('reply.toRoot'))}"></button>`;
   return `<div class="br-r ${c.kind === 'user' ? 'me' : 'ai'}" data-k="${esc(root.id)}" data-id="${esc(c.id)}"><i class="el" aria-hidden="true"></i>${go}${body}</div>`;

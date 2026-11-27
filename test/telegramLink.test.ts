@@ -208,3 +208,82 @@ test('telegramLink: nothing is sent while it is off', () => withLink(async (s, l
   await assert.rejects(link.test(), /not connected/);
   assert.equal(s.state.sent.length, 0);
 }, PAIRED));
+
+test('telegramLink: once paired, only the owner\'s private messages are handed on, and the pairing code is not', () => withLink(async (s, link) => {
+  const got: string[] = [];
+  link.inbound = (u) => { got.push(u.message?.text ?? ''); };
+  await link.setToken(s.token);
+  await until(() => polling(s), 'polling for the code');
+  const code = link.view().code!;
+  s.push(s.user(42, `/start ${code}`, { name: 'Owner' }));
+  await until(() => !!link.view().candidate, 'the candidate');
+  await link.confirm();
+  await until(() => polling(s), 'polling for requests');
+  s.push(s.user(777, 'run rm -rf', { name: 'Stranger' }));
+  s.push(s.user(42, 'in a group', { type: 'group' }));
+  s.push(s.user(42, 'fix the login bug'));
+  await until(() => got.length === 1, 'the owner\'s message');
+  assert.deepEqual(got, ['fix the login bug']);
+  assert.equal(link.dropped, 2);
+  // Nothing was answered to anyone but the owner.
+  assert.deepEqual([...new Set(s.state.sent.map((m) => m.chat_id))], [42]);
+}));
+
+test('telegramLink: requests off stops polling, and on again goes on after the last update read', () => withLink(async (s, link) => {
+  const got: string[] = [];
+  link.inbound = (u) => { got.push(u.message?.text ?? ''); };
+  await link.setToken(s.token);
+  link.syncPoll();
+  await until(() => polling(s), 'polling for requests');
+  s.push(s.user(42, 'one'));
+  await until(() => got.length === 1, 'the first message');
+  link.setPrefs({ requests: false });
+  await until(() => !polling(s), 'polling to stop');
+  link.setPrefs({ requests: true });
+  await until(() => polling(s), 'polling again');
+  s.push(s.user(42, 'two'));
+  await until(() => got.length === 2, 'the second message');
+  assert.deepEqual(got, ['one', 'two']);
+}, PAIRED));
+
+test('telegramLink: turning requests off and on quickly leaves one poller, still connected', () => withLink(async (s, link) => {
+  const got: string[] = [];
+  link.inbound = (u) => { got.push(u.message?.text ?? ''); };
+  await link.setToken(s.token);
+  await until(() => polling(s), 'polling for requests');
+  for (let i = 0; i < 5; i++) { link.setPrefs({ requests: false }); link.setPrefs({ requests: true }); }
+  await until(() => polling(s), 'polling again');
+  s.push(s.user(42, 'still here'));
+  await until(() => got.length === 1, 'the message');
+  assert.equal(link.view().status, 'connected');
+}, PAIRED));
+
+test('telegramLink: after a refused token, a good one for the same bot polls for requests again', () => withLink(async (s, link) => {
+  link.inbound = () => {};
+  await link.setToken(s.token);
+  await until(() => polling(s), 'polling for requests');
+  s.revoke();
+  await until(() => link.view().status === 'invalid', 'the link marked invalid');
+  await link.setToken(s.state.token);
+  await until(() => polling(s), 'polling again');
+}, PAIRED));
+
+test('telegramLink: another bot or a disconnect forgets what was kept about the updates of the old bot', () => withLink(async (s, link) => {
+  let forgot = 0;
+  link.onForget = () => { forgot++; };
+  await link.setToken(s.token);
+  assert.equal(forgot, 0, 'same bot');
+  s.state.token = '555555555:AAEhBP0av18q1wQ7otherotherotherother';
+  s.state.bot = { ...s.state.bot, id: 555555555, username: 'other_bot' };
+  await link.setToken(s.state.token);
+  assert.equal(forgot, 1);
+  await link.disconnect();
+  assert.equal(forgot, 2);
+}, PAIRED));
+
+test('telegramLink: no handler, no polling once paired', () => withLink(async (s, link) => {
+  await link.setToken(s.token);
+  link.syncPoll();
+  assert.equal(polling(s), false);
+  assert.equal(s.state.calls.some((c) => c.method === 'getUpdates'), false);
+}, PAIRED));
