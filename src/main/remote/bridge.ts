@@ -31,12 +31,16 @@ export interface OutboxOpts {
   now?: () => number;
 }
 
+/** 429s in a row for one message before it is dropped. */
+const RATE_TRIES = 10;
+
 export class Outbox {
   readonly queue = new SendQueue();
   private bursts = new Burst();
   private running = false;
   private lastSent = 0;
   private fails = 0;
+  private rates = 0;
   private timer: NodeJS.Timeout | null = null;
   private readonly say: Say;
   private readonly quiet: () => boolean;
@@ -68,7 +72,7 @@ export class Outbox {
   }
 
   /** Waiting messages are dropped (the channel was turned off or disconnected). */
-  clear() { this.queue.clear(); this.fails = 0; }
+  clear() { this.queue.clear(); this.fails = 0; this.rates = 0; }
 
   /** Resolves when nothing waits and nothing is on its way (for tests). */
   async idle() { while (this.running || this.queue.size) await new Promise((r) => setTimeout(r, 5)); }
@@ -76,7 +80,11 @@ export class Outbox {
   private kick() {
     if (this.running) return;
     this.running = true;
-    void this.pump().catch((e) => log.warn('telegram outbox', (e as Error).message)).finally(() => { this.running = false; });
+    void this.pump().catch((e) => log.warn('telegram outbox', (e as Error).message)).finally(() => {
+      this.running = false;
+      // News told while the loop was ending would otherwise wait for the next one.
+      if (this.queue.size && this.ch.ready) this.kick();
+    });
   }
 
   private pause(ms: number) {
@@ -90,10 +98,13 @@ export class Outbox {
     for (let o = this.queue.next(); o; o = this.queue.next()) {
       if (!this.ch.ready) { this.clear(); return; }
       await this.pause(this.lastSent + this.gapMs - this.now());
+      // Switched off or disconnected during the gap: nothing more goes.
+      if (!this.ch.ready) { this.queue.forget(o); this.clear(); return; }
       const wait = await this.sendOne(o);
       if (wait === null) continue;
       this.queue.retry(o);
       await this.pause(wait);
+      if (!this.ch.ready) { this.clear(); return; }
     }
   }
 
@@ -103,16 +114,17 @@ export class Outbox {
       // The bot sends plain text; long news goes in up to three parts.
       for (const part of splitText(o.text)) { await this.ch.send(part, { silent: o.silent }); this.lastSent = this.now(); }
       this.fails = 0;
+      this.rates = 0;
       return null;
     } catch (e) {
       this.lastSent = this.now();
       const err = e instanceof TelegramError ? e : null;
       log.warn('telegram send', err ? `${err.kind} ${err.code}` : 'failed');
-      if (err?.kind === 'rate') return (err.retryAfter ?? 1) * 1000;
-      // A refused token or a message Telegram will never take: no retry. The link shows the token as invalid.
-      if (!err || err.kind === 'auth' || err.kind === 'bad') { if (err?.kind === 'auth') this.clear(); this.fails = 0; return null; }
+      if (err?.kind === 'rate' && ++this.rates <= RATE_TRIES) return (err.retryAfter ?? 1) * 1000;
+      // A refused token, a message Telegram will never take, or one it keeps refusing for speed: no retry. A refused token shows as invalid.
+      if (!err || err.kind === 'auth' || err.kind === 'bad' || err.kind === 'rate') { if (err?.kind === 'auth') this.clear(); else this.queue.forget(o); this.fails = 0; this.rates = 0; return null; }
       this.fails++;
-      if (this.fails >= this.tries) { this.fails = 0; return null; }
+      if (this.fails >= this.tries) { this.queue.forget(o); this.fails = 0; return null; }
       return this.backoff(this.fails);
     }
   }

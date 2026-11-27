@@ -95,7 +95,8 @@ export function newsText(say: Say, n: RemoteNews, level: RemoteLevel): string {
       const d = doneNotice(say, { who: n.who, title: n.title, summary: n.summary, ok: n.ok, label: n.label, code: n.code, prUrl: n.prUrl });
       const parts = [d.title, line(n.title)];
       if (full) {
-        const body = plainText(n.summary, 800);
+        // A failed task's summary is its error text, which can quote a command or a file: only the title goes.
+        const body = n.ok ? plainText(n.summary, 800) : '';
         if (body) parts.push(body);
         const links = [n.prUrl, ...(n.links ?? [])].filter((x): x is string => !!x);
         if (links.length) parts.push(links.join('\n'));
@@ -108,7 +109,8 @@ export function newsText(say: Say, n: RemoteNews, level: RemoteLevel): string {
       return parts.join('\n\n');
     }
     case 'error':
-      return [say('tg.n.error'), full ? plainText(n.text, 600) : line(n.text.split(/\r?\n/)[0] ?? '', 120)].filter(Boolean).join('\n\n');
+      // One line at either level: what follows it (stderr, output, paths) stays on the desktop.
+      return [say('tg.n.error'), line(plainText(n.text, 600).split(/\r?\n/)[0] ?? '', 120)].filter(Boolean).join('\n\n');
   }
 }
 
@@ -117,6 +119,8 @@ export interface Outgoing { key: string; group: string; text: string; silent: bo
 
 export const QUEUE_MAX = 50;
 export const DEDUPE_MS = 10 * 60_000;
+/** News joins a waiting message only while the message stays within one Telegram message. */
+export const MERGE_MAX = 4000;
 
 /**
  * The messages waiting to go, oldest first. A repeat of something told within `dedupeMs` is dropped; news of a group
@@ -125,32 +129,40 @@ export const DEDUPE_MS = 10 * 60_000;
 export class SendQueue {
   readonly items: Outgoing[] = [];
   private recent = new Map<string, number>();
-  constructor(private max = QUEUE_MAX, private dedupeMs = DEDUPE_MS) {}
+  /** The keys of the news in each waiting message, forgotten when it is dropped so the same news can come again. */
+  private held = new WeakMap<Outgoing, string[]>();
+  constructor(private max = QUEUE_MAX, private dedupeMs = DEDUPE_MS, private mergeMax = MERGE_MAX) {}
 
   /** false when it was a repeat and dropped. */
   add(o: Outgoing, now: number): boolean {
     for (const [k, at] of this.recent) if (now - at >= this.dedupeMs) this.recent.delete(k);
     if (this.recent.has(o.key)) return false;
     this.recent.set(o.key, now);
-    const same = this.items.find((x) => x.group === o.group);
-    if (same) {
+    const same = [...this.items].reverse().find((x) => x.group === o.group);
+    if (same && same.text.length + 2 + o.text.length <= this.mergeMax) {
       same.text = `${same.text}\n\n${o.text}`;
       same.silent &&= o.silent;
       same.urgent ||= o.urgent;
+      this.held.get(same)?.push(o.key);
       return true;
     }
-    this.items.push({ ...o });
+    const item = { ...o };
+    this.held.set(item, [o.key]);
+    this.items.push(item);
     while (this.items.length > this.max) {
       const i = this.items.findIndex((x) => !x.urgent);
-      this.items.splice(i >= 0 ? i : 0, 1);
+      this.forget(this.items.splice(i >= 0 ? i : 0, 1)[0]);
     }
     return true;
   }
 
+  /** A message that will not go: its news counts as untold again. */
+  forget(o: Outgoing) { for (const k of this.held.get(o) ?? [o.key]) this.recent.delete(k); }
+
   next(): Outgoing | undefined { return this.items.shift(); }
   /** A message that could not go yet goes back to the front. */
   retry(o: Outgoing) { this.items.unshift(o); }
-  clear() { this.items.length = 0; }
+  clear() { for (const o of this.items) this.forget(o); this.items.length = 0; }
   get size() { return this.items.length; }
 }
 

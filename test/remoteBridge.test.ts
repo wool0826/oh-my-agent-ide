@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Outbox } from '../src/main/remote/bridge';
+import { TelegramError } from '../src/main/remote/telegramApi';
 import { TelegramLink, type LinkCrypt, type LinkStore } from '../src/main/remote/telegramLink';
 import { cleanTelegram, type TelegramStored } from '../src/shared/remote';
 import type { RemoteNews } from '../src/shared/remoteNotice';
@@ -99,7 +100,51 @@ test('remoteBridge: a message that keeps failing is dropped after its tries and 
   box.tell({ type: 'pr', task: 'T-2', title: 'Two', merged: false, prUrl: null });
   await box.idle();
   assert.deepEqual(s.state.sent.map((m) => m.text.split('\n')[0]), ['PR closed']);
+  box.tell(result(1));
+  await box.idle();
+  assert.equal(s.state.sent.length, 2, 'the dropped news is not a repeat');
 }));
+
+/** A channel without Telegram: `fail` decides what each send does, `sent` keeps what went. */
+function fakeChannel(fail: (n: number) => Error | null = () => null) {
+  const ch = { ready: true, sent: [] as string[], calls: 0, prefs: () => cleanTelegram(null).prefs,
+    async send(text: string) { const e = fail(ch.calls++); if (e) throw e; ch.sent.push(text); return ch.sent.length; } };
+  return ch;
+}
+
+test('remoteBridge: news told just as the queue runs dry still goes', async () => {
+  const ch = fakeChannel();
+  const box = new Outbox(ch, { quiet: () => false, gapMs: 0 });
+  for (let depth = 0; depth < 12; depth++) {
+    box.tell({ type: 'pr', task: `T-a${depth}`, title: 'A', merged: true, prUrl: null });
+    let p: Promise<void> = Promise.resolve();
+    for (let i = 0; i < depth; i++) p = p.then(() => {});
+    void p.then(() => box.tell({ type: 'error', text: `late ${depth}` }));
+    await box.idle();
+  }
+  assert.equal(ch.sent.filter((x) => /late/.test(x)).length, 12);
+});
+
+test('remoteBridge: nothing more goes once the channel is turned off during the gap', async () => {
+  const ch = fakeChannel();
+  const box = new Outbox(ch, { quiet: () => false, gapMs: 100 });
+  box.tell({ type: 'pr', task: 'T-1', title: 'One', merged: true, prUrl: null });
+  box.tell({ type: 'error', text: 'Two' });
+  while (!ch.sent.length) await new Promise((r) => setTimeout(r, 5));
+  ch.ready = false;
+  await box.idle();
+  assert.equal(ch.sent.length, 1);
+});
+
+test('remoteBridge: a message Telegram keeps refusing for speed is dropped in the end', async () => {
+  const ch = fakeChannel((n) => (n < 11 ? new TelegramError('sendMessage', 'rate', 429, 'Too Many Requests', 0) : null));
+  const box = new Outbox(ch, { quiet: () => false, gapMs: 0 });
+  box.tell({ type: 'pr', task: 'T-1', title: 'One', merged: true, prUrl: null });
+  box.tell({ type: 'error', text: 'Two' });
+  await box.idle();
+  assert.equal(ch.calls, 12);
+  assert.deepEqual(ch.sent.map((x) => x.split('\n')[0]), ['Error']);
+});
 
 test('remoteBridge: a revoked token empties the queue and marks the link invalid', () => withOutbox(async (s, box, link) => {
   s.revoke();
@@ -112,10 +157,12 @@ test('remoteBridge: a revoked token empties the queue and marks the link invalid
   assert.equal(box.tell(result(3)), false);
 }));
 
-test('remoteBridge: a burst too long for one message goes in parts of at most 4096 characters', () => withOutbox(async (s, box) => {
+test('remoteBridge: a burst too long for one message goes in several of at most 4096 characters', () => withOutbox(async (s, box) => {
   s.failNext('sendMessage', 500, 'Internal Server Error');
-  for (let i = 0; i < 9; i++) box.tell({ type: 'error', text: `${i} ${'x'.repeat(700)}` });
+  for (let i = 1; i <= 9; i++) box.tell(result(i, { summary: 'x'.repeat(790), prUrl: null }));
   await box.idle();
-  assert.equal(s.state.sent.length, 3, 'the first alone, then the other eight in two parts');
+  assert.ok(s.state.sent.length >= 3);
   assert.ok(s.state.sent.every((m) => m.text.length <= 4096));
+  const all = s.state.sent.map((m) => m.text).join('\n');
+  for (let i = 1; i <= 9; i++) assert.equal(all.split(`Task ${i}\n`).length - 1, 1, `Task ${i} once`);
 }));

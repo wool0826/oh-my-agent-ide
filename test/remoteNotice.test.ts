@@ -41,6 +41,7 @@ test('remoteNotice: a result has who and how, the title, and at summary level it
   assert.doesNotMatch(s, /code\n/);
   assert.equal(newsText(say, result, 'title'), 'W-03 res.doneLabel · noti.pr{"n":"7"}\n\nAdd login');
   assert.match(newsText(say, { ...result, ok: false } as RemoteNews, 'title'), /noti\.failed/);
+  assert.doesNotMatch(newsText(say, { ...result, ok: false, summary: 'npm ERR! cat .env' } as RemoteNews, 'summary'), /npm ERR/);
 });
 
 test('remoteNotice: a PR and an error name what happened; the PR link only at summary level', () => {
@@ -48,6 +49,7 @@ test('remoteNotice: a PR and an error name what happened; the PR link only at su
   assert.equal(newsText(say, pr, 'summary'), 'noti.merged\n\nAdd login\n\nhttps://github.com/o/r/pull/7');
   assert.equal(newsText(say, pr, 'title'), 'noti.merged\n\nAdd login');
   assert.equal(newsText(say, { type: 'error', text: 'Boom\nstack line' }, 'title'), 'tg.n.error\n\nBoom');
+  assert.equal(newsText(say, { type: 'error', text: 'Boom\n$ cat secrets.txt\nhunter2' }, 'summary'), 'tg.n.error\n\nBoom');
 });
 
 test('remoteNotice: kinds, keys and burst groups', () => {
@@ -81,6 +83,25 @@ test('remoteNotice: news of a group that still waits joins its message, silent o
   const first = q.next()!;
   assert.equal(first.text, 'a\n\nb');
   assert.equal(first.silent, false);
+});
+
+test('remoteNotice: news stops joining a waiting message once it would pass one Telegram message', () => {
+  const q = new SendQueue(50, 1000, 10);
+  q.add(out('aaaa', 'g'), 0);
+  q.add(out('bbbb', 'g'), 0);
+  q.add(out('cccc', 'g'), 0);
+  assert.deepEqual(q.items.map((x) => x.text), ['aaaa\n\nbbbb', 'cccc']);
+});
+
+test('remoteNotice: news in a message that was dropped or cleared can be told again', () => {
+  const q = new SendQueue(50, 1000);
+  q.add(out('a', 'g'), 0);
+  q.add(out('b', 'g'), 0);
+  q.forget(q.next()!);
+  assert.equal(q.add(out('a', 'g'), 1), true);
+  assert.equal(q.add(out('b', 'g'), 1), true);
+  q.clear();
+  assert.equal(q.add(out('a', 'g'), 2), true);
 });
 
 test('remoteNotice: a full queue drops its oldest news that is not a decision', () => {
