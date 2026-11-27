@@ -189,6 +189,7 @@ export const PART_PANELS: Record<Part, readonly Panel[]> = {
   repoAdding: ['repos'],
   preflightFailed: ['frame', 'chat'],
   fake: ['frame'],
+  sleep: ['frame'],
   update: ['frame'],
   accounts: ['frame', 'usage', 'chat', 'workers', 'cancel'],
   usageClock: ['frame', 'usage'],

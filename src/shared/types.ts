@@ -4,6 +4,7 @@ import type { SessionSpend, Spend } from './spend';
 import type { UsageClock } from './usage';
 import type { UpdateView } from './update';
 import type { ChatEv } from './chatEvents';
+import type { SleepView } from './autoSleep';
 
 export type Lang = 'en' | 'ko';
 
@@ -523,6 +524,8 @@ export interface AppState {
   preflightFailed?: number;
   /** Fake agent mode is on: every agent follows a script, and the window says so. */
   fake?: boolean;
+  /** "Sleep when done" (shared/autoSleep.ts): whether it is armed, and when its countdown ends. */
+  sleep?: SleepView;
   /** The newer version and how far it is (null with the update setting off). */
   update?: UpdateView | null;
   setupNeeded: boolean;

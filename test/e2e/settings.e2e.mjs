@@ -213,3 +213,28 @@ flow('the stay-awake switch is in Settings and holds the computer awake only whi
   await app.until("return (await window.ide.call('state')).settings.keepAwake === true;", 'the switch saved on');
   await app.until("return await window.ide.call('e2e:awake');", 'the computer held awake again');
 });
+
+flow('sleep when done is armed from the toolbar, counts down once no work is left, cancels, and sleeps once', {}, async (app) => {
+  const slept = () => app.evaluate("return await window.ide.call('e2e:slept');");
+  const pressed = () => app.evaluate("document.getElementById('sleep-btn').getAttribute('aria-pressed')");
+  assert.equal(await pressed(), 'false');
+  assert.equal(await app.evaluate("document.getElementById('sleep-btn').getAttribute('aria-label')"), 'Sleep when done');
+  // Nothing runs: arming starts the countdown at once, and its ✕ turns it off.
+  await app.click('#sleep-btn');
+  await app.until("!!document.getElementById('sleep-toast')", 'the countdown shown');
+  assert.equal(await pressed(), 'true');
+  assert.match(await app.evaluate("document.querySelector('#sleep-toast > span').textContent"), /^Sleep in [01]:\d\d$/);
+  assert.equal(await app.evaluate("document.querySelector('#sleep-toast .toast-x').getAttribute('aria-label')"), 'Cancel sleep');
+  await app.click('#sleep-toast .toast-x');
+  await app.until("!document.getElementById('sleep-toast') && document.getElementById('sleep-btn').getAttribute('aria-pressed') === 'false'", 'the countdown cancelled and the toggle off');
+  await app.evaluate("return await window.ide.call('e2e:sleepTick', 120000);");
+  assert.equal(await slept(), 0);
+  // Armed again, a Dispatcher turn holds the countdown; once it ends the countdown runs out and the computer sleeps once.
+  await app.click('#sleep-btn');
+  await app.say('hello');
+  await app.until("return !(await window.ide.call('state')).dispatcher.busy && !!document.getElementById('sleep-toast');", 'the countdown after the turn');
+  await app.evaluate("return await window.ide.call('e2e:sleepTick', 61000);");
+  await app.until("return await window.ide.call('e2e:slept') === 1;", 'the computer put to sleep');
+  await app.until("!document.getElementById('sleep-toast') && document.getElementById('sleep-btn').getAttribute('aria-pressed') === 'false'", 'disarmed after sleeping');
+  await app.until("return (await window.ide.call('state')).chat.some((c) => c.kind === 'event' && c.text.includes('put to sleep'));", 'the chat line saying so');
+});

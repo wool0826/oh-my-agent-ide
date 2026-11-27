@@ -2,7 +2,7 @@
 // The main process wires it to Electron's powerSaveBlocker ('prevent-app-suspension'), the same on macOS and Windows.
 
 /** Worker states that mean work is going on: starting, in a turn, or waiting on a decision or an approval. */
-const WORKING = new Set(['starting', 'running', 'waiting']);
+export const WORKING = new Set(['starting', 'running', 'waiting']);
 
 /** Should the computer stay awake: the setting is on and a Worker works or the Dispatcher is in a turn. */
 export function shouldStayAwake(s: { on: boolean; workers: { status: string }[]; dispatcherBusy: boolean }): boolean {
