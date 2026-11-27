@@ -1042,7 +1042,7 @@ export function init() {
   usage.addEventListener('mouseleave', hideUsageSoon);
   upop.addEventListener('mouseenter', showUsagePop);
   upop.addEventListener('mouseleave', hideUsageSoon);
-  usage.addEventListener('focus', () => { if (!usagePop.quiet && usage.matches(':focus-visible')) showUsagePop(); });
+  usage.addEventListener('focus', () => { if (!usagePop.quiet && usage.matches(':focus-visible')) { showUsagePop(); usagePop.keys = true; } });
   usage.addEventListener('blur', (e) => { if (!upop.contains(e.relatedTarget as Node | null)) hideUsagePop(); });
   upop.addEventListener('focusout', (e) => {
     const to = e.relatedTarget as Node | null;
@@ -1051,11 +1051,20 @@ export function init() {
     if (!to) return;
     hideUsagePop();
   });
+  // A click in the popover (its refresh button, say) leaves the focus there; the pointer still closes it as it leaves.
+  upop.addEventListener('pointerdown', () => { usagePop.keys = false; });
+  upop.addEventListener('keydown', (e) => { if (usagePop.shown && e.key !== 'Escape') usagePop.keys = true; });
+  // A press anywhere else closes it, focused or not (a press on nothing focusable moves no focus to close it with).
+  document.addEventListener('pointerdown', (e) => {
+    const at = e.target as Node | null;
+    if (usagePop.shown && !(at && (upop.contains(at) || usage.contains(at)))) hideUsagePop();
+  }, true);
   usage.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowDown' && e.key !== 'Enter') return;
     if (!usage.classList.contains('usage')) return;
     e.preventDefault();
     showUsagePop();
+    usagePop.keys = true;
     upop.querySelector<HTMLElement>('.ubtn:not(:disabled), [data-segc][aria-checked="true"]')?.focus();
   });
   window.addEventListener('resize', () => { closePop(); hideUsagePop(); });
