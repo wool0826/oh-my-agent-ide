@@ -8,6 +8,7 @@ import { store } from '../store';
 import { type Task, type Worker } from '../../shared/types';
 import { connectorPrompt } from './connectors';
 import { resultLinkList } from '../../shared/linkify';
+import { prCandidates } from '../../shared/prOwner';
 
 /** `codex`: the Worker runs on Codex, which has no AskUserQuestion, no subagents and no Claude Code memory. */
 export function workerPrompt(w: Worker, codex = false) {
@@ -89,15 +90,15 @@ export function workerPrompt(w: Worker, codex = false) {
  * that it cannot go on by itself.
  */
 
-export function parseResult(text: string, cwd: string) {
+/** `pickPr` chooses the task's PR among the URLs the report names (shared/prOwner.ts); by default none is. */
+export function parseResult(text: string, cwd: string, pickPr: (urls: string[]) => string | null = () => null) {
   const lines = text.split('\n').map((l) => l.trim());
   const pick = (k: string) => lines.filter((l) => l.toUpperCase().startsWith(k + ':')).map((l) => l.slice(k.length + 1).trim()).filter(Boolean);
   const reported = pick('RESULT').length > 0;
   const stuck = lines.find((l) => l.toUpperCase().startsWith('BLOCKED:'));
   const blocked = reported || stuck === undefined ? null : stuck.slice('BLOCKED:'.length).trim() || oneLine(text, 200);
   const summary = pick('RESULT')[0] ?? oneLine(lines.find((l) => l && !l.startsWith('#')) ?? text, 200);
-  const prLine = pick('PR')[0];
-  const prUrl = (prLine?.match(/https?:\/\/\S+\/pull\/\d+/) ?? text.match(/https?:\/\/[^\s)>\]]+\/pull\/\d+/))?.[0] ?? null;
+  const prUrl = pickPr(prCandidates(text));
   const files = pick('FILE')
     .map((f) => f.replace(/^`|`$/g, ''))
     .map((f) => (path.isAbsolute(f) ? f : path.join(cwd, f)))

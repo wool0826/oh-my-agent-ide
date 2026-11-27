@@ -19,6 +19,7 @@ import { stampQueued } from '../shared/queue';
 import { stampHistory } from '../shared/retro';
 import { callers, moveLine, statusMoves } from '../shared/taskStatus';
 import { log } from './log';
+import { clearForeignPrs } from '../shared/prOwner';
 import type { Memo, Automation, MergeQueueEntry, ShellScript } from '../shared/types';
 import type { ChatEv } from '../shared/chatEvents';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, TaskStatus, Worker, WorkerLogItem } from '../shared/types';
@@ -145,6 +146,9 @@ class Store extends EventEmitter {
     if (had) raw = this.upgrade(raw, text!, chain);
     this.data = coverCounters({ ...empty(), ...raw }) as unknown as Data;
     this.loaded = true;
+    // A PR a report only cited was once recorded as the task's (T-0150): it is dropped, and the task is done again.
+    const cleared = Array.isArray(this.data.tasks) ? clearForeignPrs(this.data.tasks, Array.isArray(this.data.repos) ? this.data.repos : []) : [];
+    if (cleared.length) log.info(`dropped PRs from other repositories or tasks without a branch: ${cleared.join(', ')}`);
     // What the tasks' statuses are now, so only later changes are logged (a state that cannot be read has no list).
     this.seenStatus.clear();
     if (Array.isArray(this.data.tasks)) statusMoves(this.seenStatus, this.data.tasks);
@@ -162,7 +166,7 @@ class Store extends EventEmitter {
       return;
     }
     this.dropOldChat(joined ? this.sealed.chatCount : 0);
-    if ((this.restoredFrom || this.migrated || this.repaired.length) && !this.readOnly) this.flush();
+    if ((this.restoredFrom || this.migrated || this.repaired.length || cleared.length) && !this.readOnly) this.flush();
   }
 
   /**

@@ -75,8 +75,8 @@ export function afterDependency(dep: Pick<Task, 'status' | 'prUrl' | 'prState'> 
   return 'wait';
 }
 
-/** A PR GitHub lists for a branch (`gh pr list --json url,state`). */
-export interface BranchPr { url: string; state: string }
+/** A PR GitHub lists for a branch (`gh pr list --json url,state,headRefName,isCrossRepository`). */
+export interface BranchPr { url: string; state: string; headRefName?: string; isCrossRepository?: boolean }
 
 /**
  * Ask GitHub for the PR of a finished task's branch before the tasks waiting on it start (T-0136): its Worker may have
@@ -86,9 +86,12 @@ export function branchPrDue(dep: Pick<Task, 'kind' | 'branch' | 'repo' | 'prUrl'
   return !checked && !local && dep.status === 'done' && dep.kind === 'code' && !!dep.branch && !!dep.repo && !dep.prUrl;
 }
 
-/** The task's PR among its branch's: an open one, else a merged one. A closed PR was given up, so it is not the task's. */
-export function pickBranchPr(list: unknown): { url: string; state: 'OPEN' | 'MERGED' } | null {
-  const prs = Array.isArray(list) ? list.filter((p): p is BranchPr => typeof p?.url === 'string' && /\/pull\/\d+$/.test(p.url)) : [];
+/**
+ * The task's PR among its branch's: an open one, else a merged one. A closed PR was given up, so it is not the task's.
+ * `owned` drops the ones of another repository or a fork's branch of the same name (shared/prOwner.ts branchPrOwned).
+ */
+export function pickBranchPr(list: unknown, owned: (p: BranchPr) => boolean = () => true): { url: string; state: 'OPEN' | 'MERGED' } | null {
+  const prs = Array.isArray(list) ? list.filter((p): p is BranchPr => typeof p?.url === 'string' && /\/pull\/\d+$/.test(p.url) && owned(p)) : [];
   const pr = prs.find((p) => p.state === 'OPEN') ?? prs.find((p) => p.state === 'MERGED');
   return pr ? { url: pr.url, state: pr.state as 'OPEN' | 'MERGED' } : null;
 }
