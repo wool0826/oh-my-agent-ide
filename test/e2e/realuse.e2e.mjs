@@ -183,7 +183,7 @@ flow('row 9.5: a missing sign-in puts a dot on the gear, and refreshing after si
   await app.until(dot, 'the dot on the gear');
   await app.click('[data-action="open-settings"]');
   await app.click('[data-action="pane"][data-id="general"]');
-  await app.until("(document.querySelector('#pre-rows .srow')?.innerText ?? '').includes('gh auth login --hostname github.company.com')", 'the sign-in first, with its command');
+  await app.until("(document.querySelector('#pre-rows .ssum .pill[data-tone=\"danger\"]')?.textContent ?? '') === 'GitHub sign-in'", 'the sign-in named on the status line');
   await app.ghEdit((db) => { db.signedOut = []; });
   await app.click('[data-action="preflight-run"]');
   await app.until(`!(${dot}) && /All \\d+ OK/.test(document.querySelector('#pre-rows').innerText)`, 'the dot gone and every check fine');

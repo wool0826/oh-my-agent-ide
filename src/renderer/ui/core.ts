@@ -178,6 +178,8 @@ export const ui = {
   version: '',
   claude: null as ClaudeInfo | null,
   accKind: 'token' as 'token' | 'login' | 'chatgpt',
+  /** Open status groups and rows in Settings: a group's id, or `group:row` (ui/status.ts). */
+  statusOpen: new Set<string>(),
   wTab: 'chat' as 'chat' | 'changes' | 'summary',
   /** The Summary tab shows the open Worker's tasks or the last seven days of every Worker's, and which permission decisions. */
   sumScope: 'worker' as 'worker' | 'week',

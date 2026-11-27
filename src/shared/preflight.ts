@@ -1,4 +1,6 @@
 // What the app needs on this computer before a task can succeed, checked at launch and shown in Settings (decision 131).
+import type { Key } from './i18n';
+import { brief, type StatusField, type StatusItem } from './statusSummary';
 
 export type CheckId = 'git' | 'gh' | 'ghAuth' | 'account' | 'codex' | 'home';
 
@@ -78,3 +80,36 @@ export function failedFirst(checks: readonly Check[]): Check[] {
 }
 
 export const failedCount = (checks: readonly Check[]) => checks.filter((c) => !c.ok).length;
+
+type Tr = (key: Key, vars?: Record<string, string | number>) => string;
+
+/** The name of a check in the Status group. */
+export const checkName = (c: Pick<Check, 'id' | 'host'>, t: Tr) => (c.id === 'ghAuth' ? t('pre.ghAuth', { host: c.host ?? '' }) : t(`pre.${c.id}` as Key));
+
+/**
+ * A check as a summarised status row (decision 243): a short value on the row, and in its detail every message
+ * the long form had, the command to run and what was found, each whole.
+ * `accounts` are the names of the registered accounts, listed under the account check.
+ */
+export function checkItem(c: Check, t: Tr, accounts: readonly string[] = []): StatusItem {
+  const name = checkName(c, t);
+  const fix = (): StatusField => ({ label: t('pre.k.fix'), value: t(`pre.fix.${c.id}` as Key) });
+  const item = (short: string, fields: StatusField[]): StatusItem => ({ id: c.host ? `${c.id}:${c.host}` : c.id, name, tone: c.ok ? 'ok' : 'bad', short, fields });
+  if (c.ok) {
+    if (c.id === 'ghAuth') return item(t('pre.v.signedIn'), [{ label: t('pre.k.host'), value: c.host ?? c.detail }]);
+    if (c.id === 'account') return item(t('pre.v.accounts', { n: Number(c.detail) || accounts.length }), accounts.length ? [{ label: t('pre.k.accounts'), value: brief(accounts, 'list').full }] : []);
+    if (c.id === 'home') return item(brief(c.detail, 'path').short, [{ label: t('pre.k.path'), value: c.detail, copy: true }]);
+    return item(brief(c.detail, 'version').short, c.detail ? [{ label: t('pre.k.version'), value: c.detail }] : []);
+  }
+  // The main process names the command for this OS (c.cmd); fixCommand covers results from before it did.
+  const cmd = c.cmd ?? fixCommand(c);
+  if (c.missing) {
+    const searched = c.detail.replace(/^not found in PATH:\s*/, '');
+    return item(t('pre.v.missing'), [cmd ? { label: t('pre.k.install'), value: cmd, copy: true } : fix(), ...(searched ? [{ label: t('pre.k.searched'), value: searched, copy: true }] : [])]);
+  }
+  const error: StatusField[] = c.detail ? [{ label: t('pre.k.error'), value: c.detail, copy: true }] : [];
+  if (c.id === 'ghAuth') return item(t('pre.v.signedOut'), [{ label: t('pre.k.run'), value: cmd!, copy: true }, ...error]);
+  if (c.id === 'account') return item(t('pre.v.none'), [fix()]);
+  if (c.id === 'home') return item(t('pre.v.readOnly'), error);
+  return item(brief(c.detail, 'error').short || t('pre.fail'), [cmd ? { label: t('pre.k.run'), value: cmd, copy: true } : fix(), ...error]);
+}

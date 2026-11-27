@@ -30,6 +30,7 @@ import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory'
 import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira } from './ui/repos';
+import { copyStatus, toggleStatus } from './ui/status';
 import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { renderSleep, setSleep } from './ui/sleep';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
@@ -448,6 +449,8 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'preflight-run': void loadPreflight(); break;
+    case 'status-fold': toggleStatus(el.dataset.v ?? ''); break;
+    case 'status-copy': copyStatus(el); break;
     case 'jira-token-clear': await call('jira:token', ''); setJira(undefined); S!.settings.jiraTokenSet = false; openSettings(); break;
     case 'jira-refresh': void loadJira(); renderRepos(); break;
     case 'jira-assign': {
