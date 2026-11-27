@@ -126,7 +126,10 @@ export function renderSidebar() {
     const mark = line.pos === null ? ic('wait') : `<span class="q-pos" aria-hidden="true">${line.pos}</span>`;
     const cls = line.pos === null ? ' held' : line.pos === 1 ? ' next' : '';
     const tip = [x.workerId, why ? queueWhyText(why) : ''].filter(Boolean).join(' · ');
-    return { pos: line.pos, html: `<div class="row split q-row${cls}${selCls(x.workerId)}" data-tip="${esc(tip)}"><button type="button" class="row-main" data-action="open-worker" data-id="${x.workerId ?? ''}">${mark}<span class="t"><b>${esc(x.title)}</b><small${line.cancelled ? ' class="warn"' : ''}>${esc(`${x.repo ?? t('general')} · ${line.text}`)}</small></span></button>${cancelX(x)}</div>` };
+    // A task with no Worker yet (T-0146) opens its own waiting card.
+    const open = x.workerId ? `data-action="open-worker" data-id="${esc(x.workerId)}"` : `data-action="open-queued" data-id="${esc(x.id)}"`;
+    const sel = x.workerId ? selCls(x.workerId) : ui.view === 'worker' && !ui.wSel && ui.qSel === x.id ? ' sel' : '';
+    return { pos: line.pos, html: `<div class="row split q-row${cls}${sel}" data-tip="${esc(tip)}"><button type="button" class="row-main" ${open}>${mark}<span class="t"><b>${esc(x.title)}</b><small${line.cancelled ? ' class="warn"' : ''}>${esc(`${x.repo ?? t('general')} · ${line.text}`)}</small></span></button>${cancelX(x)}</div>` };
   };
   const qAll = queued.map(qRow);
   const inLine = qAll.filter((r) => r.pos !== null).sort((a, b) => a.pos! - b.pos!).map((r) => r.html).join('');

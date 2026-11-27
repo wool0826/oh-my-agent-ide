@@ -111,6 +111,7 @@ function undoClear(u?: (typeof ui.undo)[number]) {
 
 export function openWorker(id: string) {
   if (!id) return;
+  ui.qSel = null;
   go({ view: 'worker', wSel: id, wOpen: true });
 }
 
@@ -369,6 +370,7 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'open-worker': openWorker(id); break;
+    case 'open-queued': ui.qSel = id; go({ view: 'worker', wSel: null, wOpen: false }); renderWorkerInspector(); break;
     case 'chat-stop': {
       const b = el as HTMLButtonElement;
       b.disabled = true;

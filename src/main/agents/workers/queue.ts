@@ -5,14 +5,16 @@ import { loadSettings } from '../../settings';
 import { store } from '../../store';
 import { log } from '../../log';
 import { ghEnv } from '../../repos';
-import { nowIso, run } from '../../util';
+import { nowIso, oneLine, run } from '../../util';
+import { fakeMode } from '../../fake';
 import { needsPlan, taskStarted } from '../workerPrompt';
 import { RESUME_MSG, stallMsg } from '../workerText';
 import type { WorkerManager, WorkerSession } from '../workers';
 import { WORKER_TASK_COMPACT } from '../../../shared/context';
 import { providerOf } from '../../../shared/models';
 import { isLocalRepo } from '../../../shared/localRepo';
-import { afterDependency, branchPrDue, cancelWhy, describeCancel, pickBranchPr } from '../../../shared/queue';
+import { afterDependency, branchPrDue, cancelWhy, describeCancel, isQueued, pickBranchPr } from '../../../shared/queue';
+import { describePick, startWorker } from '../../../shared/routing';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../../shared/slots';
 import { isStalled } from '../../../shared/stall';
 import { setStatus } from '../../../shared/taskStatus';
@@ -23,19 +25,37 @@ import { deliver, sendFeedback, taskMessage, withNotes } from './messages';
 import { unanswered } from './questions';
 import { checkpoint, fail } from './results';
 
-/** Assign a task. With workerId, that Worker continues with its context. */
+/**
+ * Assign a task now. With workerId, that Worker continues with its context. While its Worker is set up, the task holds
+ * a slot (m.binding), and nothing else starts it.
+ */
 export async function assign(m: WorkerManager, task: Task, workerId: string | null, model: string): Promise<Worker> {
-  let w = workerId ? store.worker(workerId) : null;
-  if (workerId && !w) throw new Error(t('err.noWorker', { id: workerId }));
-  if (w && w.repo !== task.repo && task.kind === 'code') throw new Error(t('err.wrongRepo', { id: w.id, has: w.repo ?? t('general'), want: task.repo ?? '' }));
-  if (!w) w = await m.create({ title: task.title, repo: task.kind === 'code' ? task.repo : null, model });
-  if (w.status === 'archived') await m.unarchive(w);
+  m.binding.add(task.id);
+  try {
+    let w = workerId ? store.worker(workerId) : null;
+    if (workerId && !w) throw new Error(t('err.noWorker', { id: workerId }));
+    if (w && w.repo !== task.repo && task.kind === 'code') throw new Error(t('err.wrongRepo', { id: w.id, has: w.repo ?? t('general'), want: task.repo ?? '' }));
+    if (!w) w = await m.create({ title: task.title, repo: task.kind === 'code' ? task.repo : null, model });
+    if (w.status === 'archived') await m.unarchive(w);
+    m.binding.delete(task.id);
+    take(m, w, task, false);
+    return w;
+  } finally {
+    m.binding.delete(task.id);
+  }
+}
+
+/**
+ * The task becomes this Worker's: it starts, waits for its dependency (not `late`: one that waited unassigned
+ * starts now), or waits for a slot.
+ */
+function take(m: WorkerManager, w: Worker, task: Task, late: boolean) {
   task.workerId = w.id;
   if (task.kind === 'code') task.branch = `agent/${task.id.toLowerCase()}`;
   w.taskIds.push(task.id);
   task.updatedAt = nowIso();
   store.log(w.id, 'dispatcher', `[Task ${task.id}] ${task.title}\n\n${task.prompt}`);
-  if (task.afterTaskId) {
+  if (task.afterTaskId && !late) {
     // Wait until that PR is merged; the PR monitor starts it.
     task.status = 'blocked';
     store.log(w.id, 'event', t('log.blocked', { id: task.afterTaskId }));
@@ -43,17 +63,89 @@ export async function assign(m: WorkerManager, task: Task, workerId: string | nu
     // It may have ended while this Worker was being set up.
     const dep = store.task(task.afterTaskId);
     if (afterDependency(dep) !== 'wait') settleAllBlocked(m);
-    return w;
+    return;
   }
-  if (!hasSlot(m, w)) {
-    waitForSlot(m, w, task);
-    return w;
-  }
+  if (!hasSlot(m, w)) return waitForSlot(m, w, task);
   w.title = task.title;
   task.status = 'running';
   store.changed();
   dispatch(m, w, task);
-  return w;
+}
+
+/**
+ * A new task that cannot start yet waits without a Worker (shared/routing.ts lateBind): for its dependency (blocked),
+ * a free slot or a free account. startLate gives it one when it can start.
+ */
+export function enqueue(m: WorkerManager, task: Task, how: 'blocked' | 'slot' | 'limit') {
+  task.status = how === 'blocked' ? 'blocked' : 'queued';
+  task.queueReason = how === 'blocked' ? null : how;
+  task.updatedAt = nowIso();
+  store.changed();
+  // It may have ended meanwhile.
+  if (how === 'blocked' && afterDependency(store.task(task.afterTaskId ?? '')) !== 'wait') settleAllBlocked(m);
+}
+
+/**
+ * A task that waited unassigned can start: what it waited for ended (`dep`), a slot freed or a usage limit reset.
+ * It goes to the Worker of `dep` when that one can take it, else to the best idle Worker, else to a new one. Without
+ * a free slot or account it waits on, still unassigned.
+ */
+export function startLate(m: WorkerManager, task: Task, dep: Task | null = null) {
+  if (task.workerId || m.binding.has(task.id)) return;
+  // A chained task that then waited for a slot or a limit still prefers the Worker of its dependency.
+  dep ??= task.afterTaskId ? store.task(task.afterTaskId) ?? null : null;
+  const model = task.model ?? loadSettings().workerModel;
+  if (!slotFree(m)) return waitUnassigned(task, 'slot');
+  if (!accountFree(model)) return waitUnassigned(task, 'limit');
+  const pick = startWorker(store.data.workers, store.data.tasks, task, model, dep?.workerId ?? null);
+  // A Worker that is there takes it at once, before anything else can pick that Worker too.
+  if (pick) return begin(m, pick.worker, task, dep, pick.worker.id === dep?.workerId ? `the Worker of ${dep.id}` : `reused: ${describePick(pick, task.repo)}`);
+  m.binding.add(task.id);
+  m.create({ title: task.title, repo: task.kind === 'code' ? task.repo : null, model }).then((w) => {
+    m.binding.delete(task.id);
+    // Cancelled while its Worker was made: that Worker stays free for other work.
+    if (isQueued(task) && !task.workerId && store.task(task.id)) begin(m, w, task, dep, 'a new Worker: no idle one fit');
+    m.fillSlots();
+  }, (e: Error) => {
+    m.binding.delete(task.id);
+    unassigned(task, e.message);
+    m.fillSlots();
+  });
+}
+
+/** It has its Worker: it starts there, and the chat and the Dispatcher hear on which one. */
+function begin(m: WorkerManager, w: Worker, task: Task, dep: Task | null, how: string) {
+  take(m, w, task, true);
+  const started = task.status === 'running';
+  if (started) {
+    const merged = dep?.prState === 'MERGED';
+    const text = dep ? t(merged ? 'ev.blockedStarted' : 'ev.blockedStartedDone', { id: w.id, title: task.title, dep: dep.title }) : t('ev.assigned', { id: w.id, title: task.title });
+    store.event(text, { k: 'started', task: task.id, worker: w.id, title: task.title, ...(dep ? { dep: dep.id } : {}) }, { ref: task.id });
+    if (dep) store.log(w.id, 'event', t(merged ? 'log.blockedStarted' : 'log.blockedStartedDone', { id: dep.id }));
+  }
+  store.pushUpdate(`${task.id} "${task.title}" went to ${w.id} (${how})${started ? ' and started' : `; it waits there (${task.status})`}.`);
+}
+
+/** A task left without a Worker waits for a slot or a usage limit; a task already queued keeps its place. */
+function waitUnassigned(task: Task, reason: 'slot' | 'limit') {
+  if (task.status === 'queued' && task.queueReason === reason) return;
+  if (task.status !== 'queued') task.updatedAt = nowIso();
+  task.status = 'queued';
+  task.queueReason = reason;
+  store.changed();
+}
+
+/**
+ * The task could not be handed to a Worker (its worktree failed, no such Worker): it failed, with the error.
+ * Left queued it would wait for nothing.
+ */
+export function unassigned(task: Task, msg: string) {
+  if (task.status !== 'queued' && task.status !== 'blocked') return;
+  task.status = 'failed';
+  task.summary = oneLine(msg, 200);
+  task.updatedAt = task.finishedAt = nowIso();
+  store.event(t('ev.assignFailed', { title: task.title, msg: task.summary }), { k: 'startFailed', task: task.id, title: task.title }, { kind: 'error', ref: task.id });
+  store.changed();
 }
 
 /** The PR that blocked tasks were waiting for was merged (or closed). */
@@ -115,11 +207,17 @@ export function settleAllBlocked(m: WorkerManager) {
 }
 
 export function settleBlocked(m: WorkerManager, dep: Task, how: 'start' | 'cancel') {
-  const waiting = store.data.tasks.filter((x) => x.status === 'blocked' && x.afterTaskId === dep.id && x.workerId && store.worker(x.workerId));
+  // Unassigned ones too (T-0146); one whose Worker is gone has nothing to start on.
+  const waiting = store.data.tasks.filter((x) => x.status === 'blocked' && x.afterTaskId === dep.id && (!x.workerId || store.worker(x.workerId)));
   if (!waiting.length) return;
   if (how === 'cancel') return cancelBlocked(m, dep, waiting);
   const merged = dep.prState === 'MERGED';
   for (const task of waiting) {
+    if (!task.workerId) {
+      if (!merged && !slotFree(m)) store.pushUpdate(`${task.id} "${task.title}" waited for ${dep.id}, which finished without a PR; it now waits for a free Worker slot.`);
+      startLate(m, task, dep);
+      continue;
+    }
     const w = store.worker(task.workerId!)!;
     const slot = hasSlot(m, w);
     if (!merged) store.pushUpdate(`${task.id} "${task.title}" (${w.id}) waited for ${dep.id}, which finished without a PR; it ${slot ? 'started' : 'now waits for a free Worker slot'}.`);
@@ -191,9 +289,19 @@ export function pause(m: WorkerManager, w: Worker, task: Task | null) {
   store.changed();
 }
 
-/** Its Worker already holds a slot, or one is free (Settings > Models > Workers at once). */
+/** Its Worker already holds a slot, or one is free (Settings > Models > Workers at once). Tasks given a Worker right now hold one. */
 export function hasSlot(m: WorkerManager, w: Worker) {
-  return canStart(store.data.tasks, w.id, loadSettings().maxWorkers);
+  return canStart(store.data.tasks, w.id, loadSettings().maxWorkers - m.binding.size);
+}
+
+/** A slot is free for a task with no Worker yet. */
+export function slotFree(m: WorkerManager) {
+  return slotsUsed(store.data.tasks) + m.binding.size < loadSettings().maxWorkers;
+}
+
+/** An account could open a session for this model now (fake agents need none). */
+export function accountFree(model: string) {
+  return fakeMode() || accounts.hasFree(providerOf(model, cachedModels().models));
 }
 
 /**
@@ -285,7 +393,8 @@ export function sweepStalled(m: WorkerManager, now = Date.now()) {
  */
 export function fillSlots(m: WorkerManager) {
   for (const task of queueOrder(store.data.tasks, 'slot')) {
-    const w = task.workerId ? store.worker(task.workerId) : null;
+    if (!task.workerId) { if (slotFree(m)) startLate(m, task); continue; }
+    const w = store.worker(task.workerId);
     if (!w || !waitsForSlot(task) || !hasSlot(m, w)) continue;
     // Its worktree is made again first; the queue is filled again once it is there.
     if (w.status === 'archived') {
@@ -308,7 +417,8 @@ export function fillSlots(m: WorkerManager) {
  */
 export function retryQueued(m: WorkerManager) {
   for (const task of queueOrder(store.data.tasks, 'limit')) {
-    const w = task.workerId ? store.worker(task.workerId) : null;
+    if (!task.workerId) { startLate(m, task); continue; }
+    const w = store.worker(task.workerId);
     const s = w && m.ensureSession(w);
     if (!w || !s) continue;
     if (hasSlot(m, w)) deliver(m, w, s, [], task);

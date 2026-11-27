@@ -39,7 +39,8 @@ import { DISPATCHER_COMPACT } from '../../shared/compactInstructions';
 import { recapChat } from '../../shared/recap';
 import { dispatcherReason } from '../../shared/askWhy';
 import { BRIEF_MAX, dispatcherBrief } from '../../shared/brief';
-import { describePick, newWorkLine, pickWorker } from '../../shared/routing';
+import { describePick, lateBind, newWorkLine, pickWorker } from '../../shared/routing';
+import { unassigned } from './workers/queue';
 import { stepView } from '../../shared/steps';
 
 const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
@@ -109,6 +110,14 @@ export async function readWorker(id: string, last = 10) {
     (items.map((i) => `[${clock(i.ts)} ${i.from}] ${cut(i.text.trim())}`).join('\n\n') || '(empty)');
 }
 
+/** Tasks waiting to start with no Worker yet (T-0146), after the Workers in list_workers; empty when there are none. */
+function unassignedLines() {
+  const xs = store.data.tasks.filter((x) => isQueued(x) && !x.workerId);
+  if (!xs.length) return '';
+  const why = (x: Task) => x.status === 'blocked' ? `starts after ${x.afterTaskId}` : waitsForSlot(x) ? 'waits for a free Worker slot' : 'waits for a usage limit to reset';
+  return `\n\nWaiting for a Worker (one is picked when each can start; cancel_task works on them):\n${xs.map((x) => `- ${x.id} ${x.title}${x.repo ? ` (${x.repo})` : ''}: ${why(x)}`).join('\n')}`;
+}
+
 /** What the Dispatcher is told when a message or question could not go to the Worker right away. */
 function heldNote(how: 'slot' | 'limit', w: Worker) {
   const cur = workers.currentTask(w);
@@ -117,8 +126,16 @@ function heldNote(how: 'slot' | 'limit', w: Worker) {
     : 'Held: a usage limit holds every account, and the message goes out when the first one resets.';
 }
 
-/** The chat line for a task just handed to a Worker: started, waiting for a merge, or waiting for a free slot. */
-export function assignedEvent(task: Task, w: Worker, continuing: boolean) {
+/**
+ * The chat line for a new task: started, waiting for a merge, or waiting for a free slot, on its Worker; or waiting
+ * without one (shared/routing.ts lateBind), which gets one when it starts.
+ */
+export function assignedEvent(task: Task, w: Worker | null, continuing: boolean) {
+  if (!w) {
+    if (task.status === 'blocked') return t('ev.queuedAfter', { title: task.title, dep: task.afterTaskId ?? '' });
+    if (waitsForSlot(task)) return t('ev.queuedSlot', { title: task.title, n: slotsUsed(store.data.tasks), max: loadSettings().maxWorkers });
+    return t('ev.queuedLimit', { title: task.title });
+  }
   if (task.status === 'blocked') return t('ev.assignedAfter', { id: w.id, title: task.title, dep: task.afterTaskId ?? '' });
   if (waitsForSlot(task)) return t('ev.assignedSlot', { id: w.id, title: task.title, n: slotsUsed(store.data.tasks), max: loadSettings().maxWorkers });
   return t(continuing ? 'ev.assignedCont' : 'ev.assigned', { id: w.id, title: task.title });
@@ -166,28 +183,23 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
   if (overlaps.length) task.overlaps = overlaps;
   store.data.tasks.push(task);
   store.changed();
+  // Not pinned and not able to start yet: it waits without a Worker, so none is held idle for it (T-0146).
+  const pinned = !!a.worker_id || !!a.new_worker;
+  const how = lateBind({ pinned, after: !!after, slotFree: workers.slotFree(), accountFree: workers.accountFree(model) });
+  if (how !== 'now') {
+    task.model = model;
+    workers.enqueue(task, how);
+    return { task, worker: null, reused: null };
+  }
   // No Worker named: reuse the idle one that best knows this code; a new Worker only when none fits.
-  const reuse = a.worker_id || a.new_worker ? null : pickWorker(store.data.workers, store.data.tasks, task, model);
+  const reuse = pinned ? null : pickWorker(store.data.workers, store.data.tasks, task, model);
   try {
-    const worker = await workers.assign(task, a.worker_id ?? reuse?.worker.id ?? null, model);
+    const worker: Worker | null = await workers.assign(task, a.worker_id ?? reuse?.worker.id ?? null, model);
     return { task, worker, reused: reuse ? describePick(reuse, task.repo) : null };
   } catch (e) {
     unassigned(task, (e as Error).message);
     throw e;
   }
-}
-
-/**
- * The task could not be handed to a Worker (its worktree failed, no such Worker): it failed, with the error.
- * Left queued it would wait for nothing, counted as waiting for a usage limit.
- */
-function unassigned(task: Task, msg: string) {
-  if (task.status !== 'queued' && task.status !== 'blocked') return;
-  task.status = 'failed';
-  task.summary = oneLine(msg, 200);
-  task.updatedAt = task.finishedAt = nowIso();
-  store.event(t('ev.assignFailed', { title: task.title, msg: task.summary }), { k: 'startFailed', task: task.id, title: task.title }, { kind: 'error', ref: task.id });
-  store.changed();
 }
 
 /** Call off one attempt of a comparison whose other attempt could not start. Says what happened to it. */
@@ -236,9 +248,10 @@ function boardTools(d: Dispatcher) {
         include_archived: z.boolean().optional(),
       }, async (a) => {
         const ws = store.data.workers.filter((w) => a.include_archived || w.status !== 'archived');
-        return ok(ws.length ? ws.map((w) => workerLine(w.id)).join('\n') : 'No Workers.');
+        const list = ws.length ? ws.map((w) => workerLine(w.id)).join('\n') : 'No Workers.';
+        return ok(`${list}${unassignedLines()}`);
       }),
-      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context; a Worker that still has an open task (running, waiting for an answer, or queued) takes a new task only with after_task_id on that task (or on one already chained after it), otherwise the call fails. With after_task_id the task waits until that task\'s PR is merged, then starts automatically; if that task finishes without a PR it starts then, and if it fails or its PR is closed unmerged the waiting task is cancelled and you are told.', {
+      tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, room in its context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context; a Worker that still has an open task (running, waiting for an answer, or queued) takes a new task only with after_task_id on that task (or on one already chained after it), otherwise the call fails. A task that cannot start yet (after_task_id, no free Worker slot, a usage limit) waits with no Worker unless worker_id is given; its Worker is picked when it starts (with after_task_id, the Worker of that task first if it is idle and fits), and you are told which. With after_task_id the task waits until that task\'s PR is merged, then starts automatically; if that task finishes without a PR it starts then, and if it fails or its PR is closed unmerged the waiting task is cancelled and you are told.', {
         title: z.string().describe('Short task name'),
         prompt: z.string().describe('Instructions for the Worker: background, desired result, definition of done. Include any attached file paths.'),
         kind: z.enum(['code', 'other']).describe('code: change a repository and open a PR. other: research, documents, reports, UI mock-ups. A code task that adds a screen or changes a screen\'s structure comes only after a mock-up task (other) and the user\'s pick in the decision inbox, with the chosen option\'s link in its prompt; small fixes (wording, spacing, colours, a bug) go straight to code.'),
@@ -259,6 +272,7 @@ function boardTools(d: Dispatcher) {
             ? ` All ${loadSettings().maxWorkers} Worker slots are in use; it waits in the queue and starts by itself when one frees up.`
             : task.status === 'queued' ? ' Every account is held by a usage limit; it starts when the first one resets.'
             : task.status === 'blocked' ? ` It starts when ${task.afterTaskId}'s PR is merged.` : '';
+          if (!w) return ok(`${task.id} is queued with no Worker yet: one is picked when it can start${task.afterTaskId ? ` (the Worker of ${task.afterTaskId} if it is free then)` : ''}, and you are told which.${wait}${overlapNote(task, task.overlaps ?? [], store.data.tasks)}`);
           const how = reused ? ` Reused ${w.id}: ${reused}.` : a.worker_id ? '' : ` ${w.id} is a new Worker: no idle Worker${task.repo ? ` on ${task.repo}` : ''} fit (busy, near compaction, or none yet).`;
           return ok(`${task.id} assigned to ${w.id}.${how}${wait}${overlapNote(task, task.overlaps ?? [], store.data.tasks)}`);
         } catch (e) {
@@ -380,7 +394,7 @@ function boardTools(d: Dispatcher) {
           }
           d.acted();
           for (const m of made) store.handout(assignedEvent(m.task, m.worker, false), m.task.id);
-          return ok(`Two attempts started: ${made.map((m) => `${m.task.id} on ${m.worker.id} (${modelLabel(m.worker.model)})`).join(' and ')}. Neither opens a PR. The user picks one in the inbox once they finish; do not pick for them.`);
+          return ok(`Two attempts started: ${made.map((m) => `${m.task.id} on ${m.worker?.id} (${m.worker ? modelLabel(m.worker.model) : ''})`).join(' and ')}. Neither opens a PR. The user picks one in the inbox once they finish; do not pick for them.`);
         } catch (e) {
           return fail(`Could not start the comparison: ${(e as Error).message}`);
         }
@@ -579,7 +593,7 @@ class Dispatcher {
           const { task, worker: w, reused } = await createTask(a);
           this.acted();
           store.handout(assignedEvent(task, w, !!reused), task.id);
-          return `${task.id} assigned to ${w.id}.${overlapNote(task, task.overlaps ?? [], store.data.tasks)}`;
+          return `${task.id} ${w ? `assigned to ${w.id}` : 'queued with no Worker yet'}.${overlapNote(task, task.overlaps ?? [], store.data.tasks)}`;
         },
       }, this.sessionEvents());
       this.session = fake;

@@ -417,7 +417,11 @@ export function queueCtx(): QueueCtx {
 /** One card per queued or blocked task of the Worker: why it waits, what starts it, its request and the tasks waiting on it. */
 export function waitingCardsHtml(w: Worker) {
   const ctx = queueCtx();
-  return w.taskIds.map((id) => task(id)).filter((x): x is Task => !!x && isQueued(x)).map((x) => {
+  return w.taskIds.map((id) => task(id)).filter((x): x is Task => !!x && isQueued(x)).map((x) => waitingCardHtml(x, w.id, ctx)).join('');
+}
+
+/** A waiting task's card, on its Worker (`owner`) or on its own while it has no Worker yet (T-0146). */
+export function waitingCardHtml(x: Task, owner: string | null, ctx = queueCtx()) {
     const q = queueWhy(t, x, ctx);
     if (!q) return '';
     // When it entered the queue; later updates of the task do not move it (L13).
@@ -430,10 +434,10 @@ export function waitingCardsHtml(w: Worker) {
     const open = ui.qOpen.has(x.id);
     const links = [
       long ? `<button data-action="queue-prompt" data-id="${esc(x.id)}" aria-expanded="${open}">${t(open ? 'plan.hide' : 'plan.details')}<span aria-hidden="true">${open ? '▴' : '▾'}</span></button>` : '',
-      dep?.workerId && dep.workerId !== w.id ? `<button data-action="open-worker" data-id="${esc(dep.workerId)}">${t('q.openDep', { id: dep.id })}<span aria-hidden="true">→</span></button>` : '',
+      dep?.workerId && dep.workerId !== owner ? `<button data-action="open-worker" data-id="${esc(dep.workerId)}">${t('q.openDep', { id: dep.id })}<span aria-hidden="true">→</span></button>` : '',
       `<button class="danger" data-action="task-cancel" data-id="${esc(x.id)}">${t('cancel.task')}</button>`,
     ].join('');
-    const follow = followers.map((f) => `<button type="button" class="linkbtn" data-action="open-worker" data-id="${esc(f.workerId ?? '')}"${f.workerId ? '' : ' disabled'}>${esc(f.id)} ${esc(oneLine(f.title, 60))}</button>`).join('<br>');
+    const follow = followers.map((f) => `<button type="button" class="linkbtn" ${f.workerId ? `data-action="open-worker" data-id="${esc(f.workerId)}"` : `data-action="open-queued" data-id="${esc(f.id)}"`}>${esc(f.id)} ${esc(oneLine(f.title, 60))}</button>`).join('<br>');
     return `<div class="ins-h"><b role="heading" aria-level="2">${t('q.title')}</b><span class="pill" data-tone="warning">${x.status === 'blocked' ? t('st.afterMerge') : queuedLabel(x)}</span></div>
     <div class="group qcard">
       <div class="mini"><b>${esc(x.id)} ${esc(x.title)}</b><span>${esc([x.repo ?? t('general'), x.planFirst && !x.planApproved ? t('plan.badge') : ''].filter(Boolean).join(' · '))} · <time datetime="${esc(since)}" data-tip="${esc(hhmm(since))}">${t('q.since', { t: Date.now() - Date.parse(since) < 60_000 ? t('time.now') : t('time.ago', { d: ago(since) }) })}</time></span></div>
@@ -442,7 +446,6 @@ export function waitingCardsHtml(w: Worker) {
       ${follow ? `<div class="q-follow"><small>${t('q.followers')}</small>${follow}</div>` : ''}
       <div class="plan-links q-links">${links}</div>
     </div>`;
-  }).join('');
 }
 
 /** The repository's run command in this Worker's worktree: start and stop it, the address it printed, and the end of its output. */
@@ -526,6 +529,9 @@ export function renderWorkerInspector() {
   const root = $('#wk-ins');
   const w = worker(ui.wSel);
   if (!w) {
+    // A waiting task with no Worker yet, picked in the queue (T-0146).
+    const q = ui.wSel ? null : task(ui.qSel);
+    if (q && isQueued(q) && !q.workerId) { keepScroll(root, () => { root.innerHTML = waitingCardHtml(q, null); }); return; }
     root.innerHTML = `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-cpu"/></svg><b>${t('wk.pickTitle')}</b></div>`;
     return;
   }

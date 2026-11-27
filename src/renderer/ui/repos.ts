@@ -129,7 +129,7 @@ export function renderRepos() {
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
       ${issuesHtml(r)}
       <div class="ins-h"><b role="heading" aria-level="2">${t('wk.tasks')}</b><small>${all.length}</small></div>
-      <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${esc(x.workerId ?? '')} · ${taskLabel(x)}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
+      <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${x.workerId ? `${esc(x.workerId)} · ` : ''}${taskLabel(x)}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
       <div class="ins-act"><button class="btn btn-danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
 }

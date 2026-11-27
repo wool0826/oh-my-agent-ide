@@ -95,6 +95,31 @@ export function pickWorker<X extends W>(workers: X[], tasks: T[], nt: NewTask, m
   return rankWorkers(workers, tasks, nt, model, now)[0] ?? null;
 }
 
+/**
+ * How a new task is handed out (T-0146). now: a Worker takes it at once. blocked, slot, limit: it waits for another
+ * task (after_task_id), a free Worker slot or a free account without a Worker, so no idle Worker is held for it; one is
+ * picked when it can start (startWorker). A task pinned to a Worker (worker_id, or new_worker) is handed out now and
+ * waits on that Worker as before.
+ */
+export type Handout = 'now' | 'blocked' | 'slot' | 'limit';
+
+export function lateBind(a: { pinned: boolean; after: boolean; slotFree: boolean; accountFree: boolean }): Handout {
+  if (a.pinned) return 'now';
+  if (a.after) return 'blocked';
+  if (!a.slotFree) return 'slot';
+  if (!a.accountFree) return 'limit';
+  return 'now';
+}
+
+/**
+ * The Worker a task that waited unassigned starts on: the Worker of the task it waited for, when that one can take it
+ * by the same rules as any other (it has the context and the branch history), else the best one, else null for a new one.
+ */
+export function startWorker<X extends W>(workers: X[], tasks: T[], nt: NewTask, model: string, preferId: string | null, now = Date.now()): Candidate<X> | null {
+  const ranked = rankWorkers(workers, tasks, nt, model, now);
+  return ranked.find((c) => c.worker.id === preferId) ?? ranked[0] ?? null;
+}
+
 /** Why this Worker got the task, for the Dispatcher. */
 export function describePick(c: Candidate, repo: string | null): string {
   const parts = [

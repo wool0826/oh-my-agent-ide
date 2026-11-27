@@ -728,6 +728,139 @@ test('a task waiting for a slot can be cancelled, and nothing starts it afterwar
   assert.equal(sent.get(b.id), undefined);
 });
 
+/* ---------- Waiting without a Worker (T-0146) ---------- */
+
+/** Tasks in one area, so an idle Worker that did one fits the next. */
+const area = { title: 'Sidebar queue rows', kind: 'other' as const };
+/** A task waiting for `dep` with no Worker yet, as create_task leaves it. */
+const chained = (dep: Task, over: Partial<Task> = {}) => addTask(null, { ...area, title: 'Sidebar queue rows tooltip', status: 'blocked', afterTaskId: dep.id, startedAt: null, ...over });
+/** A task waiting for a slot or a usage limit with no Worker yet. */
+const unbound = (reason: 'slot' | 'limit', over: Partial<Task> = {}) => addTask(null, { ...area, status: 'queued', queueReason: reason, startedAt: null, ...over });
+const merge = (d: Task) => { Object.assign(d, { status: 'pr_open', prUrl: 'https://github.com/o/r/pull/9', prState: 'MERGED' }); workers.onPrSettled(d, true); };
+const settle = async () => { for (let i = 0; i < 5; i++) await tick(); };
+
+test('waiting without a Worker: a chained task starts on the Worker of its dependency once that is merged', async () => {
+  const a = addWorker();
+  const b = addWorker();
+  addTask(b, { ...area, status: 'done' });
+  const d = addTask(a, { ...area, status: 'pr_open', prUrl: 'https://github.com/o/r/pull/9', prState: 'OPEN' });
+  const x = chained(d);
+  assert.equal(x.workerId, null);
+  merge(d);
+  assert.deepEqual([x.workerId, x.status], [a.id, 'running']);
+  assert.deepEqual(a.taskIds, [d.id, x.id]);
+  await settle();
+  assert.ok(sent.get(a.id)![0].startsWith(`[Task ${x.id}]`), sent.get(a.id)![0]);
+  assert.ok(store.data.pendingUpdates.some((u) => String(u).includes(`went to ${a.id} (the Worker of ${d.id}) and started`)));
+  assert.ok(store.data.chat.some((c) => c.ref === x.id && c.text.includes(a.id)));
+});
+
+test('waiting without a Worker: with the Worker of its dependency busy, a chained task takes another idle one, else a new one', async () => {
+  const a = addWorker({ status: 'running' });
+  addTask(a, { ...area, status: 'running' });
+  const b = addWorker();
+  addTask(b, { ...area, status: 'done' });
+  const d = addTask(a, { ...area, status: 'pr_open', prUrl: 'https://github.com/o/r/pull/9', prState: 'OPEN' });
+  const x1 = chained(d);
+  const x2 = chained(d);
+  merge(d);
+  assert.deepEqual([x1.workerId, x1.status], [b.id, 'running']);
+  await settle();
+  assert.equal(x2.status, 'running');
+  assert.ok(x2.workerId && ![a.id, b.id].includes(x2.workerId), String(x2.workerId));
+  assert.equal(store.data.workers.length, 3);
+});
+
+test('waiting without a Worker: freed slots go to the longest waiting, and Workers being made count as taken', async () => {
+  loadSettings().maxWorkers = 2;
+  const xs = [unbound('slot'), unbound('slot'), unbound('slot')];
+  xs.forEach((x, i) => { x.queuedSince = new Date(Date.now() - 1000 * (3 - i)).toISOString(); });
+  workers.fillSlots();
+  workers.fillSlots();
+  await settle();
+  assert.deepEqual(xs.map((x) => x.status), ['running', 'running', 'queued']);
+  assert.equal(xs[2].workerId, null);
+  assert.equal(store.data.workers.length, 2);
+});
+
+test('waiting without a Worker: a task held by a usage limit gets one when the limit resets', async () => {
+  limit(true);
+  const x = unbound('limit');
+  workers.retryQueued();
+  await settle();
+  assert.deepEqual([x.workerId, x.status, x.queueReason], [null, 'queued', 'limit']);
+  limit(false);
+  workers.retryQueued();
+  await settle();
+  assert.equal(x.status, 'running');
+  assert.ok(x.workerId);
+});
+
+test('waiting without a Worker: cancel and clear queue take unassigned tasks and their followers, with no Worker to tidy', async () => {
+  const a = addWorker();
+  const d = addTask(a, { ...area, status: 'running' });
+  const x = chained(d);
+  const y = chained(x);
+  const z = unbound('slot');
+  const rs = await workers.cancelTask(x.id, 'user');
+  assert.deepEqual(rs.map((r) => [r.id, r.workerId]), [[x.id, null], [y.id, null]]);
+  assert.deepEqual([x.status, y.status], ['cancelled', 'cancelled']);
+  await workers.clearQueue('user');
+  assert.equal(z.status, 'cancelled');
+  assert.equal(d.status, 'running');
+  assert.equal(store.data.workers.length, 1);
+});
+
+test('waiting without a Worker: after a restart, a chained task whose dependency merged meanwhile starts', async () => {
+  const a = addWorker();
+  const d = addTask(a, { ...area, status: 'pr_open', prUrl: 'https://github.com/o/r/pull/9', prState: 'MERGED' });
+  const x = chained(d);
+  workers.resumeAfterRestart();
+  await settle();
+  assert.deepEqual([x.workerId, x.status], [a.id, 'running']);
+});
+
+test('waiting without a Worker: a chained task that then waited for a slot still starts on the Worker of its dependency', async () => {
+  loadSettings().maxWorkers = 1;
+  const a = addWorker();
+  const busy = addWorker({ status: 'running' });
+  const run = addTask(busy, { ...area, status: 'running' });
+  const d = addTask(a, { ...area, status: 'pr_open', prUrl: 'https://github.com/o/r/pull/9', prState: 'OPEN' });
+  const x = chained(d);
+  merge(d);
+  assert.deepEqual([x.workerId, x.status, x.queueReason], [null, 'queued', 'slot']);
+  busy.status = 'idle';
+  run.status = 'done';
+  workers.fillSlots();
+  await settle();
+  assert.deepEqual([x.workerId, x.status], [a.id, 'running']);
+  assert.ok(store.data.pendingUpdates.some((u) => String(u).includes(`went to ${a.id} (the Worker of ${d.id}) and started`)));
+});
+
+test('waiting without a Worker: a task cancelled while its new Worker is made stays cancelled; that Worker is left idle', async () => {
+  const x = unbound('slot');
+  workers.fillSlots();
+  await workers.cancelTask(x.id, 'user');
+  await settle();
+  assert.deepEqual([x.status, x.workerId], ['cancelled', null]);
+  assert.equal(store.data.workers.length, 1);
+  assert.equal(store.data.workers[0].status, 'idle');
+  assert.deepEqual(store.data.workers[0].taskIds, []);
+});
+
+test('waiting without a Worker: a saved blocked task that already has a Worker still starts on it', async () => {
+  const a = addWorker();
+  const b = addWorker();
+  addTask(b, { ...area, status: 'done' });
+  const d = addTask(a, { ...area, status: 'pr_open', prUrl: 'https://github.com/o/r/pull/9', prState: 'OPEN' });
+  const c = addWorker();
+  const x = addTask(c, { ...area, status: 'blocked', afterTaskId: d.id, startedAt: null });
+  merge(d);
+  assert.deepEqual([x.workerId, x.status], [c.id, 'running']);
+  await settle();
+  assert.ok(sent.get(c.id)![0].startsWith(`[Task ${x.id}]`));
+});
+
 test('a merge starts a waiting task only when a slot is free; otherwise it joins the queue', () => {
   loadSettings().maxWorkers = 1;
   const a = addWorker({ sessionId: 'sa' });

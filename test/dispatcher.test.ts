@@ -264,6 +264,23 @@ test('create_task: a Worker still on a task takes a new one only after it, never
   const { task } = await createTask({ title: 'Second', prompt: 'Do it.', kind: 'other', worker_id: 'W-8', after_task_id: 'T-1' });
   assert.equal(task.status, 'blocked');
   assert.deepEqual(store.data.workers[0].taskIds, ['T-1', task.id]);
+  // Pinned, it is that Worker's open work: nothing else is given to it meanwhile.
+  assert.equal(task.workerId, 'W-8');
+});
+
+test('create_task: a burst of 13 tasks, 11 of them chained, makes no more Workers than can run at once (T-0146)', async () => {
+  loadSettings().maxWorkers = 3;
+  const made: Awaited<ReturnType<typeof createTask>>[] = [];
+  for (const title of ['Parser cleanup', 'Login screen']) made.push(await createTask({ title, prompt: 'Do it.', kind: 'other' }));
+  for (let i = 0; i < 11; i++) {
+    const after = made[i % 2 === 0 ? made.length - 2 : made.length - 1].task.id;
+    made.push(await createTask({ title: `Step ${i + 1}`, prompt: 'Do it.', kind: 'other', after_task_id: after }));
+  }
+  const chainedOnes = made.slice(2);
+  // Only the two that can start have a Worker; the chained ones keep theirs for later.
+  assert.equal(store.data.workers.length, 2);
+  assert.deepEqual(chainedOnes.map((r) => [r.worker, r.task.workerId, r.task.status]), chainedOnes.map(() => [null, null, 'blocked']));
+  assert.equal(chainedOnes[0].task.model, 'claude-opus-5-5');
 });
 
 test('a Dispatcher turn the user stopped shows as stopped, not as a red error; a real failure still does', async () => {
