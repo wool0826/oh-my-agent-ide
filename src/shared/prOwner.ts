@@ -8,28 +8,37 @@ import type { Repo, Task } from './types';
 export interface RepoRef { host: string; owner: string; repo: string }
 
 const norm = (s: string) => s.toLowerCase().replace(/\.git$/, '');
+/** GitHub's ssh over port 443 is still github.com. */
+const hostOf = (h: string) => (h.toLowerCase() === 'ssh.github.com' ? 'github.com' : h.toLowerCase());
 
 /** Host, owner and name of a repository from its remote URL: https://host/o/r(.git), git@host:o/r(.git), ssh://git@host[:port]/o/r(.git). */
 export function remoteRepo(url: string | null | undefined): RepoRef | null {
   const u = (url ?? '').trim().replace(/\/+$/, '');
   const m = u.match(/^(?:https?|ssh|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/([^/]+)\/([^/]+)$/i) ?? u.match(/^(?:[^@/]+@)?([^/:]+):([^/]+)\/([^/]+)$/);
-  return m ? { host: m[1].toLowerCase(), owner: norm(m[2]), repo: norm(m[3]) } : null;
+  return m ? { host: hostOf(m[1]), owner: norm(m[2]), repo: norm(m[3]) } : null;
 }
 
-/** The PR URL is a pull request of that repository (same host, owner and name, any case). */
+/**
+ * The PR URL is a pull request of that repository: same owner and name (any case), and the same host unless the
+ * remote names an ssh alias from ~/.ssh/config (a host without a dot, such as `github-work`).
+ */
 export function prInRepo(prUrl: string, repoUrl: string | null | undefined): boolean {
   const p = prUrl.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/i);
   const r = remoteRepo(repoUrl);
-  return !!p && !!r && p[1].toLowerCase() === r.host && norm(p[2]) === r.owner && norm(p[3]) === r.repo;
+  if (!p || !r) return false;
+  return (!r.host.includes('.') || hostOf(p[1]) === r.host) && norm(p[2]) === r.owner && norm(p[3]) === r.repo;
 }
 
 type OwnerTask = Pick<Task, 'kind' | 'branch'>;
 type OwnerRepo = Pick<Repo, 'url' | 'local'> | null | undefined;
 
-/** Only a code task on its own branch in a repository with a remote opens a PR. */
+/** Only a code task on its own branch in a repository that is not local-only opens a PR. */
 export function canHavePr(task: OwnerTask, repo: OwnerRepo): boolean {
-  return task.kind === 'code' && !!task.branch && !!repo && !repo.local && !!remoteRepo(repo.url);
+  return task.kind === 'code' && !!task.branch && !!repo && !repo.local;
 }
+
+/** A repository with a remote this cannot read (and not marked local): there is nothing to tell its PRs by. */
+const unreadable = (repo: OwnerRepo) => !!repo && !repo.local && !remoteRepo(repo.url);
 
 /** Every PR URL a report names: those on its PR lines first, then the rest of its words, each once. */
 export function prCandidates(text: string): string[] {
@@ -39,9 +48,13 @@ export function prCandidates(text: string): string[] {
   return [...new Set(urls)];
 }
 
-/** The task's PR among the URLs: the first in its repository, or none (other URLs are only cited). */
+/**
+ * The task's PR among the URLs: the first in its repository, or none (other URLs are only cited). With a remote
+ * this cannot read, the first URL, as before the check.
+ */
 export function pickTaskPr(urls: readonly string[], task: OwnerTask, repo: OwnerRepo): string | null {
   if (!canHavePr(task, repo)) return null;
+  if (unreadable(repo)) return urls[0] ?? null;
   return urls.find((u) => prInRepo(u, repo!.url)) ?? null;
 }
 
@@ -50,12 +63,22 @@ export interface ListedPr { url: string; state: string; headRefName?: string; is
 
 /** A listed PR is the task's: in its repository, from its branch, not from a fork's branch of the same name. */
 export function branchPrOwned(pr: ListedPr, task: OwnerTask, repo: OwnerRepo): boolean {
-  return canHavePr(task, repo) && prInRepo(pr.url, repo!.url) && pr.headRefName === task.branch && pr.isCrossRepository !== true;
+  return canHavePr(task, repo) && (unreadable(repo) || prInRepo(pr.url, repo!.url)) && pr.headRefName === task.branch && pr.isCrossRepository !== true;
 }
 
-/** The task may keep the PR it records (none recorded counts as fine). */
-export function ownsPr(task: OwnerTask & Pick<Task, 'prUrl'>, repo: OwnerRepo): boolean {
-  return !task.prUrl || (canHavePr(task, repo) && prInRepo(task.prUrl, repo!.url));
+/**
+ * Whether the PR a task records is its own, not (another repository's, or one a task without a branch cited), or
+ * cannot be told: its repository is no longer listed, or has a remote this cannot read. Unknown is kept.
+ */
+export function prVerdict(task: OwnerTask & Pick<Task, 'prUrl' | 'repo'>, repo: OwnerRepo): 'own' | 'foreign' | 'unknown' {
+  if (!task.prUrl) return 'own';
+  if ((task.repo && !repo) || unreadable(repo)) return 'unknown';
+  return canHavePr(task, repo) && prInRepo(task.prUrl, repo!.url) ? 'own' : 'foreign';
+}
+
+/** The task may keep the PR it records: none recorded, its own, or no way to tell. */
+export function ownsPr(task: OwnerTask & Pick<Task, 'prUrl' | 'repo'>, repo: OwnerRepo): boolean {
+  return prVerdict(task, repo) !== 'foreign';
 }
 
 /**
@@ -73,17 +96,8 @@ export function clearForeignPr(task: Task, repo: OwnerRepo): boolean {
   return true;
 }
 
-/**
- * clearForeignPr over every task, each with its repository (by name, any case). The ids it changed. A task whose
- * repository is no longer listed, or has a remote this cannot read, keeps what it has: nothing to tell it by.
- */
+/** clearForeignPr over every task, each with its repository (by name, any case). The ids it changed. */
 export function clearForeignPrs(tasks: Task[], repos: readonly Repo[]): string[] {
-  const out: string[] = [];
-  for (const x of tasks) {
-    if (!x.prUrl) continue;
-    const repo = x.repo ? repos.find((r) => r.name.toLowerCase() === x.repo!.toLowerCase()) : null;
-    if (x.repo && (!repo || (!repo.local && !remoteRepo(repo.url)))) continue;
-    if (clearForeignPr(x, repo)) out.push(x.id);
-  }
-  return out;
+  const repoOf = (n: string | null) => (n ? repos.find((r) => r.name.toLowerCase() === n.toLowerCase()) ?? null : null);
+  return tasks.filter((x) => x.prUrl && clearForeignPr(x, repoOf(x.repo))).map((x) => x.id);
 }

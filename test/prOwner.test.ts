@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { branchPrOwned, canHavePr, clearForeignPr, clearForeignPrs, ownsPr, pickTaskPr, prCandidates, prInRepo, remoteRepo } from '../src/shared/prOwner';
+import { branchPrOwned, canHavePr, clearForeignPr, clearForeignPrs, ownsPr, pickTaskPr, prCandidates, prInRepo, prVerdict, remoteRepo } from '../src/shared/prOwner';
 import { pickBranchPr } from '../src/shared/queue';
 import { prsToWatch } from '../src/shared/prs';
 import type { Repo, Task } from '../src/shared/types';
@@ -24,6 +24,8 @@ test('prOwner: remote URLs in https, scp and ssh form name the same repository',
   assert.deepEqual(remoteRepo('https://user@github.com/Wool0826/oh-my-agent-ide/'), want);
   assert.deepEqual(remoteRepo('git@github.com:wool0826/oh-my-agent-ide.git'), want);
   assert.deepEqual(remoteRepo('ssh://git@github.com:22/wool0826/oh-my-agent-ide'), want);
+  assert.deepEqual(remoteRepo('https://x-access-token:abc@github.com/WOOL0826/oh-my-agent-ide.git'), want);
+  assert.deepEqual(remoteRepo('ssh://git@ssh.github.com:443/wool0826/oh-my-agent-ide.git'), want);
   assert.equal(remoteRepo(''), null);
   assert.equal(remoteRepo('C:/local/folder'), null);
 });
@@ -34,6 +36,29 @@ test('prOwner: a PR belongs to a repository only with the same host, owner and n
   assert.equal(prInRepo(FOREIGN, REPO.url), false);
   assert.equal(prInRepo('https://github.com/wool0826/other/pull/1', REPO.url), false);
   assert.equal(prInRepo('https://ghe.example.com/wool0826/oh-my-agent-ide/pull/1', REPO.url), false);
+});
+
+test('prOwner: an ssh alias remote (a host without a dot) matches by owner and name', () => {
+  assert.equal(prInRepo(OWN, 'git@github-work:wool0826/oh-my-agent-ide.git'), true);
+  assert.equal(prInRepo(FOREIGN, 'git@github-work:wool0826/oh-my-agent-ide.git'), false);
+});
+
+test('prOwner: with an unlisted repository or a remote it cannot read, a PR is unknown and kept', () => {
+  const odd = { ...REPO, url: 'file:///srv/git/oh-my-agent-ide' };
+  const t = task('T-1', { status: 'pr_open', prUrl: FOREIGN, prState: 'OPEN' });
+  assert.equal(prVerdict(t, odd), 'unknown');
+  assert.equal(ownsPr(t, odd), true);
+  assert.equal(prVerdict({ ...t, repo: 'removed' }, null), 'unknown');
+  assert.equal(pickTaskPr([FOREIGN, OWN], task('T-1'), odd), FOREIGN);
+  assert.equal(branchPrOwned({ url: FOREIGN, state: 'OPEN', headRefName: 'agent/t-1' }, task('T-1'), odd), true);
+  assert.equal(prVerdict(task('T-2', { prUrl: OWN }), REPO), 'own');
+});
+
+test('prOwner: a code task with no repository has no PR, and a stored one is cleared', () => {
+  const t = task('T-1', { repo: null, status: 'pr_open', prUrl: OWN, prState: 'OPEN' });
+  assert.equal(prVerdict(t, null), 'foreign');
+  assert.deepEqual(clearForeignPrs([t], [REPO]), ['T-1']);
+  assert.equal(t.status, 'done');
 });
 
 test('prOwner: a foreign PR on the RESULT or PR line is not the task\'s PR', () => {

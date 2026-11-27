@@ -1646,12 +1646,21 @@ test('T-0150: a report citing a PR of another repository finishes done, with the
     const w = addWorker({ sessionId: `s-${n}` });
     const x = addTask(w, over);
     const s = workers.ensureSession(w)!;
-    const text = `RESULT: Upstream bug (${foreign})
-PR: ${foreign}`;
+    const text = `RESULT: Upstream bug (${foreign})\nPR: ${foreign}`;
     feed(s, said(text), turnEnd(text));
     assert.deepEqual([x.status, x.prUrl, x.prState], ['done', null, null]);
     assert.ok(x.links?.includes(foreign));
   }
+});
+
+test('T-0150: a fix turn that cites a PR of another repository keeps the task\'s own PR', () => {
+  const own = 'https://github.com/o/r/pull/12';
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w, { ...OWN, branch: 'agent/t-k', prUrl: own, prState: 'OPEN' });
+  const s = workers.ensureSession(w)!;
+  const text = 'RESULT: Fixed, as in https://github.com/electron/electron/pull/51989';
+  feed(s, said(text), turnEnd(text));
+  assert.deepEqual([x.status, x.prUrl], ['pr_open', own]);
 });
 
 test('the artifact a report names under its RESULT line is kept with the result and told to the Dispatcher', () => {
