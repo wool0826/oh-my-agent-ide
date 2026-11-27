@@ -20,6 +20,12 @@ export const compactsBeforeTask = (model: string) => providerOf(model) === 'clau
  */
 export const REUSE_MAX_CONTEXT = Math.round(CONTEXT_WINDOW * 0.6);
 
+/**
+ * A compaction that started longer ago than this no longer blocks the Worker: one whose end never arrived (a Codex
+ * thread that went quiet) must not keep it from work until a restart.
+ */
+export const COMPACT_STALE_MS = 15 * 60_000;
+
 /** What compacting before the task costs in the ranking: one more turn, and the detail the summary drops. */
 const COMPACT_COST = 1;
 
@@ -38,7 +44,7 @@ const MIN_RELATED_NO_REPO = 2;
 
 export interface NewTask { title: string; prompt: string; kind: 'code' | 'other'; repo: string | null }
 
-type W = Pick<Worker, 'id' | 'status' | 'repo' | 'model' | 'contextTokens' | 'taskIds' | 'lastActiveAt' | 'compacting'>;
+type W = Pick<Worker, 'id' | 'status' | 'repo' | 'model' | 'contextTokens' | 'taskIds' | 'lastActiveAt' | 'compactingSince'>;
 type T = Pick<Task, 'id' | 'title' | 'summary' | 'repo' | 'status' | 'workerId'>;
 
 export interface Candidate<X extends W = W> {
@@ -75,9 +81,9 @@ const compactedFirst = (w: Pick<Worker, 'model' | 'contextTokens'>) => compactsB
  * Why a Worker cannot take new work by itself right now, in English for the Dispatcher; null when it can. Its context
  * size alone is no reason: only a compaction under way, or a context that cannot be compacted before the task (T-0154).
  */
-export function reuseBlock(w: W, tasks: T[]): string | null {
+export function reuseBlock(w: W, tasks: T[], now = Date.now()): string | null {
   if (w.status === 'archived') return 'archived';
-  if (w.compacting) return 'compacting its context';
+  if (w.compactingSince && now - Date.parse(w.compactingSince) < COMPACT_STALE_MS) return 'compacting its context';
   if (w.status !== 'idle') return w.status === 'error' ? 'stopped with an error' : 'busy';
   if (tasks.some((x) => x.workerId === w.id && OPEN.has(x.status))) return 'has open work';
   if (!compactsBeforeTask(w.model) && w.contextTokens >= REUSE_MAX_CONTEXT) return `context ${kTokens(w.contextTokens)} cannot be compacted before it starts`;
@@ -85,8 +91,8 @@ export function reuseBlock(w: W, tasks: T[]): string | null {
 }
 
 /** The "New work" line of list_workers: whether the Worker can take a task, and that it is compacted first. */
-export function newWorkLine(w: W, tasks: T[]): string {
-  const block = reuseBlock(w, tasks);
+export function newWorkLine(w: W, tasks: T[], now = Date.now()): string {
+  const block = reuseBlock(w, tasks, now);
   if (block) return block;
   return compactedFirst(w) ? `can take it (context ${kTokens(w.contextTokens)} is compacted before it starts)` : 'can take it';
 }
@@ -101,7 +107,7 @@ export function rankWorkers<X extends W>(workers: X[], tasks: T[], nt: NewTask, 
   const want = keywords(`${nt.title}\n${nt.prompt.slice(0, 4000)}`);
   const out: Candidate<X>[] = [];
   for (const w of workers) {
-    if (w.model !== model || reuseBlock(w, tasks)) continue;
+    if (w.model !== model || reuseBlock(w, tasks, now)) continue;
     const own = tasks.filter((x) => x.workerId === w.id);
     const repoTasks = nt.repo ? own.filter((x) => x.repo === nt.repo).length : 0;
     if (nt.kind === 'code' && (!nt.repo || w.repo !== nt.repo)) continue;

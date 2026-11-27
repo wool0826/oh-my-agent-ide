@@ -37,7 +37,7 @@ export async function archive(m: WorkerManager, workerId: string): Promise<{ kep
   m.said.delete(w.id);
   w.status = 'archived';
   w.statusText = '';
-  w.compacting = false;
+  w.compactingSince = null;
   let kept: 'task' | 'dirty' | null = w.taskIds.some((id) => holdsWorktree(store.task(id))) ? 'task' : null;
   const repo = w.repo ? store.repo(w.repo) : null;
   if (repo && !kept && fs.existsSync(w.cwd)) {
