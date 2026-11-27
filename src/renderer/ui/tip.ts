@@ -3,17 +3,25 @@
  *   data-tip="text"       the hint. Not shown when it only repeats the control's visible text.
  *   data-tip-key="Ctrl+B" a shortcut, drawn as a key after the text.
  *   data-tip-clip         show the hint only while the control, or a part of it, is cut.
+ *   data-tip-card="key"   a card instead of a line: the HTML setTipCards gives for the key, beside the sidebar.
  * Text the layout cuts with an ellipsis needs no attribute: resting on it shows it in full.
  */
-import { TIP_EDGE, TIP_GAP, tipAriaKey, tipDescribes, tipJoin, tipPlace, tipRepeats, tipWait } from '../../shared/tip';
+import { TIP_EDGE, TIP_GAP, cardPlace, tipAriaKey, tipDescribes, tipJoin, tipPlace, tipRepeats, tipWait } from '../../shared/tip';
 
-const OWNER = '[data-tip]';
+const OWNER = '[data-tip], [data-tip-card]';
 /** A press is followed by a redraw that puts a new element under the pointer; that is not a new hover. */
 const AFTER_PRESS = 700;
 /** A focused control says the cut text inside it, unless it is a whole list. */
 const DEEP_MAX = 40;
 
-interface Hit { at: HTMLElement; text: string; again: () => string }
+interface Hit { at: HTMLElement; text: string; again: () => string; card?: string }
+
+/** The cards' HTML by key, read again while one shows so it follows its row. */
+let cardOf: (key: string) => string = () => '';
+
+export function setTipCards(fn: (key: string) => string) {
+  cardOf = fn;
+}
 
 let el: HTMLElement | null = null;
 let owner: HTMLElement | null = null;
@@ -41,6 +49,7 @@ function isCut(x: HTMLElement): boolean {
 
 /** What the control's own hint says now, or nothing. */
 function textOf(x: HTMLElement): string {
+  if (x.dataset.tipCard) return cardOf(x.dataset.tipCard);
   const own = x.dataset.tip ?? '';
   if (!own) return '';
   if ('tipClip' in x.dataset) return clipped(x) || ([...x.children] as HTMLElement[]).some(clipped) ? own : '';
@@ -71,6 +80,9 @@ function cutIn(from: HTMLElement): HTMLElement[] {
 function read(from: HTMLElement, deep: boolean): Hit | null {
   if (el?.contains(from)) return null;
   const at = ownerOf(from);
+  // A card says the whole of its row: the row's cut text is in it already.
+  const card = at?.dataset.tipCard;
+  if (at && card) return { at, text: textOf(at), card, again: () => cardOf(card) };
   const cut = (deep ? cutIn(from) : cutAt(from)).filter((x) => x !== at);
   // A focused card has no hint of its own, but the exact time on its relative one is worth saying.
   const time = deep && !at ? from.querySelector<HTMLElement>('time[data-tip]')?.dataset.tip ?? '' : '';
@@ -81,6 +93,16 @@ function read(from: HTMLElement, deep: boolean): Hit | null {
 
 function place(at: HTMLElement) {
   if (!el) return;
+  if (at.dataset.tipCard) {
+    // Beside the sidebar, not over it: the row's left edge to the sidebar's right one.
+    const r = at.getBoundingClientRect();
+    const right = at.closest('nav')?.getBoundingClientRect().right ?? r.right;
+    const c = cardPlace({ left: r.left, top: r.top, width: Math.max(r.width, right - r.left), height: r.height }, el.offsetWidth, el.offsetHeight, window.innerWidth, window.innerHeight, TIP_GAP, TIP_EDGE);
+    el.style.left = `${c.left}px`;
+    el.style.top = `${c.top}px`;
+    el.dataset.side = c.side;
+    return;
+  }
   const p = tipPlace(at.getBoundingClientRect(), el.offsetWidth, el.offsetHeight, window.innerWidth, window.innerHeight, !!at.closest('.toolbar'), TIP_GAP, TIP_EDGE);
   el.style.left = `${p.left}px`;
   el.style.top = `${p.top}px`;
@@ -92,10 +114,22 @@ function show(hit: Hit, focus = false) {
   clearTimeout(showTimer);
   clearTimeout(hideTimer);
   clearTimeout(goneTimer);
+  // The same card again (its row was drawn anew): it stays put, without fading in again.
+  const again = !!hit.card && owner?.dataset.tipCard === hit.card && el.classList.contains('on');
   release();
   owner = hit.at;
   said = hit.text;
   byFocus = focus;
+  el.classList.toggle('card', !!hit.card);
+  if (hit.card) {
+    el.innerHTML = hit.text;
+    el.hidden = false;
+    place(hit.at);
+    if (!again) { el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
+    const key = hit.card;
+    watch = window.setInterval(() => follow(key), 250);
+    return;
+  }
   const body = document.createElement('span');
   body.textContent = hit.text;
   el.replaceChildren(body);
@@ -117,6 +151,29 @@ function show(hit: Hit, focus = false) {
   }
   // The control can go away or change under the tip without any event on it.
   watch = window.setInterval(() => { if (!owner?.isConnected || hit.again() !== said) hideTip(); }, 250);
+}
+
+/** A card's row is drawn anew on every change: the card moves to the new one and says what it says now. */
+function follow(key: string) {
+  if (!el || !owner) return;
+  if (!owner.isConnected) {
+    const next = document.querySelector<HTMLElement>(`[data-tip-card="${CSS.escape(key)}"]`);
+    if (!next) { hideTip(); return; }
+    owner = next;
+  }
+  const html = cardOf(key);
+  if (!html) { hideTip(); return; }
+  if (html !== said) { said = html; el.innerHTML = html; }
+  place(owner);
+}
+
+/** Say a control's hint again now that it changed, when its tip is showing or the control is under the pointer or focused. */
+export function retip(x: HTMLElement) {
+  if (!el) return;
+  const focused = x.matches(':focus-visible');
+  if (owner !== x && !x.matches(':hover') && !focused) return;
+  const hit = read(x, false);
+  if (hit) show(hit, focused); else if (owner === x) hideTip();
 }
 
 /** Give the control back as it was. */

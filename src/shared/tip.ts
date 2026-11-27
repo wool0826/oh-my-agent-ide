@@ -24,6 +24,20 @@ export function tipPlace(a: TipBox, w: number, h: number, vw: number, vh: number
   };
 }
 
+/**
+ * A card beside its row (a sidebar row's tooltip): on the right, its top level with the row's and moved up to stay in
+ * the window; on the left when the right has no room; above or below the row (as tipPlace) when neither side has.
+ */
+export function cardPlace(a: TipBox, w: number, h: number, vw: number, vh: number, gap = TIP_GAP, edge = TIP_EDGE): { left: number; top: number; side: 'right' | 'left' | 'below' | 'above' } {
+  const top = Math.round(Math.max(edge, Math.min(a.top, vh - edge - h)));
+  const right = a.left + a.width + gap;
+  if (right + w <= vw - edge) return { left: Math.round(right), top, side: 'right' };
+  const left = a.left - gap - w;
+  if (left >= edge) return { left: Math.round(left), top, side: 'left' };
+  const p = tipPlace(a, w, h, vw, vh, true, gap, edge);
+  return { left: p.left, top: p.top, side: p.below ? 'below' : 'above' };
+}
+
 /** How long to wait before showing: none on keyboard focus, none right after another tip, else the hover delay. */
 export function tipWait(byFocus: boolean, now: number, lastHidden: number): number {
   return byFocus || now - lastHidden < TIP_SKIP ? 0 : TIP_DELAY;
