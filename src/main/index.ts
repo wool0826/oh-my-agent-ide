@@ -46,6 +46,9 @@ import { serveShots } from './shots';
 import { StateSender } from '../shared/stateSync';
 import { snapshot } from './snapshot';
 import { telegram } from './remote/telegramLink';
+import { tellRemote } from './remote/bridge';
+import { decisionNews } from '../shared/remoteNotice';
+import type { ChatItem } from '../shared/types';
 import { registerIpc, registerE2eIpc, userAnswer } from './ipc';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -226,6 +229,7 @@ async function boot() {
     // Simple decisions carry their answers as buttons on the notification.
     const actions = notifyActions(d).map((a) => ({ text: 'key' in a.label ? t(a.label.key) : a.label.text, run: () => userAnswer(d.id, a.answer) }));
     notifyDecision(d.workerId ? t('noti.workerWaits', { id: d.workerId }) : t('noti.decision'), notifyText(d), actions, d.workerId ?? 'dispatcher');
+    tellRemote(decisionNews(d));
   });
   onLateAnswer((d) => {
     if (d.workerId) {
@@ -240,6 +244,8 @@ async function boot() {
   // The phone channel (decision 241): off unless the user turned it on.
   telegram.on('changed', pushState);
   telegram.on('invalid', () => store.chat('error', t('tg.err.revoked')));
+  // A failed task goes to the phone as a result, not again as an error.
+  store.on('chat-error', (item: ChatItem) => { if (item.ev?.k !== 'failed') tellRemote({ type: 'error', text: item.text }); });
   void telegram.init();
   // A Worker that waits too long for an answer gives its slot to the queue (decision 118).
   setInterval(() => { workers.sweepWaiting(); workers.sweepStalled(); }, 30_000);

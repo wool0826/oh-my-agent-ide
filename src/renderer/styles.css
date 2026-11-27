@@ -976,6 +976,7 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .srow .sval.bad { color: var(--warning-text); }
 .srow .tg-code { font-family: var(--font-mono); font-size: var(--fs-body); font-weight: 600; letter-spacing: 0.08em; color: var(--text-primary); }
 #tg-left { font-variant-numeric: tabular-nums; }
+#tg-news { margin-top: var(--space-12); }
 .srow .sval.path { font-family: var(--font-mono); }
 .srow.vol > .lbl { flex: 0 0 auto; margin-right: var(--space-16); }
 .srow.vol .slider-wrap { flex: 1; }
@@ -1616,7 +1617,7 @@ a[data-action]:focus-visible { outline: var(--focus-outline); outline-offset: 1p
 .scap .clear-x { vertical-align: middle; margin-left: var(--space-8); }
 #pre-rows > * + * { border-top: .5px solid var(--border-subtle); }
 .srows > * + * { border-top: .5px solid var(--border-subtle); }
-/* The summary line: its name, a pill per row that needs something, how many are fine, the disclosure (decision 246). */
+/* The summary line: its name, a pill per row that needs something, how many are fine, the disclosure (decision 247). */
 .ssum { display: flex; align-items: center; gap: var(--space-8); min-height: calc(var(--control-lg) + 2 * var(--space-8)); padding: var(--space-8) var(--space-16); box-sizing: border-box; }
 .ssum > .lbl { flex: 1 0 auto; font-size: var(--fs-body); color: var(--text-primary); }
 .ssum .pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-4) var(--space-6); min-width: 0; }

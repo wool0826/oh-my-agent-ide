@@ -58,7 +58,7 @@ export async function loadPreflight() {
   drawPreflight();
 }
 
-/** The Status group: a summary line, and the checks under it when it is opened (decision 246). */
+/** The Status group: a summary line, and the checks under it when it is opened (decision 247). */
 export function preflightRows() {
   if (preflight === undefined || preflight === 'loading') return `<div class="srow" role="status" aria-label="${t('pre.checking')}"><span class="skel pre"><i></i></span></div>`;
   const accounts = S?.accounts.map((a) => a.label) ?? [];

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { after } from 'node:test';
-import { flow } from './harness.mjs';
+import { flow, waitFor } from './harness.mjs';
 import { startTelegramStub } from './telegram-stub.mjs';
 
 const tg = await startTelegramStub();
@@ -72,4 +72,27 @@ flow('Telegram is turned on after a warning, paired by code and confirmed, teste
   await app.until("return document.getElementById('tg-st')?.dataset.tone === 'danger'", 'the invalid token chip');
   await app.until("return (await window.ide.call('state')).chat.some((m) => m.kind === 'error' && m.text.includes('no longer works'))", 'the chat told');
   assert.deepEqual(filesHolding(app.dir, tg.token), []);
+});
+
+flow('once paired, a permission reaches the phone without its command, and the result with its summary', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  const from = tg.state.sent.length;
+  const news = () => tg.state.sent.slice(from + 1).map((m) => m.text);
+  await app.evaluate("await window.ide.call('telegram:enable', true); return 1;");
+  await app.evaluate(`await window.ide.call('telegram:token', ${JSON.stringify(tg.state.token)}); return 1;`);
+  const code = (await app.state()).telegram.code;
+  tg.push(tg.user(42, `/start ${code}`, { name: 'Owner' }));
+  await app.until("return !!(await window.ide.call('state')).telegram.candidate", 'the sender');
+  await app.evaluate("await window.ide.call('telegram:confirm'); return 1;");
+  await app.until("return (await window.ide.call('state')).telegram.status === 'connected'", 'connected');
+
+  await app.say(['Write a note', '@fake task - Write a note', '@@fake permission npm install left-pad', '@@fake result Wrote the note.'].join('\n'));
+  await app.until("!!document.querySelector('#chat-ins .dec')", 'the permission card');
+  await waitFor(() => news().length >= 1, 'the decision on the phone');
+  assert.match(news()[0], /^W-\d+ needs your decision$/);
+  await app.click('#chat-ins .dec [data-action="answer"][data-val="allow-task"]');
+  await waitFor(() => news().some((t) => /done/.test(t)), 'the result on the phone');
+  const res = news().find((t) => /done/.test(t));
+  assert.match(res, /Write a note/);
+  assert.match(res, /Wrote the note\./);
+  assert.ok(news().every((t) => !t.includes('left-pad')), 'no command body leaves');
 });

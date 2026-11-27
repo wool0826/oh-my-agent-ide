@@ -1,4 +1,4 @@
-// Status rows in Settings, summarised (T-0157, decision 246): one line per row with its state and a short value,
+// Status rows in Settings, summarised (T-0157, decision 247): one line per row with its state and a short value,
 // the long values (paths, errors, commands, lists) behind a disclosure. Any group of such rows can use these.
 
 export type StatusTone = 'ok' | 'warn' | 'bad';

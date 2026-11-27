@@ -27,6 +27,13 @@ export const en = {
   'tg.testSend': 'Send test message',
   'tg.testSent': 'Test message sent',
   'tg.saved': 'Token saved',
+  'tg.ev.decisions': 'Decisions',
+  'tg.ev.results': 'Task results',
+  'tg.ev.prs': 'PR merged or closed',
+  'tg.ev.errors': 'Errors',
+  'tg.level': 'Content',
+  'tg.level.title': 'Title only',
+  'tg.level.summary': 'With summary',
   // Turning it on: a warning the user acts on.
   'tg.warnTitle': 'Send to Telegram',
   'tg.warn1': 'Requests, answers and result summaries are stored on Telegram servers',
@@ -42,6 +49,7 @@ export const en = {
   // What the bot sends
   'tg.msg.connected': 'Oh My Agent IDE is connected. Notifications come to this chat.',
   'tg.msg.test': 'Test message from Oh My Agent IDE.',
+  'tg.n.error': 'Error',
 };
 
 export const ko: Record<keyof typeof en, string> = {
@@ -70,6 +78,13 @@ export const ko: Record<keyof typeof en, string> = {
   'tg.testSend': '테스트 메시지 보내기',
   'tg.testSent': '테스트 메시지 보냄',
   'tg.saved': '토큰 저장됨',
+  'tg.ev.decisions': '결정 알림',
+  'tg.ev.results': '작업 결과',
+  'tg.ev.prs': 'PR 머지·닫힘',
+  'tg.ev.errors': '오류',
+  'tg.level': '보내는 내용',
+  'tg.level.title': '제목만',
+  'tg.level.summary': '요약 포함',
   'tg.warnTitle': 'Telegram으로 보내기',
   'tg.warn1': '요청, 답, 결과 요약이 Telegram 서버에 저장됨',
   'tg.warn2': '종단간 암호화 아님',
@@ -82,4 +97,5 @@ export const ko: Record<keyof typeof en, string> = {
   'tg.err.revoked': 'Telegram 봇 토큰이 더 이상 동작하지 않습니다. 설정 > 알림에서 새 토큰을 넣으세요.',
   'tg.msg.connected': 'Oh My Agent IDE에 연결되었습니다. 알림이 이 대화로 옵니다.',
   'tg.msg.test': 'Oh My Agent IDE 테스트 메시지입니다.',
+  'tg.n.error': '오류',
 };
