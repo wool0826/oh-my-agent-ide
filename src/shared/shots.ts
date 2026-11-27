@@ -1,11 +1,11 @@
 // Screenshots in a Worker's report (T-0102): the FILE: lines that name images are shown as thumbnails on the result
 // card, a screen's "before" next to its "after", instead of as file links. Its other parts (wide/narrow, dark/light)
-// are switches, so a screen shows one pair at a time (decision 232).
+// are switches, so a screen shows one pair at a time (decision 232). The same goes for the images a user attaches.
 
 /** The custom scheme the window loads a reported image through: file:// is not reachable from the page. */
 export const SHOT_SCHEME = 'oma-shot';
 
-const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
+const IMAGE = /\.(png|jpe?g|jfif|gif|webp|bmp|avif)$/i;
 
 export const isImagePath = (p: string) => IMAGE.test(p.trim());
 
@@ -20,8 +20,8 @@ export function isLocalPath(p: string) {
 
 export type ShotRole = 'before' | 'after';
 
-/** The other parts a screenshot's name can vary by, each with its words in the order they are shown (decision 232). */
-export const SHOT_AXES = { width: ['wide', 'narrow'], theme: ['dark', 'light'] } as const;
+/** The other parts a screenshot's name can vary by, each with its words in the order they are shown (decisions 232, 238). */
+export const SHOT_AXES = { width: ['wide', 'narrow'], theme: ['light', 'dark'] } as const;
 
 export type ShotAxis = keyof typeof SHOT_AXES;
 
@@ -32,6 +32,8 @@ export type ShotAxis = keyof typeof SHOT_AXES;
 export type Shot = { path: string; role: ShotRole | null; screen: string } & Record<ShotAxis, string | null>;
 
 const AXIS_NAMES = Object.keys(SHOT_AXES) as ShotAxis[];
+/** Which part orders the pairs first: every light pair, wide then narrow, ahead of every dark one (decision 238). */
+const VARIANT_ORDER: ShotAxis[] = ['theme', 'width'];
 
 const baseName = (p: string) => p.slice(Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')) + 1);
 
@@ -59,15 +61,36 @@ export function shotOf(p: string): Shot {
  */
 export type ShotSet = { screen: string; shots: Shot[]; roles: ShotRole[]; axes: Partial<Record<ShotAxis, string[]>> };
 
-const ROLE_ORDER = { before: 0, after: 1 } as const;
-const rank = (s: Shot) => (s.role ? ROLE_ORDER[s.role] : 2);
-const axisRank = (a: ShotAxis, v: string | null) => (v === null ? -1 : (SHOT_AXES[a] as readonly string[]).indexOf(v));
+/** A part's place in its order; a name without the part comes after those with it. */
+const axisRank = (a: ShotAxis, v: string | null) => (v === null ? SHOT_AXES[a].length : (SHOT_AXES[a] as readonly string[]).indexOf(v));
+const variantOf = (s: Shot) => AXIS_NAMES.map((a) => s[a] ?? '').join('|');
+
+/**
+ * A screen's shots in the order they are shown (decision 238): pair by pair, each before right ahead of the after
+ * of the same width and theme, light pairs ahead of dark ones and wide ahead of narrow within each. A shot left
+ * without a partner (a before with no after, a name with neither word) follows the pairs, in the order it came.
+ */
+export function orderShots(shots: readonly Shot[]): { shots: Shot[]; pairs: number } {
+  const byVariant = new Map<string, { sample: Shot; before: Shot[]; after: Shot[] }>();
+  for (const s of shots) {
+    if (!s.role) continue;
+    const k = variantOf(s);
+    const v = byVariant.get(k) ?? { sample: s, before: [], after: [] };
+    v[s.role].push(s);
+    byVariant.set(k, v);
+  }
+  const variants = [...byVariant.values()].sort((a, b) => VARIANT_ORDER.reduce((d, x) => d || axisRank(x, a.sample[x]) - axisRank(x, b.sample[x]), 0));
+  const out: Shot[] = [];
+  for (const v of variants) for (let i = 0; i < Math.min(v.before.length, v.after.length); i++) out.push(v.before[i], v.after[i]);
+  const paired = new Set(out);
+  return { shots: [...out, ...shots.filter((s) => !paired.has(s))], pairs: out.length / 2 };
+}
 
 /**
  * A report's files split into images, grouped by screen, and the rest (decision 232). A screen's shots are the images
  * whose names differ only by before/after, wide/narrow and dark/light; an image with none of those words is a screen
- * of its own. Screens keep the order the report first names them; within one, before comes ahead of after, then wide
- * ahead of narrow and dark ahead of light.
+ * of its own. Screens with a before/after pair keep the order the report first names them; the screens without one
+ * follow, in that order too. Within a screen, the shots are in `orderShots` order.
  */
 export function shotSets(files: readonly string[]): { sets: ShotSet[]; rest: string[] } {
   const rest: string[] = [];
@@ -80,19 +103,17 @@ export function shotSets(files: readonly string[]): { sets: ShotSet[]; rest: str
     const key = tagged ? s.screen : `\0${f}`;
     groups.set(key, [...(groups.get(key) ?? []), s]);
   }
-  const sets = [...groups.values()].map((g): ShotSet => {
-    const shots = g.map((s, i) => ({ s, i }))
-      .sort((a, b) => rank(a.s) - rank(b.s) || AXIS_NAMES.reduce((d, x) => d || axisRank(x, a.s[x]) - axisRank(x, b.s[x]), 0) || a.i - b.i)
-      .map((x) => x.s);
+  const sets = [...groups.values()].map((g) => {
+    const { shots, pairs } = orderShots(g);
     const roles = (['before', 'after'] as const).filter((r) => shots.some((s) => s.role === r));
     const axes: ShotSet['axes'] = {};
     for (const a of AXIS_NAMES) {
       const vs = SHOT_AXES[a].filter((v) => shots.some((s) => s[a] === v));
       if (vs.length > 1) axes[a] = vs;
     }
-    return { screen: shots[0].screen, shots, roles, axes };
+    return { set: { screen: shots[0].screen, shots, roles, axes } as ShotSet, pairs };
   });
-  return { sets, rest };
+  return { sets: [...sets.filter((x) => x.pairs), ...sets.filter((x) => !x.pairs)].map((x) => x.set), rest };
 }
 
 export type ShotPick = Partial<Record<ShotAxis, string>>;

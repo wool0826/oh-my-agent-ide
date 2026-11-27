@@ -121,20 +121,20 @@ flow('a result card shows one before/after pair of its screenshots, with switche
   await app.say(['@fake task demo Restyle the inbox', '@@fake write a.txt a', '@@fake commit Restyle', `@@fake pr ${url}`, '@@fake result Restyled the inbox.', ...[...shots, report, log].map((f) => `@@fake file ${f}`)].join('\n'));
   await app.until(`document.querySelectorAll('${CARD} .shot').length === 2`, 'one pair on the result card');
 
-  // One pair, wide and dark first; the other six behind the switches, counted.
-  assert.deepEqual(await app.evaluate(shown(CARD)), ['before-inbox-wide-dark.png', 'after-inbox-wide-dark.png']);
+  // One pair, wide and light first; the other six behind the switches, counted.
+  assert.deepEqual(await app.evaluate(shown(CARD)), ['before-inbox-wide-light.png', 'after-inbox-wide-light.png']);
   assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${CARD} .shot-h')].map((h) => h.innerText)`), ['Before', 'After']);
-  assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${CARD} .shot-row .seg')].map((g) => g.getAttribute('aria-label') + ':' + [...g.querySelectorAll('button')].map((b) => b.innerText + (b.getAttribute('aria-pressed') === 'true' ? '*' : '')).join('|'))`), ['Width:Wide*|Narrow', 'Theme:Dark*|Light']);
+  assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${CARD} .shot-row .seg')].map((g) => g.getAttribute('aria-label') + ':' + [...g.querySelectorAll('button')].map((b) => b.innerText + (b.getAttribute('aria-pressed') === 'true' ? '*' : '')).join('|'))`), ['Width:Wide*|Narrow', 'Theme:Light*|Dark']);
   assert.deepEqual(await app.evaluate(`const n = document.querySelector('${CARD} .shot-n'); return [n.innerText.trim(), n.dataset.tip];`), ['8', '8 images']);
   // The two thumbnails side by side, each half of the row.
   assert.equal(await app.evaluate(`const [a, b] = [...document.querySelectorAll('${CARD} .shot')].map((x) => x.getBoundingClientRect()); return Math.abs(a.top - b.top) < 1 && Math.abs(a.width - b.width) < 1 && a.width > 150;`), true);
 
-  // The switches show the narrow, then the light pair, and keep the focus.
+  // The switches show the narrow, then the dark pair, and keep the focus.
   await app.click(`${CARD} [data-action="shot-axis"][data-v="narrow"]`);
-  await app.until(`${shown(CARD)}.join() === 'before-inbox-narrow-dark.png,after-inbox-narrow-dark.png'`, 'the narrow pair');
-  await app.click(`${CARD} [data-action="shot-axis"][data-v="light"]`);
-  await app.until(`${shown(CARD)}.join() === 'before-inbox-narrow-light.png,after-inbox-narrow-light.png'`, 'the narrow light pair');
-  assert.equal(await app.evaluate('document.activeElement?.dataset.v'), 'light');
+  await app.until(`${shown(CARD)}.join() === 'before-inbox-narrow-light.png,after-inbox-narrow-light.png'`, 'the narrow pair');
+  await app.click(`${CARD} [data-action="shot-axis"][data-v="dark"]`);
+  await app.until(`${shown(CARD)}.join() === 'before-inbox-narrow-dark.png,after-inbox-narrow-dark.png'`, 'the narrow dark pair');
+  assert.equal(await app.evaluate('document.activeElement?.dataset.v'), 'dark');
 
   // The other files are one-line chips; the action row has the PR chip, icon-only buttons and the cost.
   assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${CARD} .rfiles .fchip')].map((c) => [c.innerText.trim(), c.getBoundingClientRect().height])`), [['report.md', 24], ['preflight-run-w…2026-11-26.log', 24]]);
@@ -152,22 +152,25 @@ flow('a result card shows one before/after pair of its screenshots, with switche
   // No file is a bare link any more.
   assert.equal(await app.evaluate(`document.querySelectorAll('${CARD} .racts [data-action="open-file"]').length`), 0);
 
-  // A thumbnail opens the shot with the same switches, and a strip of all eight.
-  await app.click(`${CARD} .shot[data-path$="after-inbox-narrow-light.png"]`);
+  // A thumbnail opens the shot with the same switches, and a strip of all eight, pair by pair: each before right
+  // ahead of its after, the light pairs ahead of the dark ones.
+  await app.click(`${CARD} .shot[data-path$="after-inbox-narrow-dark.png"]`);
   await app.until(`!!document.querySelector('${DLG}')`, 'the shot opened');
-  assert.equal(await app.evaluate("document.querySelector('#shot-t').textContent"), 'After · inbox · Narrow · Light');
+  assert.equal(await app.evaluate("document.querySelector('#shot-t').textContent"), 'After · inbox · Narrow · Dark');
   assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${DLG} .shot-segs .seg')].map((g) => g.getAttribute('aria-label'))`), ['Version', 'Width', 'Theme']);
-  assert.equal(await app.evaluate(`document.querySelectorAll('${DLG} .shot-strip button').length`), 8);
+  const pairs = ['Light', 'Dark'].flatMap((th) => ['Wide', 'Narrow'].flatMap((w) => ['Before', 'After'].map((r) => `${r} · inbox · ${w} · ${th}`)));
+  assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${DLG} .shot-strip button')].map((b) => b.getAttribute('aria-label'))`), pairs);
   await app.click(`${DLG} [data-action="shot-axis"][data-v="before"]`);
-  await app.until("document.querySelector('#shot-t')?.textContent === 'Before · inbox · Narrow · Light'", 'the before shot');
+  await app.until("document.querySelector('#shot-t')?.textContent === 'Before · inbox · Narrow · Dark'", 'the before shot');
   await app.click(`${DLG} [data-action="shot-axis"][data-v="wide"]`);
-  await app.until("document.querySelector('#shot-t')?.textContent === 'Before · inbox · Wide · Light'", 'the wide shot');
-  assert.equal(await app.evaluate(`document.querySelector('${DLG} .shot-strip [aria-pressed="true"]').dataset.i`), '1');
+  await app.until("document.querySelector('#shot-t')?.textContent === 'Before · inbox · Wide · Dark'", 'the wide shot');
+  assert.equal(await app.evaluate(`document.querySelector('${DLG} .shot-strip [aria-pressed="true"]').dataset.i`), '4');
   await app.key('Escape', 'Escape', 27);
   await app.until("document.querySelector('#dlg').hidden", 'the shot closed');
 
   // The inbox row and the Worker's summary draw the same parts.
   await app.until("document.querySelectorAll('#chat-ins .res .shot').length === 2", 'the pair on the inbox row');
+  assert.deepEqual(await app.evaluate(shown('#chat-ins .res')), ['before-inbox-wide-light.png', 'after-inbox-wide-light.png']);
   assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#chat-ins .res')].map((r) => [r.querySelectorAll('.rfiles .fchip').length, !!r.querySelector('.racts .prchip'), r.querySelectorAll('.shot-row .seg').length])"), [[2, true, 2]]);
   await app.click('button[data-v="worker"]');
   await app.until(`!!document.querySelector('#wk-list [data-action="select-worker"]')`, 'the Worker in the list');
@@ -175,5 +178,49 @@ flow('a result card shows one before/after pair of its screenshots, with switche
   await app.until("!!document.querySelector('#ws-tab-summary')", 'the Summary tab');
   await app.click('#ws-tab-summary');
   await app.until("document.querySelectorAll('#ws-sum .sum-task .shot').length === 2", 'the pair on the summary');
+  assert.deepEqual(await app.evaluate(shown('#ws-sum .sum-task')), ['before-inbox-wide-light.png', 'after-inbox-wide-light.png']);
   assert.deepEqual(await app.evaluate("const c = document.querySelector('#ws-sum .sum-task'); return [c.querySelectorAll('.rfiles .fchip').length, !!c.querySelector('.racts .prchip'), c.querySelectorAll('.shot-row .seg').length];"), [2, true, 2]);
+});
+
+flow('the images a user attaches get previews that open in the same view as a report\'s shots (T-0152)', {}, async (app) => {
+  const dir = path.join(app.home, 'mine');
+  fs.mkdirSync(dir);
+  const png = Buffer.from((await app.capture({ clip: { x: 0, y: 0, width: 160, height: 100, scale: 1 } })).result.data, 'base64');
+  // A screenshot saved with an upper-case extension, and a note beside it.
+  const upper = path.join(dir, 'Screenshot 2026-11-26 at 15.42.17 (2).PNG'), note = path.join(dir, 'notes.txt');
+  fs.writeFileSync(upper, png);
+  fs.writeFileSync(note, 'note');
+
+  // A screenshot pasted into the composer is saved and attached: its chip shows it in place of the file icon.
+  await app.evaluate(`const b = Uint8Array.from(atob('${png.toString('base64')}'), (c) => c.charCodeAt(0)), dt = new DataTransfer();
+    dt.items.add(new File([b], 'image.png', { type: 'image/png' }));
+    document.querySelector('#chat-input').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    return 1;`);
+  const THUMB = '#chat-files .fchip .fthumb';
+  await app.until(`[...document.querySelectorAll('${THUMB} img')].some((i) => i.complete && i.naturalWidth > 0)`, 'the pasted picture on its chip');
+  const chip = await app.evaluate(`const c = document.querySelector('#chat-files .fchip'), r = c.getBoundingClientRect(); return { h: r.height, icon: !!c.querySelector('svg.sym'), name: c.querySelector('.fn').textContent, path: c.querySelector('.fthumb').dataset.path, remove: !!c.querySelector('[data-action="unattach"]') };`);
+  assert.equal(chip.h, 24);
+  assert.equal(chip.icon, false);
+  assert.equal(chip.remove, true);
+  assert.match(chip.name, /^pasted-.*\.png$/);
+  assert.ok(fs.existsSync(chip.path), chip.path);
+
+  // Its preview opens it at full size.
+  await app.click(THUMB);
+  await app.until(`!!document.querySelector('${DLG} .shot-img img')?.complete`, 'the pasted picture opened');
+  assert.ok((await app.evaluate(`decodeURIComponent(document.querySelector('${DLG} .shot-img img').src)`)).endsWith(chip.path));
+  await app.key('Escape', 'Escape', 27);
+  await app.until("document.querySelector('#dlg').hidden", 'the picture closed');
+
+  // Sent, the images are thumbnails in the message and the note stays a chip; a thumbnail opens with the other image.
+  await app.evaluate(`await window.ide.call('chat:send', 'Two screens', ${JSON.stringify([upper, chip.path, note])}); return 1;`);
+  const ME = '#chat-thread .bub.me';
+  await app.until(`[...document.querySelectorAll('${ME} .shots .shot img')].filter((i) => i.complete && i.naturalWidth > 0).length === 2`, 'both pictures in the message');
+  assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${ME} .sent-files .fchip .fn')].map((f) => f.textContent)`), ['notes.txt']);
+  await app.click(`${ME} .shot[data-path$=".PNG"]`);
+  await app.until(`!!document.querySelector('${DLG} .shot-img img')?.complete`, 'the sent picture opened');
+  assert.ok((await app.evaluate(`decodeURIComponent(document.querySelector('${DLG} .shot-img img').src)`)).endsWith(upper));
+  assert.equal(await app.evaluate(`document.querySelectorAll('${DLG} .shot-strip button').length`), 2);
+  await app.key('Escape', 'Escape', 27);
+  await app.until("document.querySelector('#dlg').hidden", 'the picture closed again');
 });
