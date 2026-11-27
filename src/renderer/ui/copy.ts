@@ -44,6 +44,8 @@ function markCopied(btn: HTMLElement) {
 /** The old way, for when the Clipboard API says no: a hidden text field, selected and copied. */
 function legacyCopy(text: string): boolean {
   const back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const sel = getSelection();
+  const ranges = sel ? Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i)) : [];
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.setAttribute('readonly', '');
@@ -54,6 +56,8 @@ function legacyCopy(text: string): boolean {
   try { ok = document.execCommand('copy'); } catch { ok = false; }
   ta.remove();
   back?.focus({ preventScroll: true });
+  // What the user had selected comes back too.
+  if (sel && ranges.length) { sel.removeAllRanges(); for (const r of ranges) sel.addRange(r); }
   return ok;
 }
 

@@ -26,7 +26,8 @@ export function setTipCards(fn: (key: string) => string) {
 let el: HTMLElement | null = null;
 let owner: HTMLElement | null = null;
 let said = '';
-let described = false;
+/** The control the tip describes to assistive tech (aria-describedby), while it does. */
+let described: HTMLElement | null = null;
 /** Shown for the keyboard: it stays while its control has the focus, wherever the pointer goes. */
 let byFocus = false;
 let showTimer = 0;
@@ -126,6 +127,9 @@ function show(hit: Hit, focus = false) {
     el.hidden = false;
     place(hit.at);
     if (!again) { el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
+    // The card describes the row's own button (the rail button is its own owner), which takes the focus.
+    const own = hit.at.matches('button') ? hit.at : hit.at.querySelector<HTMLElement>('button');
+    if (own && !own.hasAttribute('aria-describedby')) { own.setAttribute('aria-describedby', 'tip'); described = own; }
     const key = hit.card;
     watch = window.setInterval(() => follow(key), 250);
     return;
@@ -147,7 +151,7 @@ function show(hit: Hit, focus = false) {
   // Cut text is in the page in full already; only a hint of its own describes the control.
   if (hit.at.dataset.tip === hit.text && tipDescribes(hit.text, hit.at.getAttribute('aria-label'), hit.at.textContent ?? '') && !hit.at.hasAttribute('aria-describedby')) {
     hit.at.setAttribute('aria-describedby', 'tip');
-    described = true;
+    described = hit.at;
   }
   // The control can go away or change under the tip without any event on it.
   watch = window.setInterval(() => { if (!owner?.isConnected || hit.again() !== said) hideTip(); }, 250);
@@ -179,8 +183,8 @@ export function retip(x: HTMLElement) {
 /** Give the control back as it was. */
 function release() {
   clearInterval(watch);
-  if (owner && described) owner.removeAttribute('aria-describedby');
-  described = false;
+  described?.removeAttribute('aria-describedby');
+  described = null;
   owner = null;
   said = '';
 }

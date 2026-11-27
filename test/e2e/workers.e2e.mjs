@@ -219,4 +219,7 @@ flow('a running row shows a card with its whole title, its steps and what it doe
   const box = await app.evaluate(`const r = ${CARD}.getBoundingClientRect(); return { left: r.left, right: r.right, side: document.querySelector('#side').getBoundingClientRect().right, w: innerWidth, steps: !!${CARD}.querySelector('.rc-steps') };`);
   assert.ok(box.left >= box.side && box.right <= box.w, JSON.stringify(box));
   assert.equal(box.steps, false);
+  assert.equal(await app.evaluate("return document.activeElement.getAttribute('aria-describedby');"), 'tip');
+  await app.key('Escape', 'Escape', 27);
+  await app.until(`!${CARD} && !document.activeElement.hasAttribute('aria-describedby')`, 'the card closed and the button as it was');
 });
