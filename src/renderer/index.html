@@ -95,15 +95,15 @@
 
 <div class="win" id="win" data-icons="line">
   <nav class="sidebar" aria-label="Status" data-i18n-aria="aria.status">
-    <div class="lights drag"></div>
     <h2 class="sr-only" data-i18n="aria.status">Status</h2>
     <div class="side-scroll" id="side"></div>
-    <div class="side-foot"><button class="btn btn-ghost btn-icon btn-lg" data-action="open-settings" data-i18n-tip="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button><button class="btn btn-ghost btn-icon btn-lg" id="dnd-mark" data-action="open-settings" data-v="alerts" hidden><svg aria-hidden="true"><use href="#s-moon"/></svg></button><button class="btn btn-ghost btn-icon btn-lg" id="side-toggle" data-action="side-toggle" aria-controls="side"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button></div>
+    <div class="side-foot"><button class="btn btn-ghost btn-icon btn-lg" data-action="open-settings" data-i18n-tip="set.title"><svg aria-hidden="true"><use href="#s-gear"/></svg></button><button class="btn btn-ghost btn-icon btn-lg" id="dnd-mark" data-action="open-settings" data-v="alerts" hidden><svg aria-hidden="true"><use href="#s-moon"/></svg></button></div>
   </nav>
   <div class="rz nodrag" id="rz-side" role="separator" aria-label="Resize the sidebar" data-i18n-aria="aria.resize" aria-orientation="vertical" aria-controls="side" tabindex="0"></div>
 
   <header class="toolbar drag">
-    <span class="seg seg-lg seg-glass nodrag" id="views" role="tablist" aria-label="Views" data-i18n-aria="aria.views">
+    <button class="tbtn plain nodrag" id="side-toggle" data-action="side-toggle" aria-controls="side"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button>
+    <span class="seg seg-glass nodrag" id="views" role="tablist" aria-label="Views" data-i18n-aria="aria.views">
       <button role="tab" data-v="chat" aria-selected="true" tabindex="0" data-i18n="nav.chat">Chat</button><button role="tab" data-v="worker" aria-selected="false" tabindex="-1">Worker</button><button role="tab" data-v="repo" aria-selected="false" tabindex="-1" data-i18n="nav.repo">Repositories</button><button role="tab" data-v="memory" aria-selected="false" tabindex="-1" data-i18n="nav.memory">Memory</button>
     </span>
     <button class="tbtn nodrag" id="cmdk-btn" data-action="cmdk-open" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#s-search"/></svg></button>

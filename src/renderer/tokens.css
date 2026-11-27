@@ -124,13 +124,10 @@
   --icon-hero: 44px;
   --sidebar-w: 272px;
   --inspector-w: 344px;
-  --toolbar-h: 52px;
+  --toolbar-h: 44px;
   --panel-inset: 8px;
   --settings-nav-w: 240px;
   --settings-max: 680px;
-  --lights-x: 22px;
-  --lights-w: 52px;
-  --lights-gap: 14px;
   --dur-instant: 80ms;
   --dur-fast: 120ms;
   --dur-base: 180ms;

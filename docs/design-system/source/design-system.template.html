@@ -436,12 +436,16 @@ table.t td code { white-space: nowrap; }
 /* Main-screen mockup */
 .mock-wrap { overflow-x: auto; padding: var(--space-8) 0 var(--space-24); }
 .mock { position: relative; width: 100%; min-width: 1080px; height: 760px; border-radius: 12px; overflow: hidden; background: var(--bg-backdrop); box-shadow: var(--shadow-5), 0 0 0 .5px var(--border-default); display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--inspector-w); grid-template-rows: var(--toolbar-h) minmax(0, 1fr); }
-.mock .sidebar { grid-row: 1 / 3; grid-column: 1; margin: var(--panel-inset) 0 var(--panel-inset) var(--panel-inset); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.mock .side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-12) var(--space-10) var(--space-10); display: flex; flex-direction: column; gap: var(--space-16); }
+.mock .sidebar { grid-row: 2; grid-column: 1; margin: 0 0 var(--panel-inset) var(--panel-inset); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.mock .side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-10); display: flex; flex-direction: column; gap: var(--space-16); }
 .mock .side-foot { padding: var(--space-8) var(--space-10) var(--space-10); }
-.mock .toolbar { grid-row: 1; grid-column: 2 / 4; display: flex; align-items: center; gap: var(--space-12); padding: 0 150px 0 var(--space-16); min-width: 0; }
-.mock .caption-btns { position: absolute; top: 0; right: 0; display: flex; height: 32px; }
-.mock .caption-btns span { width: 46px; display: grid; place-items: center; color: var(--text-secondary); font-size: 12px; }
+.mock .toolbar { grid-row: 1; grid-column: 1 / 4; display: flex; align-items: center; gap: var(--space-8); padding: 0 150px 0 var(--space-12); min-width: 0; border-bottom: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--surface-panel) 55%, transparent); }
+.mock .toolbar .tbtn { flex: none; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); display: grid; place-items: center; }
+.mock .toolbar .tbtn svg { width: var(--icon-md); height: var(--icon-md); }
+.mock .toolbar #mock-views { margin-left: calc(var(--sidebar-w) - var(--control-lg) - var(--space-8)); }
+.mock .caption-btns { position: absolute; top: 0; right: 0; display: flex; height: var(--toolbar-h); }
+.mock .caption-btns span { width: 46px; display: grid; place-items: center; color: var(--text-secondary); }
+.mock .caption-btns svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
 .mock .toolbar .usage { margin-left: auto; }
 .mock .content { grid-row: 2; grid-column: 2; position: relative; min-height: 0; display: flex; flex-direction: column; }
 .mock .content .thread { flex: 1; overflow-y: auto; padding: var(--space-12) var(--space-20) 100px; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
@@ -486,6 +490,7 @@ table.t td code { white-space: nowrap; }
     <symbol id="s-back" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></symbol>
     <symbol id="s-more" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></symbol>
     <symbol id="s-speaker" viewBox="0 0 16 16" fill="currentColor"><path d="M2 6h2.5L8 3v10L4.5 10H2z"/></symbol>
+    <symbol id="s-side-l" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.8" y="4" width="14.4" height="12" rx="2.5"/><path d="M7.6 4v12"/></symbol>
     <symbol id="s-search" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.6 12.6l4.4 4.4"/></symbol>
     <!-- Status glyphs (16 grid, stroke from CSS) -->
     <symbol id="g-ask" viewBox="0 0 16 16"><path d="M8 3.4v5.4"/><circle cx="8" cy="12" r="1.1" fill="currentColor" stroke="none"/></symbol>
@@ -587,7 +592,7 @@ table.t td code { white-space: nowrap; }
         <tr><td><code>--control-lg</code></td><td>32px</td><td>Toolbar tab pill (28 + 2·2), send button, search, settings nav items, large buttons</td></tr>
         <tr><td><code>--row-min</code></td><td>44px</td><td>Settings rows</td></tr>
         <tr><td><code>--icon-sm / md / lg / hero</code></td><td>13 / 16 / 18 / 44px</td><td>In-button icons / glyph art / glyph box / empty states</td></tr>
-        <tr><td><code>--sidebar-w · --inspector-w · --toolbar-h · --panel-inset</code></td><td>272 · 344 · 52 · 8px</td><td>Window grid (unchanged)</td></tr>
+        <tr><td><code>--sidebar-w · --inspector-w · --toolbar-h · --panel-inset</code></td><td>272 · 344 · 44 · 8px</td><td>Window grid; the top strip is as tall as the window's own buttons</td></tr>
       </tbody></table></div>
     </section>
 
@@ -803,7 +808,7 @@ table.t td code { white-space: nowrap; }
       <h2>Main screen</h2>
       <p class="lede">The chat view redrawn with v1 tokens and components. The tab pill switches views; Copy and Theme at the top switch language and theme. Korean copy keeps the app's mix of Korean sentences and English product terms.</p>
       <div class="mock-wrap"><div class="mock ds" id="mock" lang="en">
-        <div class="caption-btns" aria-hidden="true"><span>—</span><span>☐</span><span>✕</span></div>
+        <div class="caption-btns" aria-hidden="true"><span><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M.5 .5h9v9h-9z"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></span></div>
         <nav class="sidebar glass-panel" aria-label="Status">
           <div class="side-scroll">
             <section class="side-sec"><h4 class="side-h is-alert" data-i18n="side.decisions">Needs your decision</h4>
@@ -823,7 +828,8 @@ table.t td code { white-space: nowrap; }
           <div class="side-foot"><button class="btn btn-ghost btn-icon btn-lg" type="button" aria-label="Settings"><svg style="width:18px;height:18px"><use href="#s-gear"/></svg></button></div>
         </nav>
         <header class="toolbar">
-          <span class="seg seg-lg seg-glass" role="group" aria-label="Views" id="mock-views"><button type="button" aria-pressed="true" data-v="chat" data-i18n="nav.chat">Chat</button><button type="button" aria-pressed="false" data-v="worker">Worker</button><button type="button" aria-pressed="false" data-v="repo" data-i18n="nav.repo">Repositories</button><button type="button" aria-pressed="false" data-v="memory" data-i18n="nav.memory">Memory</button></span>
+          <button class="tbtn" type="button" aria-label="Sidebar" title="Sidebar"><svg aria-hidden="true"><use href="#s-side-l"/></svg></button>
+          <span class="seg seg-glass" role="group" aria-label="Views" id="mock-views"><button type="button" aria-pressed="true" data-v="chat" data-i18n="nav.chat">Chat</button><button type="button" aria-pressed="false" data-v="worker">Worker</button><button type="button" aria-pressed="false" data-v="repo" data-i18n="nav.repo">Repositories</button><button type="button" aria-pressed="false" data-v="memory" data-i18n="nav.memory">Memory</button></span>
           <div class="usage" id="usage-mock"></div>
         </header>
 

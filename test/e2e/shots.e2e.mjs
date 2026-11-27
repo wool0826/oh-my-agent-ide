@@ -15,7 +15,7 @@ const DLG = '#dlg:not([hidden]) .shot-view';
  */
 const covered = (layer, panel) => `const bar = document.querySelector('.toolbar').getBoundingClientRect(), w = innerWidth;
   const pts = [[1, 1], [w - 2, 1], [1, bar.bottom - 2], [w - 2, bar.bottom - 2], [w / 2, bar.top + bar.height / 2]];
-  for (const el of document.querySelectorAll('.toolbar button, .lights, nav button')) {
+  for (const el of document.querySelectorAll('.toolbar button, nav button')) {
     const r = el.getBoundingClientRect();
     if (r.width && r.height && r.top < bar.bottom) pts.push([r.left + r.width / 2, r.top + r.height / 2], [r.left + 1, r.top + 1], [r.right - 2, r.top + 1]);
   }
