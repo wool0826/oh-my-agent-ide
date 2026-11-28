@@ -6,8 +6,10 @@ import { ghRepoRef, type Issue } from '../../shared/issues';
 import { jiraBase, type JiraIssue } from '../../shared/jira';
 import { checkItem, type Check } from '../../shared/preflight';
 import { PAGE } from '../../shared/paging';
-import { $, call, esc, ic, ide, keepInputs, keepScroll, paged, prNum, S, shortPath, skel, sym, t, taskLabel, toast, tryCall, ui, when } from './core';
+import { PORT_MAX, PORT_MIN, PORT_STEPS, parseBasePort, portStep, runEnv, workerPort } from '../../shared/runEnv';
+import { $, call, esc, ic, ide, keepInputs, keepScroll, markBad, paged, prNum, S, shortPath, skel, sym, t, taskLabel, toast, tryCall, ui, when } from './core';
 import { go } from './history';
+import { segc, syncSegs } from './settings';
 import { onStatusRedraw, redrawKeepingFocus, statusRows } from './status';
 
 export let jira: undefined | 'loading' | JiraIssue[] | { error: string };
@@ -116,12 +118,51 @@ export function renderRepos() {
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" data-scroll="repo-setup-${esc(r.name)}" id="repo-setup" aria-label="${t('repo.setup')}" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
       <div class="ins-h"><b role="heading" aria-level="2">${t('repo.run')}</b></div>
       <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-run-${esc(r.name)}" data-scroll="repo-run-${esc(r.name)}" id="repo-run" aria-label="${t('repo.run')}" placeholder="${esc(t('repo.runPh'))}">${esc(r.run ?? '')}</textarea>
+      ${portsHtml(r)}
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
+      <div id="repo-env"></div>
       ${issuesHtml(r)}
       <div class="ins-h"><b role="heading" aria-level="2">${t('wk.tasks')}</b><small>${all.length}</small></div>
       <div class="group">${ts.items.map((x) => `<div class="mini"><b>${esc(x.title)}</b><span>${x.workerId ? `${esc(x.workerId)} · ` : ''}${taskLabel(x)}${x.prUrl ? ` · <a tabindex="0" role="link" data-action="open-url" data-href="${esc(x.prUrl)}">PR #${prNum(x.prUrl)}</a>` : ''}</span></div>`).join('') || `<div class="mini"><span>${t('none')}</span></div>`}${ts.more}</div>
       <div class="ins-act"><button class="btn btn-danger" data-action="repo-remove" data-id="${esc(r.name)}">${t('repo.remove')}</button></div>`;
   });
+  syncSegs(ins);
+  syncPorts();
+}
+
+/** The run's port: the base port, the step between Workers, and the variables a Worker's run gets (13A). */
+function portsHtml(r: Repo) {
+  const keep = (k: string) => `data-keep="repo-${k}-${esc(r.name)}"`;
+  const steps = PORT_STEPS.map((n) => ({ value: String(n), label: `+${n}` }));
+  return `<div class="group run-set">
+      <label class="rs-l" for="repo-port">${t('repo.basePort')}</label><input class="inp mono rs-port" id="repo-port" ${keep('port')} inputmode="numeric" maxlength="5" spellcheck="false" value="${r.basePort ?? ''}" aria-describedby="repo-port-err">
+      <span class="rs-err" id="repo-port-err" role="alert" hidden>${sym('s-alert')}<span>${t('repo.portRange', { min: PORT_MIN, max: PORT_MAX })}</span></span>
+      <span class="rs-l">${t('repo.portStep')}</span>${segc('repo-step', String(portStep(r)), steps, t('repo.portStep'), keep('step'))}
+    </div>`;
+}
+
+/** The Worker the variables table shows: the repository's first Worker that is not archived. */
+function envWorker(r: Repo) {
+  return S!.workers.filter((w) => w.repo === r.name && w.status !== 'archived').sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))[0] ?? null;
+}
+
+/** Marks a base port out of range and redraws the variables table from what the fields hold now, before Save. */
+export function syncPorts() {
+  const inp = document.getElementById('repo-port') as HTMLInputElement | null;
+  const r = S!.repos.find((x) => x.name === ui.repoSel);
+  const env = document.getElementById('repo-env');
+  if (!inp || !r || !env) return;
+  const base = parseBasePort(inp.value);
+  markBad(inp, base === 'bad');
+  document.getElementById('repo-port-err')!.hidden = base !== 'bad';
+  const w = envWorker(r);
+  if (!w) { env.innerHTML = ''; return; }
+  const step = Number((document.getElementById('repo-step') as HTMLInputElement | null)?.value) || portStep(r);
+  const port = base === 'bad' ? null : workerPort({ basePort: base ?? undefined, portStep: step }, w.id);
+  const rows = runEnv({ repoPath: r.path, workerId: w.id, worktree: w.cwd, port });
+  env.innerHTML = `<div class="ins-h"><b role="heading" aria-level="2">${t('repo.env')}</b></div>
+    <div class="group"><table class="envt"><thead><tr><th>${t('repo.envName')}</th><th>${t('repo.envValue', { w: esc(w.id) })}</th></tr></thead>
+    <tbody>${rows.map(([k, v]) => `<tr><td>${k}</td><td data-tip="${esc(v)}">${esc(k === 'WORKTREE_PATH' ? shortPath(v, 2) : v)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 /** A GitHub repository's open issues, each with a button that hands it to the Dispatcher as a task. */

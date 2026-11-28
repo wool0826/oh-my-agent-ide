@@ -8,6 +8,8 @@ import { runs } from '../runs';
 import { automations } from '../automations';
 import { pollAutomationEvents } from '../prmonitor';
 import { listJiraIssues, setJiraToken } from '../jira';
+import { t } from '../i18n';
+import { PORT_MAX, PORT_MIN, parseBasePort, portStep } from '../../shared/runEnv';
 import type { AutoTrigger } from '../../shared/types';
 
 /** Repositories, their issues and Jira's, and automations. */
@@ -32,7 +34,13 @@ export function registerRepoIpc(ctx: IpcContext) {
     dispatcher.refreshContext();
     return kept;
   });
-  handle('repo:update', (name: string, description: string, setup?: string, run?: string) => { updateRepo(name, { description, ...(setup === undefined ? {} : { setup: setup.trim() }), ...(run === undefined ? {} : { run: run.trim() }) }); dispatcher.refreshContext(); });
+  handle('repo:update', (name: string, description: string, setup?: string, run?: string, ports?: { basePort: string; portStep: number }) => {
+    // A base port out of range is refused here too, not only in the field (13A).
+    const base = ports ? parseBasePort(ports.basePort) : undefined;
+    if (base === 'bad') throw new Error(t('repo.portRange', { min: PORT_MIN, max: PORT_MAX }));
+    updateRepo(name, { description, ...(setup === undefined ? {} : { setup: setup.trim() }), ...(run === undefined ? {} : { run: run.trim() }), ...(ports ? { basePort: base ?? undefined, portStep: portStep({ portStep: ports.portStep }) } : {}) });
+    dispatcher.refreshContext();
+  });
   handle('repo:pickFolder', async () => {
     const r = await dialog.showOpenDialog(ctx.win()!, { properties: ['openDirectory'] });
     return r.canceled ? null : r.filePaths[0];
