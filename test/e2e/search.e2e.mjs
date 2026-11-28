@@ -53,7 +53,7 @@ flow('the palette finds something said and shows the chat from that message', {}
   const read = `const th = document.querySelector('#chat-thread'), cur = th.querySelector('mark.find.cur'), r = cur?.getBoundingClientRect(), tr = th.getBoundingClientRect();
     return cur && JSON.stringify({ marks: th.querySelectorAll('mark.find').length, cur: cur.textContent, inBub: cur.closest('.bub')?.innerText ?? '',
       pulse: cur.getAnimations().some((a) => a.animationName === 'hit-pulse'), middle: Math.abs((r.top + r.bottom) / 2 - (tr.top + tr.bottom) / 2) < tr.height / 3 || th.scrollTop === 0,
-      count: document.querySelector('.findbar .cnt')?.textContent, ticks: document.querySelectorAll('.find-ticks i').length, on: document.querySelectorAll('.find-ticks i.on').length });`;
+      count: document.querySelector('.findbar:not(.tm-find) .cnt')?.textContent, ticks: document.querySelectorAll('.find-ticks i').length, on: document.querySelectorAll('.find-ticks i.on').length });`;
   const first = JSON.parse(await app.until(read, 'the matches marked in the chat'));
   assert.match(first.inBub, /no pineapple on Fridays/);
   assert.equal(first.cur.toLowerCase(), 'pineapple');
@@ -64,9 +64,9 @@ flow('the palette finds something said and shows the chat from that message', {}
   // The thread now starts at that message: what was said before it is above, not shown.
   assert.equal(await app.evaluate("document.querySelector('#chat-thread').innerText.includes('Please remember the pineapple rule')"), false);
   // The bar's buttons are icons with names; Next moves the current match on.
-  const names = await app.evaluate("[...document.querySelectorAll('.findbar button')].map((b) => [b.getAttribute('aria-label'), b.dataset.tip, b.innerText.trim()].join('|'))");
+  const names = await app.evaluate("[...document.querySelectorAll('.findbar:not(.tm-find) button')].map((b) => [b.getAttribute('aria-label'), b.dataset.tip, b.innerText.trim()].join('|'))");
   assert.deepEqual(names, ['Previous match|Previous match|', 'Next match|Next match|', 'Close search|Close search|']);
-  await app.click('.findbar [data-action="find-next"]');
+  await app.click('.findbar:not(.tm-find) [data-action="find-next"]');
   const next = JSON.parse(await app.until(read, 'the next match'));
   assert.deepEqual([next.count, next.cur], [`2/${first.marks}`, 'Fridays']);
   // A new message draws the thread again, and may show what was said before: the current match stays the same word.
@@ -77,7 +77,7 @@ flow('the palette finds something said and shows the chat from that message', {}
   assert.match(after.inBub, /^Noted: no pineapple on Fridays/);
   // Escape closes the search and takes the marks off.
   await app.evaluate("document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return 1;");
-  await app.until("!document.querySelector('#chat-thread mark.find') && !document.querySelector('.findbar') && !document.querySelector('.find-ticks')", 'the search closed');
+  await app.until("!document.querySelector('#chat-thread mark.find') && !document.querySelector('.findbar:not(.tm-find)') && !document.querySelector('.find-ticks')", 'the search closed');
 });
 
 flow('the quick message box completes a repository name, sends to the Dispatcher and remembers the line', { repos: ['billing', 'docs'] }, async (app) => {

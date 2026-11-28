@@ -232,14 +232,28 @@ export async function closeTab(id: string) {
   if (!r.ok) toast(r.error, true);
 }
 
-/** Starts an ended tab's shell again, on a cleared screen. */
+/** Tabs whose shell is being started again (a second click waits for the first). */
+const restarting = new Set<string>();
+
+/** Starts an ended tab's shell again, on a cleared screen; the old screen comes back when it cannot start. */
 export async function restartTab(id: string) {
   const v = views.get(id);
-  if (!v) return;
+  const tab = pty.view.tabs.find((x) => x.id === id);
+  if (!v || !tab || tab.live || restarting.has(id)) return;
+  restarting.add(id);
   selectTab(id, false);
   v.term.reset();
-  const r = await tryCall('pty:restart', { id, cols: v.term.cols, rows: v.term.rows });
-  if (!r.ok) toast(r.error, true);
+  if (!$('#tm-find').hidden) { v.search.clearDecorations(); termFindStep(0); }
+  try {
+    const r = await tryCall('pty:restart', { id, cols: v.term.cols, rows: v.term.rows });
+    if (!r.ok) {
+      toast(r.error, true);
+      const a = await tryCall<{ replay: string; end: number }>('pty:attach', id);
+      if (a.ok && views.get(id) === v) v.term.write(a.v.replay);
+    }
+  } finally {
+    restarting.delete(id);
+  }
   if (pty.active === id) focusPty();
 }
 
@@ -326,7 +340,11 @@ export function renderPty() {
     find.dataset.tab = pty.active;
     if (!find.hidden) termFindStep(0);
   }
-  if (!tabs.length) find.hidden = true;
+  if (!tabs.length) {
+    find.hidden = true;
+    $('#tm-cnt').textContent = '';
+    delete find.dataset.tab;
+  }
 }
 
 function chipHtml(tab: PtyTab) {
