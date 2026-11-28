@@ -6,6 +6,7 @@ import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, M
 import { splitMentions } from '../../shared/mentions';
 import { currentTask } from '../../shared/currentTask';
 import type { SideView } from '../../shared/side';
+import type { TriggerChoice } from '../../shared/automations';
 import type { TermView } from '../../shared/terminal';
 import type { PtyView } from '../../shared/pty';
 import { tr, type Key } from '../../shared/i18n';
@@ -230,13 +231,13 @@ export const ui = {
   reply: { chat: null as Reply | null, ws: null as (Reply & { wid: string }) | null },
   insTab: 'inbox' as 'inbox' | 'memo' | 'auto' | 'script',
   /** The Automations tab's add form: which trigger is picked, and weekdays only. */
-  autoKind: 'daily' as 'daily' | 'merged',
-  autoWk: false,
+  /** The add form's picks from its menus (ui/chat.ts, pickAutoField). */
+  autoNew: null as { kind: TriggerChoice; repo: string; day: number } | null,
   /** The selected memo, and automation ('new': the add form), in the right sidebar (ui/panes.ts). */
   memoSel: null as string | null,
   autoSel: null as string | null,
   /** The automation being changed, with what its form's switches say; the text and the time keep themselves (data-keep). */
-  autoEdit: null as { id: string; kind: 'daily' | 'merged'; wk: boolean } | null,
+  autoEdit: null as { id: string; kind: TriggerChoice; repo: string; day: number } | null,
   /** The selected saved script ('new': the add form), and the one being edited (ui/scripts.ts). */
   scriptSel: null as string | null,
   scriptEdit: null as string | null,
