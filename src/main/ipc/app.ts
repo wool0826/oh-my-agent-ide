@@ -12,6 +12,7 @@ import { fakeMode } from '../fake';
 import { e2eOpened } from './e2e';
 import { autoSleep } from '../sleep';
 import { editorsFound, openWith, type OpenWhat } from '../openWith';
+import { setBadge } from '../notify';
 
 /** Opening links and files on the computer, pasted images, the version, restarting into an update, and sleep when done. */
 export function registerAppIpc() {
@@ -36,6 +37,8 @@ export function registerAppIpc() {
   handle('open:editors', () => editorsFound());
   handle('open:exists', (folder: string) => { try { return fs.statSync(String(folder)).isDirectory(); } catch { return false; } });
   handle('app:version', () => app.getVersion());
+  // The waiting decisions on the taskbar button or the Dock, with the overlay image the window drew for Windows.
+  handle('app:badge', (n: number, png: string) => setBadge(n, String(png ?? '')));
   // Something the window noticed that belongs in the app log (a Worker drawn with another task than main's).
   // At most 50 a run, so a window stuck in a loop cannot fill the log.
   let warns = 0;

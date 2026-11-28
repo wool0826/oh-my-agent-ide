@@ -5,7 +5,8 @@
 // Every list is one Tab stop (roving tabindex): its items carry data-nav, a key that names the item, and ↑/↓ move
 // between the ones shown. Selecting is the user's doing only (a click, Enter or Space, ↑/↓); the focus alone selects
 // nothing.
-import { $, esc } from './core';
+import { stepWaiting } from '../../shared/waiting';
+import { $, esc, S, ui } from './core';
 
 export type PaneTab = 'inbox' | 'memo' | 'auto' | 'script';
 
@@ -63,6 +64,19 @@ export function rove(root: HTMLElement = $('#chat-ins')) {
 
 /** The tab's content scrolls in its own box under the tabs, so the tabs stay in view (data-scroll keeps its offset). */
 export const colsHtml = (list: string, attrs = '') => `<div class="ins-body" data-scroll="ins-body"${attrs}><div class="ins-cols"><div class="ins-list">${list}</div></div></div>`;
+
+/** Where the last Next or Previous press went, so the next one steps on from it. */
+let lastWaiting: string | null = null;
+
+/**
+ * The waiting decision the strip's Next button or Ctrl/Cmd+I goes to (dir 1), or Ctrl/Cmd+Shift+I (dir -1): the card
+ * selected in the inbox first, then on through the inbox's order. Null when nothing waits.
+ */
+export function waitingStop(dir: 1 | -1): string | null {
+  const ids = S?.decisions.filter((d) => d.status === 'pending').map((d) => d.id) ?? [];
+  lastWaiting = stepWaiting(ids, ui.decSel, lastWaiting, dir);
+  return lastWaiting;
+}
 
 /** Selects slot `key` in place (slots and their rows), then makes the list's Tab stop follow. */
 export function markPick(key: string | null, root: HTMLElement = $('#chat-ins')) {

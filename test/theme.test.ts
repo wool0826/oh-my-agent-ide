@@ -45,9 +45,9 @@ test("strip: the caption buttons take the look's colour over nothing of their ow
 
 test("strip: the window's buttons follow the page zoom, so their hover fill stays inside the strip", () => {
   // Ctrl+- once is zoom level -0.5: a factor of 1.2^-0.5.
-  assert.equal(windowButtons('win32', 'dark', 1.2 ** -0.5).height, 40);
-  assert.equal(windowButtons('win32', 'dark', 1.2 ** 0.5).height, 48);
-  assert.equal(windowButtons('darwin', 'dark', 1.25).height, 55);
+  assert.equal(windowButtons('win32', 'dark', 1.2 ** -0.5).height, 51);
+  assert.equal(windowButtons('win32', 'dark', 1.2 ** 0.5).height, 61);
+  assert.equal(windowButtons('darwin', 'dark', 1.25).height, 70);
   for (const bad of [0, -1, Number.NaN, Infinity]) assert.equal(windowButtons('win32', 'dark', bad).height, STRIP_H, String(bad));
 });
 

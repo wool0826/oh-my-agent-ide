@@ -77,8 +77,8 @@
   --font-mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
   --ui-font-size: 13px;
   --px: calc(var(--ui-font-size) / 13);
-  --fs-caption2: calc(11 * var(--px));
   --fs-micro: calc(9 * var(--px));
+  --fs-caption2: calc(11 * var(--px));
   --fs-caption: calc(12 * var(--px));
   --fs-body: var(--ui-font-size);
   --fs-headline: calc(15 * var(--px));
@@ -125,7 +125,7 @@
   --icon-hero: 44px;
   --sidebar-w: 272px;
   --inspector-w: 344px;
-  --toolbar-h: 44px;
+  --toolbar-h: 56px;
   --panel-inset: 8px;
   --settings-nav-w: 240px;
   --settings-max: 680px;
@@ -517,9 +517,9 @@
     --avatar-2: var(--success-solid);
     --avatar-3: var(--ref-purple-600);
     --avatar-4: var(--ref-orange-600);
-  --editor-vscode: var(--ref-blue-600);
-  --editor-cursor: var(--ref-gray-900);
-  --editor-idea: var(--ref-orange-600);
+    --editor-vscode: var(--ref-blue-600);
+    --editor-cursor: var(--ref-gray-900);
+    --editor-idea: var(--ref-orange-600);
     --border-subtle: rgba(0, 0, 0, .08);
     --border-default: rgba(0, 0, 0, .12);
     --border-strong: rgba(0, 0, 0, .45);

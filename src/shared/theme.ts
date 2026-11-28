@@ -22,7 +22,7 @@ export function windowColors(look: 'dark' | 'light'): { background: string; symb
 }
 
 /** The top strip's height (--toolbar-h in tokens.css): the one row of the page the window's own buttons lie over. */
-export const STRIP_H = 44;
+export const STRIP_H = 56;
 
 /** What the window draws over the strip (Electron's titleBarOverlay). */
 export interface WindowButtons { height: number; color?: string; symbolColor?: string }

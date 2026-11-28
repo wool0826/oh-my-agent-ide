@@ -231,7 +231,7 @@ flow('a running row shows a card with its whole title, its steps and what it doe
 flow('a Worker folder opens in the editor, the terminal and the file manager, and a missing editor says so', { repos: ['demo'] }, async (app) => {
   const mod = process.platform === 'darwin' ? 4 : 2;
   const opened = () => app.evaluate("return await window.ide.call('e2e:opened');");
-  const last = async (n) => { let o = []; await app.until(`return (await window.ide.call('e2e:opened')).length >= ${n}`, `${n} things opened`); o = await opened(); return o[n - 1]; };
+  const last = async (n) => { await app.until(`return (await window.ide.call('e2e:opened')).length >= ${n}`, `${n} things opened`); return (await opened())[n - 1]; };
   await app.say('@fake task demo Open the folder\n@@fake write README.md # Demo\n@@fake result Done.');
   await app.until("document.querySelectorAll('#chat-ins .res').length >= 1", 'the task done');
   const w = (await app.state()).workers[0];

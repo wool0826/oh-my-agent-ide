@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { BrowserWindow, Notification, app } from 'electron';
+import { BrowserWindow, Notification, app, nativeImage } from 'electron';
+import { t } from './i18n';
 import { loadSettings } from './settings';
 import { Burst, inQuietHours } from '../shared/notifyRules';
 
 let win: BrowserWindow | null = null;
-export function setWindow(w: BrowserWindow) { win = w; }
+export function setWindow(w: BrowserWindow) { win = w; if (last.n) setBadge(last.n, last.png); }
 
 /** Notifications with buttons or a click are kept from garbage collection until they close, or those do nothing. */
 const live = new Set<Notification>();
@@ -69,6 +70,27 @@ function showInfo(title: string, body: string, taskId?: string) {
   live.add(n);
   n.on('close', () => live.delete(n));
   n.show();
+}
+
+/** What the taskbar or Dock badge shows now: the count, and whether Windows has an overlay image for it. */
+export const badge = { n: 0, overlay: false };
+/** The last count and image the window sent, put back on a window that comes after it. */
+const last = { n: 0, png: '' };
+
+/**
+ * The waiting decisions on the app's taskbar button (T-0180, spec 2bA). Windows takes an overlay image, which the
+ * window draws (a PNG data URL, 9+ past nine); macOS and Linux take the number. 0 clears it.
+ */
+export function setBadge(n: number, png: string) {
+  badge.n = Math.min(9999, Math.max(0, Math.floor(Number(n) || 0)));
+  // A 32px badge is a few kB; anything far bigger is not one.
+  if (png.length > 65536) png = '';
+  last.n = badge.n; last.png = png;
+  if (process.platform !== 'win32') { app.setBadgeCount(badge.n); return; }
+  if (!win || win.isDestroyed()) return;
+  const img = badge.n && png.startsWith('data:image/png;base64,') ? nativeImage.createFromDataURL(png) : null;
+  win.setOverlayIcon(img && !img.isEmpty() ? img : null, img ? t('tray.decisions', { n: badge.n }) : '');
+  badge.overlay = !!img && !img.isEmpty();
 }
 
 const MIME: Record<string, string> = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac' };
