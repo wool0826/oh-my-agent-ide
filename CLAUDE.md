@@ -50,6 +50,10 @@ The spec, tokens and component gallery are in `docs/design-system/` (start with 
   page and the logs under `test-results/e2e/`. `npm run e2e` and the CI shards (`test/e2e/shard.mjs`) find files by
   pattern.
 - Unit tests use `node:test` and `node:assert/strict`, one behaviour per `test(...)`, named `'<area>: what it does'`.
+- **Before pictures.** For the default branch's look, add a worktree of `origin/main` outside the repository, build it
+  there (`node build.mjs`, with `node_modules` linked or installed) and only then run a flow from it. The harness
+  refuses to start a checkout with no `dist/main.mjs`, and an e2e launch never shows an error box: its text goes to
+  the launch's `electron.log`.
 - **Screen pictures.** `test/e2e/visual.e2e.mjs` compares the main screens in both themes with `test/e2e/visual/*.png`
   (Windows only; CI job `visual`). When a change is meant to change how one of those screens looks (a token, a
   component, a string on it), run `npm run e2e:visual:update` in the same PR, look at each changed picture, and commit
