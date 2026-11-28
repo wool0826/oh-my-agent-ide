@@ -33,6 +33,7 @@ export function wireRemote() {
     lock: () => telegram.setPrefs({ requests: false, buttons: false }),
     requests: () => telegram.prefs().requests,
     buttons: () => telegram.prefs().buttons,
+    level: () => telegram.prefs().level,
     answer: (text, to, buttons) => { outbox.answer(text, to, buttons); },
     decision: (id) => store.data.decisions.find((d) => d.id === id) ?? null,
     answerDecision: (id, ans) => userAnswer(id, ans, 'telegram'),

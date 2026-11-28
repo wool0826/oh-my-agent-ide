@@ -46,6 +46,8 @@ export class Outbox {
   private answers = 0;
   /** A decision's message with buttons on the phone (its last part), until the decision is settled. */
   private asked = new Map<string, { id: number; text: string }>();
+  /** The decision whose message is on its way, and how it ended if it was settled meanwhile (undefined: not yet). */
+  private sending: { id: string; shown?: string | null } | null = null;
   private bursts = new Burst();
   private running = false;
   private lastSent = 0;
@@ -96,7 +98,11 @@ export class Outbox {
   settle(id: string, shown: string | null) {
     if (this.queue.drop(`d:${id}`)) return;
     const a = this.asked.get(id);
-    if (!a) return;
+    if (!a) {
+      // Settled while its message is being sent: the edit follows once Telegram gives the message's id.
+      if (this.sending?.id === id) this.sending.shown = shown;
+      return;
+    }
     this.asked.delete(id);
     const end = settledLine(this.say, shown);
     const text = `${a.text.slice(0, 4096 - end.length - 2)}\n\n${end}`;
@@ -119,6 +125,14 @@ export class Outbox {
     const added = this.queue.add({ key, group: key, text, silent: false, urgent: true, replyTo, buttons }, this.now());
     if (added) this.kick();
     return added;
+  }
+
+  private remember(id: string, a: { id: number; text: string }) {
+    this.asked.set(id, a);
+    for (const old of this.asked.keys()) {
+      if (this.asked.size <= ASKED_MAX) break;
+      this.asked.delete(old);
+    }
   }
 
   /** Waiting messages are dropped (the channel was turned off or disconnected). */
@@ -170,17 +184,23 @@ export class Outbox {
       }
       // The bot sends plain text; long news goes in up to three parts, the buttons under the last.
       const parts = splitText(o.text);
+      const asking = o.buttons?.length && o.ref?.startsWith('d:') ? o.ref.slice(2) : null;
+      this.sending = asking ? { id: asking } : null;
       for (const [i, part] of parts.entries()) {
         const last = i === parts.length - 1;
         const id = await this.ch.send(part, { silent: o.silent, replyTo: i === 0 ? o.replyTo : undefined, buttons: last ? o.buttons : undefined });
         this.lastSent = this.now();
         if (o.ref) this.sent.add(id, o.ref);
-        if (last && o.buttons?.length && o.ref?.startsWith('d:')) this.asked.set(o.ref.slice(2), { id, text: part });
+        if (last && asking) this.remember(asking, { id, text: part });
       }
+      const late = this.sending;
+      this.sending = null;
+      if (late && late.shown !== undefined) this.settle(late.id, late.shown);
       this.fails = 0;
       this.rates = 0;
       return null;
     } catch (e) {
+      this.sending = null;
       this.lastSent = this.now();
       const err = e instanceof TelegramError ? e : null;
       log.warn('telegram send', err ? `${err.kind} ${err.code}` : 'failed');
@@ -195,6 +215,9 @@ export class Outbox {
 }
 
 export const outbox = new Outbox(telegram);
+
+/** How many decisions' buttons are kept track of; the oldest beyond it (a decision removed unanswered) is let go. */
+export const ASKED_MAX = 200;
 
 /** Tells the phone, when Telegram is on and paired; never throws. */
 export function tellRemote(n: RemoteNews) {

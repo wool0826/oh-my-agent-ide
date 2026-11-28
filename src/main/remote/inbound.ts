@@ -7,6 +7,7 @@ import type { Say } from '../../shared/askWhy';
 import { isStale, type TgCallback, type TgMessage, type TgUpdate } from '../../shared/remote';
 import { InboundLimit, readInbound, type RemoteCommand } from '../../shared/remoteChat';
 import { HELD_DROP, HELD_RUN, answersByReply, readPress, remoteChoices, type TgButton } from '../../shared/remoteDecision';
+import type { RemoteLevel } from '../../shared/remoteNotice';
 import type { Decision } from '../../shared/types';
 
 /** A message that waits for /run or /drop. */
@@ -24,6 +25,8 @@ export interface InboundDeps {
   requests(): boolean;
   /** Decisions carry buttons, and a reply to one answers it. */
   buttons(): boolean;
+  /** How much the phone is told; a reply answers a decision only where its question was shown. */
+  level(): RemoteLevel;
   /** The bot's answer, as a reply to the phone's message, with buttons under it. */
   answer(text: string, replyTo?: number, buttons?: TgButton[][]): void;
   decision(id: string): Pick<Decision, 'id' | 'source' | 'options' | 'status'> | null;
@@ -123,7 +126,7 @@ export class Inbound {
     if (ref?.startsWith('d:') && !m.forward_origin && this.d.buttons()) {
       const d = this.d.decision(ref.slice(2));
       if (d?.status === 'pending') {
-        if (!answersByReply(d)) return this.d.answer(say('tg.r.desktopOnly'), m.message_id);
+        if (!answersByReply(d, { level: this.d.level(), stale: isStale(m.date, this.d.now()) })) return this.d.answer(say('tg.r.desktopOnly'), m.message_id);
         return this.d.answerDecision(d.id, r.text);
       }
     }

@@ -11,8 +11,13 @@ const opts = (...l: string[]) => l.map((label) => ({ label }));
 
 test('remoteDecision: a permission has no buttons and is not answered by a reply', () => {
   assert.deepEqual(remoteChoices(say, { source: 'permission', options: [] }), []);
-  assert.equal(answersByReply({ source: 'permission' }), false);
-  assert.equal(answersByReply({ source: 'question' }), true);
+  assert.equal(answersByReply({ source: 'permission' }, { level: 'summary', stale: false }), false);
+  assert.equal(answersByReply({ source: 'question' }, { level: 'summary', stale: false }), true);
+});
+
+test('remoteDecision: a reply answers nothing the phone never showed, nor one written while the chat went unread', () => {
+  assert.equal(answersByReply({ source: 'plan' }, { level: 'title', stale: false }), false);
+  assert.equal(answersByReply({ source: 'question' }, { level: 'summary', stale: true }), false);
 });
 
 test('remoteDecision: a plan is approved or denied', () => {

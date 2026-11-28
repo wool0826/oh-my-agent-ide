@@ -3,6 +3,7 @@
 // the buttons, remote/inbound.ts reads the presses.
 import type { Say } from './askWhy';
 import { notifyActions } from './notifyActions';
+import type { RemoteLevel } from './remoteNotice';
 import { ALLOW, ALLOW_TASK, DENY, type Decision } from './types';
 
 /** One inline button: its label and what Telegram sends back when it is pressed (1 to 64 bytes). */
@@ -24,9 +25,13 @@ export function remoteChoices(say: Say, d: Asked): Choice[] {
   return notifyActions(d).map((a) => ({ label: 'key' in a.label ? say(a.label.key) : a.label.text, answer: a.answer }));
 }
 
-/** May a reply on the phone to this decision's message answer it? Everything but a permission. */
-export function answersByReply(d: Pick<Decision, 'source'>): boolean {
-  return d.source !== 'permission';
+/**
+ * May a reply on the phone to this decision's message answer it? Not a permission, not at the title level (the
+ * phone never showed what was asked: free words to a plan would revise it unseen), and not one written while the
+ * app was not reading the chat.
+ */
+export function answersByReply(d: Pick<Decision, 'source'>, o: { level: RemoteLevel; stale: boolean }): boolean {
+  return d.source !== 'permission' && o.level === 'summary' && !o.stale;
 }
 
 /** The held messages' buttons (remote/inbound.ts): send them, or drop them. */

@@ -8,7 +8,7 @@ type Dec = Pick<Decision, 'id' | 'source' | 'options' | 'status'>;
 
 const NOW = 1_800_000_000_000;
 
-function setup(o: { requests?: boolean; buttons?: boolean; held?: boolean; busy?: boolean; refs?: Record<number, string>; waiting?: HeldMessage[]; fail?: boolean; decisions?: Dec[] } = {}) {
+function setup(o: { level?: 'title' | 'summary'; requests?: boolean; buttons?: boolean; held?: boolean; busy?: boolean; refs?: Record<number, string>; waiting?: HeldMessage[]; fail?: boolean; decisions?: Dec[] } = {}) {
   const seen = new Set<number>();
   const kept = { list: o.waiting ?? [] };
   const log = {
@@ -29,6 +29,7 @@ function setup(o: { requests?: boolean; buttons?: boolean; held?: boolean; busy?
     lock: () => { log.locked++; requests = false; buttons = false; },
     requests: () => requests,
     buttons: () => buttons,
+    level: () => o.level ?? 'summary',
     answer: (text, replyTo, b) => { log.answers.push({ text, replyTo, ...(b ? { buttons: b } : {}) }); },
     decision: (id) => o.decisions?.find((d) => d.id === id) ?? null,
     answerDecision: (id, ans) => { log.decided.push([id, ans]); },
@@ -208,6 +209,15 @@ test('remoteInbound: a reply to a waiting question answers it, even with request
   assert.deepEqual(log.decided, [['q1', 'MySQL, please']]);
   assert.deepEqual(log.answers.map((a) => a.text), ['tg.r.desktopOnly']);
   assert.deepEqual(log.sent, []);
+});
+
+test('remoteInbound: a reply to a decision at the title level, or an old one, is sent to the computer', async () => {
+  const { inbound, log } = setup({ decisions: [question], level: 'title', refs: { 7: 'd:q1' } });
+  await inbound.handle(msg('SQLite', { reply: 7 }));
+  const old = setup({ decisions: [question], refs: { 7: 'd:q1' } });
+  await old.inbound.handle(msg('SQLite', { reply: 7, date: 1 }));
+  assert.deepEqual([...log.decided, ...old.log.decided], []);
+  assert.deepEqual([...log.answers, ...old.log.answers].map((a) => a.text), ['tg.r.desktopOnly', 'tg.r.desktopOnly']);
 });
 
 test('remoteInbound: a forwarded reply never answers a decision', async () => {

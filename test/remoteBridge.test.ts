@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Outbox } from '../src/main/remote/bridge';
+import { ASKED_MAX, Outbox } from '../src/main/remote/bridge';
 import { TelegramError } from '../src/main/remote/telegramApi';
 import { TelegramLink, type LinkCrypt, type LinkStore } from '../src/main/remote/telegramLink';
 import { cleanTelegram, type TelegramStored } from '../src/shared/remote';
@@ -109,7 +109,7 @@ test('remoteBridge: a message that keeps failing is dropped after its tries and 
 function fakeChannel(fail: (n: number) => Error | null = () => null) {
   const ch = { ready: true, sent: [] as string[], calls: 0, prefs: () => cleanTelegram(null).prefs,
     async send(text: string) { const e = fail(ch.calls++); if (e) throw e; ch.sent.push(text); return ch.sent.length; },
-    async edit() {} };
+    async edit(_id: number, _text: string | null) {} };
   return ch;
 }
 
@@ -236,6 +236,40 @@ test('remoteBridge: a decision settled before its message went is not sent', () 
   assert.equal(s.state.sent.length, 1);
   assert.equal(s.state.edits.length, 0);
 }));
+
+test('remoteBridge: a decision settled while its message is on its way loses its buttons once it lands', async () => {
+  let land = () => {};
+  let started = false;
+  const edits: [number, string | null][] = [];
+  const ch = { ready: true, prefs: () => cleanTelegram(null).prefs,
+    send: (_text: string) => { started = true; return new Promise<number>((r) => { land = () => r(9); }); },
+    async edit(id: number, text: string | null) { edits.push([id, text]); } };
+  const box = new Outbox(ch, { quiet: () => false, gapMs: 0 });
+  box.tell(asked());
+  while (!started) await new Promise((r) => setTimeout(r, 1));
+  box.settle('abc', 'SQLite');
+  land();
+  await box.idle();
+  assert.equal(edits.length, 1);
+  assert.equal(edits[0][0], 9);
+  assert.match(edits[0][1]!, /→ SQLite$/);
+});
+
+test('remoteBridge: only the latest decisions with buttons are kept track of', async () => {
+  const ch = fakeChannel();
+  const edits: number[] = [];
+  ch.edit = async (id: number) => { edits.push(id); };
+  const box = new Outbox(ch, { quiet: () => false, gapMs: 0 });
+  for (let i = 0; i <= ASKED_MAX; i++) {
+    box.tell(asked({ id: `q${i}` }));
+    if (i % 20 === 19) await box.idle();
+  }
+  await box.idle();
+  box.settle('q0', 'Postgres');
+  box.settle(`q${ASKED_MAX}`, 'Postgres');
+  await box.idle();
+  assert.deepEqual(edits, [ASKED_MAX + 1]);
+});
 
 test('remoteBridge: a withdrawn decision says so in place of its buttons', () => withOutbox(async (s, box) => {
   box.tell(asked());
