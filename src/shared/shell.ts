@@ -21,11 +21,37 @@ export const SHELL_FOLDED = 12;
  */
 const PS_PROFILE = 'foreach ($p in @($PROFILE.AllUsersAllHosts, $PROFILE.AllUsersCurrentHost, $PROFILE.CurrentUserAllHosts, $PROFILE.CurrentUserCurrentHost)) { if ($p -and (Test-Path -LiteralPath $p)) { try { . $p *> $null } catch {} } }\n$global:LASTEXITCODE = $null\n';
 
+/** A native command's own exit code rather than the 1 PowerShell ends with for any failed line. */
+const PS_EXIT = '$ok = $?; if ($ok) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }';
+/**
+ * The longest line that is handed over encoded (psLine), in base64 characters. Windows takes about 32,000 characters
+ * for a whole command line and base64 is a third longer than its text, so a longer line goes as it is.
+ */
+export const PS_ENCODED_MAX = 24_000;
+
+const base64 = (text: string) => {
+  let bytes = '';
+  for (const b of new TextEncoder().encode(text)) bytes += String.fromCharCode(b);
+  return btoa(bytes);
+};
+
 /**
  * The line as PowerShell runs it: output in UTF-8 rather than the console's code page, the user's profile first when
- * `profile`, and a native command's own exit code rather than the 1 PowerShell ends with for any failed line.
+ * `profile`, and a native command's own exit code (PS_EXIT).
+ *
+ * PowerShell reads the whole of -Command before it runs any of it, so a line it cannot read (`a && b` in Windows
+ * PowerShell, an open quote) was reported before the UTF-8 line had run: in the console's code page, which showed as
+ * broken characters on a Korean or Japanese Windows. The line therefore goes in encoded and is read after the UTF-8
+ * line; what PowerShell says about a line it cannot read is printed as the error, and the run ends with 1 as before.
+ * It runs dot-sourced, in the scope the profile was loaded into.
  */
-export const psLine = (line: string, profile = false) => `[Console]::OutputEncoding = [Text.Encoding]::UTF8\n${profile ? PS_PROFILE : ''}${line}\n$ok = $?; if ($ok) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }`;
+export const psLine = (line: string, profile = false) => {
+  const head = `[Console]::OutputEncoding = [Text.Encoding]::UTF8\n${profile ? PS_PROFILE : ''}`;
+  const body = `${line}\n${PS_EXIT}`;
+  const encoded = base64(body);
+  if (encoded.length > PS_ENCODED_MAX) return `${head}${body}`;
+  return `${head}try { $__oma = [scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}'))) } catch { $__oma = $_.Exception; if ($__oma.InnerException) { $__oma = $__oma.InnerException }; [Console]::Error.WriteLine($__oma.Message); exit 1 }\n. $__oma`;
+};
 
 /**
  * Printed on a line of its own by an interactive shell's line before the user's command (shellArgs). What the rc

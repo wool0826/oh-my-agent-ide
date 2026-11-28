@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { dropRcNoise, psLine, RC_DONE, RC_NOISE_MAX, shellArgs } from '../src/shared/shell';
+import { dropRcNoise, PS_ENCODED_MAX, psLine, RC_DONE, RC_NOISE_MAX, shellArgs } from '../src/shared/shell';
 
 test('macOS and Linux: -ilc through /bin/sh with the marker when the profile is on, -lc as before when off', () => {
   const on = shellArgs({ platform: 'darwin', shell: '/bin/zsh', cmd: 'gs', profile: true });
@@ -84,4 +84,42 @@ test('Windows PowerShell with the profile: exit codes stay the line\'s own', { s
   }
   const r = runPlan(shellArgs({ platform: 'win32', shell: '', cmd: 'Write-Output hi', profile: true, pwsh: null }), process.env);
   assert.equal(r.out.trim(), 'hi');
+});
+
+test('psLine: the line goes in encoded, to be read after the UTF-8 line; a very long one goes as it is', () => {
+  const line = 'echo "한글" && echo done';
+  const ps = psLine(line);
+  assert.ok(ps.startsWith('[Console]::OutputEncoding = [Text.Encoding]::UTF8\n'));
+  assert.ok(!ps.includes('한글'));
+  const body = Buffer.from(/FromBase64String\('([A-Za-z0-9+/=]+)'\)/.exec(ps)![1], 'base64').toString('utf8');
+  assert.equal(body, `${line}\n$ok = $?; if ($ok) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }`);
+  // The profile is loaded outside the encoded part, before the line is read.
+  assert.ok(psLine(line, true).indexOf('$PROFILE.CurrentUserCurrentHost') < psLine(line, true).indexOf('FromBase64String'));
+  const long = `echo ${'x'.repeat(PS_ENCODED_MAX)}`;
+  assert.ok(psLine(long).includes(long));
+  assert.doesNotMatch(psLine(long), /FromBase64String/);
+});
+
+test('Windows PowerShell: a line it cannot read says why in UTF-8 and ends with 1, and other lines run as before', { skip: process.platform !== 'win32' && 'Windows only' }, () => {
+  const run = (cmd: string, profile = false) => {
+    const plan = shellArgs({ platform: 'win32', shell: '', cmd, profile, pwsh: null });
+    const r = spawnSync(plan.file, plan.args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 20_000, windowsHide: true });
+    return { code: r.status, out: r.stdout.toString('utf8').replace(/\r/g, ''), err: r.stderr.toString('utf8') };
+  };
+  // "&&" is not Windows PowerShell's, and a quote left open is nobody's: the reason is readable, not the console's code page.
+  for (const bad of ['echo a && echo b', 'echo "open']) {
+    const r = run(bad);
+    assert.equal(r.code, 1, bad);
+    assert.equal(r.out, '', bad);
+    assert.ok(r.err.trim().length > 0 && !r.err.includes('�'), `${bad}: ${r.err}`);
+  }
+  // The message quotes the line: Korean in it reads as Korean on any console code page, with the profile loaded too.
+  for (const profile of [false, true]) {
+    const r = run('echo "한글', profile);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /한글/);
+  }
+  assert.deepEqual(run('echo 한글; cmd /c exit 3'), { code: 3, out: '한글\n', err: '' });
+  assert.deepEqual(run('echo one\necho two'), { code: 0, out: 'one\ntwo\n', err: '' });
+  assert.equal(run('exit 7').code, 7);
 });
