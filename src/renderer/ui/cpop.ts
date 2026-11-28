@@ -18,12 +18,14 @@ export interface CpopRow {
 
 export interface CpopList {
   kind: 'history' | 'prompts' | 'mentions';
-  /** The heading of a list with one group, with the number of rows after it. */
+  /** The heading of the rows with no group, with `count` after it when given. */
   title?: string;
   count?: number;
   rows: CpopRow[];
   /** What an empty list says. */
   empty: string;
+  /** Said under the heading when the rows there are none but the list goes on (no prompt matches, none saved). */
+  note?: string;
   /** The keys at the foot: [keys, what they do]. None while the list is empty. */
   hints: [string[], Key][];
   /** 'history': Up goes to older rows (shared/quickInput.ts recentStep), Down back, and past the newest closes. */
@@ -66,15 +68,15 @@ function labelHtml(l: CpopRow['label']) {
 function draw(box: Box) {
   const o = open[box]!;
   const { list } = o;
-  const one = list.title !== undefined;
   let group: string | undefined;
   const rows = list.rows.map((r, i) => {
-    const head = !one && r.group !== group ? `<div class="cpop-h">${esc(r.group ?? '')}</div>` : '';
+    const head = r.group && r.group !== group ? `<div class="cpop-h">${esc(r.group)}</div>` : '';
     group = r.group;
     return `${head}<div class="cpop-it${i === o.at ? ' on' : ''}" role="option" id="cpop-${box}-${i}" data-i="${i}" aria-selected="${i === o.at}">${sym(r.icon)}<span>${labelHtml(r.label)}</span>${r.meta ? `<small${r.mono ? ' class="mono"' : ''}>${esc(r.meta)}</small>` : ''}</div>`;
   }).join('');
-  const head = one ? `<div class="cpop-h">${esc(list.title!)}<span class="gap"></span><small>${list.count ?? list.rows.length}</small></div>` : '';
-  const body = list.rows.length ? rows : `<div class="cpop-none">${esc(list.empty)}</div>`;
+  const head = list.title !== undefined ? `<div class="cpop-h">${esc(list.title)}<span class="gap"></span>${list.count !== undefined ? `<small>${list.count}</small>` : ''}</div>` : '';
+  const note = list.note ? `<div class="cpop-none">${esc(list.note)}</div>` : '';
+  const body = list.rows.length ? note + rows : `<div class="cpop-none">${esc(list.empty)}</div>`;
   const foot = list.rows.length && list.hints.length
     ? `<div class="cpop-foot">${list.hints.map(([keys, what]) => `<span>${keys.map((k) => `<kbd>${esc(k)}</kbd>`).join('')}${esc(t(what))}</span>`).join('')}</div>`
     : '';

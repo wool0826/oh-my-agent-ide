@@ -116,6 +116,7 @@ To stop it: **Disconnect** in Settings forgets the account; **Use** off stops ev
 | ⌘/Ctrl+/ | List of shortcuts |
 | `!` at the start of the chat composer | Run the line in a shell |
 | ↑ in an empty composer | Prompts sent from it (the chat, or that Worker): ↑/↓ move, typing narrows, Enter fills the composer, Esc closes |
+| / at the start of a line in a composer | Saved prompts (Memos → Prompts), "Save current input", and in the chat /compact and /new: typing narrows, Enter puts it in, Esc closes |
 | ↑/↓, Enter, D, T, 1–9 on a decision card | Move between cards, allow, deny, allow for the task, pick an answer |
 | Tab, in the quick message box | Finish an `@repository` name |
 | ↑ / ↓, in the quick message box | Lines sent before |

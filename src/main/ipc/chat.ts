@@ -5,13 +5,14 @@ import { dispatcher } from '../agents/dispatcher';
 import { closeQuick } from '../quick';
 import { t } from '../i18n';
 import { PAGE } from '../../shared/paging';
+import { cleanPreset } from '../../shared/prompts';
 
 /** The chat with the Dispatcher, the quick message box and the state the window reads. */
 export function registerChatIpc(ctx: IpcContext) {
   handle('state', () => ctx.snapshot());
   // The whole state, numbered: the window asks for it when it loads and when it missed a message.
   handle('state:full', () => ctx.sender.full(ctx.snapshot()));
-  handle('chat:send', (text: string, files?: string[], replyTo?: string | null) => dispatcher.send(text, files ?? [], typeof replyTo === 'string' ? replyTo : null));
+  handle('chat:send', (text: string, files?: string[], replyTo?: string | null, preset?: unknown) => dispatcher.send(text, files ?? [], typeof replyTo === 'string' ? replyTo : null, 'desktop', cleanPreset(preset, (n) => !!store.repo(n))));
   handle('chat:stop', () => dispatcher.stop());
   // The composers' prompt history (decision 1B): kept in main, read when Up opens it.
   handle('history:list', (key: string) => store.sentPrompts(String(key)));

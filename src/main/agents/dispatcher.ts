@@ -7,6 +7,7 @@ import { codexToolsFrom, type SdkToolDef } from './codexTools';
 import { codexClient } from '../codex/client';
 import { cachedModels } from '../models';
 import { providerOf } from '../../shared/models';
+import { applyPreset, presetNote } from '../../shared/prompts';
 import { workers, modelLabel } from './workers';
 import { accounts } from '../accounts';
 import { store } from '../store';
@@ -26,7 +27,7 @@ import { tellRemote } from '../remote/bridge';
 import { FORWARD_OPEN, remoteRefusal } from '../../shared/remoteChat';
 import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today, uid } from '../util';
-import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
+import { EFFORTS, type Effort, type PromptPreset, type Task, type Worker } from '../../shared/types';
 import { artifactCommentLine } from '../../shared/artifactComment';
 import { hasSpend } from '../../shared/spend';
 import { threadTarget, turnReplyTo } from '../../shared/thread';
@@ -286,7 +287,8 @@ function boardTools(d: Dispatcher) {
         plan_first: z.boolean().optional().describe('The Worker investigates read-only and proposes a plan; the user approves it in the decision inbox before any change, and the same Worker then carries it out. Use when the user asks to see a plan first, or the change is large, risky, or ambiguous. Write the prompt for the whole job, not "plan only".'),
       }, async (a) => {
         try {
-          const { task, worker: w, reused } = await createTask(a);
+          // The preset chips the user sent the message with (shared/prompts.ts) win over the Dispatcher's choice.
+          const { task, worker: w, reused } = await createTask(applyPreset(a, d.preset));
           d.acted();
           store.handout(assignedEvent(task, w, !!a.worker_id || !!reused), task.id);
           const wait = waitsForSlot(task)
@@ -543,6 +545,8 @@ class Dispatcher {
   private heldRemote = false;
   /** Where the user last wrote from: a turn that starts by itself answers there too. */
   private lastVia: 'desktop' | 'telegram' = 'desktop';
+  /** The preset of the user's last message (shared/prompts.ts), applied to the tasks created until the next one. */
+  preset: PromptPreset | null = null;
   /** Something waits for a usage limit to reset. */
   get holding() { return this.held.length > 0; }
   /** When the work in progress started: the composer's status line counts from it. Null while idle. */
@@ -651,7 +655,7 @@ class Dispatcher {
       const fake = new FakeSession({
         label: 'Dispatcher', model: loadSettings().dispatcherModel, cwd: paths().home, accountId: null, resume: d.sessionId,
         createTask: async (a) => {
-          const { task, worker: w, reused } = await createTask(a);
+          const { task, worker: w, reused } = await createTask(applyPreset(a, this.preset));
           this.acted();
           store.handout(assignedEvent(task, w, !!reused), task.id);
           return `${task.id} ${w ? `assigned to ${w.id}` : 'queued with no Worker yet'}.${overlapNote(task, task.overlaps ?? [], store.data.tasks)}`;
@@ -784,19 +788,21 @@ class Dispatcher {
    * A message the user typed in the chat, with optional attached file paths. Gives back its chat message's id.
    * `via`: 'telegram' for the phone (decision 250); 'auto' for an automation, which answers wherever the user last wrote.
    */
-  send(text: string, files: string[] = [], replyTo: string | null = null, via: 'desktop' | 'telegram' | 'auto' = 'desktop'): string {
+  send(text: string, files: string[] = [], replyTo: string | null = null, via: 'desktop' | 'telegram' | 'auto' = 'desktop', preset: PromptPreset | null = null): string {
     const attached = registerAttachments(files);
     const full = text + attachmentBlock(attached);
+    this.preset = preset;
     // A reply is filed under a report or a Dispatcher message still in the chat (a reply to a reply, under its root);
     // anything else is a plain message.
     const to = threadTarget(store.data.chat, replyTo);
     const item = store.chat('user', full, undefined, to);
     if (via === 'telegram') item.via = 'telegram';
+    if (preset) item.preset = preset;
     const remote = via === 'telegram' || (via === 'auto' && this.lastVia === 'telegram');
     if (via !== 'auto') this.lastVia = via;
     this.userSpoke();
     // The model hears where the words came from; the chat shows them as they were sent.
-    const said = via === 'telegram' ? `[From Telegram]\n${full}` : full;
+    const said = (via === 'telegram' ? `[From Telegram]\n${full}` : full) + (preset ? `\n\n${presetNote(preset, modelLabel(preset.model))}` : '');
     const s = this.open();
     if (!s) {
       if (!accounts.list().length) { store.event(t('err.noAccount'), { k: 'noAccount' }, { kind: 'error' }); return item.id; }

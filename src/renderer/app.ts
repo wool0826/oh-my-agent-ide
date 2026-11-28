@@ -41,6 +41,7 @@ import { initSwipe } from './ui/swipe';
 import { initTip } from './ui/tip';
 import { copyText } from './ui/copy';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
+import { cancelPromptEdit, chatPreset, dropPreset, editPrompt, openPromptForm, pickPromptSetting, savePrompt, setPreset, setPromptPlan, slashTyped, usePrompt } from './ui/prompts';
 import { bindDock } from './ui/dock';
 import { bindTerm, hideTerm, newTermTab, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
 import { clearPty, closeTab, closeTermFind, openTermFind, pty, ptyOn, restartTab, selectTab, termFindStep } from './ui/xterm';
@@ -315,9 +316,18 @@ export async function act(el: HTMLElement, e: Event) {
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
       break;
     }
-    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' || el.dataset.v === 'auto' || el.dataset.v === 'script' ? el.dataset.v : 'inbox'; ui.memoEdit = null; cancelScriptEdit(); ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
+    case 'ins-tab': ui.insTab = el.dataset.v === 'memo' || el.dataset.v === 'auto' || el.dataset.v === 'script' ? el.dataset.v : 'inbox'; ui.memoEdit = null; cancelScriptEdit(); cancelPromptEdit(); ui.memoDel = null; renderChatInspector(); swapIn($('#chat-ins')); break;
+    case 'memo-seg': ui.memoSeg = el.dataset.v === 'prompt' ? 'prompt' : 'memo'; ui.memoEdit = null; cancelPromptEdit(); ui.memoDel = null; renderChatInspector(); break;
+    case 'prompt-new': openPromptForm(); break;
+    case 'prompt-save': await savePrompt(id ?? 'new'); renderChatInspector(); break;
+    case 'prompt-cancel': cancelPromptEdit(); renderChatInspector(); break;
+    case 'prompt-edit': if (id) { editPrompt(id); renderChatInspector(); document.querySelector<HTMLInputElement>(`#chat-ins [data-keep="prompt-name-${CSS.escape(id)}"]`)?.focus(); } break;
+    case 'prompt-remove': if (ui.memoDel === id) { ui.memoDel = null; await call('prompt:remove', id); } else askMemoDel(id ?? null); break;
+    case 'prompt-use': if (id) usePrompt(id); break;
+    case 'prompt-repo': case 'prompt-model': pickPromptSetting(el, renderChatInspector); break;
+    case 'preset-x': dropPreset(el.dataset.k ?? ''); break;
     case 'send-err-x': { const box = el.dataset.box === 'ws' ? 'ws' : 'chat'; setSendErr(box, ''); $(box === 'chat' ? '#chat-input' : '#ws-input').focus(); break; }
-    case 'form-err-x': if (id === 'memo' || id === 'auto' || id === 'script') { ui.formErr[id] = ''; renderChatInspector(); } break;
+    case 'form-err-x': if (id === 'memo' || id === 'auto' || id === 'script' || id === 'prompt') { ui.formErr[id] = ''; renderChatInspector(); } break;
     // The Worker composer: send a normal message past the open decision, or answer it after all (M7).
     case 'dec-as-message': if (id) { ui.decAsMessage.add(id); renderComposerDecision(); $('#ws-input').focus(); } break;
     case 'dec-answer-it': if (id) { ui.decAsMessage.delete(id); renderComposerDecision(); $('#ws-input').focus(); } break;
@@ -891,7 +901,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     host.style.setProperty('--composer-h', h);
     if (thread && atEnd) scrollQuietly(thread, thread.scrollHeight);
   }).observe(form);
-  input.addEventListener('input', () => { if (box === 'chat') shellInput(input); autosize(input); updateSendButton(); historyTyped(box); });
+  input.addEventListener('input', () => { if (box === 'chat') shellInput(input); autosize(input); updateSendButton(); historyTyped(box); slashTyped(box); });
   // The list over the composer goes with the focus; a press on one of its rows keeps the focus here.
   input.addEventListener('blur', () => closeCpop(box));
   // Files copied in Explorer or Finder attach as if dropped here.
@@ -1030,6 +1040,7 @@ export function init() {
       return;
     }
     if (el.dataset.change === 'auto-toggle') { void call('auto:toggle', el.dataset.id, (el as unknown as HTMLInputElement).checked); return; }
+    if (el.dataset.change === 'prompt-plan') { setPromptPlan(el.dataset.id ?? 'new', (el as unknown as HTMLInputElement).checked); return; }
     if (el.id === 'auto-wk') { ui.autoWk = (el as unknown as HTMLInputElement).checked; return; }
     if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoKind === 'merged'); return; }
     // The same two switches in the form that changes an automation.
@@ -1232,6 +1243,8 @@ export function init() {
         void addMemo();
       } else if (el.dataset.enter === 'script-save') {
         void act(actionAs('script-save', el.dataset.id), e);
+      } else if (el.dataset.enter === 'prompt-save') {
+        void act(actionAs('prompt-save', el.dataset.id), e);
       } else if (el.dataset.enter === 'memo-save') {
         void act(actionAs('memo-save', el.dataset.id), e);
       } else if (el.dataset.enter === 'sug-save') {
@@ -1323,7 +1336,9 @@ export function init() {
       if (r.ok) leaveShell();
       return r.ok ? null : r.error;
     }
-    const r = await tryCall('chat:send', replyText('chat', text), files, ui.reply.chat?.task ?? null);
+    const r = await tryCall('chat:send', replyText('chat', text), files, ui.reply.chat?.task ?? null, chatPreset());
+    // The chips went with it.
+    if (r.ok) setPreset(null);
     return r.ok ? null : r.error;
   });
   // Text selected in a conversation is copied when the mouse is let go, as in a terminal; Ctrl/Cmd+C still works.

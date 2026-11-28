@@ -396,6 +396,8 @@ export interface ChatItem {
   cleared?: boolean;
   /** kind 'user': sent from the phone (decision 250). */
   via?: 'telegram';
+  /** A user message sent with a saved prompt's preset chips (shared/prompts.ts). */
+  preset?: PromptPreset;
 }
 
 export interface WorkerLogItem {
@@ -564,6 +566,8 @@ export interface AppState {
   automations: Automation[];
   /** Saved shell scripts, shown in the right sidebar's Scripts tab. */
   scripts: ShellScript[];
+  /** Saved prompts, put into a composer with "/" and kept in the Memos tab. */
+  prompts: SavedPrompt[];
   /** Run commands started in this session of the app. */
   runs: RunView[];
   /** The IDE memory's sync with its remote repository. */
@@ -586,6 +590,26 @@ export interface ShellScript {
   createdAt: string;
   updatedAt: string;
   lastRunAt: string | null;
+}
+
+/** What a saved prompt sets for the tasks of the message it goes with: '' and false set nothing. */
+export interface PromptPreset {
+  /** A registered repository's name. */
+  repo: string;
+  /** A model id. */
+  model: string;
+  planFirst: boolean;
+}
+
+/** A text the user keeps and puts into a composer with "/" and its command (shared/prompts.ts). */
+export interface SavedPrompt extends PromptPreset {
+  id: string;
+  name: string;
+  /** Without its "/". */
+  cmd: string;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Memo {

@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- IPC answers are typed by the caller (call<T>), any by default. */
 import { middleName } from '../../shared/middleName';
 import { NOTES } from '../../shared/sounds';
-import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
+import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, PromptPreset, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
 import { currentTask } from '../../shared/currentTask';
 import type { SideView } from '../../shared/side';
 import type { TermView } from '../../shared/terminal';
@@ -238,6 +238,12 @@ export const ui = {
   /** The selected saved script ('new': the add form), and the one being edited (ui/scripts.ts). */
   scriptSel: null as string | null,
   scriptEdit: null as string | null,
+  /** The Memos tab shows the memos or the saved prompts (ui/prompts.ts). */
+  memoSeg: 'memo' as 'memo' | 'prompt',
+  /** The prompt form open: 'new' or a prompt's id. */
+  promptEdit: null as string | null,
+  /** The preset chips over the chat composer, sent with its next message (shared/prompts.ts). */
+  presetChat: null as PromptPreset | null,
   memoEdit: null as string | null,
   memoDel: null as string | null,
   /** The last chat item and Worker log length already drawn; what comes after them is new. */
@@ -256,7 +262,7 @@ export const ui = {
   stopping: new Set<string>(),
   /** Why the last send from a composer, a new memo or a new automation failed; shown until it is dismissed or sent again (L8). */
   sendErr: { chat: '', ws: '' } as Record<'chat' | 'ws', string>,
-  formErr: { memo: '', auto: '', script: '' } as Record<'memo' | 'auto' | 'script', string>,
+  formErr: { memo: '', auto: '', script: '', prompt: '' } as Record<'memo' | 'auto' | 'script' | 'prompt', string>,
 };
 
 /* ---------- helpers ---------- */
