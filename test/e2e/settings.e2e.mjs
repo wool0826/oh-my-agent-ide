@@ -303,6 +303,11 @@ flow('the repository list has columns, the sidebar sums up before a pick, and Se
   assert.equal(await app.evaluate("document.querySelector('#repo-main .li-cols').innerText.replace(/\\s+/g, ' ').trim()"), 'Name Default branch Path');
   // Nothing picked: a summary, not an empty sidebar.
   assert.equal(await app.evaluate("document.querySelector('#repo-ins .kv').innerText.replace(/\\s+/g, ' ').trim()"), 'Repositories 2 Running tasks 0 PRs in review 0');
+  // A row with a pill keeps its branch and path under the header's: the header and the rows share one grid.
+  await app.say('@fake task demo Keep the columns\n@@fake wait 60000');
+  await app.until("!!document.querySelector('#repo-main .li.repo .r .pill')", 'the running pill on a repository row');
+  const xs = await app.evaluate("const x = (el, c) => Math.round(el.querySelector(c).getBoundingClientRect().left); return [document.querySelector('#repo-main .li-cols'), ...document.querySelectorAll('#repo-main .li.repo')].map((el) => [x(el, '.c-br'), x(el, '.c-path')]);");
+  assert.deepEqual(xs.slice(1), [xs[0], xs[0]], `columns at ${JSON.stringify(xs)}`);
   // Settings: every check is fine, so the status is one line; the home folder shows both of its ends.
   await app.click('[data-action="open-settings"]');
   await app.click('[data-action="pane"][data-id="general"]');
