@@ -15,7 +15,7 @@ import { providerOf } from '../../../shared/models';
 import { isLocalRepo } from '../../../shared/localRepo';
 import { branchPrOwned } from '../../../shared/prOwner';
 import { afterDependency, branchPrDue, cancelWhy, describeCancel, isQueued, moveQueued, pickBranchPr, type QueueMove } from '../../../shared/queue';
-import { describePick, startWorker } from '../../../shared/routing';
+import { describePick, rerunWorker, startWorker } from '../../../shared/routing';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../../shared/slots';
 import { isStalled } from '../../../shared/stall';
 import { setStatus } from '../../../shared/taskStatus';
@@ -98,7 +98,9 @@ export function startLate(m: WorkerManager, task: Task, dep: Task | null = null)
   const model = task.model ?? loadSettings().workerModel;
   if (!slotFree(m)) return waitUnassigned(task, 'slot');
   if (!accountFree(model)) return waitUnassigned(task, 'limit');
-  const pick = startWorker(store.data.workers, store.data.tasks, task, model, dep?.workerId ?? null);
+  // A rerun (4B) that waits for nothing else goes back to the Worker that ran it the first time.
+  const ranOn = !dep && task.rerunOf ? store.task(task.rerunOf)?.workerId ?? null : null;
+  const pick = ranOn ? rerunWorker(store.data.workers, store.data.tasks, task, model, ranOn) : startWorker(store.data.workers, store.data.tasks, task, model, dep?.workerId ?? null);
   // A Worker that is there takes it at once, before anything else can pick that Worker too.
   if (pick) return begin(m, pick.worker, task, dep, pick.worker.id === dep?.workerId ? `the Worker of ${dep.id}` : `reused: ${describePick(pick, task.repo)}`);
   m.binding.add(task.id);

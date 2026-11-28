@@ -154,6 +154,18 @@ export function startWorker<X extends W>(workers: X[], tasks: T[], nt: NewTask, 
   return ranked.find((c) => c.worker.id === preferId) ?? ranked[0] ?? null;
 }
 
+/**
+ * The Worker a task run again (4B) starts on: the one that ran it, whenever it is free on the same model (and, for
+ * code, the same repository), with no need to share words with its past work, since it is the same request; else the
+ * usual pick.
+ */
+export function rerunWorker<X extends W>(workers: X[], tasks: T[], nt: NewTask, model: string, ranOn: string | null, now = Date.now()): Candidate<X> | null {
+  const w = ranOn ? workers.find((x) => x.id === ranOn) : undefined;
+  const fits = !!w && w.model === model && !reuseBlock(w, tasks, now) && (nt.kind !== 'code' || (!!nt.repo && w.repo === nt.repo));
+  if (w && fits) return rankWorkers([w], tasks, nt, model, now)[0] ?? { worker: w, score: 0, related: [], repoTasks: 0 };
+  return pickWorker(workers, tasks, nt, model, now);
+}
+
 /** Why this Worker got the task, for the Dispatcher. */
 export function describePick(c: Candidate, repo: string | null): string {
   const parts = [

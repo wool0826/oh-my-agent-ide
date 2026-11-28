@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COMPACT_STALE_MS, REUSE_MAX_CONTEXT, contextCost, describePick, keywords, lateBind, newWorkLine, pickWorker, rankWorkers, reuseBlock, startWorker, type NewTask } from '../src/shared/routing';
+import { COMPACT_STALE_MS, REUSE_MAX_CONTEXT, contextCost, describePick, keywords, lateBind, newWorkLine, pickWorker, rankWorkers, rerunWorker, reuseBlock, startWorker, type NewTask } from '../src/shared/routing';
 import { WORKER_TASK_COMPACT } from '../src/shared/context';
 import type { Task, Worker } from '../src/shared/types';
 
@@ -179,4 +179,20 @@ test('routing: a busy, other-model or compacting dependency Worker gives way to 
     assert.equal(startWorker(ws, tasks, nt(), MODEL, 'W-02', NOW)?.worker.id, 'W-01', JSON.stringify(patch));
   }
   assert.equal(startWorker([worker('W-02', { status: 'running' })], tasks, nt(), MODEL, 'W-02', NOW), null);
+});
+
+test('routing: a rerun goes back to the Worker that ran it, even with no words in common and no repository', () => {
+  const ws = [worker('W-01', { repo: null }), worker('W-02', { repo: null })];
+  const tasks = [task('T-1', { workerId: 'W-01', title: 'First', kind: 'other', repo: null })];
+  assert.equal(pickWorker(ws, tasks, nt({ title: 'First', kind: 'other', repo: null }), MODEL, NOW), null);
+  assert.equal(rerunWorker(ws, tasks, nt({ title: 'First', kind: 'other', repo: null }), MODEL, 'W-01', NOW)?.worker.id, 'W-01');
+});
+
+test('routing: a rerun whose Worker is busy, on another model, archived or in another repository gets the usual pick', () => {
+  const tasks = [task('T-1', { workerId: 'W-02' })];
+  for (const patch of [{ status: 'running' as const }, { model: 'claude-sonnet-5-5' }, { status: 'archived' as const }, { repo: 'other' }]) {
+    const ws = [worker('W-01'), worker('W-02', patch)];
+    assert.equal(rerunWorker(ws, tasks, nt(), MODEL, 'W-02', NOW)?.worker.id, pickWorker(ws, tasks, nt(), MODEL, NOW)?.worker.id, JSON.stringify(patch));
+  }
+  assert.equal(rerunWorker([worker('W-01')], tasks, nt(), MODEL, null, NOW)?.worker.id, 'W-01');
 });

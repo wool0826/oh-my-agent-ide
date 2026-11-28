@@ -11,7 +11,8 @@ import { t } from '../i18n';
 import { PICK_MESSAGE, canPick } from '../../shared/compare';
 import { answerTarget } from '../../shared/inbox';
 import { PAGE } from '../../shared/paging';
-import { parseQueueMove } from '../../shared/queue';
+import { canRerun, parseQueueMove, parseRerunMode, rerunInput } from '../../shared/queue';
+import { assignedEvent, createTask } from '../agents/dispatcher';
 
 /** A Worker's conversation, its tasks, checkpoints and archive, and the merge queue. */
 export function registerWorkerIpc(ctx: IpcContext) {
@@ -31,6 +32,21 @@ export function registerWorkerIpc(ctx: IpcContext) {
   handle('queue:move', (id: string, move: unknown) => {
     const m = parseQueueMove(move);
     return m ? workers.moveInQueue(String(id), m) : false;
+  });
+  // Running a finished task again (4B): to the back of the queue, on its Worker ("again") or a new one ("copy"). The
+  // text the composer edited, and its files, replace the request; without them it is the same request.
+  handle('task:rerun', async (id: string, mode: unknown, text?: string | null, files?: string[]) => {
+    const x = store.task(String(id));
+    const how = parseRerunMode(mode);
+    if (!x) throw new Error(t('err.noTask', { id: String(id) }));
+    if (!how || !canRerun(x)) throw new Error(t('err.rerun', { id: x.id }));
+    if (x.kind === 'code' && x.repo && !store.repo(x.repo)) throw new Error(t('err.noRepo', { name: x.repo }));
+    const body = text?.trim() ? text + attachmentBlock(registerAttachments(files ?? [])) : null;
+    const model = x.model ?? (x.workerId ? store.worker(x.workerId)?.model : null) ?? null;
+    const { task, worker } = await createTask(rerunInput(x, how, model, body));
+    store.handout(assignedEvent(task, worker, false), task.id);
+    store.pushUpdate(`The user ran ${x.id} again as ${task.id}${how === 'copy' ? ' on a new Worker' : ''}${body ? ', with an edited request' : ''}.`);
+    return { id: task.id, worker: worker?.id ?? null, status: task.status };
   });
   handle('worker:diff', (id: string) => workers.diff(id));
   // Exporting a Worker's work (item 12A): the window writes the Markdown from this, then copies, saves or publishes it.

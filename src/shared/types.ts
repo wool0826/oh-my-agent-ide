@@ -194,6 +194,8 @@ export interface Task {
   changedFiles?: string[] | null;
   /** Tasks in progress that already changed files its prompt names, found when it was created (shared/overlap.ts). */
   overlaps?: TaskOverlap[] | null;
+  /** The task this one runs again (4B, shared/queue.ts rerunInput); waiting unassigned, it prefers that task's Worker. */
+  rerunOf?: string | null;
 }
 
 /** A task in progress whose branch already changes files a new task's prompt names. */
