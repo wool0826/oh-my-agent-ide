@@ -201,6 +201,9 @@ flow('a running row shows a card with its whole title, its steps and what it doe
   const CARD = "[document.querySelector('#tip')].find((t) => t.classList.contains('card') && t.classList.contains('on') && !t.hidden)";
   await app.hover('#side .rg .row[data-tip-card] .row-main');
   await app.until(`!!${CARD}?.querySelector('.rc-steps')`, 'the card on hover');
+  // The row's own buttons (stop, open) are in the row's line, in sight, and take the click only there.
+  const acts = await app.evaluate("const row = document.querySelector('#side .rg .row[data-tip-card]'); const a = row.querySelector('.row-acts'); const r = a.getBoundingClientRect(), b = row.getBoundingClientRect(); const cs = getComputedStyle(a); return { shown: cs.display !== 'none' && cs.opacity === '1', inside: r.top >= b.top && r.bottom <= b.bottom && r.right <= b.right, n: a.children.length };");
+  assert.deepEqual(acts, { shown: true, inside: true, n: 2 });
   const c = await app.evaluate(`const t = ${CARD}; return { title: t.querySelector('.rc-t').textContent, steps: [...t.querySelectorAll('.rc-steps li')].map((l) => l.className + ' ' + l.textContent), now: t.querySelector('.rc-now').textContent, n: t.querySelector('.rc-p').textContent, icons: t.querySelectorAll('.rc-steps li.done svg, .rc-steps li.cur svg').length, clicks: getComputedStyle(t).pointerEvents };`);
   assert.equal(c.title, long);
   assert.deepEqual(c.steps, ['done 1. Reproduce', 'done 2. Fix the wait', 'cur 3. Run e2e', 'todo 4. Open PR']);

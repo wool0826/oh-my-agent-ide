@@ -763,11 +763,12 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
 .aa:hover .hov, .aa.sel .hov, .hov:focus-visible { opacity: 1; }
 .aa.editing .aa-pen, .aa.corrected .aa-pen { display: none; }
 /* A result's or an auto-answer's own buttons (✕ clears it, the pencil corrects it), top right: shown while the pointer
-   is on the row, while it or a button in it has the focus, and while it is selected. */
+   is on the row, while it or a button in it has the focus, and while it is selected. Under .res and .aa only: the
+   sidebar's rows have a .row-acts of their own, in the row's line. */
 .res { position: relative; }
 .res .res-t { margin-right: calc(var(--control-sm) + var(--space-2)); }
 .aa .q { padding-right: calc(2 * var(--control-sm) + var(--space-4)); }
-.row-acts { position: absolute; top: var(--space-6); right: var(--space-6); display: flex; gap: var(--space-2); opacity: 0; transition: opacity var(--dur-fast); }
+:is(.res, .aa) > .row-acts { position: absolute; top: var(--space-6); right: var(--space-6); display: flex; gap: var(--space-2); opacity: 0; transition: opacity var(--dur-fast); }
 :is(.res, .aa):is(:hover, :focus-within, .sel) > .row-acts { opacity: 1; }
 .btn.row-x svg { width: 10px; height: 10px; }
 /* Swiping a Notifications row sideways (ui/swipe.ts): the row follows the pointer and the side it leaves shows red
