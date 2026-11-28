@@ -106,7 +106,8 @@ export type SentAge = { kind: 'now' } | { kind: 'min' | 'hour'; n: number } | { 
 export function sentAge(at: string, now: Date): SentAge {
   const d = new Date(at);
   const m = Math.max(0, Math.floor((now.getTime() - d.getTime()) / 60000));
-  if (m < 1) return { kind: 'now' };
+  // An unreadable time reads as now rather than as a date of nothing.
+  if (!(m >= 1)) return { kind: 'now' };
   if (m < 60) return { kind: 'min', n: m };
   const day = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate()) / 86_400_000;
   const days = day(now) - day(d);

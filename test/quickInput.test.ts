@@ -69,4 +69,5 @@ test('quickInput: a prompt age is now, minutes, hours, yesterday or a date', () 
   assert.deepEqual(sentAge(at(new Date(2026, 10, 27, 23, 0)), new Date(2026, 10, 28, 2, 0)), { kind: 'hour', n: 3 });
   assert.deepEqual(sentAge(at(new Date(2026, 10, 27, 9, 0)), now), { kind: 'yesterday' });
   assert.deepEqual(sentAge(at(new Date(2026, 10, 25, 9, 0)), now), { kind: 'date', month: 11, day: 25 });
+  assert.deepEqual(sentAge('not a time', now), { kind: 'now' });
 });

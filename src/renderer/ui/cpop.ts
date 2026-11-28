@@ -35,6 +35,8 @@ export interface CpopList {
 
 type Open = { list: CpopList; at: number; el: HTMLElement };
 const open: Partial<Record<Box, Open>> = {};
+/** Counts each opening asked for and each close, so a history read late opens only if nothing came after it. */
+const asked: Partial<Record<Box, number>> = {};
 
 const inputOf = (box: Box) => $<HTMLTextAreaElement>(box === 'chat' ? '#chat-input' : '#ws-input');
 const formOf = (box: Box) => $<HTMLFormElement>(box === 'chat' ? '#chat-form' : '#ws-form');
@@ -45,6 +47,8 @@ export function cpopOpen(box: Box, kind?: CpopList['kind']) {
 }
 
 export function closeCpop(box: Box) {
+  // A history still on its way is not opened after this.
+  asked[box] = (asked[box] ?? 0) + 1;
   const o = open[box];
   if (!o) return;
   o.el.remove();
@@ -185,9 +189,13 @@ function historyList(box: Box): CpopList {
 /** Up in an empty composer: the prompts sent from it, newest first. */
 export async function openHistory(box: Box) {
   const key = boxKey(box);
-  const got = await call<SentPrompt[]>('history:list', key);
-  if (Array.isArray(got)) sent.set(key, got);
-  if (boxKey(box) !== key || document.activeElement !== inputOf(box)) return;
+  const mine = (asked[box] = (asked[box] ?? 0) + 1);
+  if (!sent.has(key)) {
+    const got = await call<SentPrompt[]>('history:list', key);
+    if (Array.isArray(got)) sent.set(key, got);
+  }
+  // Typed into, closed, sent or moved to another Worker meanwhile: it stays shut.
+  if (asked[box] !== mine || boxKey(box) !== key || document.activeElement !== inputOf(box) || !opensHistory(inputOf(box).value) || cpopOpen(box)) return;
   showCpop(box, historyList(box));
 }
 
@@ -205,14 +213,16 @@ export function historyKeys(e: KeyboardEvent, box: Box, shell: boolean): boolean
   const input = inputOf(box);
   if (!opensHistory(input.value)) return false;
   e.preventDefault();
-  void openHistory(box);
+  if (!cpopOpen(box)) void openHistory(box);
   return true;
 }
 
 /** A prompt went: it is first in its composer's history. */
-export function rememberSent(box: Box, worker: string | null, text: string) {
+export async function rememberSent(box: Box, worker: string | null, text: string) {
   if (!text.trim()) return;
   const key = historyKey(box === 'ws' ? worker : null);
   sent.delete(key);
-  void call('history:add', key, text);
+  await call('history:add', key, text);
+  // Read again after it is kept: a list read while it went would miss it.
+  sent.delete(key);
 }

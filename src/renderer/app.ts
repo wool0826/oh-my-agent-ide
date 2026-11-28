@@ -927,7 +927,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     }
     const err = await send(text, files);
     sending.delete(to);
-    if (!err && !sh) rememberSent(box, target, typed);
+    if (!err && !sh) void rememberSent(box, target, typed);
     if (box === 'ws' && ui.wSel !== target) {
       // Another Worker is on screen by now: what went leaves the draft kept for the one it went to.
       if (err) toast(err, true); else if (target) wsDrafts.sent(target, typed, files, reply as typeof ui.reply.ws);
