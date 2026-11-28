@@ -269,4 +269,14 @@ flow('a Worker folder opens in the editor, the terminal and the file manager, an
   await app.click('#ws-open [data-action="open-editor"]');
   await app.until("[...document.querySelectorAll('.toast')].some((t) => /Cursor/.test(t.textContent) && /cursor/.test(t.textContent))", 'the missing-editor toast');
   assert.equal((await opened()).length, 4);
+
+  // Settings: the missing preset shows its command, marked; picking another preset over it is not a custom command.
+  await app.click('.side-foot [data-action="open-settings"]');
+  await app.until("!!document.querySelector('.snav-i[data-id=\"general\"]')", 'Settings');
+  await app.click('.snav-i[data-id="general"]');
+  await app.until("document.getElementById('set-ecmd')?.classList.contains('bad') && /cursor/.test(document.querySelector('.srow .ewarn').textContent)", 'the missing command marked');
+  await app.click('[data-dd="set-editor"]');
+  await app.until(`!!document.querySelector('.menu.pop [data-v="vscode"]')`, 'the editor list');
+  await app.click('.menu.pop [data-v="vscode"]');
+  await app.until("return (await window.ide.call('state')).settings.editor === 'vscode' && !document.getElementById('set-ecmd')", 'VS Code saved and the command row gone');
 });

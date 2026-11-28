@@ -12,17 +12,19 @@ import { e2eOpened } from './ipc/e2e';
 import { log } from './log';
 
 const isFile = (f: string) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
+// Windows' app execution aliases (WindowsApps\wt.exe) are reparse points that stat refuses (EACCES) but that start.
+const isProgram = (f: string) => isFile(f) || (process.platform === 'win32' && (() => { try { return fs.lstatSync(f).isSymbolicLink(); } catch { return false; } })());
 const isDir = (f: string) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } };
 
 /** A program on the PATH: its full path, or null. Windows tries each PATHEXT ending (code → code.cmd). */
 function which(name: string): string | null {
-  if (path.isAbsolute(name)) return isFile(name) ? name : null;
+  if (path.isAbsolute(name)) return isProgram(name) ? name : null;
   if (process.platform !== 'win32') return findTool(name, { platform: process.platform, path: process.env.PATH ?? '', exists: isFile });
   const exts = path.extname(name) ? [''] : (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
   for (const dir of (process.env.PATH ?? '').split(';')) {
     const d = dir.trim().replace(/^"|"$/g, '');
     if (!d) continue;
-    for (const e of exts) { const f = path.join(d, name + e.toLowerCase()); if (isFile(f)) return f; }
+    for (const e of exts) { const f = path.join(d, name + e.toLowerCase()); if (isProgram(f)) return f; }
   }
   return null;
 }
@@ -44,6 +46,7 @@ export function editorsFound(): Record<EditorId, boolean> {
 }
 
 export type OpenWhat = 'editor' | EditorId | 'terminal' | 'reveal';
+const WHATS = new Set<string>(['editor', 'terminal', 'reveal', 'custom', ...EDITORS.map((e) => e.id)]);
 export type OpenResult = { ok: true } | { ok: false; why: 'gone' | 'missing' | 'failed'; name: string; prog: string; msg?: string };
 
 function run(l: Launch): Promise<string | null> {
@@ -53,10 +56,13 @@ function run(l: Launch): Promise<string | null> {
     const full = which(l.file) ?? l.file;
     // A batch file (code.cmd) runs only through cmd.exe.
     const bat = win && /\.(cmd|bat)$/i.test(full);
+    // cmd.exe expands %NAME% even inside quotes, and a quote would end the argument: such a folder is not passed to it.
+    if (bat && l.args.some((a) => /[%"]/.test(a))) { resolve(`cmd.exe cannot pass ${l.args.find((a) => /[%"]/.test(a))}`); return; }
     const [file, args] = bat ? ['cmd.exe', ['/d', '/s', '/c', cmdLine(full, l.args)]] : [full, l.args];
     try {
       const p = spawn(file, args, { cwd: l.cwd, detached: true, stdio: 'ignore', windowsHide: bat, windowsVerbatimArguments: bat });
-      p.once('error', (e) => resolve(e.message));
+      // Kept for the child's life: a later error (after it started) must not go unhandled.
+      p.on('error', (e) => resolve(e.message));
       p.once('spawn', () => { p.unref(); resolve(null); });
     } catch (e) {
       resolve((e as Error).message);
@@ -66,6 +72,7 @@ function run(l: Launch): Promise<string | null> {
 
 /** Opens `folder` with `what` ('editor': the one chosen in Settings). */
 export async function openWith(what: OpenWhat, folder: string): Promise<OpenResult> {
+  if (!WHATS.has(what)) return { ok: false, why: 'failed', name: '', prog: '', msg: `unknown: ${String(what)}` };
   const s = loadSettings();
   const editor: EditorId = what === 'editor' ? s.editor : what as EditorId;
   const isEditor = what !== 'terminal' && what !== 'reveal';

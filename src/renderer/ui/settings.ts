@@ -640,6 +640,8 @@ export function openWorkspacePicker(btn: HTMLElement) {
   openPop(btn, items, inp.value, (v) => {
     if (v === inp.value) return;
     inp.value = v;
+    // A preset picked over a shown command: that command is the old editor's, not an edit that makes it custom.
+    if (btn.dataset.pick === 'editor' && v !== 'custom') document.getElementById('set-ecmd')?.closest('.srow')?.remove();
     void saveSettingsNow().then(() => { if (ui.settingsShown) openSettings(); });
   }, 220);
 }

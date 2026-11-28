@@ -428,7 +428,7 @@ export async function act(el: HTMLElement, e: Event) {
     }
     case 'open-worker': openWorker(id); break;
     // A Worker's folder in the editor, a terminal or the file manager (item 3A).
-    case 'open-editor': void openFolder(id, 'editor', () => openSettings('general')); break;
+    case 'open-editor': closeCtxMenu(); void openFolder(id, 'editor', () => openSettings('general')); break;
     case 'open-with': void openFolder(id, el.dataset.v ?? 'editor', () => openSettings('general')); break;
     case 'open-copy': {
       const text = copyValue(id, el.dataset.v ?? 'path');
