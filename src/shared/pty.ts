@@ -176,14 +176,38 @@ export function ptyFresh(d: string, end: number, have: number): string {
 }
 
 /**
- * The tabs as the window shows them: main's view, with the tabs the window opened that it does not hold yet at the end.
- * Main's message with a new tab may come after the answer to pty:open (they go apart), and one sent before the tab
- * opened may come later still; `opened` is what is still waited for (a tab leaves it once a view holds it).
+ * The tabs as the window shows them: main's view, with the tabs the window opened that no view holds yet at the end.
+ * Main sends the view with a new tab before it answers pty:open, but the two go apart and the answer may come first;
+ * a view sent before the tab opened may come later still. A tab leaves the kept ones once a view holds it, and one a
+ * view has held is never kept again (it ended and went, or the answer came last).
  */
-export function withOpened(v: PtyView, opened: readonly PtyTab[]): { view: PtyView; opened: PtyTab[] } {
-  const have = new Set(v.tabs.map((x) => x.id));
-  const left = opened.filter((x) => !have.has(x.id));
-  return { view: left.length ? { ...v, tabs: [...v.tabs, ...left] } : v, opened: left };
+export class OpenedTabs {
+  private main: PtyView = { available: null, tabs: [] };
+  private kept: PtyTab[] = [];
+  private seen = new Set<string>();
+
+  /** A view from main. */
+  view(v: PtyView): PtyView {
+    this.main = v;
+    for (const x of v.tabs) this.seen.add(x.id);
+    return this.shown();
+  }
+
+  /** The answer to pty:open. */
+  opened(tab: PtyTab): PtyView {
+    if (!this.seen.has(tab.id) && !this.kept.some((x) => x.id === tab.id)) this.kept.push(tab);
+    return this.shown();
+  }
+
+  /** The window closes a tab: it is no longer kept. */
+  closed(id: string) {
+    this.kept = this.kept.filter((x) => x.id !== id);
+  }
+
+  private shown(): PtyView {
+    this.kept = this.kept.filter((x) => !this.seen.has(x.id));
+    return this.kept.length ? { ...this.main, tabs: [...this.main.tabs, ...this.kept] } : this.main;
+  }
 }
 
 /** A tab's name on its chip: the program in front (or the shell), and the repository it started in. */

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { ANSI, Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyFresh, ptyGone, ptyLabel, ptyShells, ptySize, termFont, termKey, termMatch, termTheme, withOpened } from '../src/shared/pty';
+import { ANSI, Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyFresh, ptyGone, ptyLabel, ptyShells, ptySize, termFont, termKey, termMatch, termTheme, OpenedTabs } from '../src/shared/pty';
 
 const none = () => false;
 
@@ -149,20 +149,34 @@ test('pty: a piece of output the window drew already (in the replay) is not draw
   assert.equal(ptyFresh('abcdef', 10, 7), 'def');
 });
 
-test('pty: a tab the window opened stays in the view until a view from main holds it', () => {
-  const tab = (id: string) => ({ id, shell: 'bash', name: 'bash', repo: '', fg: '', live: true, code: null, startedAt: '' });
+const tab = (id: string) => ({ id, shell: 'bash', name: 'bash', repo: '', fg: '', live: true, code: null, startedAt: '' });
+const ids = (v: { tabs: { id: string }[] }) => v.tabs.map((x) => x.id);
+
+test("pty: a tab the window opened shows before main's view holds it, and main's copy once it does", () => {
+  const k = new OpenedTabs();
   const a = tab('a'), b = tab('b');
-  // main's view still without b (it came first, or was sent before b opened): b is kept, at the end.
-  const early = withOpened({ available: true, tabs: [a] }, [b]);
-  assert.deepEqual(early.view.tabs.map((x) => x.id), ['a', 'b']);
-  assert.deepEqual(early.opened, [b]);
-  // A view with b: main's own copy shows, and nothing is waited for any more.
+  k.view({ available: true, tabs: [a] });
+  assert.deepEqual(ids(k.opened(b)), ['a', 'b']);
+  // A view sent before b opened, coming late: b stays, at the end.
+  assert.deepEqual(ids(k.view({ available: true, tabs: [a] })), ['a', 'b']);
   const moved = { ...b, fg: 'vim' };
-  const later = withOpened({ available: true, tabs: [moved, a] }, early.opened);
-  assert.deepEqual(later.view.tabs, [moved, a]);
-  assert.deepEqual(later.opened, []);
-  const v = { available: true, tabs: [a] };
-  assert.equal(withOpened(v, []).view, v);
+  assert.deepEqual(k.view({ available: true, tabs: [moved, a] }).tabs, [moved, a]);
+  // Held once, then gone from main's view (it ended): not kept again.
+  assert.deepEqual(ids(k.view({ available: true, tabs: [a] })), ['a']);
+});
+
+test("pty: a tab main's view has held already is not kept when the answer to its opening comes last", () => {
+  const k = new OpenedTabs();
+  k.view({ available: true, tabs: [tab('a')] });
+  k.view({ available: true, tabs: [] });
+  assert.deepEqual(ids(k.opened(tab('a'))), []);
+});
+
+test("pty: a tab closed while main's view does not hold it yet is no longer kept", () => {
+  const k = new OpenedTabs();
+  k.opened(tab('a'));
+  k.closed('a');
+  assert.deepEqual(ids(k.view({ available: true, tabs: [] })), []);
 });
 
 test("pty: a tab's chip names the program in front or the shell, and the repository it started in", () => {
