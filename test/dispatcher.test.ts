@@ -214,7 +214,8 @@ test("read_worker shows what a Worker is doing, what is unanswered, and the late
   assert.ok(view.includes(`\n  Waits for your answer (since ${hhmm}): I need the bucket name.`), view);
   assert.ok(view.includes('Conversation (latest 2 of 3 messages, oldest first)\n'), view);
   assert.ok(!view.includes('[Task T-1]'), 'only the latest two');
-  assert.ok(view.includes(`[${hhmm} worker] Looking at the parser.\n\n[${hhmm} worker] RESULT: Done\n`), view);
+  // The messages are logged now, which may be a minute after `at`.
+  assert.match(view, /\[\d\d:\d\d worker\] Looking at the parser\.\n\n\[\d\d:\d\d worker\] RESULT: Done\n/);
   assert.ok(view.endsWith('… (513 more characters cut)'), view.slice(-60));
 });
 
