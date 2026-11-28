@@ -43,6 +43,8 @@ import { beginRun, installCrashHandlers, noticeLastRun, watchWindow } from './cr
 import { effectiveTheme, windowButtons, windowColors } from '../shared/theme';
 import { SHOT_SCHEME } from '../shared/shots';
 import { serveShots } from './shots';
+import { keepWindowPlace, windowPlace } from './windowPlace';
+import { WINDOW_MIN } from '../shared/windowState';
 import { StateSender } from '../shared/stateSync';
 import { snapshot } from './snapshot';
 import { telegram } from './remote/telegramLink';
@@ -127,12 +129,13 @@ function createWindow() {
   // light system otherwise gets a light outline and a 1px #f3f3f3 strip on its edges.
   nativeTheme.themeSource = loadSettings().theme;
   const look = effectiveTheme(loadSettings().theme, nativeTheme.shouldUseDarkColors);
+  // Where the last run left it, on the screens there are now (5A).
+  const place = windowPlace();
   win = new BrowserWindow({
-    width: 1320,
-    height: 860,
+    ...place.bounds,
     // Narrower than 1100 the right sidebar becomes a drawer, narrower than 960 the left one a rail (I1).
-    minWidth: 760,
-    minHeight: 640,
+    minWidth: WINDOW_MIN.width,
+    minHeight: WINDOW_MIN.height,
     title: 'Oh My Agent IDE',
     // Without it Windows has no icon for the taskbar button (a blank page under `electron .`).
     icon: mac ? undefined : windowIconFile({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }, process.platform),
@@ -152,6 +155,7 @@ function createWindow() {
     },
   });
   setWindow(win);
+  keepWindowPlace(win, place);
   watchWindow(win, () => quitting);
   win.on('session-end', holdInstallOnQuit);
   // The AppUserModelID has no Start-menu shortcut when run with `electron .`, so the taskbar gets the icon and name from the window.

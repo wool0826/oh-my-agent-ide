@@ -1,6 +1,7 @@
 // The window's entry: drawing every screen, what each control does, and start-up.
 import { panelsFor, type Panel, type Part, type StateMsg } from '../shared/stateSync';
 import { hasSpend } from '../shared/spend';
+import { parseBasePort } from '../shared/runEnv';
 import { reviewMessage } from '../shared/diffComment';
 import { readyToQueue } from '../shared/mergeQueue';
 import { issueMessage } from '../shared/issues';
@@ -14,8 +15,9 @@ import { threadKeys } from './ui/thread';
 import { focusSelector } from '../shared/focusKey';
 import { PAGE, pagesFor, slideOlder } from '../shared/paging';
 import { FONT_SIZE_DEFAULT } from '../shared/font';
-import { Drafts } from '../shared/drafts';
-import { type Screen, type View, type WorkerFilter } from '../shared/history';
+import { DISPATCHER_DRAFT, Drafts, parseDraft } from '../shared/drafts';
+import { readReply } from '../shared/reply';
+import { restoreScreen, type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
 import { addAuto, cancelAddAuto, pickAutoField, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
@@ -24,19 +26,20 @@ import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
 import { closeCpop, cpopKeys, historyKeys, historyTyped, rememberSent } from './ui/cpop';
-import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
+import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, sym, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
-import { go, navKey, navStep, readMemFile } from './ui/history';
 import type { Mention } from '../shared/types';
 import { drawComposerChips, dropMentionChip, mentionKeys, mentionsChanged, mentionsSent, mentionTyped, openMentionChips, withMentions } from './ui/mentions';
+import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
-import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira } from './ui/repos';
+import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira, syncPorts } from './ui/repos';
 import { copyStatus, toggleStatus } from './ui/status';
-import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
+import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, openWorkspacePicker, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
 import { renderSleep, setSleep } from './ui/sleep';
+import { copyValue, folderThere, loadEditors, openFolder, openMenuHtml, rowOpenItems } from './ui/openWith';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderAccountsOff, renderSidebar, renderUsage, showUsagePop, togglePanel, toggleUsagePin, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
@@ -445,6 +448,29 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'open-worker': openWorker(id); break;
+    // A Worker's folder in the editor, a terminal or the file manager (item 3A).
+    case 'open-editor': closeCtxMenu(); void openFolder(id, 'editor', () => openSettings('general')); break;
+    case 'open-with': void openFolder(id, el.dataset.v ?? 'editor', () => openSettings('general')); break;
+    case 'open-copy': {
+      const text = copyValue(id, el.dataset.v ?? 'path');
+      if (text) await navigator.clipboard.writeText(text).then(() => toast(t('sel.copied')), () => toast(t('copy.failed'), true));
+      break;
+    }
+    case 'open-menu': {
+      const menu = $('#ctxmenu');
+      if (!menu.hidden && menu.dataset.for === 'open') { closeCtxMenu(true); break; }
+      const w = worker(id);
+      if (!w) break;
+      const [, there] = await Promise.all([loadEditors(), folderThere(id)]);
+      menu.dataset.for = 'open';
+      menu.innerHTML = openMenuHtml(w, !there);
+      ui.openMenu = id;
+      el.setAttribute('aria-expanded', 'true');
+      // Below the split button, its left edge on the button's.
+      const r = (el.closest('.osplit') ?? el).getBoundingClientRect();
+      openCtxMenu(r.left, r.bottom + 4, el);
+      break;
+    }
     case 'open-queued': ui.qSel = id; go({ view: 'worker', wSel: null, wOpen: false }); renderWorkerInspector(); break;
     case 'chat-stop': {
       const b = el as HTMLButtonElement;
@@ -758,7 +784,13 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'repo-add': await addRepo(); break;
-    case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value, $<HTMLTextAreaElement>('#repo-run').value); toast(t('toast.descSaved')); break;
+    case 'repo-save': {
+      const port = $<HTMLInputElement>('#repo-port');
+      if (parseBasePort(port.value) === 'bad') { port.focus(); break; }
+      await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value, $<HTMLTextAreaElement>('#repo-run').value, { basePort: port.value, portStep: Number($<HTMLInputElement>('#repo-step').value) });
+      toast(t('toast.descSaved'));
+      break;
+    }
     case 'repo-remove': askRepoRemove(id); break;
     // Picking the open file again reads it again (a Worker may have changed it).
     case 'mem-select': if (ui.memSel === id) void readMemFile(id); else go({ memSel: id }); break;
@@ -864,8 +896,14 @@ function openCtxMenu(x: MenuAt, y: MenuAt, back = document.activeElement as HTML
   menu.style.top = `${p.top}px`;
   menu.querySelector<HTMLElement>('button')?.focus();
 }
+/** The open menu's button reads as closed again. */
+function menuGone() {
+  ui.openMenu = null;
+  document.querySelector('[data-action="open-menu"][aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
+}
 export function closeCtxMenu(refocus = false) {
   const menu = $('#ctxmenu');
+  menuGone();
   if (menu.hidden) return;
   menu.hidden = true;
   if (refocus && ctxReturn?.isConnected) ctxReturn.focus();
@@ -897,6 +935,56 @@ export function swapDraft(from: string | null, to: string | null) {
   setSendErr('ws', '');
   renderReply('ws');
   renderChips('ws');
+}
+
+/** The screen and the drafts as the next start opens them (5A), with what the composers on screen hold now. */
+function sessionNow() {
+  const shown: Record<string, { text: string; files: string[]; reply: unknown; mentions: Mention[] }> = {
+    [DISPATCHER_DRAFT]: { text: $<HTMLTextAreaElement>('#chat-input').value, files: ui.attach.chat, reply: ui.reply.chat, mentions: ui.mentions.chat },
+  };
+  if (ui.wSel) shown[ui.wSel] = { text: $<HTMLTextAreaElement>('#ws-input').value, files: ui.attach.ws, reply: ui.reply.ws, mentions: ui.mentions.ws };
+  return { screen: screen(), drafts: wsDrafts.saved(shown as Parameters<typeof wsDrafts.saved>[0]) };
+}
+
+let sessionKept = '';
+/** Sends the session to main when it changed since it was last sent; main writes it with the state. */
+export function keepSession() {
+  if (!S) return;
+  const s = sessionNow();
+  const json = JSON.stringify(s);
+  if (json === sessionKept) return;
+  sessionKept = json;
+  ide.call('session:save', s).catch(() => { sessionKept = ''; });
+}
+
+/**
+ * At launch: the last run's drafts go back into their composers and its screen comes back (5A). A Worker that is gone
+ * loses its draft and is deselected; an archived one opens as it was.
+ */
+async function restoreSession() {
+  const saved = await ide.call<{ screen?: unknown; drafts?: Record<string, unknown> } | null>('session:get').catch(() => null);
+  if (!S || !saved) return;
+  const wsReply = (r: unknown) => {
+    const x = readReply(r);
+    const wid = (r as { wid?: unknown }).wid;
+    return x && typeof wid === 'string' ? { ...x, wid } : null;
+  };
+  wsDrafts.load(saved.drafts, (id) => id !== DISPATCHER_DRAFT && !!worker(id), wsReply);
+  const chat = parseDraft(saved.drafts?.[DISPATCHER_DRAFT], readReply);
+  const input = $<HTMLTextAreaElement>('#chat-input');
+  if (chat && !input.value) {
+    input.value = chat.text;
+    ui.attach.chat = chat.files;
+    ui.reply.chat = chat.reply;
+    ui.mentions.chat = chat.mentions ?? [];
+    renderReply('chat');
+    renderChips('chat');
+    drawComposerChips('chat');
+    autosize(input);
+  }
+  const to = restoreScreen(saved.screen, { worker: (id) => !!worker(id), repo: (name) => !!S?.repos.some((r) => r.name === name) });
+  if (to) show(to, { ...screen(), wSel: null });
+  sessionKept = JSON.stringify(sessionNow());
 }
 
 /** A stand-in button for an action started from the keyboard: `dataset` has no setter, so it is filled key by key. */
@@ -1036,7 +1124,7 @@ export function init() {
     const segBtn = tgt.closest<HTMLButtonElement>('[data-segc]');
     if (segBtn) { pickSeg(segBtn); return; }
     const dd = tgt.closest<HTMLElement>('[data-dd]');
-    if (dd) { openModelPicker(dd); return; }
+    if (dd) { if (dd.dataset.pick) openWorkspacePicker(dd); else openModelPicker(dd); return; }
     const combo = tgt.closest<HTMLElement>('[data-combo]');
     if (combo) {
       const inp = document.getElementById(combo.dataset.combo!) as HTMLInputElement;
@@ -1051,10 +1139,11 @@ export function init() {
     if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure, [data-action="bundle-merge"]')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell, .osplit') || el?.hasAttribute('data-close')) { $('#ctxmenu').hidden = true; menuGone(); }
   });
   document.addEventListener('change', (e) => void (async () => {
     const el = e.target as HTMLSelectElement;
+    if (el.id === 'repo-step') syncPorts();
     if (el.dataset.change === 'sound-kind') syncSoundRows();
     if (el.classList?.contains('step-v')) syncStep(el as unknown as HTMLInputElement, true);
     // The Jira token goes to the main process by itself and is cleared from the field: it is never part of the page's state.
@@ -1085,6 +1174,7 @@ export function init() {
     const el = e.target as HTMLInputElement;
     if (el.id === 'cmdk-q') { renderPalette(el.value); return; }
     if (el.id === 'set-qkey') markBad(el, normalizeQuickKey(el.value) === null);
+    if (el.id === 'repo-port') syncPorts();
     if (el.id === 'set-qfrom' || el.id === 'set-qto') markBad(el, !!el.value.trim() && !cleanTime(el.value));
     if (el.id === 'set-vol') syncSlider(el);
     if (el.classList.contains('step-v')) syncStep(el, false);
@@ -1326,6 +1416,14 @@ export function init() {
     if (mod && e.key === ',') { e.preventDefault(); if ($('#dlg').hidden) openSettings(); }
     // Ctrl/Cmd+L: to the message field of the view (K1).
     if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyL') { e.preventDefault(); if (!covered) focusComposer(); return; }
+    // Ctrl/Cmd+O: the sidebar Worker row with the focus, or the Worker on screen, in the default editor (item 3A).
+    if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyO') {
+      e.preventDefault();
+      const row = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[data-ctx="worker"]')?.dataset.id;
+      const id = row ?? (ui.view === 'worker' && ui.wOpen ? ui.wSel : null);
+      if (!covered && id) void openFolder(id, 'editor', () => openSettings('general'));
+      return;
+    }
     if (mod && /^[1-4]$/.test(e.key) && covered) e.preventDefault();
     else if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); go({ view: (['chat', 'worker', 'repo', 'memory'] as const)[Number(e.key) - 1] }); }
     const dir = navKey(e);
@@ -1346,7 +1444,7 @@ export function init() {
       const w = worker(id);
       const cur = w ? workerTask(w) : null;
       menu.dataset.for = 'worker';
-      menu.innerHTML = `<button class="menu-item" role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && canStop(w, cur) ? `<button class="menu-item" role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
+      menu.innerHTML = `${w ? rowOpenItems(w) : ''}<button class="menu-item" role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${sym('s-open')}<span>${t('open.worker')}</span></button>${w && canStop(w, cur) ? `<button class="menu-item is-danger" role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${sym('s-stop16')}<span>${t('wk.stop')}</span></button>` : ''}`;
       openCtxMenu(x, y);
       return;
     }
@@ -1475,14 +1573,18 @@ export function init() {
   // The age and slot clock of decisions: their text only, so nothing is drawn again.
   setInterval(() => tickDecisions(), 15_000);
 
-  void ide.call<StateMsg>('state:full').then((msg) => {
+  void ide.call<StateMsg>('state:full').then(async (msg) => {
     const got = readState(msg, gotState);
     if (got) setS(got.state);
     if (!S) return;
     renderAll(true);
+    await restoreSession();
+    setInterval(keepSession, 1000);
+    window.addEventListener('beforeunload', keepSession);
+    if (!S) return;
     if (S.setupNeeded) openSettings('accounts');
-    // The app starts where its main work is: the message field (K1).
-    else if (!document.activeElement || document.activeElement === document.body) focusComposer();
+    // The app starts where its main work is: the message field (K1), unless the last screen it opened on has none.
+    else if ((!document.activeElement || document.activeElement === document.body) && (ui.view === 'chat' || (ui.view === 'worker' && ui.wOpen))) focusComposer();
   });
 }
 

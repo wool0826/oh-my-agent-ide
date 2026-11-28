@@ -25,6 +25,33 @@ export function sameScreen(a: Screen, b: Screen) {
     && a.repoSel === b.repoSel && a.memSel === b.memSel && a.wFilter === b.wFilter;
 }
 
+const VIEWS: readonly View[] = ['chat', 'worker', 'repo', 'memory'];
+const TABS: readonly Screen['wTab'][] = ['chat', 'changes', 'summary'];
+const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+
+/**
+ * The screen the last run ended on (5A), as it can be shown now, or null when nothing usable was kept. A Worker that
+ * is gone is deselected with its conversation; an archived one is still there and opens as it was. A removed
+ * repository is deselected.
+ */
+export function restoreScreen(v: unknown, there: { worker: (id: string) => boolean; repo: (name: string) => boolean }): Screen | null {
+  const o = v as Partial<Record<keyof Screen, unknown>> | null;
+  if (!o || !VIEWS.includes(o.view as View)) return null;
+  const wSel = str(o.wSel);
+  const repoSel = str(o.repoSel);
+  const s: Screen = {
+    view: o.view as View,
+    wSel: wSel && there.worker(wSel) ? wSel : null,
+    wOpen: o.wOpen === true,
+    wTab: TABS.includes(o.wTab as Screen['wTab']) ? (o.wTab as Screen['wTab']) : 'chat',
+    repoSel: repoSel && there.repo(repoSel) ? repoSel : null,
+    memSel: str(o.memSel),
+    wFilter: o.wFilter === 'today' || o.wFilter === 'archived' ? o.wFilter : null,
+  };
+  if (!s.wSel) s.wOpen = false;
+  return s;
+}
+
 /**
  * Turns a saved entry into what can be shown now, or null to drop it (for example a conversation
  * whose Worker is gone).

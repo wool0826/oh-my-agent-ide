@@ -1046,6 +1046,11 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .srow[hidden] { display: none; }
 .srow.wrap { flex-wrap: wrap; }
 .srow.end { justify-content: flex-end; }
+/* A row that belongs to the one above it (the editor's command), set in under it. */
+.srow.ecmd > .lbl { padding-left: var(--space-16); }
+.srow .ewarn { display: inline-flex; align-items: center; gap: var(--space-4); font-size: var(--fs-caption); color: var(--warning-text); white-space: nowrap; }
+.srow .ewarn svg, .dd-btn > .ebadge { flex: none; }
+.srow .ewarn svg { width: 14px; height: 14px; }
 .srow > .lbl { flex: 1 0 auto; min-width: 120px; font-size: var(--fs-body); color: var(--text-primary); }
 .srow > .lbl.muted { color: var(--text-secondary); }
 .srow.note > .lbl { flex: 1 1 auto; }
@@ -1231,6 +1236,13 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 /* The context menu has no ticked items, so its labels start nearer the edge. */
 .ctxmenu { position: fixed; z-index: var(--z-ctxmenu); transform-origin: 0 0; }
 .ctxmenu .menu-item { padding-left: var(--space-10); }
+.ctxmenu .menu-item > svg { flex: none; width: 16px; height: 16px; color: var(--text-secondary); }
+.ctxmenu .menu-item:is(:hover, :focus):not(:disabled) > svg, .ctxmenu .menu-item.is-danger > svg { color: inherit; }
+.ctxmenu .menu-item:disabled > .ebadge { opacity: .5; }
+.menu-item .mtag + small { margin-left: 0; padding-left: var(--space-12); }
+/* Above a menu whose items can't be used now (the Worker's folder is gone): why, once. */
+.menu-warn { display: flex; align-items: center; gap: var(--space-6); margin-bottom: var(--space-4); padding: var(--space-6) var(--space-10); border-radius: var(--radius-sm); background: var(--warning-soft); color: var(--warning-text); font-size: var(--fs-caption); font-weight: 600; white-space: nowrap; }
+.menu-warn svg { flex: none; width: 14px; height: 14px; }
 .ctxmenu .note { padding: var(--space-4) var(--space-10) var(--space-2); font-size: var(--fs-caption); color: var(--text-secondary); max-width: 300px; }
 /* Toasts (T1): up to three, newest at the bottom, each with its own timer. An error stays until it is dismissed. */
 .toasts { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: center; gap: var(--space-6); max-width: 70vw; pointer-events: none; }
@@ -1268,6 +1280,20 @@ kbd { font: inherit; font-size: var(--fs-caption2); font-weight: 600; padding: 0
 .shead { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-6) var(--space-16) var(--space-8); flex: none; }
 .shead .st { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .shead .ws-tabs { flex: none; }
+/* Open in the editor (item 3A): one pill, the default editor's badge and "Open", then the chevron for the menu. */
+.osplit { flex: none; display: inline-flex; align-items: center; height: var(--control-md); border-radius: var(--radius-full); background: var(--surface-track); box-shadow: var(--rim); }
+.osplit > button { display: inline-flex; align-items: center; gap: var(--space-6); height: 100%; border: 0; background: none; color: var(--text-primary); font: inherit; font-size: var(--fs-caption); font-weight: 500; cursor: pointer; }
+.osplit > .osplit-main { padding: 0 var(--space-10) 0 var(--space-6); border-radius: var(--radius-full) 0 0 var(--radius-full); }
+.osplit > .osplit-more { padding: 0 var(--space-8) 0 var(--space-6); border-left: 1px solid var(--border-subtle); border-radius: 0 var(--radius-full) var(--radius-full) 0; color: var(--text-secondary); }
+.osplit-more svg { width: 10px; height: 10px; transform: rotate(90deg); }
+.osplit > button:hover, .osplit-more[aria-expanded="true"] { background: var(--surface-hover); }
+.osplit > button:focus-visible { outline: var(--focus-outline); outline-offset: 0; }
+@media (max-width: 1000px) { .osplit-l { display: none; } .osplit > .osplit-main { padding-right: var(--space-6); } }
+/* An editor's two-letter badge: the menu, the split button, Settings. */
+.ebadge { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-xs); background: var(--editor-vscode); color: var(--text-on-solid); font-size: var(--fs-micro); font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.ebadge.e-cursor { background: var(--editor-cursor); box-shadow: var(--rim-strong); }
+.ebadge.e-idea { background: var(--editor-idea); }
+.ebadge.e-custom { background: var(--surface-thumb); color: var(--text-primary); box-shadow: var(--rim); }
 .shead .ws-tabs[hidden] { display: none; }
 
 /* worker changes */
@@ -1482,6 +1508,26 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .run-cmd { align-self: flex-start; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-code); }
 .run-url { font-size: var(--fs-caption); color: var(--text-link); cursor: pointer; overflow-wrap: anywhere; }
 .run-url:hover { text-decoration: underline; }
+.run-pills { display: inline-flex; align-items: center; gap: var(--space-6); min-width: 0; }
+.run-port svg, .run-warn svg { flex: none; width: var(--icon-sm); height: var(--icon-sm); }
+.run-port { font-variant-numeric: tabular-nums; }
+.run-warn { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-caption); color: var(--warning-text); }
+.run-warn > span { min-width: 0; overflow-wrap: anywhere; }
+.kv > .kv-port { display: flex; align-items: center; justify-content: space-between; gap: var(--space-8); }
+.kv-port b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.kv-port .btn { margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-6)) calc(-1 * var(--space-4)) 0; }
+/* A repository's run port: base port and Worker step, then the variables one Worker's run gets (13A). */
+.group.run-set { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-8) var(--space-12); padding: var(--space-10) var(--space-12); font-size: var(--fs-caption); }
+.rs-port { width: 6em; text-align: center; font-variant-numeric: tabular-nums; }
+.inp.rs-port.bad { box-shadow: var(--well), 0 0 0 1px var(--danger); }
+.rs-err { grid-column: 1 / -1; justify-self: end; display: flex; align-items: center; gap: var(--space-4); margin-top: calc(-1 * var(--space-4)); font-size: var(--fs-caption2); color: var(--danger-text); }
+.rs-err[hidden] { display: none; }
+.rs-err svg { width: var(--icon-sm); height: var(--icon-sm); }
+.envt { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-caption); }
+.envt th { padding: var(--space-6) var(--space-12); text-align: left; font-weight: var(--fw-medium); color: var(--text-tertiary); }
+.envt th:first-child { width: 42%; }
+.envt td { padding: var(--space-6) var(--space-12); border-top: .5px solid var(--border-subtle); font-family: var(--font-mono); font-size: var(--fs-code); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text; }
+.envt td:first-child { font-weight: 600; }
 .run-out { margin: 0; padding: var(--space-8) var(--space-10); max-height: 190px; overflow: auto; border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: var(--well); font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--text-secondary); }
 
 /* ---------- a repository's open issues ---------- */

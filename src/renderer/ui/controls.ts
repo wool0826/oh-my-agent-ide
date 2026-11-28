@@ -6,8 +6,8 @@ import { setTip } from './tip';
 import { previewFont } from './settings';
 
 /** One entry of a popover list. `icon` goes before its words (the tick then goes after them); `group` starts a headed
- * group where it changes. */
-export type Opt = { value: string; label: string; font?: string; sub?: string; icon?: string; group?: string };
+ * group where it changes. `html` (an editor's badge) goes between the tick and the words. */
+export type Opt = { value: string; label: string; font?: string; sub?: string; icon?: string; html?: string; group?: string };
 
 export const pop = { el: null as HTMLElement | null, owner: null as HTMLElement | null };
 
@@ -42,7 +42,7 @@ export function openPop(owner: HTMLElement, items: Opt[], selected: string, onPi
   el.setAttribute('role', 'listbox');
   el.innerHTML = items.map((o, i) => {
     const head = o.group && o.group !== items[i - 1]?.group ? `${i ? '<div class="menu-sep"></div>' : ''}<span class="menu-h">${esc(o.group)}</span>` : '';
-    const words = o.icon ? `${sym(o.icon, 'mi')}<span>${esc(o.label)}</span>${sym('s-tick', 'tick end')}` : `${sym('s-tick', 'tick')}<span>${esc(o.label)}</span>`;
+    const words = o.icon ? `${sym(o.icon, 'mi')}<span>${esc(o.label)}</span>${sym('s-tick', 'tick end')}` : `${sym('s-tick', 'tick')}${o.html ?? ''}<span>${esc(o.label)}</span>`;
     return `${head}<button type="button" role="option" class="menu-item" aria-selected="${o.value === selected}" data-v="${esc(o.value)}"${o.font ? ` style="font-family:&quot;${esc(o.font)}&quot;, var(--font)"` : ''}>${words}${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</button>`;
   }).join('');
   document.body.appendChild(el);

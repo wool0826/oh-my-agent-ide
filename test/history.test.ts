@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ECHO_MS, HISTORY_MAX, History, NavInput, sameScreen, type Screen } from '../src/shared/history';
+import { ECHO_MS, HISTORY_MAX, History, NavInput, restoreScreen, sameScreen, type Screen } from '../src/shared/history';
 
 function scr(patch: Partial<Screen> = {}): Screen {
   return { view: 'chat', wSel: null, wOpen: false, wTab: 'chat', repoSel: null, memSel: null, wFilter: null, ...patch };
@@ -117,4 +117,23 @@ test('nav input: another source counts after the echo window or in the other dir
   assert.equal(n.accept('mouse', 'back', 0), true);
   assert.equal(n.accept('os', 'forward', 10), true);
   assert.equal(n.accept('key', 'forward', 10 + ECHO_MS), true);
+});
+
+test('history: the last screen comes back with what is still there', () => {
+  const there = { worker: (id: string) => id === 'W-05', repo: (n: string) => n === 'app' };
+  assert.deepEqual(restoreScreen(conv('W-05'), there), conv('W-05'));
+  assert.deepEqual(restoreScreen(scr({ view: 'repo', repoSel: 'app', memSel: 'm.md' }), there), scr({ view: 'repo', repoSel: 'app', memSel: 'm.md' }));
+});
+
+test('history: a gone Worker or repository is deselected in the last screen', () => {
+  const there = { worker: () => false, repo: () => false };
+  assert.deepEqual(restoreScreen({ ...conv('W-09'), wTab: 'changes', wFilter: 'archived' }, there), scr({ view: 'worker', wTab: 'changes', wFilter: 'archived' }));
+  assert.deepEqual(restoreScreen(scr({ view: 'repo', repoSel: 'old' }), there), scr({ view: 'repo' }));
+});
+
+test('history: a kept screen that is not one is ignored', () => {
+  const there = { worker: () => true, repo: () => true };
+  assert.equal(restoreScreen(null, there), null);
+  assert.equal(restoreScreen({ view: 'board' }, there), null);
+  assert.deepEqual(restoreScreen({ view: 'worker', wTab: 'x', wOpen: 'yes' }, there), scr({ view: 'worker' }));
 });

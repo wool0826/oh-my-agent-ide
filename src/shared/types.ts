@@ -6,6 +6,7 @@ import type { UpdateView } from './update';
 import type { ChatEv } from './chatEvents';
 import type { SleepView } from './autoSleep';
 import type { TelegramView } from './remote';
+import type { EditorId, TerminalId } from './openWith';
 
 export type Lang = 'en' | 'ko';
 
@@ -67,6 +68,10 @@ export interface Repo {
   setup?: string;
   /** Shell command that runs the project (a dev server, the app), started in a Worker's worktree on request. */
   run?: string;
+  /** The port Worker W-01's run gets; each later Worker gets `portStep` more (shared/runEnv.ts). None: no PORT. */
+  basePort?: number;
+  /** 1, 10 or 100; 10 when unset. */
+  portStep?: number;
 }
 
 export type WorkerStatus = 'starting' | 'running' | 'waiting' | 'idle' | 'error' | 'archived';
@@ -491,6 +496,11 @@ export interface SettingsView {
   openAtLogin: boolean;
   /** The computer does not sleep while a Worker works or the Dispatcher is in a turn (shared/awake.ts). */
   keepAwake: boolean;
+  /** The editor a Worker's folder opens in (shared/openWith.ts), and the command when it is 'custom'. */
+  editor: EditorId;
+  editorCmd: string;
+  /** The terminal "Open in terminal" starts. */
+  terminal: TerminalId;
 }
 
 /** What Settings shows about the user's Claude Code setup. */
@@ -546,6 +556,10 @@ export interface RunView {
   /** The first local address it printed, to open in a browser. */
   url: string | null;
   startedAt: string;
+  /** The port it was given in PORT, when the repository sets a base port. */
+  port?: number;
+  /** The Worker's own port, when something else held it and the run got the next free one. */
+  busyPort?: number;
 }
 
 export interface AppState {

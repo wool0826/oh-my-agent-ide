@@ -6,6 +6,7 @@ import { diagnostics } from '../diagnostics';
 import { autoSleep } from '../sleep';
 import { badge, usageNotes } from '../notify';
 import { accounts } from '../accounts';
+import { e2eWindow } from '../windowPlace';
 
 /** With fake agents (the end-to-end tests), what would have been opened on the computer, kept instead. */
 export const e2eOpened: [string, string][] = [];
@@ -13,6 +14,7 @@ export const e2eOpened: [string, string][] = [];
 /** Hooks for the end-to-end tests (test/e2e), which have no button for them; the window does not call them. */
 export function registerE2eIpc(awake: { readonly held: boolean }) {
   handle('diag:text', () => diagnostics());
+  handle('e2e:window', (op: Parameters<typeof e2eWindow>[0]) => e2eWindow(op ?? {}));
   handle('pr:check', () => checkPrs({ full: true }));
   // The half-minute checks run as if `ms` had passed: a slot given up after a long wait, a daily automation's time.
   handle('e2e:autoPoll', () => pollAutomationEvents());

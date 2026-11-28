@@ -29,6 +29,7 @@ export function shortcutsHtml() {
     row(t('next.prev'), isMac ? ['⇧', '⌘', 'I'] : ['Ctrl', 'Shift', 'I']),
     row(t('keys.input'), [mod, 'L']),
     row(t('keys.find'), [mod, 'K']),
+    row(t('keys.openEditor'), [mod, 'O']),
     row(t('keys.findSaid'), [mod, 'F']),
     row(t('keys.view'), [mod, '1–4']),
     row(t('keys.usage'), isMac ? ['⇧', '⌘', 'U'] : ['Ctrl', 'Shift', 'U']),
