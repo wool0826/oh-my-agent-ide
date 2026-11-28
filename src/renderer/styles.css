@@ -297,7 +297,7 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .bub :is(ul, ol) { margin: var(--space-4) 0; padding-left: var(--space-20); }
 .bub.me { align-self: flex-end; background: var(--accent-fill); box-shadow: var(--rim-on-accent); color: var(--text-on-accent); white-space: pre-wrap; }
 .bub.me a { color: inherit; text-decoration: underline; }
-.bub-via { display: inline-flex; vertical-align: middle; margin-inline-start: var(--space-6); opacity: .75; }
+.bub-via { display: inline-flex; align-items: center; height: calc(var(--lh-body) * 1em); vertical-align: top; margin-inline-start: var(--space-6); opacity: .75; }
 .bub-via .sym { width: 1em; height: 1em; }
 .bub.ai { align-self: flex-start; background: var(--surface-raised); box-shadow: var(--rim); }
 .bub.wk { align-self: flex-start; background: var(--surface-card); box-shadow: var(--rim); }
