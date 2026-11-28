@@ -24,12 +24,9 @@ const PROBE = `window.__strip = (want) => {
     near('back button left', box(settings.querySelector('.sback')).left, from);
     near('settings nav top', box(settings.querySelector('.snav')).top, s.bottom);
   } else {
-    // The panels and the main column: below the strip, never beside it; the panels and the main column's contents a
-    // --space-12 gap lower (T-0169).
+    // The panels and the main column: right below the strip, never beside it (T-0159, T-0171).
     const main = document.querySelector('.content.view:not([hidden])'), ins = document.querySelector('.inspector.view:not([hidden])'), side = document.querySelector('.sidebar');
-    const gap = parseFloat(getComputedStyle(document.body).getPropertyValue('--space-12'));
-    near('left sidebar top', box(side).top, s.bottom + gap); near('main column top', box(main).top, s.bottom); near('right sidebar top', box(ins).top, s.bottom + gap);
-    near('main column inset', parseFloat(getComputedStyle(main).paddingTop), gap);
+    near('left sidebar top', box(side).top, s.bottom); near('main column top', box(main).top, s.bottom); near('right sidebar top', box(ins).top, s.bottom);
     if (document.querySelector('#win').classList.contains('side-min')) {
       near('rail right', box(side).right, 60);
       // Away from the traffic lights the sidebar's button stands over the rail's icons (T-0170).
@@ -45,10 +42,15 @@ const PROBE = `window.__strip = (want) => {
       if (r.right > to + 0.5) bad.push(name + ' ends at ' + r.right + ', after ' + to);
       if (r.top < -0.5 || r.bottom > s.bottom + 0.5) bad.push(name + ' leaves the strip: ' + r.top + '–' + r.bottom);
       if (i && r.left < box(kids[i - 1]).right - 0.5) bad.push(name + ' overlaps ' + (kids[i - 1].id || kids[i - 1].className));
+      // On the strip's middle line, the line the window's own buttons are centred on (T-0171).
+      near(name + ' middle', (r.top + r.bottom) / 2, s.top + h / 2);
     });
     // The view tabs start on the main column's line, or right after the sidebar's button where that is further right;
     // a short strip cuts their end, never moves their start.
     const toggle = box(document.querySelector('#side-toggle'));
+    // The usage rings' pill is as tall as the buttons beside it.
+    const pill = document.querySelector('.toolbar > .usage');
+    if (pill) near('usage pill height', box(pill).height, box(document.querySelector('#ins-toggle')).height);
     near('view tabs left', box(document.querySelector('#views')).left, Math.max(box(main).left + 12, toggle.right + 8));
   }
   // Under the window's own buttons there is the strip and nothing in it.
@@ -100,7 +102,7 @@ flow("the top strip crosses the window, the panels start below it, and nothing i
     console.log(`traffic lights box on this Mac: ${box}`);
     const x = parseFloat(box);
     // As tall as the strip: that is the height the lights are centred in.
-    assert.equal(box.split('×')[1], '44', box);
+    assert.equal(box.split('×')[1], String(await app.evaluate("return parseFloat(getComputedStyle(document.body).getPropertyValue('--toolbar-h'))")), box);
     await everyWidth(app, { start: Math.max(78, x) + 8, end: 12, lights: x }, 'this Mac');
   } else {
     // The page's width is set by the test and the window's is not, so the reported box is read in the page each time.
