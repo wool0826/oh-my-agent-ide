@@ -11,7 +11,7 @@ export const STUB_TOKEN = '123456789:AAEhBP0av18q1wQ7stubstubstubstubstub';
  * next call to that method fail, `user(id, text)` builds a private-chat message update from that user.
  */
 export async function startTelegramStub({ token = STUB_TOKEN, bot = { id: 123456789, is_bot: true, first_name: 'Stub', username: 'stub_bot' } } = {}) {
-  const state = { sent: [], calls: [], updates: [], nextId: 1, nextMessage: 1, token, bot, fails: new Map(), waiting: null, edits: [], acks: [] };
+  const state = { sent: [], calls: [], updates: [], nextId: 1, nextMessage: 1, token, bot, fails: new Map(), waiting: null, edits: [], acks: [], files: new Map(), downloads: [] };
 
   const reply = (res, status, body) => {
     res.writeHead(status, { 'content-type': 'application/json' });
@@ -38,6 +38,15 @@ export async function startTelegramStub({ token = STUB_TOKEN, bot = { id: 123456
     let raw = '';
     req.on('data', (c) => { raw += c; });
     req.on('end', () => {
+      // A file's address, as getFile gave it: the bytes as they were added.
+      const fm = req.url.match(/^\/file\/bot([^/]+)\/(.+)$/);
+      if (fm) {
+        const file = [...state.files.values()].find((x) => x.path === fm[2]);
+        if (fm[1] !== state.token || !file) return err(res, 404, 'Not Found');
+        state.downloads.push(fm[2]);
+        res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': file.bytes.length });
+        return res.end(file.bytes);
+      }
       const m = req.url.match(/^\/bot([^/]+)\/(\w+)$/);
       if (!m) return err(res, 404, 'Not Found');
       const [, tok, method] = m;
@@ -81,6 +90,11 @@ export async function startTelegramStub({ token = STUB_TOKEN, bot = { id: 123456
         case 'answerCallbackQuery':
           state.acks.push(p);
           return ok(res, true);
+        case 'getFile': {
+          const file = state.files.get(p.file_id);
+          if (!file) return err(res, 400, 'Bad Request: invalid file_id');
+          return ok(res, { file_id: p.file_id, file_size: file.size ?? file.bytes.length, file_path: file.path });
+        }
         default: return err(res, 404, 'Not Found: method not found');
       }
     });
@@ -100,6 +114,20 @@ export async function startTelegramStub({ token = STUB_TOKEN, bot = { id: 123456
     },
     user(id, text, { date = Math.floor(Date.now() / 1000), type = 'private', name = 'Owner' } = {}) {
       return { message: { message_id: state.nextMessage++, date, chat: { id: type === 'private' ? id : -id, type }, from: { id, is_bot: false, first_name: name }, text } };
+    },
+    /** A file the bot can download: `size` is what getFile says when it is not the bytes' own length. */
+    addFile(fileId, bytes, { size, path = `documents/${fileId}.bin` } = {}) {
+      state.files.set(fileId, { bytes: Buffer.from(bytes), size, path });
+    },
+    /** A photo or a document from user `id`, as Telegram sends one: `caption` for its words, `group` for an album. */
+    file(id, kind, fileId, { caption, name, size, group, date = Math.floor(Date.now() / 1000) } = {}) {
+      const known = state.files.get(fileId);
+      const bytes = size ?? known?.size ?? known?.bytes.length ?? 0;
+      const media = kind === 'photo'
+        ? { photo: [{ file_id: `${fileId}-small`, width: 90, height: 60, file_size: 100 }, { file_id: fileId, width: 1280, height: 853, file_size: bytes }] }
+        : { document: { file_id: fileId, file_name: name, file_size: bytes } };
+      return { message: { message_id: state.nextMessage++, date, chat: { id, type: 'private' }, from: { id, is_bot: false, first_name: 'Owner' }, ...media,
+        ...(caption ? { caption } : {}), ...(group ? { media_group_id: group } : {}) } };
     },
     /** A press on a button under the bot's message `messageId`, by user `id` in their private chat. */
     press(id, messageId, data) {

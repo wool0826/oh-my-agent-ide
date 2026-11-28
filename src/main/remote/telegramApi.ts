@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { maskToken, type TgUpdate, type TgUser } from '../../shared/remote';
 import type { TgButton } from '../../shared/remoteDecision';
+import { fileUrlPath } from '../../shared/remoteFile';
 
 /** The API's address; tests point it at a stand-in server with OMA_TELEGRAM_API, as OMA_DATA_DIR moves the data. */
 export const telegramBase = () => (process.env.OMA_TELEGRAM_API || 'https://api.telegram.org').replace(/\/+$/, '');
@@ -27,7 +28,12 @@ const message = z.object({
   text: z.string().optional(),
   forward_origin: z.object({ type: z.string() }).optional(),
   reply_to_message: z.object({ message_id: z.number() }).optional(),
+  photo: z.array(z.object({ file_id: z.string(), width: z.number().optional(), height: z.number().optional(), file_size: z.number().optional() })).optional(),
+  document: z.object({ file_id: z.string(), file_name: z.string().optional(), mime_type: z.string().optional(), file_size: z.number().optional() }).optional(),
+  caption: z.string().optional(),
+  media_group_id: z.string().optional(),
 });
+const fileInfo = z.object({ file_id: z.string(), file_size: z.number().optional(), file_path: z.string().optional() });
 const callback = z.object({
   id: z.string(),
   from: user,
@@ -129,6 +135,46 @@ export class TelegramApi {
     const base = { chat_id: chatId, message_id: messageId, reply_markup: keyboard([]) };
     if (text === null) await this.call('editMessageReplyMarkup', base, z.unknown(), o);
     else await this.call('editMessageText', { ...base, text, link_preview_options: { is_disabled: true } }, z.unknown(), o);
+  }
+
+  /**
+   * A file sent to the bot, as bytes: Telegram gives its path (getFile), then its address under /file serves it. More
+   * than `max` bytes, said or counted while it comes, stops the download ('bad': it will never fit).
+   */
+  async download(fileId: string, max: number, o: CallOpts = {}): Promise<Uint8Array> {
+    const info = await this.call('getFile', { file_id: fileId }, fileInfo, o);
+    const where = fileUrlPath(info.file_path ?? '');
+    if (!where) throw new TelegramError('getFile', 'bad', null, 'no file path');
+    if ((info.file_size ?? 0) > max) throw new TelegramError('getFile', 'bad', null, 'too big');
+    const timeout = AbortSignal.timeout(o.timeoutMs ?? 120_000);
+    const signal = o.signal ? AbortSignal.any([o.signal, timeout]) : timeout;
+    let res: Response;
+    try {
+      res = await fetch(`${this.base}/file/bot${this.token}/${where}`, { redirect: 'error', signal });
+    } catch (e) {
+      throw new TelegramError('file', 'network', null, timeout.aborted ? 'timed out' : (e as Error).name || 'failed');
+    }
+    if (!res.ok || !res.body) { await res.body?.cancel().catch(() => {}); throw new TelegramError('file', kindOf(res.status, false), res.status, ''); }
+    if (Number(res.headers.get('content-length') ?? 0) > max) { await res.body.cancel().catch(() => {}); throw new TelegramError('file', 'bad', res.status, 'too big'); }
+    const parts: Uint8Array[] = [];
+    let size = 0;
+    const reader = res.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > max) { await reader.cancel().catch(() => {}); throw new TelegramError('file', 'bad', res.status, 'too big'); }
+        parts.push(value);
+      }
+    } catch (e) {
+      if (e instanceof TelegramError) throw e;
+      throw new TelegramError('file', 'network', null, timeout.aborted ? 'timed out' : (e as Error).name || 'failed');
+    }
+    const out = new Uint8Array(size);
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.byteLength; }
+    return out;
   }
 
   /** Ends a button press's spinner, with a short note shown over the chat. */

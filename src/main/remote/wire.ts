@@ -1,5 +1,6 @@
 // The phone's messages into the app (decision 250): the owner's updates from the link go to Inbound, which hands
 // words to the Dispatcher as a turn from the phone and answers commands from the board. Called once at boot.
+import path from 'node:path';
 import { dispatcher } from '../agents/dispatcher';
 import { store } from '../store';
 import { log } from '../log';
@@ -11,6 +12,9 @@ import { telegram } from './telegramLink';
 import { onDecisionSettled } from '../decisions';
 import { userAnswer } from '../ipc/decisions';
 import { shownAnswer } from '../../shared/remoteDecision';
+import { TG_FILE_MAX } from '../../shared/remoteFile';
+import { paths } from '../paths';
+import { dropRemoteFiles, saveRemoteFile } from './files';
 
 /** Update ids kept: as many as the poller remembers (remote.ts Seen). */
 const SEEN_MAX = 200;
@@ -21,8 +25,8 @@ export function wireRemote() {
   const inbound = new Inbound({
     say: t,
     now: Date.now,
-    toDispatcher: (text, replyTo) => {
-      dispatcher.send(text, [], replyTo, 'telegram');
+    toDispatcher: (text, replyTo, files) => {
+      dispatcher.send(text, files, replyTo, 'telegram');
       return { held: dispatcher.holding };
     },
     stop: async () => {
@@ -33,6 +37,9 @@ export function wireRemote() {
     lock: () => telegram.setPrefs({ requests: false, buttons: false }),
     requests: () => telegram.prefs().requests,
     buttons: () => telegram.prefs().buttons,
+    files: () => telegram.prefs().files,
+    fetchFile: async (file) => saveRemoteFile(path.join(paths().data, 'telegram'), file.name, await telegram.download(file.fileId, TG_FILE_MAX)),
+    dropFiles: (files) => dropRemoteFiles(path.join(paths().data, 'telegram'), files),
     level: () => telegram.prefs().level,
     answer: (text, to, buttons) => { outbox.answer(text, to, buttons); },
     decision: (id) => store.data.decisions.find((d) => d.id === id) ?? null,

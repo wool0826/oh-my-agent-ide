@@ -157,3 +157,23 @@ flow('a question reaches the phone with buttons and a press answers it; one answ
   await waitFor(() => tg.state.acks.some((a) => a.text === 'Already handled.'), 'already handled');
   assert.ok(!(await app.state()).decisions.some((d) => d.answer === 'Down'));
 });
+
+flow('a photo from the phone is saved in the app folder and reaches the Dispatcher with its caption; a program is refused', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const from = tg.state.sent.length;
+  const mine = () => tg.state.sent.slice(from).map((m) => m.text);
+  tg.addFile('ph1', 'not really a jpeg', { path: 'photos/file_1.jpg' });
+  tg.push(tg.file(42, 'photo', 'ph1', { caption: '@fake say Got the photo.' }));
+  await app.until("return (await window.ide.call('state')).chat.some((m) => m.kind === 'user' && m.via === 'telegram')", 'the photo in the chat');
+  await waitFor(() => mine().includes('Got the photo.'), 'the answer on the phone');
+  // The message names the file, written under <home>/data/telegram in a folder of its own.
+  const item = (await app.state()).chat.find((m) => m.kind === 'user' && m.via === 'telegram');
+  const file = item.text.match(/\S*[\\/]data[\\/]telegram[\\/]\d{8}-[0-9a-f]{8}[\\/]photo-\d{8}-\d{6}\.jpg/)?.[0];
+  assert.ok(file, 'the saved photo in the message');
+  assert.equal(fs.readFileSync(file, 'utf8'), 'not really a jpeg');
+
+  tg.addFile('ex1', 'MZ');
+  tg.push(tg.file(42, 'document', 'ex1', { name: 'setup.exe' }));
+  await waitFor(() => mine().includes('Programs and shortcuts are not received.'), 'the refusal');
+  assert.deepEqual(tg.state.downloads, ['photos/file_1.jpg']);
+});

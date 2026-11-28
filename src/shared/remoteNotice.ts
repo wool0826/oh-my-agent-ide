@@ -14,16 +14,17 @@ export type RemoteLevel = 'title' | 'summary';
  * `requests`: messages from the phone go to the Dispatcher (decision 250). `buttons`: decisions carry buttons and a
  * reply answers them (decision 251). Off is notices only, as /lock leaves both.
  */
-export interface RemotePrefs { events: Record<RemoteEvent, boolean>; level: RemoteLevel; requests: boolean; buttons: boolean }
+export interface RemotePrefs { events: Record<RemoteEvent, boolean>; level: RemoteLevel; requests: boolean; buttons: boolean; files: boolean }
 
-export const REMOTE_PREFS_DEFAULT: RemotePrefs = { events: { decisions: true, results: true, prs: true, errors: true, replies: true }, level: 'summary', requests: true, buttons: true };
+export const REMOTE_PREFS_DEFAULT: RemotePrefs = { events: { decisions: true, results: true, prs: true, errors: true, replies: true }, level: 'summary', requests: true, buttons: true, files: true };
 
 export function cleanPrefs(raw: unknown): RemotePrefs {
-  const r = (raw && typeof raw === 'object' ? raw : {}) as { events?: unknown; level?: unknown; requests?: unknown; buttons?: unknown };
+  const r = (raw && typeof raw === 'object' ? raw : {}) as { events?: unknown; level?: unknown; requests?: unknown; buttons?: unknown; files?: unknown };
   const ev = (r.events && typeof r.events === 'object' ? r.events : {}) as Record<string, unknown>;
   const events = Object.fromEntries(REMOTE_EVENTS.map((k) => [k, typeof ev[k] === 'boolean' ? ev[k] : REMOTE_PREFS_DEFAULT.events[k]])) as Record<RemoteEvent, boolean>;
   return { events, level: r.level === 'title' ? 'title' : 'summary', requests: typeof r.requests === 'boolean' ? r.requests : REMOTE_PREFS_DEFAULT.requests,
-    buttons: typeof r.buttons === 'boolean' ? r.buttons : REMOTE_PREFS_DEFAULT.buttons };
+    buttons: typeof r.buttons === 'boolean' ? r.buttons : REMOTE_PREFS_DEFAULT.buttons,
+    files: typeof r.files === 'boolean' ? r.files : REMOTE_PREFS_DEFAULT.files };
 }
 
 /** Something worth a message to the phone, in plain fields so the rules need no store. */

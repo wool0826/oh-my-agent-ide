@@ -11,9 +11,10 @@ const result: RemoteNews = { type: 'result', task: 'T-1', who: 'W-03', title: 'A
 
 test('remoteNotice: prefs default to every kind on and summaries; bad values fall back', () => {
   assert.deepEqual(cleanPrefs(null), REMOTE_PREFS_DEFAULT);
-  assert.deepEqual(cleanPrefs({ events: { prs: false, errors: 'no' }, level: 'title', requests: 'yes', buttons: 1 }), { events: { decisions: true, results: true, prs: false, errors: true, replies: true }, level: 'title', requests: true, buttons: true });
+  assert.deepEqual(cleanPrefs({ events: { prs: false, errors: 'no' }, level: 'title', requests: 'yes', buttons: 1 }), { events: { decisions: true, results: true, prs: false, errors: true, replies: true }, level: 'title', requests: true, buttons: true, files: true });
   assert.equal(cleanPrefs({ requests: false }).requests, false);
   assert.equal(cleanPrefs({ buttons: false }).buttons, false);
+  assert.equal(cleanPrefs({ files: false }).files, false);
   assert.equal(cleanPrefs({ level: 'all' }).level, 'summary');
 });
 
