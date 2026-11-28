@@ -55,7 +55,7 @@ export function workerPrompt(w: Worker, codex = false) {
     codex
       ? "- Follow the repository's AGENTS.md or CLAUDE.md (read CLAUDE.md yourself if there is one) and its conventions. Run the tests and linters and make them pass."
       : "- Follow the repository's CLAUDE.md and conventions. Run the tests and linters and make them pass.",
-    `- When the task changes what a screen looks like, capture the changed screen before your change (on the default branch) and after it, in the same window size and theme, as PNG files outside the repository named \`<screen>-before.png\` and \`<screen>-after.png\`${codex ? '' : ' (in your scratchpad directory when you have one)'}. Name both on FILE: lines in the report; the result card shows them side by side.`,
+    `- When the task changes what a screen looks like, capture the changed screen before your change (on the default branch) and after it, in the same window size and theme, as PNG files outside the repository named \`<screen>-before.png\` and \`<screen>-after.png\`${codex ? '' : ' (in your scratchpad directory when you have one)'}. Name both on FILE: lines in the report; the result card shows them side by side. A separate checkout of the default branch has no build output: build it there before you start the app from it.`,
     ...deliver,
     '',
     'Non-code tasks (research, documents, reports):',

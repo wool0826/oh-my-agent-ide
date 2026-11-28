@@ -12,6 +12,19 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..', '..');
 const electron = createRequire(import.meta.url)('electron'); // the path of the Electron executable
+
+/**
+ * The built main script of this checkout (package.json "main"), or a clear error. Started without it, Electron shows
+ * a native "Error launching app" box on the desktop instead of failing, so nothing is spawned until it is there.
+ */
+export function builtApp(dir = root) {
+  const main = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).main;
+  const file = path.join(dir, main);
+  if (!fs.existsSync(file)) throw new Error(`e2e: ${file} is missing. Build this checkout first: run \`node build.mjs\` in ${dir} (npm run e2e builds for you).`);
+  return file;
+}
+/** NODE_OPTIONS for an app the tests start: no error box on the desktop (no-dialogs.cjs), plus a launch's own. */
+const nodeOptions = (more = process.env.NODE_OPTIONS ?? '') => `--require "${path.join(here, 'no-dialogs.cjs').replaceAll('\\', '/')}" ${more}`.trim();
 // Only for the pause between two looks at a condition, or between the moves of a gesture: never as the wait itself.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Waits in this process until `check()` is true (a file on disk, a stand-in's calls), or throws after `ms`. */
@@ -106,6 +119,7 @@ function makeRepo(dir) {
  * `args` adds to Electron's command line (Chromium switches).
  */
 export async function launch({ settings = {}, repos = [], gh = {}, files = {}, env = {}, args = [] } = {}) {
+  builtApp();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-e2e-'));
   const data = path.join(dir, 'data');
   const home = path.join(dir, 'home');
@@ -134,7 +148,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
     const log = fs.openSync(path.join(dir, 'app.log'), 'a');
     return spawn(electron, ['.', ...more, '--hidden', ...args], {
       cwd: root, stdio: ['ignore', log, log],
-      env: { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile, ELECTRON_ENABLE_LOGGING: '1', ...env },
+      env: { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile, ELECTRON_ENABLE_LOGGING: '1', ...env, NODE_OPTIONS: nodeOptions(env.NODE_OPTIONS) },
     });
   };
   let child = startApp();
@@ -421,7 +435,7 @@ export async function launch({ settings = {}, repos = [], gh = {}, files = {}, e
      * takes over. Returns the box's own page to evaluate in, wait on and take a picture of.
      */
     async openQuick() {
-      const env = { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile };
+      const env = { ...process.env, OMA_FAKE_AGENT: '1', OMA_DATA_DIR: data, OMA_GH_STUB: path.join(here, 'gh-stub.mjs'), OMA_E2E_GH: ghFile, NODE_OPTIONS: nodeOptions() };
       const second = spawn(electron, ['.', '--quick'], { cwd: root, stdio: 'ignore', env });
       await new Promise((r) => { second.once('exit', r); setTimeout(() => { second.kill('SIGKILL'); r(); }, 15_000); });
       const end = Date.now() + 15_000;
