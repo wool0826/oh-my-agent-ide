@@ -648,6 +648,23 @@ export interface SavedPrompt extends PromptPreset {
   updatedAt: string;
 }
 
+export type MentionKind = 'repo' | 'file' | 'pr' | 'task' | 'worker';
+
+/** What "@" put over a composer's text as a chip (shared/mentions.ts). */
+export interface Mention {
+  kind: MentionKind;
+  /** A repository's name, a file's path in its repository, a PR's URL, a task's or a Worker's id. */
+  id: string;
+  /** What the chip says: the name, the file's name, #number, the id. */
+  label: string;
+  /** A PR's or a task's title. */
+  title?: string;
+  /** The repository a file or a PR is in. */
+  repo?: string;
+  /** Anything else that helps the agent find it (a file's full path). */
+  detail?: string;
+}
+
 export interface Memo {
   id: string;
   text: string;

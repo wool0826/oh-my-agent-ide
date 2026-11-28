@@ -34,6 +34,8 @@ export interface CpopList {
   tab?: boolean;
   /** No row chosen at first, so Enter does what it does without the list (a "/word" that matches nothing is sent). */
   none?: boolean;
+  /** A line under the rows while they are still coming (files being read) or could not all be read, with a retry. */
+  status?: { icon: string; text: string; busy?: boolean; retry?: () => void };
   pick: (row: CpopRow) => void;
 }
 
@@ -79,10 +81,14 @@ function draw(box: Box) {
   const head = list.title !== undefined ? `<div class="cpop-h">${esc(list.title)}<span class="gap"></span>${list.count !== undefined ? `<small>${list.count}</small>` : ''}</div>` : '';
   const note = list.note ? `<div class="cpop-none">${esc(list.note)}</div>` : '';
   const body = list.rows.length ? note + rows : `<div class="cpop-none">${esc(list.empty)}</div>`;
+  const st = list.status;
+  const status = st
+    ? `<div class="cpop-st${st.retry ? ' err' : ''}">${sym(st.icon, st.busy ? 'busy' : '')}<span>${esc(st.text)}</span>${st.retry ? `<button type="button" class="cpop-retry">${esc(t('mention.retry'))}</button>` : ''}</div>`
+    : '';
   const foot = list.rows.length && list.hints.length
     ? `<div class="cpop-foot">${list.hints.map(([keys, what]) => `<span>${keys.map((k) => `<kbd>${esc(k)}</kbd>`).join('')}${esc(t(what))}</span>`).join('')}</div>`
     : '';
-  o.el.innerHTML = head + `<div class="cpop-l">${body}</div>` + foot;
+  o.el.innerHTML = head + `<div class="cpop-l">${body}${status}</div>` + foot;
   const input = inputOf(box);
   if (o.at >= 0 && list.rows.length) input.setAttribute('aria-activedescendant', `cpop-${box}-${o.at}`);
   else input.removeAttribute('aria-activedescendant');
@@ -100,8 +106,9 @@ export function showCpop(box: Box, list: CpopList) {
     // A press on a row keeps the focus in the text field; the click takes the row.
     el.addEventListener('mousedown', (e) => e.preventDefault());
     el.addEventListener('click', (e) => {
-      const it = (e.target as HTMLElement).closest<HTMLElement>('.cpop-it');
       const cur = open[box];
+      if ((e.target as HTMLElement).closest('.cpop-retry')) { cur?.list.status?.retry?.(); return; }
+      const it = (e.target as HTMLElement).closest<HTMLElement>('.cpop-it');
       if (!it || !cur) return;
       take(box, Number(it.dataset.i));
     });
@@ -112,6 +119,7 @@ export function showCpop(box: Box, list: CpopList) {
     input.setAttribute('aria-expanded', 'true');
   }
   o.list = list;
+  o.el.dataset.kind = list.kind;
   o.at = list.rows.length && !list.none ? 0 : -1;
   o.el.setAttribute('aria-label', list.title ?? '');
   draw(box);

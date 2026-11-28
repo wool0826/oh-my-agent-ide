@@ -7,6 +7,7 @@ import { t } from '../i18n';
 import { PAGE } from '../../shared/paging';
 import { cleanPreset } from '../../shared/prompts';
 import { cachedModels } from '../models';
+import { mentionIndex } from '../mentions';
 
 /** The chat with the Dispatcher, the quick message box and the state the window reads. */
 export function registerChatIpc(ctx: IpcContext) {
@@ -18,6 +19,9 @@ export function registerChatIpc(ctx: IpcContext) {
   // The composers' prompt history (decision 1B): kept in main, read when Up opens it.
   handle('history:list', (key: string) => store.sentPrompts(String(key)));
   handle('history:add', (key: string, text: string) => store.addSentPrompt(String(key), String(text ?? '')));
+  // The repositories' files for "@" (decision 7C).
+  handle('mention:index', (opts?: { wait?: unknown; retry?: unknown; have?: unknown }) =>
+    mentionIndex({ wait: opts?.wait === true, retry: opts?.retry === true, have: typeof opts?.have === 'number' ? opts.have : undefined }));
   // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
   handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), files: t('quick.files'), lang: loadSettings().language, theme: loadSettings().theme, fontFamily: loadSettings().fontFamily, fontSize: loadSettings().fontSize, repos: store.data.repos.map((r) => r.name) }));
   handle('quick:send', (text: string, files?: string[]) => dispatcher.send(String(text), Array.isArray(files) ? files.map(String) : []));

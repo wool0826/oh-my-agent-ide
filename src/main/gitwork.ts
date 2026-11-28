@@ -84,3 +84,10 @@ export async function dropBranch(repoPath: string, worktree: string | null, defa
   if (b.local) await run('git', ['branch', '-D', branch], { cwd: repoPath });
   if (b.remote && !local) await run('git', ['push', '-q', 'origin', '--delete', branch], { cwd: repoPath, env, timeoutMs: 120_000 });
 }
+
+/** The files of a repository's working tree: tracked, and untracked ones git does not ignore. Paths use "/". */
+export async function listFiles(repoPath: string, max: number): Promise<string[]> {
+  const r = await run('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: repoPath, timeoutMs: 30_000 });
+  if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().slice(0, 400) || 'git ls-files failed');
+  return [...new Set(r.stdout.split('\0').filter(Boolean))].slice(0, max);
+}
