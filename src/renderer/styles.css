@@ -989,7 +989,7 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
   .spanes { padding: var(--space-16) var(--space-4) var(--space-32); }
   .srow { flex-wrap: wrap; }
   .srow > .lbl { flex: 1 1 auto; min-width: 0; }
-  .srow > :not(.lbl) { max-width: 100%; }
+  .srow > :where(:not(.lbl)) { max-width: 100%; }
 }
 .inp.bad { box-shadow: var(--well), 0 0 0 1px var(--warning); }
 
