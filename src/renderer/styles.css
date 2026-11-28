@@ -1410,10 +1410,10 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 .shot-row .gap { flex: 1; }
 .shot-n, .res .body .shot-n { display: inline-flex; align-items: center; gap: var(--space-4); font-size: var(--fs-caption2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .shot-n .sym { width: var(--icon-sm); height: var(--icon-sm); }
-.shot-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--space-8); }
-.shot-set.one .shot-grid { grid-auto-columns: min(200px, 100%); }
+/* Two equal columns on every row, whatever the card's width: a pair side by side, other shots two to a row (T-0187). */
+.shot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-8); }
 /* The images a user sent, in their own bubble: as wide as they need, on its accent fill. */
-.bub.me .shot-set .shot-grid { grid-auto-columns: minmax(0, 200px); }
+.bub.me .shot-set .shot-grid { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 200px); }
 .bub.me .shot { background: var(--surface-on-accent); box-shadow: none; color: var(--text-on-accent); }
 .bub.me .shot-row > b, .bub.me .shot-h { color: var(--text-on-accent); }
 .shot-col { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
@@ -1421,7 +1421,7 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 .shot { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; min-width: 0; padding: var(--space-4); border: 0; border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-secondary); font: inherit; text-align: left; cursor: zoom-in; }
 .shot:hover { background: linear-gradient(var(--surface-hover), var(--surface-hover)), var(--surface-raised); color: var(--text-primary); }
 .shot:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
-.shot img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; border-radius: var(--radius-sm); background: var(--surface-track); }
+.shot img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; border-radius: var(--radius-sm); background: var(--surface-track); }
 .shot.broken, .shot.none { cursor: default; }
 .shot.broken img { visibility: hidden; }
 .shot.none { aspect-ratio: 16 / 10; background: var(--surface-track); box-shadow: none; }

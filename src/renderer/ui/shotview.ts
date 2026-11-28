@@ -3,7 +3,7 @@
 // (wide/narrow, dark/light) are switches above it, on the card and in the opened view alike (decision 232).
 import type { Key } from '../../shared/i18n';
 import { middleName } from '../../shared/middleName';
-import { firstPick, isImagePath, isLocalPath, pickShot, setView, shotSets, shotUrl, SHOT_AXES, type Shot, type ShotAxis, type ShotPick, type ShotRole, type ShotSet } from '../../shared/shots';
+import { firstPick, isImagePath, isLocalPath, pickShot, setView, shotSets, shotTags, shotUrl, SHOT_AXES, type Shot, type ShotAxis, type ShotPick, type ShotRole, type ShotSet } from '../../shared/shots';
 import { $, base, esc, sentChip, sym, t } from './core';
 import { layerClose, layerOpen } from './layer';
 
@@ -82,11 +82,20 @@ function setHtml(key: string, i: number, set: ShotSet) {
   const v = setView(set, pick);
   const sw = AXES.filter((a) => set.axes[a]).map((a) => `<span class="seg" role="group" aria-label="${esc(t(AXIS_KEY[a]))}">${set.axes[a]!.map((val) => `<button type="button" data-action="shot-axis" data-key="${esc(key)}" data-i="${i}" data-axis="${a}" data-v="${val}" aria-pressed="${pick[a] === val}">${t(VALUE_KEY[val])}</button>`).join('')}</span>`);
   const count = v.hidden ? `<span class="gap"></span><span class="shot-n" data-tip="${esc(t('shot.count', { n: set.shots.length }))}">${sym('s-image')}${set.shots.length}</span>` : '';
-  const row = set.roles.length || sw.length ? `<div class="shot-row">${set.screen ? `<b>${esc(set.screen.replace(/-/g, ' '))}</b>` : ''}${sw.join('')}${count}</div>` : '';
-  // A lone image with nothing to tell it by is captioned with its file name.
-  const lone = set.shots.length === 1 && !set.roles.length;
-  const cols = v.cols.map((c) => `<div class="shot-col">${c.role ? `<span class="shot-h">${t(ROLE_KEY[c.role])}</span>` : ''}${c.shot ? thumb(c.shot, lone ? base(c.shot.path) : '') : '<span class="shot none"></span>'}</div>`).join('');
-  return `<div class="shot-set${v.cols.length === 1 ? ' one' : ''}" data-i="${i}">${row}<div class="shot-grid">${cols}</div></div>`;
+  // A screen told by its name's words gets its name above it; a lone image with nothing to tell it by is captioned
+  // with its file name instead.
+  const tagged = set.shots.some((s) => shotTags(s).length);
+  const row = (tagged && set.screen) || sw.length || count ? `<div class="shot-row">${tagged && set.screen ? `<b>${esc(set.screen.replace(/-/g, ' '))}</b>` : ''}${sw.join('')}${count}</div>` : '';
+  const head = (text: string) => `<span class="shot-h">${esc(text)}</span>`;
+  // Two columns on every row: the before/after pair first, then each shot without a role, labelled by its own parts.
+  const cols = [
+    ...v.cols.map((c) => `<div class="shot-col">${head(t(ROLE_KEY[c.role]))}${c.shot ? thumb(c.shot, '') : '<span class="shot none"></span>'}</div>`),
+    ...v.extras.map((x) => {
+      const tags = shotTags(x).map((w) => t(VALUE_KEY[w])).join(' · ');
+      return `<div class="shot-col">${tags ? head(tags) : ''}${thumb(x, tags ? '' : base(x.path))}</div>`;
+    }),
+  ].join('');
+  return `<div class="shot-set" data-i="${i}">${row}<div class="shot-grid">${cols}</div></div>`;
 }
 
 /** Files that failed to load, so a redrawn card does not try them again. */
