@@ -1,6 +1,7 @@
 // The phone's messages into the app (decision 250): the owner's updates from the link go to Inbound, which hands
 // words to the Dispatcher as a turn from the phone and answers commands from the board. Called once at boot.
 import path from 'node:path';
+import { powerMonitor } from 'electron';
 import { dispatcher } from '../agents/dispatcher';
 import { store } from '../store';
 import { log } from '../log';
@@ -66,6 +67,8 @@ export function wireRemote() {
   });
   telegram.inbound = (u) => inbound.handle(u);
   // Answered or withdrawn anywhere: its message on the phone loses its buttons (decision 251).
+  // After sleep the poll starts over at once instead of waiting on a connection that is gone.
+  powerMonitor.on('resume', () => { void telegram.resume(); });
   onDecisionSettled((d, answered) => outbox.settle(d.id, answered ? shownAnswer(t, d, d.answer ?? '') : null));
   // Update ids count per bot: another bot, or none, starts them over.
   telegram.onForget = () => {
