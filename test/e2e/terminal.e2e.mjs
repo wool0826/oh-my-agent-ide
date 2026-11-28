@@ -1,6 +1,7 @@
 // End-to-end flows: Shell runs: the side terminal, lines run with !, saved scripts, the dock and the side question.
 // Each flow starts the built app on its own empty profile with fake agents and a stand-in for gh. Run with `npm run e2e`.
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { flow } from './harness.mjs';
 
 flow('a saved script shows its command, runs only from its Run button into the chat, and is edited and deleted', {}, async (app) => {
@@ -242,4 +243,76 @@ flow('a line run with ! hands its result to the Dispatcher, which replies withou
   // eslint-disable-next-line no-restricted-syntax -- checks that no second turn starts: a while for one that must not come.
   await new Promise((r) => setTimeout(r, 1500));
   assert.equal(await app.evaluate("document.querySelectorAll('#chat-thread .bub.ai').length"), 1);
+});
+
+// The real terminal's shells (main/pty.ts), driven over its channels as the window will: a real shell of the system
+// in a pseudo terminal. Each line prints its mark as two pieces joined, so the echo of what was typed never matches.
+// Runs in the page: keeps each tab's output, says it was drawn, and reads it without the terminal's codes.
+function ptySetup() {
+  if (window.__pty) return;
+  window.__pty = {};
+  // eslint-disable-next-line no-control-regex -- a terminal's codes start with ESC and BEL
+  const plain = (s) => s.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '').replace(/\x1b\[[0-9;?<>=!]*[ -/]*[@-~]/g, '').replace(/\x1b[()][0-9A-Za-z]/g, '').replace(/\x1b[=>78DEHMc]/g, '').replace(/\r/g, '');
+  window.__ptyText = (id) => plain(window.__pty[id] ?? '');
+  window.ide.onPtyData((id, d) => { window.__pty[id] = (window.__pty[id] ?? '') + d; window.ide.ptySend('drawn', id, d.length); });
+}
+const PTY_SETUP = `(${ptySetup})(); return 1;`;
+
+flow('the real terminal keeps one shell: a prompt waits for what is typed, cd carries over, Ctrl+C stops a command, the size follows and Stop ends it', {}, async (app) => {
+  const win = process.platform === 'win32';
+  await app.evaluate(PTY_SETUP);
+  const tab = await app.evaluate("return ide.call('pty:open', { cols: 200, rows: 30 });");
+  assert.equal(tab.live, true);
+  assert.equal(tab.repo, '');
+  assert.equal(tab.name, (await app.evaluate("return ide.call('pty:shells');"))[0].name, 'the default shell');
+  const id = JSON.stringify(tab.id);
+  const type = (line) => app.evaluate(`ide.ptySend('write', ${id}, ${JSON.stringify(line)}); return 1;`);
+  const seen = (text, what, ms = 60_000) => app.until(`window.__ptyText(${id}).includes(${JSON.stringify(text)})`, what, ms, `window.__ptyText(${id}).slice(-1500)`);
+  // A shell starts as slowly as a runner makes it (PowerShell with its profile).
+  await type(win ? "Write-Output ('pty' + '-ok')\r" : "printf 'pty-%s\\n' ok\r");
+  await seen('pty-ok', 'the output of the first line');
+  // A prompt waits for what is typed next.
+  await type(win ? "$a = Read-Host 'name?'; Write-Output ('got-' + $a)\r" : "printf 'na%s' 'me?> '; read -r a; printf 'got-%s\\n' \"$a\"\r");
+  await seen(win ? 'name?: ' : 'name?> ', 'the prompt');
+  await type('abc\r');
+  await seen('got-abc', 'the answer read by the line');
+  // cd carries over to the next line.
+  const cwd = win ? "Write-Output ('cw' + 'd=' + (Get-Location).Path + '|')\r" : "printf 'cw%s=%s|\\n' d \"$PWD\"\r";
+  await type(cwd);
+  await seen('|', 'the folder');
+  const where = async () => [...(await app.evaluate(`return window.__ptyText(${id});`)).matchAll(/cwd=([^|\n]+)\|/g)].map((m) => m[1].trim());
+  await app.until(`/cwd=[^|\\n]+\\|/.test(window.__ptyText(${id}))`, 'the folder printed');
+  const [home] = await where();
+  await type('cd ..\r');
+  await type(cwd);
+  await app.until(`(window.__ptyText(${id}).match(/cwd=[^|\\n]+\\|/g) ?? []).length >= 2`, 'the folder printed again', 30_000, `window.__ptyText(${id}).slice(-1500)`);
+  const after = (await where())[1];
+  assert.equal(after, (win ? path.win32 : path.posix).dirname(home), `cd .. carried over: ${home} → ${after}`);
+  // Ctrl+C stops what runs, long before its 30 s.
+  await type(win ? "Write-Output ('zz-' + 'started'); Start-Sleep -Seconds 30\r" : "printf 'zz-%s\\n' started; sleep 30\r");
+  await seen('zz-started', 'the long command started');
+  await type('\x03');
+  // Ctrl+C also drops what was typed ahead (on Windows): the next line is typed again until the prompt takes it.
+  for (const end = Date.now() + 20_000; ;) {
+    await type(win ? "Write-Output ('after' + '-ctrlc')\r" : "printf 'after-%s\\n' ctrlc\r");
+    try { await seen('after-ctrlc', 'the next line, once Ctrl+C stopped the long one', 2500); break; } catch (e) { if (Date.now() > end) throw e; }
+  }
+  // The size follows.
+  await app.evaluate(`ide.ptySend('resize', ${id}, 100, 30); return 1;`);
+  await type(win ? "Write-Output ('w=' + $Host.UI.RawUI.WindowSize.Width + '|')\r" : "printf 'sz=%s|\\n' \"$(stty size)\"\r");
+  await seen(win ? 'w=100|' : 'sz=30 100|', 'the new size');
+  // Nothing of it reached the chat.
+  assert.equal(await app.evaluate("return document.querySelectorAll('#chat-thread .sh-run').length;"), 0);
+  // Stop ends the shell; the tab stays until it is closed.
+  await app.evaluate(`return ide.call('pty:kill', ${id});`);
+  await app.until(`ide.call('pty:state').then((v) => v.tabs.length === 1 && !v.tabs[0].live)`, 'the stopped tab', 15_000);
+  await app.evaluate(`return ide.call('pty:close', ${id});`);
+  assert.deepEqual((await app.evaluate("return ide.call('pty:state');")).tabs, []);
+});
+
+flow('with the real terminal off, a tab does not open and the terminal keeps its line mode', { env: { OMA_PTY: '0' } }, async (app) => {
+  await assert.rejects(app.evaluate("return ide.call('pty:open');"), /could not start a shell/);
+  const v = await app.evaluate("return ide.call('pty:state');");
+  assert.equal(v.available, false);
+  assert.deepEqual(v.tabs, []);
 });

@@ -6,6 +6,7 @@ import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, M
 import { currentTask } from '../../shared/currentTask';
 import type { SideView } from '../../shared/side';
 import type { TermView } from '../../shared/terminal';
+import type { PtyView } from '../../shared/pty';
 import { tr, type Key } from '../../shared/i18n';
 import { modelLabel as labelFor } from '../../shared/models';
 import { linkify } from '../../shared/linkify';
@@ -33,6 +34,12 @@ declare global {
       onWorkerLog(fn: (id: string, item: WorkerLogItem) => void): void;
       onSideState(fn: (v: SideView) => void): void;
       onTermState(fn: (v: TermView) => void): void;
+      /** The real terminal (main/pty.ts). */
+      onPtyState(fn: (v: PtyView) => void): void;
+      onPtyData(fn: (id: string, d: string, end: number) => void): void;
+      ptySend(what: 'write', id: string, d: string): void;
+      ptySend(what: 'resize', id: string, cols: number, rows: number): void;
+      ptySend(what: 'drawn', id: string, n: number): void;
       onDecisionAlert(fn: (loud: boolean) => void): void;
       /** A task-end notification was clicked: show that task's result card. */
       onOpenResult(fn: (taskId: string) => void): void;

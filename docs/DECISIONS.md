@@ -1340,3 +1340,29 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - The setup and run command fields in the repository's panel get their heading as their accessible name (they had
       a placeholder only).
     - Rejected: a fixed width for the pills' column (cuts a long pill or wastes room when there is none).
+262. **The side terminal gets a real pseudo terminal: `node-pty` in a utility process of its own, with the line mode kept for when it cannot load** (T-0165, PR 1 of 3; follows 1, 186, 193).
+    - This changes 1's "without native modules". The only native module is `node-pty@1.1.0` (Microsoft, what VS Code
+      uses), pinned. It is N-API, so its prebuilds for Windows and macOS (x64 and arm64) load in Electron as they
+      are: `npmRebuild: false`, since a rebuild from source would be loaded before the prebuilds.
+    - It runs in the PTY host (`main/ptyHost.ts`, an Electron `utilityProcess`), so a native crash or a stuck shell
+      ends that process and the tabs in it, never main, where the Dispatcher and the Workers run. When the host
+      ends, its tabs show they ended and the next tab starts it again.
+    - Packaging: `node-pty` and `dist/ptyHost.cjs` are unpacked from the asar (its worker, `OpenConsole.exe` and
+      the macOS `spawn-helper` must be real files). Its sources and `.pdb` files are left out (52 of its 64 MB).
+      The package's `spawn-helper` has no execute bit, so `postinstall` sets it (`scripts/pty-helper.mjs`), and
+      CI checks the packed app (`scripts/check-pack.mjs`).
+    - The shells are the user's (186): PowerShell 7, Windows PowerShell, then the Command Prompt on Windows; `$SHELL`
+      then the usual ones on macOS. They start as login shells, or with no start file when "Load shell profile" is
+      off. The window asks for a shell by its id and a folder as for "!" lines (the IDE home or a registered
+      repository), never a path of its own. The environment is `ghEnv()` without the app's own markers, with `TERM`
+      and a UTF-8 `LANG` on macOS when none is set.
+    - Output goes in batches (16 ms or 64 KB), and the shell pauses while 512 KB are sent and not drawn. Main keeps
+      the last 256 KB of each tab to draw again after a reload. Nothing typed or printed is logged.
+    - Stopping a tab: a hang-up, then `SIGKILL` to its process group 3 s later on macOS; on Windows the pseudo
+      console ends every process on it. On quit every shell is stopped without asking, as the side terminal was
+      (193). No PID file for orphans: when the host dies the operating system ends what was on its terminals.
+    - `OMA_PTY=0`, or `node-pty` failing to load, keeps today's line mode. "!" lines, saved scripts and what goes to
+      the Dispatcher stay one process per line: they need the exit code and the end of the output exactly.
+    - Rejected: `@lydell/node-pty` (Linux prebuilds and the execute bit, but a beta repackaged by one person),
+      node-pty in main (a native crash would end the Dispatcher), a pipe-backed shell kept running (no terminal, so
+      no prompts, colours, sizes or full-screen programs).

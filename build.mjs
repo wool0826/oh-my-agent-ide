@@ -18,6 +18,8 @@ const configs = [
     banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   },
   { ...common, entryPoints: ['src/preload/index.ts'], outfile: 'dist/preload.cjs', platform: 'node', format: 'cjs', external: ['electron'] },
+  // The terminal's PTY host (main/ptyHost.ts), a utility process of its own; node-pty is loaded from node_modules.
+  { ...common, entryPoints: ['src/main/ptyHost.ts'], outfile: 'dist/ptyHost.cjs', platform: 'node', format: 'cjs', target: 'node22', external: ['electron', 'node-pty'] },
   { ...common, entryPoints: ['src/renderer/app.ts'], outfile: 'dist/renderer/app.js', platform: 'browser', format: 'iife', target: 'chrome130' },
   { ...common, entryPoints: ['src/renderer/quick.ts'], outfile: 'dist/renderer/quick.js', platform: 'browser', format: 'iife', target: 'chrome130' },
 ];
