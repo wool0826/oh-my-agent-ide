@@ -46,3 +46,10 @@ test('reply: a reply kept in a draft on disk is read back with its own fields on
   assert.equal(readReply({ who: 'W-03' }), null);
   assert.equal(readReply('W-03'), null);
 });
+
+test('reply: a rerun kept in a draft comes back with its task and mode, a broken one without', () => {
+  const r = { who: 'T-0171 run again', quote: 'W-03 · demo', icon: 's-refresh', rerun: { of: 'T-0171', mode: 'again' } };
+  assert.deepEqual(readReply(r), r);
+  assert.equal(readReply({ ...r, rerun: { of: 'T-0171', mode: 'other' } })?.rerun, undefined);
+  assert.equal(readReply({ ...r, rerun: 'T-0171' })?.rerun, undefined);
+});

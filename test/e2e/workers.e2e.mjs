@@ -157,6 +157,53 @@ flow('the queue moves with Alt+arrows, P, the row menu and a drag, and the free 
   assert.equal(done.tasks.some((x) => x.queueRank != null || x.queuePinned), false);
 });
 
+flow('a result runs again at the back of the queue, Undo takes it out, and edit or duplicate puts it in the composer', { settings: { maxWorkers: 1 } }, async (app) => {
+  await app.say('@fake task - First\n@@fake result One.');
+  await app.until("!!document.querySelector('#chat-ins .res[data-ctx=\"result\"]')", 'the result of First');
+  await app.say('@fake task - Hold\n@@fake permission npm run hold\n@@fake result Held.');
+  await app.until(`!!document.querySelector('${DEC}')`, "Hold's permission card: the one slot is taken");
+  let s = await app.state();
+  const first = task(s, 'First');
+  const res = `#chat-ins .res[data-task="${first.id}"]`;
+  // On focus the row's time gives way to Run again and its menu.
+  await app.evaluate(`document.querySelector('${res}').focus(); return 1;`);
+  await app.until(`getComputedStyle(document.querySelector('${res} .res-t time')).visibility === 'hidden'`, 'the time hidden under the buttons');
+  assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${res} .row-acts button')].map((b) => b.getAttribute('aria-label'))`), ['Run again now', 'More', 'Clear']);
+  // Run again now: a new task with the same request, last in line; Undo cancels it.
+  await app.click(`${res} [data-action="res-rerun"]`);
+  s = await app.until(`return (await window.ide.call('state')).tasks.some((x) => x.rerunOf === '${first.id}') && (await window.ide.call('state'));`, 'the rerun');
+  const again = s.tasks.find((x) => x.rerunOf === first.id);
+  assert.equal(again.status, 'queued');
+  assert.equal(again.prompt, first.prompt);
+  await app.until(`(document.querySelector('#toasts')?.innerText ?? '').includes('${again.id} added to the queue')`, 'the queued toast');
+  await app.click('#toasts .toast .linkbtn');
+  await app.until(`return (await window.ide.call('state')).tasks.find((x) => x.id === '${again.id}')?.status === 'cancelled';`, 'the rerun cancelled');
+  await app.until(`(document.querySelector('#toasts')?.innerText ?? '').includes('${again.id} cancelled')`, 'the undone toast');
+  // Duplicate: the chip names a new Worker; its ✕ takes the untouched request out with it.
+  await app.click(`${res} [data-action="res-menu"]`);
+  await app.until("!document.querySelector('#ctxmenu').hidden && document.querySelectorAll('#ctxmenu .menu-item').length === 4", 'the result menu');
+  await app.click('#ctxmenu [data-action="res-duplicate"]');
+  await app.until("(document.querySelector('#chat-reply')?.innerText ?? '').includes('New Worker')", 'the duplicate chip');
+  assert.equal(await app.evaluate("document.querySelector('#chat-input').value"), first.prompt);
+  assert.equal(await app.evaluate("document.querySelector('#chat-reply [data-action=\"reply-cancel\"]').getAttribute('aria-label')"), 'Cancel the duplicate');
+  await app.click('#chat-reply [data-action="reply-cancel"]');
+  assert.equal(await app.evaluate("document.querySelector('#chat-reply').hidden + ':' + document.querySelector('#chat-input').value"), 'true:');
+  // Edit and run again: the edited text is the new request, on the Worker that ran it.
+  await app.click(`${res} [data-action="res-menu"]`);
+  await app.click('#ctxmenu [data-action="res-rerun-edit"]');
+  await app.until(`(document.querySelector('#chat-reply')?.innerText ?? '').includes('${first.id} run again')`, 'the rerun chip');
+  await app.evaluate("const i = document.querySelector('#chat-input'); i.value = '@fake result Edited.'; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
+  await app.click('#chat-send');
+  s = await app.until(`return (await window.ide.call('state')).tasks.filter((x) => x.rerunOf === '${first.id}').length === 2 && (await window.ide.call('state'));`, 'the edited rerun');
+  const edited = s.tasks.filter((x) => x.rerunOf === first.id).at(-1);
+  assert.equal(edited.prompt, '@fake result Edited.');
+  assert.equal(await app.evaluate("document.querySelector('#chat-reply').hidden"), true);
+  // The slot frees, and the edited rerun goes to First's Worker.
+  await app.click(answer('allow'));
+  s = await app.until(`return (await window.ide.call('state')).tasks.find((x) => x.id === '${edited.id}')?.status === 'done' && (await window.ide.call('state'));`, 'the edited rerun done');
+  assert.equal(s.tasks.find((x) => x.id === edited.id).workerId, first.workerId);
+});
+
 flow('the hand-outs of one turn fold into one block with a row per task', {}, async (app) => {
   await app.say('@fake task - One\n@@fake result One.\n@fake task - Two\n@@fake permission npm run two\n@@fake result Two.');
   await app.until("document.querySelectorAll('#chat-thread .hand .hrow').length === 2", 'one block with two rows');

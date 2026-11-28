@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { afterDependency, branchPrDue, byQueue, dropBefore, parseQueueMove, cancelSet, cancelWhy, describeCancel, followersOf, hasOpenPr, isQueued, moveQueued, pickBranchPr, stampQueued, statusAfterCancel, type QueueMove } from '../src/shared/queue';
+import { afterDependency, canRerun, parseRerunMode, rerunInput, branchPrDue, byQueue, dropBefore, parseQueueMove, cancelSet, cancelWhy, describeCancel, followersOf, hasOpenPr, isQueued, moveQueued, pickBranchPr, stampQueued, statusAfterCancel, type QueueMove } from '../src/shared/queue';
+import { COMPARE_NOTE } from '../src/shared/compare';
 import type { Task } from '../src/shared/types';
 
 function task(id: string, patch: Partial<Task> = {}): Task {
@@ -217,4 +218,40 @@ test('pickBranchPr: an open PR first, then a merged one; a closed one or nothing
   assert.equal(pickBranchPr([closed]), null);
   assert.equal(pickBranchPr(null), null);
   assert.equal(pickBranchPr([{ url: 'not a PR', state: 'OPEN' }]), null);
+});
+
+test('rerun: only a task that ended can run again', () => {
+  for (const status of ['done', 'failed', 'cancelled', 'pr_open'] as const) assert.equal(canRerun(task('T-1', { status, prompt: 'Do it' })), true, status);
+  for (const status of ['queued', 'blocked', 'running', 'waiting'] as const) assert.equal(canRerun(task('T-1', { status, prompt: 'Do it' })), false, status);
+  assert.equal(canRerun(task('T-1', { status: 'done', prompt: '  ' })), false);
+  assert.equal(canRerun(null), false);
+});
+
+test('rerun: again keeps the request and its settings, without its Worker, PR or place', () => {
+  const x = task('T-9', { status: 'failed', prompt: 'Fix the window size', effort: 'high', planFirst: true, prUrl: 'https://github.com/o/r/pull/3', queueRank: 4, afterTaskId: 'T-2', bundle: 'b' });
+  assert.deepEqual(rerunInput(x, 'again', 'claude-opus-5-5'), {
+    title: 'title T-9', prompt: 'Fix the window size', kind: 'code', repo: 'demo', model_id: 'claude-opus-5-5', effort: 'high', plan_first: true, rerun_of: 'T-9',
+  });
+});
+
+test('rerun: copy asks for a new Worker, and the edited text replaces the request', () => {
+  const r = rerunInput(task('T-9', { status: 'done', prompt: 'Old' }), 'copy', null, '  New request  ');
+  assert.equal(r.new_worker, true);
+  assert.equal(r.prompt, 'New request');
+  assert.equal(r.model_id, undefined);
+  assert.equal(rerunInput(task('T-9', { status: 'done', prompt: 'Old' }), 'again', null, ' ').prompt, 'Old');
+});
+
+test('rerun: a task with no repository runs with none; an attempt of a comparison runs as a plain task', () => {
+  assert.equal(rerunInput(task('T-9', { kind: 'other', repo: 'demo', prompt: 'Write' }), 'again', null).repo, undefined);
+  const r = rerunInput(task('T-9', { title: 'Speed up start (Opus 5.5)', prompt: `Speed up start\n\n${COMPARE_NOTE}`, compare: { group: 'g' } }), 'again', null);
+  assert.equal(r.title, 'Speed up start');
+  assert.equal(r.prompt, 'Speed up start');
+});
+
+test('rerun: only the two modes pass', () => {
+  assert.equal(parseRerunMode('again'), 'again');
+  assert.equal(parseRerunMode('copy'), 'copy');
+  assert.equal(parseRerunMode('x'), null);
+  assert.equal(parseRerunMode(undefined), null);
 });

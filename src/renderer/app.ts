@@ -22,12 +22,13 @@ import { menuPlace } from '../shared/menu';
 import { addAuto, cancelAddAuto, pickAutoField, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { bindQueueDrag, moveTask, queueKeys, queueMenuHtml } from './ui/queue';
+import { copyRequest, leaveRerun, rerun, rerunInComposer, rerunMenuHtml, rerunnable } from './ui/rerun';
 import { closeShot, markBrokenShot, openShot, pickAxis, shotOpen, showShot, stepShot } from './ui/shotview';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
 import { closeCpop, cpopKeys, historyKeys, historyTyped, rememberSent } from './ui/cpop';
-import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, sym, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
+import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, sym, t, task, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
 import type { Mention } from '../shared/types';
 import { drawComposerChips, dropMentionChip, mentionKeys, mentionsChanged, mentionsSent, mentionTyped, openMentionChips, withMentions } from './ui/mentions';
@@ -333,6 +334,7 @@ export async function act(el: HTMLElement, e: Event) {
     case 'sq-memo': void sideToMemo(); break;
     case 'reply-cancel': {
       const box = el.dataset.box === 'ws' ? 'ws' : 'chat';
+      if (box === 'chat') leaveRerun();
       ui.reply[box] = null;
       renderReply(box);
       $(box === 'chat' ? '#chat-input' : '#ws-input').focus();
@@ -792,6 +794,19 @@ export async function act(el: HTMLElement, e: Event) {
       openQueueMenu(id, (w) => r.right - w, r.bottom + 4, el);
       break;
     }
+    // A result's run actions (4B): its ⋯ opens the menu below the button, its right edge on the button's.
+    case 'res-menu': {
+      const menu = $('#ctxmenu');
+      if (!menu.hidden && menu.dataset.for === `result:${id}`) { closeCtxMenu(true); break; }
+      const r = el.getBoundingClientRect();
+      openResultMenu(id, (w) => r.right - w, r.bottom + 4, el);
+      el.setAttribute('aria-expanded', 'true');
+      break;
+    }
+    case 'res-rerun': void rerun(id, 'again'); break;
+    case 'res-rerun-edit': rerunInComposer(id, 'again'); break;
+    case 'res-duplicate': rerunInComposer(id, 'copy'); break;
+    case 'res-copy-request': copyRequest(id); break;
     case 'queue-move': { const v = el.dataset.v; if (v === 'next' || v === 'top' || v === 'pin') void moveTask(id, v); break; }
     case 'queue-clear': ui.cancelAsk = { ids: [], all: true }; renderCancelDialog(); break;
     case 'cancel-dismiss': ui.cancelAsk = null; renderCancelDialog(); break;
@@ -943,10 +958,17 @@ function openQueueMenu(id: string, x: MenuAt, y: MenuAt, back = document.activeE
   menu.innerHTML = queueMenuHtml(id);
   openCtxMenu(x, y, back);
 }
+/** A result row's menu (4B): run again now, edit and run again, duplicate, copy the request. */
+function openResultMenu(id: string, x: MenuAt, y: MenuAt, back = document.activeElement as HTMLElement | null) {
+  const menu = $('#ctxmenu');
+  menu.dataset.for = `result:${id}`;
+  menu.innerHTML = rerunMenuHtml(id);
+  openCtxMenu(x, y, back);
+}
 /** The open menu's button reads as closed again. */
 function menuGone() {
   ui.openMenu = null;
-  document.querySelector('[data-action="open-menu"][aria-expanded="true"], [data-action="export-menu"][aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
+  document.querySelector('[data-action="open-menu"][aria-expanded="true"], [data-action="export-menu"][aria-expanded="true"], [data-action="res-menu"][aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
 }
 export function closeCtxMenu(refocus = false) {
   const menu = $('#ctxmenu');
@@ -1186,7 +1208,7 @@ export function init() {
     if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure, [data-action="bundle-merge"]')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell, .osplit, #ws-more, [data-action="queue-menu"]') || el?.hasAttribute('data-close')) { $('#ctxmenu').hidden = true; menuGone(); }
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell, .osplit, #ws-more, [data-action="queue-menu"], [data-action="res-menu"]') || el?.hasAttribute('data-close')) { $('#ctxmenu').hidden = true; menuGone(); }
   });
   document.addEventListener('change', (e) => void (async () => {
     const el = e.target as HTMLSelectElement;
@@ -1380,6 +1402,16 @@ export function init() {
     if (threadKeys(e)) return;
     // The right sidebar's list: ↑/↓, Home and End move between its items at any width and select one that can be.
     if (listKeys(e, el)) return;
+    // A result row: Shift+F10 opens its menu when it can run again, Enter opens its Worker (4B).
+    const res = el.matches?.('#chat-ins .res[data-ctx="result"]') ? rerunnable(el.dataset.task) : null;
+    if (res && e.shiftKey && e.key === 'F10' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      openResultMenu(res.id, r.left + 16, r.bottom);
+      return;
+    }
+    const ran = el.matches?.('#chat-ins .res[data-task]') ? task(el.dataset.task ?? '') : null;
+    if (ran?.workerId && e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing) { e.preventDefault(); openWorker(ran.workerId); return; }
     // K1: the selected inbox card answers to keys while no text field has the focus. Enter on one of its buttons is
     // left to that button. A card that is not selected is selected first, by Enter or Space.
     const card = el.closest?.<HTMLElement>('#chat-ins [data-dec]');
@@ -1500,7 +1532,7 @@ export function init() {
 
   // Context menu on auto-answers, sidebar Worker rows and queued tasks
   document.addEventListener('contextmenu', (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ctx="aa"], [data-ctx="worker"], [data-ctx="queue"]');
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ctx="aa"], [data-ctx="worker"], [data-ctx="queue"], [data-ctx="result"]');
     const menu = $('#ctxmenu');
     if (!el) { menu.hidden = true; return; }
     e.preventDefault();
@@ -1509,6 +1541,7 @@ export function init() {
     const r = el.getBoundingClientRect();
     const x = e.clientX || r.left + 16, y = e.clientY || r.bottom;
     if (el.dataset.ctx === 'queue') { openQueueMenu(id, x, y); return; }
+    if (el.dataset.ctx === 'result') { if (rerunnable(el.dataset.task)) openResultMenu(el.dataset.task!, x, y); else menu.hidden = true; return; }
     if (el.dataset.ctx === 'worker') {
       const w = worker(id);
       const cur = w ? workerTask(w) : null;
@@ -1535,6 +1568,9 @@ export function init() {
       if (r.ok) leaveShell();
       return r.ok ? null : r.error;
     }
+    // Under a rerun chip (4B) the text is that task's new request, not a message to the Dispatcher.
+    const again = ui.reply.chat?.rerun;
+    if (again) return rerun(again.of, again.mode, withMentions(text, mentions), files);
     const r = await tryCall('chat:send', withMentions(replyText('chat', text), mentions), files, ui.reply.chat?.task ?? null, chatPreset());
     // The chips went with it.
     if (r.ok) setPreset(null);

@@ -320,7 +320,8 @@ export function renderReply(box: 'chat' | 'ws') {
   const r = ui.reply[box];
   const el = $(box === 'chat' ? '#chat-reply' : '#ws-reply');
   el.hidden = !r;
-  el.innerHTML = r ? `${r.icon ? sym(r.icon) : ''}<b>${esc(whoLabel(r.who))}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" data-tip="${t('reply.cancel')}" aria-label="${t('reply.cancel')}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
+  const x = r ? t(r.rerun ? (r.rerun.mode === 'copy' ? 'rerun.cancelCopy' : 'rerun.cancel') : 'reply.cancel') : '';
+  el.innerHTML = r ? `${r.icon ? sym(r.icon) : ''}<b>${esc(whoLabel(r.who))}</b><span>${esc(r.quote)}</span><button type="button" data-action="reply-cancel" data-box="${box}" data-tip="${x}" aria-label="${x}"><svg aria-hidden="true"><use href="#s-x"/></svg></button>` : '';
   el.classList.toggle('has-icon', !!r?.icon);
   markReplyTarget(box);
 }
@@ -560,7 +561,8 @@ export function toast(text: string, err = false, action?: ToastAction, glyph?: s
   if (err) el.setAttribute('role', 'alert');
   const msg = document.createElement('span');
   msg.textContent = text;
-  if (glyph) el.insertAdjacentHTML('afterbegin', ic(glyph));
+  // An ic kind, or a plain symbol (s-…).
+  if (glyph) el.insertAdjacentHTML('afterbegin', glyph.startsWith('s-') ? sym(glyph, 'ic') : ic(glyph));
   el.append(msg);
   if (action) {
     const b = document.createElement('button');

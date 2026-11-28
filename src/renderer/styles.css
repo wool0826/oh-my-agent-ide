@@ -844,6 +844,9 @@ textarea.inp { resize: none; field-sizing: content; min-height: 60px; max-height
    sidebar's rows have a .row-acts of their own, in the row's line. */
 .res { position: relative; }
 .res .res-t { margin-right: calc(var(--control-sm) + var(--space-2)); }
+/* A task that can run again (4B) adds Run again and ⋯ before the ✕: they take the time's place while shown. */
+.res.can-run .res-t { margin-right: calc(2 * var(--control-sm) + var(--space-4)); }
+.res.can-run:is(:hover, :focus-within, .sel) .res-t time { visibility: hidden; }
 .aa .q { padding-right: calc(2 * var(--control-sm) + var(--space-4)); }
 :is(.res, .aa) > .row-acts { position: absolute; top: var(--space-6); right: var(--space-6); display: flex; gap: var(--space-2); opacity: 0; transition: opacity var(--dur-fast); }
 :is(.res, .aa):is(:hover, :focus-within, .sel) > .row-acts { opacity: 1; }

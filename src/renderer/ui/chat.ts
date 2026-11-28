@@ -41,6 +41,7 @@ import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
 import { tookText } from './workers';
 import { colsHtml, markPick, navItems, rove, slotHtml } from './panes';
+import { rerunActs } from './rerun';
 
 export const CI_BADGE: Record<string, [string, Key]> = { passing: ['ok', 'pr.ciPassing'], failing: ['bad', 'pr.ciFailing'], pending: ['run', 'pr.ciPending'] };
 
@@ -1009,7 +1010,8 @@ export function renderChatInspector() {
       html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.results')}</b><span class="gap"></span>${clearAllHtml('result')}</div><div class="group">${results.items.map((c) => {
         const x = task(c.ref);
         const p = resultParts(x, c.text, `res:${c.id}`);
-        return `<div class="res" data-task="${esc(c.ref ?? '')}" data-nav="res:${esc(c.id)}" data-id="${esc(c.id)}" tabindex="-1"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${resultMeta(x)}${resultSummary(c)}${p.media}${p.row}</span><span class="row-acts">${rowXHtml('result', c.id)}</span></div>`;
+        const run = rerunActs(x);
+        return `<div class="res${run ? ' can-run' : ''}" data-task="${esc(c.ref ?? '')}" data-nav="res:${esc(c.id)}" data-id="${esc(c.id)}"${run ? ' data-ctx="result"' : ''} tabindex="-1"><span class="tile">${resultGlyph(x, c.kind === 'error')}</span><span class="body"><span class="res-t"><b>${esc(x?.title ?? t('task'))}</b><time datetime="${esc(c.ts)}" data-tip="${esc(hhmm(c.ts))}">${when(c.ts)}</time></span>${resultMeta(x)}${resultSummary(c)}${p.media}${p.row}</span><span class="row-acts">${run}${rowXHtml('result', c.id)}</span></div>`;
       }).join('')}${results.more}</div></div>`;
     }
     if (autos.items.length) html += `<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.auto')}</b><span class="gap"></span>${clearAllHtml('auto')}</div><div class="group">${autos.items.map(aaHtml).join('')}${autos.more}</div></div>`;

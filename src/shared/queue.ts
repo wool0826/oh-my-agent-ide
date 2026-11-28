@@ -1,7 +1,8 @@
 // Which tasks the user can cancel from the queue, and what cancelling one does.
 // Shared by the main process (which cancels) and the renderer (which asks first).
 
-import type { Task, TaskStatus } from './types';
+import { COMPARE_NOTE } from './compare';
+import type { Effort, Task, TaskStatus } from './types';
 
 /** Waiting to start: paused by a usage limit (queued) or waiting for another task's PR to merge (blocked). */
 export function isQueued(t: Pick<Task, 'status'>): boolean {
@@ -234,4 +235,51 @@ export function cancelSet(tasks: Task[], ids: string[]): { picked: Task[]; follo
     }
   }
   return { picked, followers };
+}
+
+// Running a task again (4B): from its result row, the same request goes to the back of the queue; edited first, the
+// composer's text replaces it. "again" prefers the task's own Worker, "copy" gets a new one.
+export type RerunMode = 'again' | 'copy';
+
+/** What createTask gets for a rerun: the request and the settings it ran with, not its place, PR or comparison. */
+export interface RerunInput {
+  title: string;
+  prompt: string;
+  kind: Task['kind'];
+  repo?: string;
+  model_id?: string;
+  effort?: Effort;
+  plan_first?: boolean;
+  new_worker?: boolean;
+  rerun_of: string;
+}
+
+/** Only a task that ended can be run again: one still waiting or running is the same request already. */
+export function canRerun(x: Pick<Task, 'status' | 'prompt'> | null | undefined): boolean {
+  return !!x && !!x.prompt.trim() && (x.status === 'done' || x.status === 'failed' || x.status === 'cancelled' || x.status === 'pr_open');
+}
+
+export function parseRerunMode(v: unknown): RerunMode | null {
+  return v === 'again' || v === 'copy' ? v : null;
+}
+
+/**
+ * The new task for running `x` again. `model`: what it ran on (its own, else its Worker's). `text`: the request as
+ * edited in the composer; empty, the original. One attempt of a comparison runs as a plain task: its note and the
+ * model in its title go.
+ */
+export function rerunInput(x: Task, mode: RerunMode, model: string | null, text?: string | null): RerunInput {
+  const own = x.compare ? x.prompt.replace(`\n\n${COMPARE_NOTE}`, '') : x.prompt;
+  const title = x.compare ? x.title.replace(/ \([^()]*\)$/, '') : x.title;
+  return {
+    title,
+    prompt: text?.trim() || own,
+    kind: x.kind,
+    ...(x.kind === 'code' && x.repo ? { repo: x.repo } : {}),
+    ...(model ? { model_id: model } : {}),
+    ...(x.effort ? { effort: x.effort } : {}),
+    ...(x.planFirst ? { plan_first: true } : {}),
+    ...(mode === 'copy' ? { new_worker: true } : {}),
+    rerun_of: x.id,
+  };
 }

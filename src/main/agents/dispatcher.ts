@@ -46,7 +46,7 @@ import { DISPATCHER_COMPACT } from '../../shared/compactInstructions';
 import { recapChat } from '../../shared/recap';
 import { dispatcherReason } from '../../shared/askWhy';
 import { BRIEF_MAX, dispatcherBrief } from '../../shared/brief';
-import { describePick, lateBind, newWorkLine, pickWorker } from '../../shared/routing';
+import { describePick, lateBind, newWorkLine, pickWorker, rerunWorker } from '../../shared/routing';
 import { unassigned } from './workers/queue';
 import { stepView } from '../../shared/steps';
 
@@ -164,7 +164,7 @@ export function assignedEvent(task: Task, w: Worker | null, continuing: boolean)
 }
 
 /** Create a task and hand it to a Worker. Used by the Dispatcher tool and by UI buttons. */
-export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; bundle?: string; repo?: string; worker_id?: string; new_worker?: boolean; model?: 'opus' | 'fable'; model_id?: string; compare?: Task['compare']; after_task_id?: string; effort?: Effort; plan_first?: boolean }) {
+export async function createTask(a: { title: string; prompt: string; kind: 'code' | 'other'; bundle?: string; repo?: string; worker_id?: string; new_worker?: boolean; model?: 'opus' | 'fable'; model_id?: string; compare?: Task['compare']; after_task_id?: string; effort?: Effort; plan_first?: boolean; rerun_of?: string }) {
   if (a.kind === 'code' && !a.repo) throw new Error('Code tasks need a repo. Check list_repos.');
   if (a.repo && !store.repo(a.repo)) throw new Error(`Repository is not registered: ${a.repo}`);
   let after: string | null = null;
@@ -199,6 +199,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     planFirst: !!a.plan_first,
     ...(a.compare ? { compare: a.compare } : {}),
     ...(bundleName(a.bundle) ? { bundle: bundleName(a.bundle) } : {}),
+    ...(a.rerun_of && !a.new_worker ? { rerunOf: a.rerun_of } : {}),
   };
   // Work in progress already changing files the prompt names: a warning in the result, the task is still created.
   const overlaps = task.kind === 'code' ? findOverlaps({ id: task.id, repo: task.repo, paths: promptPaths(task.prompt), after: a.after_task_id, compareGroup: a.compare?.group }, store.data.tasks) : [];
@@ -214,7 +215,9 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     return { task, worker: null, reused: null };
   }
   // No Worker named: reuse the idle one that best knows this code; a new Worker only when none fits.
-  const reuse = pinned ? null : pickWorker(store.data.workers, store.data.tasks, task, model);
+  // A rerun (4B) goes back to the Worker that ran it when that one can take it by the same rules.
+  const prefer = a.rerun_of ? store.task(a.rerun_of)?.workerId ?? null : null;
+  const reuse = pinned ? null : prefer ? rerunWorker(store.data.workers, store.data.tasks, task, model, prefer) : pickWorker(store.data.workers, store.data.tasks, task, model);
   try {
     const worker: Worker | null = await workers.assign(task, a.worker_id ?? reuse?.worker.id ?? null, model);
     return { task, worker, reused: reuse ? describePick(reuse, task.repo) : null };

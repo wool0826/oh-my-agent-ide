@@ -15,6 +15,7 @@ import { layerClose, layerOpen } from './layer';
 import { closeSettings, openSettings } from './settings';
 import { openShortcuts } from './shortcuts';
 import { copyExport, openPublish, saveExport } from './exportMd';
+import { rerun, rerunnable } from './rerun';
 import { hideUsagePop, ms, togglePanel, workerIcon } from './sidebar';
 import { openSide } from './side';
 import { openTerm } from './terminal';
@@ -48,6 +49,9 @@ export function paletteItems(): Cmd[] {
     out.push({ id: 'export:save', group: g, title: t('export.save'), hint: open.id, icon: sym('s-doc'), run: () => void saveExport(open.id) });
     out.push({ id: 'export:publish', group: g, title: t('export.publish'), hint: open.id, keys: isMac ? '⇧⌘E' : 'Ctrl+Shift+E', icon: sym('s-open'), run: () => void openPublish(open.id) });
   }
+  // Run again (4B): the open Worker's task, else the newest result in the inbox, once it has ended.
+  const again = rerunnable(open ? workerTask(open)?.id : s.results.at(-1)?.ref);
+  if (again) out.push({ id: `rerun:${again.id}`, group: t('cmdk.cmds'), title: t('res.rerunCmd'), hint: again.id, icon: sym('s-refresh'), run: () => void rerun(again.id, 'again') });
   const views: [View, string, string][] = [['chat', t('nav.chat'), 's-chat'], ['worker', 'Worker', 's-cpu'], ['repo', t('nav.repo'), 's-box'], ['memory', t('nav.memory'), 's-doc']];
   views.forEach(([v, title, icon], i) => out.push({ id: `view:${v}`, group: t('cmdk.go'), title, keys: `${mod}${i + 1}`, icon: sym(icon), run: () => go({ view: v }) }));
   const tabs: [typeof ui.insTab, Key][] = [['inbox', 'ins.tabInbox'], ['memo', 'ins.tabMemo'], ['auto', 'ins.tabAuto'], ['script', 'ins.tabScript']];

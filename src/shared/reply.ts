@@ -5,8 +5,9 @@
  * `task`: the reply answers that task's report card, so it is filed under the card (shared/thread.ts).
  * `max`: how much of the quote is sent (default QUOTE_MAX). `icon`: a symbol on the composer's quote card.
  * `src`: the message answered, as the thread names it (`data-src`), so it is ringed while the reply is written.
+ * `rerun`: not a reply but a task run again from the composer (4B): the text goes as that task's new request.
  */
-export interface Reply { who: string; quote: string; task?: string; max?: number; icon?: string; src?: string }
+export interface Reply { who: string; quote: string; task?: string; max?: number; icon?: string; src?: string; rerun?: { of: string; mode: 'again' | 'copy' } }
 
 /** A quote is a reminder of the message, not a copy of it. */
 export const QUOTE_MAX = 280;
@@ -25,6 +26,8 @@ export function readReply(v: unknown): Reply | null {
   const r: Reply = { who: o.who, quote: o.quote };
   for (const k of ['task', 'icon', 'src'] as const) if (typeof o[k] === 'string') r[k] = o[k];
   if (typeof o.max === 'number') r.max = o.max;
+  const x = o.rerun as Record<string, unknown> | undefined;
+  if (x && typeof x.of === 'string' && (x.mode === 'again' || x.mode === 'copy')) r.rerun = { of: x.of, mode: x.mode };
   return r;
 }
 
