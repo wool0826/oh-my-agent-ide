@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseAccount, isExhausted, limitEnd, liveWindow, nextFreeAt, type RoutableAccount } from '../src/shared/usage';
+import { accountWait, chooseAccount, freeAt, isExhausted, limitEnd, liveWindow, nextFreeAt, type RoutableAccount } from '../src/shared/usage';
 
 const now = Date.parse('2026-11-21T09:00:00Z');
 
@@ -67,4 +67,48 @@ test('routing: without one, at the latest reset among full windows', () => {
 
 test('routing: with nothing to go on, 30 minutes', () => {
   assert.equal(limitEnd(acc('a', 60, null), now), now + 30 * 60_000);
+});
+
+const OFF = { paused: true, pausedUntil: null };
+const HOUR = (ms: number) => ({ paused: true, pausedUntil: iso(now + ms) });
+
+test('usage: an account switched off gets no new work', () => {
+  assert.equal(chooseAccount([acc('a', 10, 10, OFF), acc('b', 70, 70)], now)?.id, 'b');
+  assert.equal(chooseAccount([acc('a', 10, 10, OFF)], now), null);
+});
+
+test('usage: an hour off ends and the account takes work again', () => {
+  const a = acc('a', 10, 10, HOUR(600_000));
+  assert.equal(chooseAccount([a], now), null);
+  assert.equal(chooseAccount([a], now + 601_000)?.id, 'a');
+});
+
+test('usage: when an account is free again counts its pause and its limit', () => {
+  assert.equal(freeAt(acc('a', 10, 10), now), 0);
+  assert.equal(freeAt(acc('a', 10, 10, OFF), now), Infinity);
+  assert.equal(freeAt(acc('a', 10, 10, HOUR(300_000)), now), now + 300_000);
+  // Off for an hour and limited for longer: free when both have passed.
+  assert.equal(freeAt(acc('a', 10, 10, { ...HOUR(300_000), limitedUntil: iso(now + 900_000) }), now), now + 900_000);
+});
+
+test('usage: with every account off indefinitely there is no time to retry at', () => {
+  assert.equal(nextFreeAt([acc('a', 10, 10, OFF), acc('b', 10, 10, OFF)], now), null);
+  assert.equal(nextFreeAt([acc('a', 10, 10, OFF), acc('b', 10, 10, HOUR(120_000))], now), now + 120_000);
+  assert.equal(nextFreeAt([acc('a', 10, 10, OFF), acc('b', 10, 10)], now), null);
+});
+
+test('usage: what a task waits for when no account can take it', () => {
+  assert.deepEqual(accountWait([acc('a', 10, 10, OFF), acc('b', 10, 10, OFF)], undefined, now), { kind: 'off' });
+  assert.deepEqual(accountWait([acc('a', 10, 10, OFF), acc('b', 10, 10, HOUR(120_000))], undefined, now), { kind: 'pause', at: now + 120_000, id: 'b' });
+  assert.deepEqual(accountWait([acc('a', 10, 10, OFF), acc('b', 10, 10, { limitedUntil: iso(now + 60_000) })], undefined, now), { kind: 'limit', at: now + 60_000, id: 'b' });
+  assert.equal(accountWait([acc('a', 10, 10, OFF), acc('b', 10, 10)], undefined, now), null);
+  assert.equal(accountWait([], undefined, now), null);
+});
+
+test('usage: an account switched back on ends the wait', () => {
+  const list = [acc('a', 10, 10, OFF)];
+  assert.deepEqual(accountWait(list, undefined, now), { kind: 'off' });
+  list[0] = { ...list[0], paused: false, pausedUntil: null };
+  assert.equal(accountWait(list, undefined, now), null);
+  assert.equal(chooseAccount(list, now)?.id, 'a');
 });

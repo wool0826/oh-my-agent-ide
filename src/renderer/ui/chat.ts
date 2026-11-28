@@ -253,7 +253,7 @@ function evRowHtml(c: ChatItem, then = false) {
   const x = task(e.task);
   const w = worker(e.worker ?? x?.workerId);
   // A usage limit is about every account; a line about nothing named keeps its sentence, cut to the row.
-  const title = e.title || x?.title || (e.k === 'limitPaused' || e.k === 'limitHeld' ? t('evs.allAccounts') : c.text);
+  const title = e.title || x?.title || (e.k === 'limitPaused' || e.k === 'limitHeld' || e.k === 'accountsOff' ? t('evs.allAccounts') : c.text);
   const b = evBadge(e);
   let go = '';
   if (e.k === 'failed' && x && w) {

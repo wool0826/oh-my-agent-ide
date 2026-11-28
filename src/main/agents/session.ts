@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- SDK message fields the SDK types leave out (usage, is_error, terminal_reason, queued_turn_count) and untyped tool input. */
 import { query, type CanUseTool, type McpServerConfig, type Options, type PermissionMode, type Query, type SDKMessage, type SDKStatusMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { accounts } from '../accounts';
+import { sessionAccountStep } from '../../shared/accountPause';
 import { claudeExecutable, pluginPath } from '../runtime';
 import { log } from '../log';
 import { PushQueue } from '../util';
@@ -168,13 +169,24 @@ export class AgentSession {
   get accountId() { return this.cfg.accountId; }
 
   /**
-   * Before the session (re)starts, move it off an account a usage limit is holding.
-   * False when every account is held, so it cannot start now.
+   * Before the session (re)starts or takes work, move it off an account a usage limit holds or the user switched off
+   * (shared/accountPause.ts). `begun`: the work is a task already under way, which may go on where it is.
+   * False when it cannot go on now.
    */
-  ready(): boolean {
-    if (this.q || accounts.isFree(this.cfg.accountId)) return true;
-    const next = accounts.pick(this.cfg.accountId);
+  ready(begun = true): boolean {
+    const id = this.cfg.accountId;
+    const step = sessionAccountStep({ free: accounts.isFree(id), live: !!this.q, busy: this.busy, paused: accounts.isPausedId(id), otherFree: accounts.hasFree('claude', id), begun });
+    if (step !== 'move') return step === 'keep';
+    const next = accounts.pick(id);
     if (!next) return false;
+    if (this.q) {
+      // Between turns: the process ends here and the same session resumes on the other account with the next message.
+      log.info(`[${this.cfg.label}] account ${id} is switched off; moving to ${next.id}`);
+      this.input?.close();
+      try { this.q.close(); } catch { /* ignore */ }
+      this.q = null;
+      this.input = null;
+    }
     this.cfg.accountId = next.id;
     return true;
   }

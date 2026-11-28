@@ -18,7 +18,8 @@ import { closePop, installedFonts, markFont, openPop, Opt, pop, stepNum } from '
 import { $, applyStaticText, call, cap1, esc, holdWhileComposing, isMac, meterLevel, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
 import { renderMemSync } from './memory';
 import { loadPreflight, preflightRows } from './repos';
-import { ms, usageWindows } from './sidebar';
+import { ms, offText, untilText, usageWindows } from './sidebar';
+import { activeOf, allPaused, assignMode, runningOn } from '../../shared/accountPause';
 import { telegramClosed, telegramDialog, telegramGroup } from './telegram';
 
 /** Apply the UI font and text size as CSS variables. Also used for the live preview in Settings. */
@@ -279,12 +280,32 @@ export function accountCard(a: AccountView, i: number) {
       <div class="menu-sep"></div>
       <button class="menu-item is-danger" role="menuitem" data-action="acc-remove" data-id="${a.id}">${sym('s-tick', 'tick')}${t('acc.removeMenu')}</button>
     </div>` : '';
-  return `<div class="acc-card${renaming ? ' editing' : ''}">
+  const off = a.paused;
+  const lim = !off && a.limited;
+  const assign = segc(`acc-assign-${a.id}`, assignMode(a), [
+    { value: 'on', label: t('acc.on') }, { value: 'hour', label: t('acc.hour') }, { value: 'off', label: t('acc.off') },
+  ], t('acc.assignOf', { name: a.label }), `data-change="acc-assign" data-id="${esc(a.id)}"`, 'seg-s').replace('role="radiogroup"', `role="radiogroup" data-tip="${esc(t('acc.assign'))}"`);
+  return `<div class="acc-card${renaming ? ' editing' : ''}${off ? ' off' : ''}${lim ? ' lim' : ''}">
     <span class="avatar" style="background:${AVATAR[i % AVATAR.length]}">${esc(initials(a.label))}</span>
-    <span class="acc-main">${name}<span class="acc-kind">${kind}</span>${a.lastError ? `<span class="warn">${esc(a.lastError)}</span>` : ''}</span>
+    <span class="acc-main">${name}<span class="acc-kind">${kind}</span>${accountState(a)}</span>
     <span class="acc-meters">${usageWindows(a).map((w) => meter(w.label, w.v)).join('')}</span>
-    <span class="acc-more"><button class="btn btn-icon btn-lg" data-action="acc-menu" data-id="${a.id}" aria-haspopup="menu" aria-expanded="${ui.accMenu === a.id}" aria-label="${t('acc.options')}">${sym('s-more')}</button>${menu}</span>
+    <span class="acc-ctl">${assign}<span class="acc-more"><button class="btn btn-icon btn-lg" data-action="acc-menu" data-id="${a.id}" aria-haspopup="menu" aria-expanded="${ui.accMenu === a.id}" aria-label="${t('acc.options')}">${sym('s-more')}</button>${menu}</span></span>
   </div>`;
+}
+
+/** The card's state: off (with what still runs on it), at its limit, or a failed read (its message on hover). */
+function accountState(a: AccountView) {
+  let pill = '';
+  if (a.paused) {
+    const n = runningOn(S!.workers, a.id);
+    pill = `<span class="pill">${esc(n ? t('acc.offRunning', { n }) : offText(a))}</span>`;
+  } else if (a.limited) {
+    pill = `<span class="pill" data-tone="danger">${esc(a.limitedUntil ? t('acc.limitUntil', { t: untilText(a.limitedUntil) }) : t('usage.limited'))}</span>`;
+  } else if (a.lastError) {
+    const code = /\b[45]\d\d\b/.exec(a.lastError)?.[0];
+    pill = `<span class="pill" data-tone="warning" tabindex="0" data-tip="${esc(a.lastError)}" aria-label="${esc(`${t('acc.usageErr')}: ${a.lastError}`)}">${esc(code ? `${t('acc.usageErr')} · ${code}` : t('acc.usageErr'))}</span>`;
+  }
+  return pill ? `<span class="acc-state">${pill}</span>` : '';
 }
 
 export function removeDialog() {
@@ -354,7 +375,12 @@ export function settingsHtml() {
   const row = (label: string, forId: string, control: string, cls = '') => `<div class="srow${cls ? ` ${cls}` : ''}"><label class="lbl" for="${forId}">${label}</label>${control}</div>`;
   const grp = (rows: string, cap = '') => `<div class="sgrp-wrap">${cap ? `<h3 class="scap">${cap}</h3>` : ''}<div class="sgrp">${rows}</div></div>`;
 
-  const accounts = `${grp(s.accounts.map(accountCard).join('') || `<div class="srow"><span class="lbl muted">${t('acc.none')}</span></div>`, `${t('acc.registered')} <small>${s.accounts.length} / ${MAX_ACCOUNTS}</small>`)}
+  // Every account switched off: the one warning on the pane, with the way out.
+  const none = allPaused(s.accounts)
+    ? `<div class="acc-banner" role="alert">${sym('s-alert')}<span>${esc(t('acc.noneOnWait', { n: s.tasks.filter((x) => x.status === 'queued').length }))}</span><button class="btn btn-sm" data-action="acc-resume-all">${t('acc.allOn')}</button></div>`
+    : '';
+  const count = s.accounts.length ? t('acc.onCount', { n: activeOf(s.accounts).length, total: s.accounts.length }) : `${s.accounts.length} / ${MAX_ACCOUNTS}`;
+  const accounts = `${none}${grp(s.accounts.map(accountCard).join('') || `<div class="srow"><span class="lbl muted">${t('acc.none')}</span></div>`, `${t('acc.registered')} <small>${esc(count)}</small>`)}
     ${full ? '' : grp(`
       ${methods.length < 2 ? '' : row(t('acc.method'), 'acc-kind', segc('acc-kind', ui.accKind, methods, t('acc.method'), 'data-change="acc-kind"'))}
       ${row(t('acc.name'), 'acc-label', `<input class="inp w" id="acc-label" placeholder="${t('acc.namePh')}">`)}

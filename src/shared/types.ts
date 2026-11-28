@@ -48,6 +48,10 @@ export interface AccountView {
   /** When that limit resets, while it holds. */
   limitedUntil: string | null;
   lastError: string | null;
+  /** Switched off in Settings, now (shared/accountPause.ts): nothing new starts on it. */
+  paused: boolean;
+  /** While off for an hour: when it comes back on. */
+  pausedUntil: string | null;
 }
 
 export interface Repo {

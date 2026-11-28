@@ -6,10 +6,12 @@ import { taskRef, type Say } from './askWhy';
 import { afterDependency, hasOpenPr, isQueued } from './queue';
 import { canStart, queueOrder, slotsUsed, waitsForSlot } from './slots';
 import type { AccountView, Task } from './types';
+import { freeAt } from './usage';
+import { allPaused, isPaused, pauseEnd } from './accountPause';
 
 export interface QueueCtx {
   tasks: Task[];
-  accounts: Pick<AccountView, 'label' | 'limitedUntil'>[];
+  accounts: (Pick<AccountView, 'label' | 'limitedUntil'> & Partial<Pick<AccountView, 'paused' | 'pausedUntil'>>)[];
   maxWorkers: number;
   /** Formats a reset time for the reader (the renderer's clock time). */
   time: (ms: number) => string;
@@ -64,18 +66,24 @@ export function queueWhy(say: Say, task: Task, ctx: QueueCtx): QueueWhy | null {
     return { why: say('q.slotWhy', { n, max: ctx.maxWorkers }), starts: say('q.slotStarts', place), cancelled: false, again };
   }
 
-  // Paused for a usage limit: it goes on when the first account's limit resets.
-  const why = say('q.limitWhy');
-  // The same rule as nextFreeAt (shared/usage.ts): only when every account is held does it wait.
-  const ends = ctx.accounts.map((a) => (a.limitedUntil ? Date.parse(a.limitedUntil) : 0));
+  // Paused for a usage limit, or with every account switched off: it goes on when the first account can take it.
+  const why = say(allPaused(ctx.accounts, now) ? 'q.offWhy' : 'q.limitWhy');
+  // The same rule as nextFreeAt (shared/usage.ts): only when every account is held or off does it wait.
+  const ends = ctx.accounts.map((a) => freeAt(a, now));
   if (!ends.length || ends.some((e) => !(e > now))) {
     // Going on needs a slot like any other resume (workers.ts retryQueued).
     const slot = canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers);
     return { why, starts: say(slot ? 'q.limitReset' : 'q.limitResetSlot', { max: ctx.maxWorkers }), cancelled: false, again };
   }
   const at = Math.min(...ends);
+  if (!Number.isFinite(at)) return { why, starts: say('q.offStarts'), cancelled: false, again };
   const first = ctx.accounts[ends.indexOf(at)];
-  return { why, starts: say('q.limitStarts', { account: first.label, time: ctx.time(at) }), cancelled: false, again };
+  return { why, starts: say(backOn(first, at, now) ? 'q.pauseStarts' : 'q.limitStarts', { account: first.label, time: ctx.time(at) }), cancelled: false, again };
+}
+
+/** The account comes back at `at` because its hour off ends then, not a usage limit. */
+function backOn(a: QueueCtx['accounts'][number], at: number, now: number) {
+  return isPaused(a, now) && pauseEnd(a, now) === at;
 }
 
 /** Both sentences on one line, for a tooltip. */
@@ -122,10 +130,12 @@ export function queueLine(say: Say, task: Task, ctx: QueueCtx): QueueLine | null
     return { pos, text: pos === null || pos === 1 ? say('ql.next') : say('ql.place', { pos, ord: ordinal(pos) }), cancelled: false };
   }
 
-  const ends = ctx.accounts.map((a) => (a.limitedUntil ? Date.parse(a.limitedUntil) : 0));
+  const ends = ctx.accounts.map((a) => freeAt(a, now));
   if (!ends.length || ends.some((e) => !(e > now))) {
     return canStart(ctx.tasks, task.workerId ?? task.id, ctx.maxWorkers) ? soon(null) : { pos: null, text: say('ql.limitSlot'), cancelled: false };
   }
   const at = Math.min(...ends);
-  return { pos: null, text: say('ql.limit', { account: ctx.accounts[ends.indexOf(at)].label, time: ctx.time(at) }), cancelled: false };
+  if (!Number.isFinite(at)) return { pos: null, text: say('ql.off'), cancelled: false };
+  const first = ctx.accounts[ends.indexOf(at)];
+  return { pos: null, text: say(backOn(first, at, now) ? 'ql.pause' : 'ql.limit', { account: first.label, time: ctx.time(at) }), cancelled: false };
 }

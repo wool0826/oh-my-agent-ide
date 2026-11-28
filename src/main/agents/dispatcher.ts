@@ -114,11 +114,26 @@ export async function readWorker(id: string, last = 10) {
     (items.map((i) => `[${clock(i.ts)} ${i.from}] ${cut(i.text.trim())}`).join('\n\n') || '(empty)');
 }
 
+/**
+ * The accounts the user switched off in Settings, after the Workers in list_workers: nothing new starts on them, so
+ * they add no capacity. Empty when every account is on.
+ */
+export function accountsOffLines(list: { label: string; paused: boolean; pausedUntil: string | null }[]) {
+  const off = list.filter((a) => a.paused);
+  if (!off.length) return '';
+  const each = off.map((a) => `- ${a.label}: off${a.pausedUntil ? ` until ${clock(a.pausedUntil)}` : ' until the user switches it on'}`).join('\n');
+  const all = off.length === list.length
+    ? ' Every account is off: new tasks wait in the queue and start when the user switches one on. Do not promise when.'
+    : ' Tasks run on the other accounts; do not count these as capacity.';
+  return `\n\nAccounts switched off in Settings (no new task, Worker or Dispatcher session starts on them; work already running on them finishes):${all}\n${each}`;
+}
+
 /** Tasks waiting to start with no Worker yet (T-0146), after the Workers in list_workers; empty when there are none. */
 function unassignedLines() {
   const xs = store.data.tasks.filter((x) => isQueued(x) && !x.workerId);
   if (!xs.length) return '';
-  const why = (x: Task) => x.status === 'blocked' ? `starts after ${x.afterTaskId}` : waitsForSlot(x) ? 'waits for a free Worker slot' : 'waits for a usage limit to reset';
+  const off = accounts.allPaused();
+  const why = (x: Task) => x.status === 'blocked' ? `starts after ${x.afterTaskId}` : waitsForSlot(x) ? 'waits for a free Worker slot' : off ? 'waits for an account to be switched on' : 'waits for a usage limit to reset';
   return `\n\nWaiting for a Worker (one is picked when each can start; cancel_task works on them):\n${xs.map((x) => `- ${x.id} ${x.title}${x.repo ? ` (${x.repo})` : ''}: ${why(x)}`).join('\n')}`;
 }
 
@@ -255,7 +270,7 @@ function boardTools(d: Dispatcher) {
       }, async (a) => {
         const ws = store.data.workers.filter((w) => a.include_archived || w.status !== 'archived');
         const list = ws.length ? ws.map((w) => workerLine(w.id)).join('\n') : 'No Workers.';
-        return ok(`${list}${unassignedLines()}`);
+        return ok(`${list}${unassignedLines()}${accountsOffLines(accounts.views())}`);
       }),
       tool('create_task', 'Create a task and hand it to a Worker. Without worker_id it goes to the idle Worker that best knows the code (same repository, related past tasks, then the smaller context, same model), and a new Worker is created only when none fits; the result says which. With worker_id that Worker continues with its context; a Worker that still has an open task (running, waiting for an answer, or queued) takes a new task only with after_task_id on that task (or on one already chained after it), otherwise the call fails. A task that cannot start yet (after_task_id, no free Worker slot, a usage limit) waits with no Worker unless worker_id is given; its Worker is picked when it starts (with after_task_id, the Worker of that task first if it is idle and fits), and you are told which. With after_task_id the task waits until that task\'s PR is merged, then starts automatically; if that task finishes without a PR it starts then, and if it fails or its PR is closed unmerged the waiting task is cancelled and you are told.', {
         title: z.string().describe('Short task name'),
@@ -276,7 +291,9 @@ function boardTools(d: Dispatcher) {
           store.handout(assignedEvent(task, w, !!a.worker_id || !!reused), task.id);
           const wait = waitsForSlot(task)
             ? ` All ${loadSettings().maxWorkers} Worker slots are in use; it waits in the queue and starts by itself when one frees up.`
-            : task.status === 'queued' ? ' Every account is held by a usage limit; it starts when the first one resets.'
+            : task.status === 'queued' ? (accounts.wait(providerOf(task.model ?? loadSettings().workerModel, cachedModels().models))?.kind === 'off' || accounts.allPaused()
+              ? ' Every account is switched off in Settings; it waits in the queue and starts when the user switches one on.'
+              : ' Every account is held by a usage limit or switched off; it starts when the first one can take it.')
             : task.status === 'blocked' ? ` It starts when ${task.afterTaskId}'s PR is merged.` : '';
           if (!w) return ok(`${task.id} is queued with no Worker yet: one is picked when it can start${task.afterTaskId ? ` (the Worker of ${task.afterTaskId} if it is free then)` : ''}, and you are told which.${wait}${overlapNote(task, task.overlaps ?? [], store.data.tasks)}`);
           const how = reused ? ` Reused ${w.id}: ${reused}.` : a.worker_id ? '' : ` ${w.id} is a new Worker: no idle Worker${task.repo ? ` on ${task.repo}` : ''} fit (busy, compacting, or none yet).`;
@@ -457,7 +474,7 @@ export function systemPrompt(codex = false) {
     '9. If the message ends with "[Attached files]", pass those absolute paths to the Worker in the task prompt. You may Read them to decide routing.',
     '10. Keep replies short: one or two sentences on what you gave to whom. Avoid lists and headings.',
     '11. To cancel work that has not started or is paused (queued or blocked), use cancel_task; when the user asks to clear or reset the queue, use clear_queue. If a branch was kept because it holds work, tell the user where it is. Running work is stopped with stop_worker instead.',
-    '12. Only a set number of Workers run at once (Settings). A task queued for a free Worker slot starts by itself, the longest waiting first, when a running one finishes; do not cancel or re-create it for that.',
+    '12. Only a set number of Workers run at once (Settings). A task queued for a free Worker slot starts by itself, the longest waiting first, when a running one finishes; do not cancel or re-create it for that. The user can switch an account off in Settings (list_workers lists them): nothing new starts on it, and work already on it finishes. With every account off, tasks wait in the queue until the user switches one on; do not promise capacity or a start time for accounts that are off.',
     '13. To learn something from a Worker, look with read_worker first (its status and what it said last). If the answer is not there, ask with ask_worker: the Worker answers from its own context without stopping its work, and no task is opened for it. The answer does not come in the same turn, so say in one line that you asked and end your turn. Do not ask again while a question is unanswered, and do not create a task just to get an answer.',
     '14. A Worker may ask you for something or report that it is blocked; you see it in "[Worker updates]". A task that stopped for you stays open and keeps its Worker slot until that Worker hears from you, so always finish with send_to_worker: the answer, or what you did about it (the task you created with create_task, what the user decided). If only the user can decide, ask with request_decision first and write to the Worker when the answer comes; do not write to it just to say it should wait.',
     '15. A screen\'s structure is settled on a mock-up before any code. When a request adds a screen, view, panel or dialog, or changes how a screen is laid out (what it shows where, how its parts are grouped, how one moves through it), first create a mock-up task: kind other, no code, two or three options in the app\'s real look, published as an artifact with its link on a LINK: line (an HTML file on a FILE: line when it cannot be published). When it is done, put the choice in the decision inbox with request_decision, one option per mock-up. Only after the answer create the code task, with the chosen option\'s link and name in its prompt. Skip the mock-up for small fixes, which go straight to a code task: wording, spacing, colours or alignment within the existing layout, a bug, or a change the user already showed exactly (their own mock-up, a screenshot, a precise description) or asked to build without one.',
@@ -625,7 +642,8 @@ class Dispatcher {
     // A turn under way is never cut: the new session starts with the first message after it (a new day, a new
     // system prompt or the other agent's model).
     const keep = !freshDay && !this.stale;
-    if (this.session && !this.session.closed && (keep || this.session.busy)) return this.session.ready() ? this.session : null;
+    // Between turns on an account switched off in Settings it moves to another; with none on, the message waits.
+    if (this.session && !this.session.closed && (keep || this.session.busy)) return this.session.ready(false) ? this.session : null;
     if (this.session) this.session.close();
     this.stale = false;
     // Fake agent mode: the Dispatcher follows the script in the user's message; "@fake task" makes a task as create_task does.
@@ -829,9 +847,12 @@ class Dispatcher {
     this.deliver(s, []);
   }
 
-  /** The line that says a message waits for the usage limit to reset, and when that is. */
+  /** The line that says a message waits for a usage limit to reset, or for an account to be switched on, and when. */
   private limitHeldLine() {
+    const wait = accounts.wait(this.provider);
+    if (wait?.kind === 'off') return store.event(t('ev.offHeld'), { k: 'accountsOff' });
     const time = limitResetText(accounts.nextFreeAt(this.provider));
+    if (wait?.kind === 'pause') return store.event(t('ev.pauseHeld', { time }), { k: 'accountsOff', note: time });
     store.event(t('ev.limitHeld', { time }), { k: 'limitHeld', note: time });
   }
 
@@ -892,7 +913,7 @@ class Dispatcher {
     // A new day starts a new session anyway; nothing to compact.
     if (!d.sessionId || d.date !== today()) return;
     const s = this.open();
-    if (!s) throw new Error(accounts.list().length ? t('err.limitUntil', { time: limitResetText(accounts.nextFreeAt(this.provider)) }) : t('err.noAccount'));
+    if (!s) throw new Error(!accounts.list().length ? t('err.noAccount') : accounts.wait(this.provider)?.kind === 'off' ? t('err.accountsOff') : t('err.limitUntil', { time: limitResetText(accounts.nextFreeAt(this.provider)) }));
     s.compact();
     store.changed();
   }

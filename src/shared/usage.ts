@@ -1,4 +1,5 @@
 import type { Provider, UsageWindow } from './types';
+import { isPaused, pauseEnd, type Pausable } from './accountPause';
 
 /**
  * A usage window whose reset time has passed no longer says anything: the real value is unknown and low.
@@ -9,7 +10,7 @@ export function liveWindow(w: UsageWindow, now = Date.now()): UsageWindow {
 }
 
 /** What account routing needs to know about an account. */
-export interface RoutableAccount {
+export interface RoutableAccount extends Pausable {
   id: string;
   fiveHour: UsageWindow;
   sevenDay: UsageWindow;
@@ -26,7 +27,7 @@ export function usageScore(a: RoutableAccount, now = Date.now()) {
 }
 
 /** True while a usage limit has rejected the account and has not reset yet. High usage alone does not count. */
-export function isExhausted(a: RoutableAccount, now = Date.now()) {
+export function isExhausted(a: Pick<RoutableAccount, 'limitedUntil'>, now = Date.now()) {
   return !!a.limitedUntil && Date.parse(a.limitedUntil) > now;
 }
 
@@ -36,7 +37,8 @@ export function isExhausted(a: RoutableAccount, now = Date.now()) {
  */
 export function chooseAccount<T extends RoutableAccount>(list: readonly T[], now = Date.now(), exclude?: string | null, provider?: Provider): T | null {
   // A session runs on one provider's agent, so only that provider's accounts can carry it.
-  const pool = list.filter((a) => a.id !== exclude && !isExhausted(a, now) && (!provider || (a.provider ?? 'claude') === provider));
+  // An account switched off in Settings takes nothing new (shared/accountPause.ts).
+  const pool = list.filter((a) => a.id !== exclude && !isExhausted(a, now) && !isPaused(a, now) && (!provider || (a.provider ?? 'claude') === provider));
   if (!pool.length) return null;
   return [...pool].sort((x, y) => {
     const d = usageScore(x, now) - usageScore(y, now);
@@ -45,10 +47,42 @@ export function chooseAccount<T extends RoutableAccount>(list: readonly T[], now
   })[0];
 }
 
-/** When every account is exhausted: the time (ms) the first one resets. Null when one is free now or there are none. */
+/**
+ * When an account can take a new session again (ms): 0 now; the end of its limit or of its hour's pause, whichever
+ * is later; Infinity while it is switched off until switched on.
+ */
+export function freeAt(a: Pick<RoutableAccount, 'limitedUntil'> & Pausable, now = Date.now()): number {
+  const limit = isExhausted(a, now) ? Date.parse(a.limitedUntil!) : 0;
+  if (!isPaused(a, now)) return limit;
+  const end = pauseEnd(a, now);
+  return end === null ? Infinity : Math.max(end, limit);
+}
+
+/**
+ * When no account can take a new session: the time (ms) the first one can again. Null when one is free now, when
+ * there are none, and when every one left is switched off (nothing but the user brings one back).
+ */
 export function nextFreeAt(list: readonly RoutableAccount[], now = Date.now()): number | null {
-  if (!list.length || list.some((a) => !isExhausted(a, now))) return null;
-  return Math.min(...list.map((a) => Date.parse(a.limitedUntil!)));
+  if (!list.length) return null;
+  const at = Math.min(...list.map((a) => freeAt(a, now)));
+  return at > now && Number.isFinite(at) ? at : null;
+}
+
+/**
+ * Why no account of `provider` can take a new session, for the line the waiting work shows: a usage limit or an
+ * hour's pause ends first (`at`), or every account it could use is switched off. Null when one is free or none exist.
+ */
+export type AccountWait = { kind: 'limit' | 'pause'; at: number; id: string } | { kind: 'off' };
+
+export function accountWait(list: readonly (Pick<RoutableAccount, 'id' | 'limitedUntil' | 'provider'> & Pausable)[], provider?: Provider, now = Date.now()): AccountWait | null {
+  const pool = provider ? list.filter((a) => (a.provider ?? 'claude') === provider) : list;
+  if (!pool.length) return null;
+  const at = pool.map((a) => freeAt(a, now));
+  const first = Math.min(...at);
+  if (!(first > now)) return null;
+  if (!Number.isFinite(first)) return { kind: 'off' };
+  const a = pool[at.indexOf(first)];
+  return { kind: isPaused(a, now) && pauseEnd(a, now) === first ? 'pause' : 'limit', at: first, id: a.id };
 }
 
 const PROVIDERS: Provider[] = ['claude', 'chatgpt'];

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createTask, dispatcher, readWorker, systemPrompt } from '../src/main/agents/dispatcher';
+import { accountsOffLines, createTask, dispatcher, readWorker, systemPrompt } from '../src/main/agents/dispatcher';
 import { AgentSession } from '../src/main/agents/session';
 import { store } from '../src/main/store';
 import { loadSettings } from '../src/main/settings';
@@ -423,6 +423,17 @@ test('the Claude Dispatcher is told about claude.ai artifacts and has the Artifa
   } finally {
     loadSettings().claudeConnectors = true;
   }
+});
+
+test('dispatcher: list_workers names the accounts switched off, so it does not promise their capacity', () => {
+  assert.equal(accountsOffLines([{ label: 'Work', paused: false, pausedUntil: null }]), '');
+  const some = accountsOffLines([{ label: 'Work', paused: false, pausedUntil: null }, { label: 'Side', paused: true, pausedUntil: null }]);
+  assert.match(some, /- Side: off until the user switches it on/);
+  assert.match(some, /do not count these as capacity/);
+  assert.doesNotMatch(some, /- Work/);
+  const all = accountsOffLines([{ label: 'Work', paused: true, pausedUntil: null }, { label: 'Side', paused: true, pausedUntil: null }]);
+  assert.match(all, /Every account is off: new tasks wait in the queue/);
+  assert.match(all, /Do not promise when/);
 });
 
 test('dispatcher: words from the phone are marked for the model, and only their turn is answered on the phone', async () => {

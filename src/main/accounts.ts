@@ -5,7 +5,8 @@ import { loadSettings, saveSettings, encryptToken, decryptToken, type StoredAcco
 import { log } from './log';
 import { nowIso, uid } from './util';
 import { t } from './i18n';
-import { chooseAccount, clampUsageMins, isExhausted, limitEnd, liveWindow, nextFreeAtFor, type UsageClock } from '../shared/usage';
+import { accountWait, chooseAccount, clampUsageMins, isExhausted, limitEnd, liveWindow, nextFreeAtFor, type AccountWait, type UsageClock } from '../shared/usage';
+import { allPaused, isPaused, nextPauseEnd, pauseEnd, pauseFields, type AssignMode } from '../shared/accountPause';
 import { readUnifiedHeaders } from '../shared/usageHeaders';
 import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type Provider, type UsageWindow } from '../shared/types';
 import { codexClient } from './codex/client';
@@ -24,6 +25,8 @@ class Accounts extends EventEmitter {
   clock: UsageClock = { checkedAt: null, nextAt: null, running: false };
   private timer: NodeJS.Timeout | null = null;
   private round: Promise<void> | null = null;
+  /** Turns an account paused for an hour back on when the hour ends. */
+  private pauseTimer: NodeJS.Timeout | null = null;
 
   list(): StoredAccount[] {
     return loadSettings().accounts;
@@ -39,6 +42,7 @@ class Accounts extends EventEmitter {
       fiveHour: liveWindow(a.fiveHour), sevenDay: liveWindow(a.sevenDay),
       usageUpdatedAt: a.usageUpdatedAt, usageSource: a.usageSource, usageBackoffUntil: a.usageBackoffUntil ?? null,
       limited: this.isLimited(a), limitedUntil: this.isLimited(a) ? a.limitedUntil : null, lastError: a.lastError,
+      paused: isPaused(a), pausedUntil: pauseEnd(a) !== null ? a.pausedUntil : null,
     }));
   }
 
@@ -53,6 +57,7 @@ class Accounts extends EventEmitter {
       tokenEnc: kind === 'token' ? encryptToken(tok) : '',
       fiveHour: { utilization: null, resetsAt: null }, sevenDay: { utilization: null, resetsAt: null },
       usageUpdatedAt: null, usageSource: null, limitedUntil: null, lastAssignedAt: null, lastError: null, usageBackoffUntil: null,
+      paused: false, pausedUntil: null,
     };
     s.accounts.push(acc);
     saveSettings();
@@ -83,6 +88,7 @@ class Accounts extends EventEmitter {
       id: uid(), label: label.trim() || 'ChatGPT', kind: 'login', plan: 'team', provider: 'chatgpt', planLabel: null, windowMins: null, tokenEnc: '',
       fiveHour: { utilization: null, resetsAt: null }, sevenDay: { utilization: null, resetsAt: null },
       usageUpdatedAt: null, usageSource: null, limitedUntil: null, lastAssignedAt: null, lastError: null, usageBackoffUntil: null,
+      paused: false, pausedUntil: null,
     };
     s.accounts.push(acc);
     saveSettings();
@@ -141,6 +147,7 @@ class Accounts extends EventEmitter {
     const s = loadSettings();
     s.accounts = s.accounts.filter((a) => a.id !== id);
     saveSettings();
+    this.armPause();
     this.emit('changed');
   }
 
@@ -150,6 +157,55 @@ class Accounts extends EventEmitter {
     a.label = label.trim() || a.label;
     saveSettings();
     this.emit('changed');
+  }
+
+  /**
+   * Switch an account on, off for an hour, or off. Sessions already on it go on; switched on, work that waited for an
+   * account is tried again ('resumed').
+   */
+  setAssign(id: string, mode: AssignMode) {
+    const a = this.get(id);
+    if (!a) return;
+    const was = isPaused(a);
+    Object.assign(a, pauseFields(mode));
+    log.info('account switch', a.label, mode);
+    saveSettings();
+    this.armPause();
+    this.emit('changed');
+    if (was && mode === 'on') this.emit('resumed');
+  }
+
+  /** Every account is switched off ("Turn all on" in Settings). */
+  allPaused() {
+    return allPaused(this.list());
+  }
+
+  /** Switch every account on. */
+  resumeAll() {
+    const off = this.list().filter((a) => isPaused(a));
+    if (!off.length) return;
+    for (const a of off) Object.assign(a, pauseFields('on'));
+    saveSettings();
+    this.armPause();
+    this.emit('changed');
+    this.emit('resumed');
+  }
+
+  /** Set the timer for the first hour's pause to end; then that account is on again. */
+  armPause() {
+    if (this.pauseTimer) clearTimeout(this.pauseTimer);
+    this.pauseTimer = null;
+    const at = nextPauseEnd(this.list());
+    if (at === null) return;
+    this.pauseTimer = setTimeout(() => {
+      this.pauseTimer = null;
+      const now = Date.now();
+      const ended = this.list().filter((a) => a.paused && a.pausedUntil && !isPaused(a, now));
+      for (const a of ended) Object.assign(a, pauseFields('on'));
+      if (ended.length) { saveSettings(); this.emit('changed'); this.emit('resumed'); }
+      this.armPause();
+    }, Math.min(2 ** 31 - 1, Math.max(1_000, at - Date.now() + 1_000)));
+    this.pauseTimer.unref();
   }
 
   setPlan(id: string, plan: AccountPlan) {
@@ -180,16 +236,16 @@ class Accounts extends EventEmitter {
     return isExhausted(a);
   }
 
-  /** The account exists and no limit is holding it. */
+  /** The account exists, no limit is holding it, and it is not switched off. */
   isFree(id: string | null) {
     const a = this.get(id);
-    return !!a && !this.isLimited(a);
+    return !!a && !this.isLimited(a) && !isPaused(a);
   }
 
   /**
    * Pick an account for a new session: the lowest usage among accounts no limit is holding, however high;
    * within 5 points, the one assigned longest ago. `exclude` is the account that just hit its limit.
-   * Null only when every account is held by a limit (or there are none).
+   * Accounts switched off in Settings are skipped. Null when none is left (or there are none).
    */
   pick(exclude?: string | null, provider: Provider = 'claude'): StoredAccount | null {
     const chosen = chooseAccount(this.list(), Date.now(), exclude, provider);
@@ -199,14 +255,25 @@ class Accounts extends EventEmitter {
     return chosen;
   }
 
-  /** An account could carry a new session of this provider now (pick would find one), without picking it. */
-  hasFree(provider: Provider = 'claude') {
-    return !!chooseAccount(this.list(), Date.now(), null, provider);
+  /** An account (other than `exclude`) could carry a new session of this provider now (pick would find one), without picking it. */
+  hasFree(provider: Provider = 'claude', exclude: string | null = null) {
+    return !!chooseAccount(this.list(), Date.now(), exclude, provider);
+  }
+
+  /** The account is switched off in Settings now. */
+  isPausedId(id: string | null) {
+    const a = this.get(id);
+    return !!a && isPaused(a);
   }
 
   allLimited() {
     const l = this.list();
     return l.length > 0 && l.every((a) => this.isLimited(a));
+  }
+
+  /** Why nothing of this provider can start now (a limit, an hour's pause, every account off); null when one is free. */
+  wait(provider?: Provider): AccountWait | null {
+    return accountWait(this.list(), provider);
   }
 
   /**
@@ -393,6 +460,7 @@ class Accounts extends EventEmitter {
   }
 
   startPolling() {
+    this.armPause();
     // Fake agents: no usage to read and no Codex CLI to start; a round only moves the clock.
     if (!fakeMode()) codexClient().on('rateLimits', (rl: CodexRateLimits | null) => this.applyCodex(rl));
     void this.refreshAll();

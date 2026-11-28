@@ -81,9 +81,13 @@ export class CodexSession {
 
   get accountId() { return this.cfg.accountId; }
 
-  /** False while the account's usage limit holds it: a Codex thread stays with the account that started it. */
-  ready(): boolean {
-    return this.attached || accounts.isFree(this.cfg.accountId);
+  /**
+   * False while the account's usage limit holds it: a Codex thread stays with the account that started it. Switched
+   * off in Settings, a thread goes on only with work already begun (`begun`); a new task waits.
+   */
+  ready(begun = true): boolean {
+    if (this.attached && (begun || !accounts.isPausedId(this.cfg.accountId))) return true;
+    return accounts.isFree(this.cfg.accountId);
   }
 
   send(text: string) {

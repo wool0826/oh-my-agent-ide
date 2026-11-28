@@ -37,6 +37,8 @@ AgentSession.prototype.setMode = async function (mode) { this.cfg.permissionMode
 
 /** Every account is held by a usage limit (true), or free again (false). */
 const limit = (on: boolean) => { loadSettings().accounts[0].limitedUntil = on ? new Date(Date.now() + 3600_000).toISOString() : null; };
+/** The only account is switched off in Settings (true), or on again (false). */
+const switchOff = (on: boolean) => Object.assign(loadSettings().accounts[0], { paused: on, pausedUntil: null });
 const tick = () => new Promise((r) => setImmediate(r));
 const now = new Date().toISOString();
 let n = 0;
@@ -81,6 +83,7 @@ beforeEach(() => {
   Object.assign(store.data, { workers: [], tasks: [], chat: [], pendingUpdates: [], decisions: [] });
   sent.clear();
   limit(false);
+  switchOff(false);
   loadSettings().maxWorkers = 3;
   if (!store.repo('own')) store.data.repos.push({ name: 'own', url: 'https://github.com/o/r.git', path: tmp, description: '', defaultBranch: 'main', addedAt: now });
 });
@@ -143,6 +146,33 @@ test('a task assigned while every account was limited starts with its task messa
   assert.equal(msgs.length, 2);
   assert.ok(msgs[0].startsWith(`[Task ${x.id}]`), msgs[0]);
   assert.equal(msgs[1], '[Dispatcher] Start it now.');
+});
+
+test('with every account switched off a new task waits in the queue, and starts once one is switched on', async () => {
+  const w = addWorker({ sessionId: 'from-an-earlier-task' });
+  addTask(w, { status: 'done', finishedAt: now });
+  const x = addTask(null, { status: 'queued', startedAt: null });
+  switchOff(true);
+  await workers.assign(x, w.id, w.model);
+  assert.deepEqual([x.status, x.queueReason, x.startedAt], ['queued', 'limit', null]);
+  assert.match(w.statusText, /switched on/i);
+  assert.equal(sent.get(w.id), undefined);
+  switchOff(false);
+  workers.retryQueued();
+  await tick();
+  assert.equal(x.status, 'running');
+  assert.ok(sent.get(w.id)![0].startsWith(`[Task ${x.id}]`));
+});
+
+test('switching an account off stops no running task: its turn goes on there', () => {
+  const w = addWorker({ sessionId: 'sid' });
+  const x = addTask(w);
+  const s = workers.ensureSession(w)!;
+  s.send('Go on.');
+  switchOff(true);
+  assert.equal(workers.ensureSession(w), s);
+  assert.equal(x.status, 'running');
+  assert.equal(w.status, 'running');
 });
 
 test('a session that dies mid-task fails the task with it; told to continue, the Worker picks it up again', () => {
@@ -794,6 +824,19 @@ test('waiting without a Worker: a task held by a usage limit gets one when the l
   await settle();
   assert.deepEqual([x.workerId, x.status, x.queueReason], [null, 'queued', 'limit']);
   limit(false);
+  workers.retryQueued();
+  await settle();
+  assert.equal(x.status, 'running');
+  assert.ok(x.workerId);
+});
+
+test('waiting without a Worker: a task held while every account is off gets one when an account is switched on', async () => {
+  switchOff(true);
+  const x = unbound('limit');
+  workers.retryQueued();
+  await settle();
+  assert.deepEqual([x.workerId, x.status, x.queueReason], [null, 'queued', 'limit']);
+  switchOff(false);
   workers.retryQueued();
   await settle();
   assert.equal(x.status, 'running');

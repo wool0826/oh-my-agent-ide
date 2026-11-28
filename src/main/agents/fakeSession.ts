@@ -53,7 +53,7 @@ export class FakeSession {
   }
 
   get accountId() { return this.cfg.accountId; }
-  ready() { return true; }
+  ready(_begun = true) { return true; }
 
   start() {
     if (!this.sessionId) this.sessionId = `fake-${this.cfg.label}-${Date.now().toString(36)}`;

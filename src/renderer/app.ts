@@ -34,7 +34,7 @@ import { copyStatus, toggleStatus } from './ui/status';
 import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
 import { renderSleep, setSleep } from './ui/sleep';
-import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
+import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderAccountsOff, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
 import { initTip } from './ui/tip';
@@ -88,6 +88,8 @@ export function renderAll(force = false, parts: ReadonlySet<Part> | null = null)
   const focusRoot = focused?.closest<HTMLElement>('.sidebar, .view');
   if (draw('frame')) { applyPanels(); renderSidebar(); renderSleep(); }
   if (draw('usage')) renderUsage();
+  // The chat's line for every account switched off counts the queue too: drawn with any change (it writes only a change).
+  renderAccountsOff();
   if (draw('dispatcher')) renderDispatcherStatus();
   if (draw('memSync')) renderMemSync();
   if (ui.cancelAsk && draw('cancel')) renderCancelDialog();
@@ -749,6 +751,7 @@ export async function act(el: HTMLElement, e: Event) {
     case 'acc-refresh': ui.accMenu = null; openSettings(); await call('usage:refresh'); break;
     case 'usage-refresh': await call('usage:refresh'); break;
     case 'acc-plan': ui.accMenu = null; openSettings(); await call('account:plan', id, el.dataset.v); break;
+    case 'acc-resume-all': await call('account:resumeAll'); break;
     case 'acc-remove': ui.accMenu = null; ui.accRemove = id; openSettings(); break;
     case 'acc-remove-cancel': ui.accRemove = null; openSettings(); break;
     case 'acc-remove-ok': ui.accRemove = null; openSettings(); await call('account:remove', id); break;
@@ -1005,6 +1008,7 @@ export function init() {
     if (el.id === 'auto-wk-e') { if (ui.autoEdit) ui.autoEdit.wk = (el as unknown as HTMLInputElement).checked; return; }
     if (el.id === 'auto-kind-e') { if (ui.autoEdit) { ui.autoEdit.kind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoEdit.kind === 'merged'); } return; }
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
+    if (el.dataset.change === 'acc-assign') { void call('account:assign', el.dataset.id, el.value); return; }
     if (el.id === 'usage-every') { void call('settings:save', { usageRefreshMins: Number(el.value) }); return; }
     if (el.id === 'set-gh') el.value = hostOnly(el.value);
     // A time that does not read as one gives way to the one in use, which is what stays saved.

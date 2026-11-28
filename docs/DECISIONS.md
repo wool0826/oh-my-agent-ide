@@ -1256,3 +1256,20 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Security pass over steps 4–6: only the paired private chat is read; the token is only in the request address (never in logs, errors, diagnostics or the stand-in's records); file paths from Telegram are checked before they go into an address; downloads follow no redirect; a permission is never answered from the phone; nothing listens on a port.
     - Real-use checklist: a Telegram section (10.1–10.6, `real`, pass order I) for what the fake server cannot show: a real token and its revocation, two computers on one bot, sleep and wake, how buttons and edited messages look, real photo sizes and albums.
     - Rejected: a timer that restarts the poll every few minutes (the resume event is the case that matters, and the poll already retries on errors), and running the e2e against the real Bot API in CI (needs a token and a phone; not reproducible).
+
+254. **An account can be switched off in Settings (on / 1 hour / off): nothing new starts on it, what runs there finishes (T-0158).**
+    - Chosen: mock-up 8B. A small segmented switch on each account card, the card faded while off, the off accounts' rings
+      left out of the toolbar with a `+n` count, one "Off n" line in the usage popover, and a warning (toolbar pill,
+      Settings banner with "Turn all on", a line above the chat's composer) only when every account is off.
+    - Stored as `paused` / `pausedUntil` on the account in settings.json; `cleanPause` (shared/accountPause.ts) reads an
+      account saved before the switch, or an hour that ended while the app was closed, as on. The hour ends by itself
+      (a timer in accounts.ts), so no one has to remember to switch it back.
+    - Routing: `chooseAccount` skips an off account; a session between turns on one moves to a free account the way
+      failover does; a turn in progress keeps its account (`sessionAccountStep`). With none on, a new task waits in
+      the queue with the usage limit's reason (`queueReason: 'limit'`, its texts say "switched off"), and switching one
+      on emits `resumed`, which runs the same retry as a limit reset (follows PR #205). Rejected: a new queue reason (it
+      would need its own retry path for the same wait).
+    - The Dispatcher reads the off accounts in `list_workers` and is told not to count them or promise when.
+    - Usage of an off account is still polled, so its figures are current when it comes back.
+    - Differences from the mock-up: a failed usage read is a pill whose tooltip holds the message, not a disclosure
+      row; the "Dispatcher assignment" table in the mock-up only explained the routing and is not built.

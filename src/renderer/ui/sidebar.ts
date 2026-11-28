@@ -13,6 +13,7 @@ import { prsInReview } from '../../shared/prs';
 import { reasonText } from '../../shared/askWhy';
 import { RING, ringArc, untilReset } from '../../shared/usageRing';
 import { USAGE_INTERVALS, limitWindow, usageFoot, usedUp, type UsageFoot } from '../../shared/usage';
+import { activeOf, allPaused } from '../../shared/accountPause';
 import { queuedPrs, readyToQueue } from '../../shared/mergeQueue';
 import { DONE_SHOWN, groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { type WorkerFilter } from '../../shared/history';
@@ -309,10 +310,16 @@ export function planName(a: AccountView) {
 /** The same facts as the popover in one string, for screen readers. */
 export function usageTip(a: AccountView) {
   const parts = [`${a.label}, ${planName(a)}`, usageWindows(a).map((w) => `${w.label} ${pct(w.v)}`).join(' · ')];
+  if (a.paused) parts.push(offText(a));
   if (a.limitedUntil) parts.push(t('usage.limitedUntil', { t: hhmm(a.limitedUntil) }));
   if (a.lastError) parts.push(a.lastError);
   else if (!a.usageUpdatedAt) parts.push(t('usage.unknown'));
   return parts.join('. ');
+}
+
+/** An account switched off: "Off", or "Off until 3:00 PM" for an hour's pause. */
+export function offText(a: Pick<AccountView, 'pausedUntil'>) {
+  return a.pausedUntil ? t('acc.offUntil', { t: untilText(a.pausedUntil) }) : t('acc.offPill');
 }
 
 /** "7d limit · until Tue 2:30 PM": which window holds a limited account and until when ("Limited until …" when unknown). */
@@ -324,7 +331,7 @@ export function limitText(a: AccountView) {
 }
 
 /** A time to come: "2:30 PM" today, "Tue 2:30 PM" within the week, a date after that. */
-function untilText(iso: string) {
+export function untilText(iso: string) {
   const d = new Date(iso);
   const time = d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
   if (d.toDateString() === new Date().toDateString()) return time;
@@ -395,8 +402,13 @@ function usageFootHtml() {
   return `<footer class="ufoot"><div class="ufl">${line}${f.kind === 'sessions' ? '' : btn}</div>${chips}</footer>`;
 }
 
+/** The popover: a block per account that is on, one line naming those switched off, and the foot. */
 function usagePopHtml() {
-  return S!.accounts.map(usageCard).join('') + usageFootHtml();
+  const off = S!.accounts.filter((a) => a.paused);
+  const offRow = off.length
+    ? `<section class="ua off"><header><span class="who"><b>${esc(t('usage.offRow', { n: off.length }))}</b><small>${esc(off.map((a) => a.label).join(', '))}</small></span></header></section>`
+    : '';
+  return activeOf(S!.accounts).map(usageCard).join('') + offRow + usageFootHtml();
 }
 
 /**
@@ -474,6 +486,18 @@ export function hoverUsage(id: string | null) {
   document.querySelectorAll<HTMLElement>('#usage-pop .ua').forEach((s) => s.classList.toggle('on', s.dataset.id === id));
 }
 
+/** Every account switched off: a warning above the chat's composer with how many tasks wait, and the way to Accounts. */
+export function renderAccountsOff() {
+  const el = document.getElementById('chat-off');
+  if (!el || !S) return;
+  const html = allPaused(S.accounts)
+    ? `${sym('s-alert')}<span>${esc(t('acc.noneOnWait', { n: S.tasks.filter((x) => x.status === 'queued').length }))}</span><button type="button" class="cbtn" data-action="open-settings" data-v="accounts">${sym('s-person')}<span>${esc(t('acc.accountsBtn'))}</span></button>`
+    : '';
+  if (el.innerHTML === html && el.hidden === !html) return;
+  el.innerHTML = html;
+  el.hidden = !html;
+}
+
 export function renderUsage() {
   const accs = S!.accounts;
   const el = $('#usage');
@@ -485,13 +509,25 @@ export function renderUsage() {
     hideUsagePop();
     return;
   }
-  // One ring per account, in the order of Settings. The names and the numbers are in the popover (#usage-pop).
+  // Every account switched off: nothing can start, and the toolbar says so in place of the rings.
+  if (allPaused(accs)) {
+    el.className = 'usage-off nodrag';
+    el.removeAttribute('tabindex');
+    el.removeAttribute('role');
+    el.removeAttribute('aria-label');
+    el.innerHTML = `<a class="uwarn" tabindex="0" role="link" data-action="open-settings" data-v="accounts">${sym('s-alert')}<span>${esc(t('acc.noneOn'))}</span></a>`;
+    hideUsagePop();
+    return;
+  }
+  // One ring per account that is on, in the order of Settings; those switched off are a count after them. The names
+  // and the numbers are in the popover (#usage-pop).
+  const off = accs.filter((a) => a.paused).length;
   el.className = 'usage nodrag';
   el.tabIndex = 0;
   // A picture of the numbers; the popover it describes has them as text (L14).
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', accs.map(usageTip).join('\n'));
-  el.innerHTML = accs.map(toolbarAccount).join('');
+  el.innerHTML = activeOf(accs).map(toolbarAccount).join('') + (off ? `<span class="ucount">+${off}</span>` : '');
   refreshUsagePop();
 }
 

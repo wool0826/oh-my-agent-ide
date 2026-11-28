@@ -13,7 +13,7 @@ export type EvKind =
   // messages
   | 'asked' | 'answered' | 'request' | 'blocked' | 'corrected' | 'correctFailed' | 'memory' | 'comment' | 'replied'
   // the Dispatcher
-  | 'limitPaused' | 'limitHeld' | 'resumed' | 'dStopped' | 'dError' | 'noAccount' | 'autoPaused' | 'newChat' | 'cleared'
+  | 'limitPaused' | 'limitHeld' | 'accountsOff' | 'resumed' | 'dStopped' | 'dError' | 'noAccount' | 'autoPaused' | 'newChat' | 'cleared'
   | 'compacted' | 'compactFailed'
   // repositories and the saved state
   | 'cloning' | 'registered' | 'setupFailed' | 'state';
@@ -80,6 +80,7 @@ export const EV_KINDS: Record<EvKind, KindInfo> = {
   replied: { icon: 'check', tone: '' },
   limitPaused: { icon: 'queued', tone: 'warning', attention: true },
   limitHeld: { icon: 'queued', tone: 'warning', attention: true },
+  accountsOff: { icon: 'pause', tone: 'warning', attention: true },
   resumed: { icon: 'started', tone: 'success' },
   dStopped: { icon: 'stop', tone: '' },
   dError: { icon: 'alert', tone: 'danger', attention: true },
@@ -111,6 +112,7 @@ export function evBadge(e: ChatEv): { key: string; vars: Record<string, string |
       case 'replied': return e.alt ? 'evb.noReply' : 'evb.replied';
       case 'ci': return e.max ? 'evb.ci' : 'evb.ciFix';
       case 'limitPaused': case 'limitHeld': return e.note ? 'evb.until' : 'evb.limit';
+      case 'accountsOff': return e.note ? 'evb.until' : 'evb.accountsOff';
       case 'stalled': return 'evb.idle';
       case 'compacted': return e.note ? 'evb.note' : 'evb.compacted';
       default: return `evb.${e.k}`;
