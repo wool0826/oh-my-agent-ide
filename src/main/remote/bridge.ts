@@ -6,7 +6,8 @@ import { t } from '../i18n';
 import { loadSettings } from '../settings';
 import { Burst, inQuietHours } from '../../shared/notifyRules';
 import { backoffMs, splitText } from '../../shared/remote';
-import { SendQueue, newsEvent, newsGroup, newsKey, newsText, type Outgoing, type RemoteNews, type RemotePrefs } from '../../shared/remoteNotice';
+import { SendQueue, newsEvent, newsGroup, newsKey, newsRef, newsText, type Outgoing, type RemoteNews, type RemotePrefs } from '../../shared/remoteNotice';
+import { SentRefs } from '../../shared/remoteChat';
 import type { Say } from '../../shared/askWhy';
 import type { SendOpts } from './telegramApi';
 import { TelegramError } from './telegramApi';
@@ -36,6 +37,10 @@ const RATE_TRIES = 10;
 
 export class Outbox {
   readonly queue = new SendQueue();
+  /** What each message sent is about, so a reply to it on the phone finds its thread (remote/inbound.ts). */
+  readonly sent = new SentRefs();
+  /** Ids for the bot's own answers, each its own message. */
+  private answers = 0;
   private bursts = new Burst();
   private running = false;
   private lastSent = 0;
@@ -66,7 +71,19 @@ export class Outbox {
     const group = newsGroup(n);
     const at = this.now();
     const silent = this.quiet() || !this.bursts.allow(group, at);
-    const added = this.queue.add({ key: newsKey(n), group, text: newsText(this.say, n, p.level), silent, urgent: n.type === 'decision' }, at);
+    const added = this.queue.add({ key: newsKey(n), group, text: newsText(this.say, n, p.level), silent, urgent: n.type === 'decision', ref: newsRef(n) }, at);
+    if (added) this.kick();
+    return added;
+  }
+
+  /**
+   * The bot's own answer to a message from the phone (a command, a turned-away request), as a reply to it. It goes
+   * whatever kinds of news are switched on; false when the channel is not ready.
+   */
+  answer(text: string, replyTo?: number): boolean {
+    if (!this.ch.ready) return false;
+    const key = `answer:${++this.answers}`;
+    const added = this.queue.add({ key, group: key, text, silent: false, urgent: true, replyTo }, this.now());
     if (added) this.kick();
     return added;
   }
@@ -112,7 +129,13 @@ export class Outbox {
   private async sendOne(o: Outgoing): Promise<number | null> {
     try {
       // The bot sends plain text; long news goes in up to three parts.
-      for (const part of splitText(o.text)) { await this.ch.send(part, { silent: o.silent }); this.lastSent = this.now(); }
+      let first = true;
+      for (const part of splitText(o.text)) {
+        const id = await this.ch.send(part, { silent: o.silent, replyTo: first ? o.replyTo : undefined });
+        first = false;
+        this.lastSent = this.now();
+        if (o.ref) this.sent.add(id, o.ref);
+      }
       this.fails = 0;
       this.rates = 0;
       return null;

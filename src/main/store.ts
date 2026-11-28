@@ -61,6 +61,8 @@ export interface Data {
   attachments?: string[];
   /** The merge queue (shared/mergeQueue.ts). Unset in state files saved before it existed. */
   mergeQueue?: MergeQueueEntry[];
+  /** The phone channel: Telegram update ids already taken (remote/inbound.ts), saved with the chat lines they made. */
+  remote?: { telegramSeen?: number[]; telegramHeld?: { text: string; replyTo: string | null }[] };
 }
 
 type ChatPage = { items: ChatItem[]; more: boolean };

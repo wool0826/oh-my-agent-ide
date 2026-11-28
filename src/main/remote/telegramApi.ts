@@ -24,6 +24,8 @@ const message = z.object({
   chat: z.object({ id: z.number(), type: z.string() }),
   from: user.optional(),
   text: z.string().optional(),
+  forward_origin: z.object({ type: z.string() }).optional(),
+  reply_to_message: z.object({ message_id: z.number() }).optional(),
 });
 const update = z.object({ update_id: z.number(), message: message.optional() });
 const reply = z.object({

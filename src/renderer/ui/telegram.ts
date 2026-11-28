@@ -40,7 +40,8 @@ function rows(v: TelegramView): string {
 function news(v: TelegramView): string {
   const sw = (e: RemoteEvent) => `<div class="srow"><label class="lbl" for="tg-ev-${e}">${t(`tg.ev.${e}` as Key)}</label><input class="switch" id="tg-ev-${e}" type="checkbox" ${v.prefs.events[e] ? 'checked' : ''}></div>`;
   const level = segc('tg-level', v.prefs.level, [{ value: 'title', label: t('tg.level.title') }, { value: 'summary', label: t('tg.level.summary') }], t('tg.level'));
-  return `${REMOTE_EVENTS.map(sw).join('')}<div class="srow"><span class="lbl">${t('tg.level')}</span>${level}</div>`;
+  const req = `<div class="srow"><label class="lbl" for="tg-req">${t('tg.requests')}</label><input class="switch" id="tg-req" type="checkbox" ${v.prefs.requests ? 'checked' : ''}></div>`;
+  return `${req}${REMOTE_EVENTS.map(sw).join('')}<div class="srow"><span class="lbl">${t('tg.level')}</span>${level}</div>`;
 }
 
 function groupInner(v: TelegramView): string {
@@ -99,6 +100,7 @@ export async function telegramChange(el: HTMLInputElement, redraw: () => void): 
   }
   if (el.id.startsWith('tg-ev-')) { await call('telegram:prefs', { event: el.id.slice(6), on: el.checked }); return true; }
   if (el.id === 'tg-level') { await call('telegram:prefs', { level: el.value }); return true; }
+  if (el.id === 'tg-req') { await call('telegram:prefs', { requests: el.checked }); return true; }
   if (el.id === 'tg-tok') {
     const tok = el.value.trim();
     el.value = '';

@@ -13,6 +13,8 @@ export interface PollerOpts {
   timeoutSec?: number;
   /** The wait before try `n` after a failure; tests make it short. */
   backoff?: (n: number) => number;
+  /** Where an earlier poller of the same bot stopped, so what it handled is not asked for again. */
+  offset?: number | null;
 }
 
 /** A wait that ends early when `signal` aborts. */
@@ -31,9 +33,13 @@ export class TelegramPoller {
   private offset: number | null = null;
   private seen = new Seen();
 
-  constructor(private readonly api: TelegramApi, private readonly o: PollerOpts) {}
+  constructor(private readonly api: TelegramApi, private readonly o: PollerOpts) {
+    this.offset = o.offset ?? null;
+  }
 
   get running(): boolean { return !!this.ctl; }
+  /** The offset the next getUpdates sends: one past the last update handed on. */
+  get nextOffset(): number | null { return this.offset; }
 
   start() {
     if (this.ctl) return;

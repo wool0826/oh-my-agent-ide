@@ -12,7 +12,13 @@ export type RemoteStatus = 'off' | 'token' | 'pairing' | 'connected' | 'retrying
 /** The parts of a Bot API update the app reads. The client checks the shape (telegramApi.ts). */
 export interface TgUser { id: number; is_bot?: boolean; first_name?: string; last_name?: string; username?: string }
 export interface TgChat { id: number; type: string }
-export interface TgMessage { message_id: number; date: number; chat: TgChat; from?: TgUser; text?: string }
+export interface TgMessage {
+  message_id: number; date: number; chat: TgChat; from?: TgUser; text?: string;
+  /** Set on a message the user forwarded from someone else: its words are not theirs. */
+  forward_origin?: { type: string };
+  /** The bot's message this one answers (Telegram's "Reply"). */
+  reply_to_message?: { message_id: number };
+}
 export interface TgUpdate { update_id: number; message?: TgMessage }
 
 /**
