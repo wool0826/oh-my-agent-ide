@@ -133,3 +133,27 @@ flow('from the paired phone, words reach the Dispatcher and its answer comes bac
   await waitFor(() => mine().some((m) => /^Locked/.test(m.text)), 'the lock answer');
   await app.until("return (await window.ide.call('state')).telegram.prefs.requests === false", 'requests off');
 });
+
+flow('a question reaches the phone with buttons and a press answers it; one answered on the desktop loses its buttons there', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const asked = (from, n = 1) => tg.state.sent.slice(from).filter((m) => m.reply_markup).slice(n - 1)[0];
+  const from = tg.state.sent.length;
+  await app.say('@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.\n@fake task - Pick again\n@@fake ask Which way? | Up | Down\n@@fake result Went.');
+  await waitFor(() => asked(from, 2), 'both questions on the phone with buttons');
+  const [q1, q2] = [asked(from, 1), asked(from, 2)];
+  const side = /Which side/.test(q1.text) ? q1 : q2;
+  const way = side === q1 ? q2 : q1;
+  assert.deepEqual(side.reply_markup.inline_keyboard[0].map((b) => b.text), ['Left', 'Right']);
+
+  tg.push(tg.press(42, side.message_id, side.reply_markup.inline_keyboard[0][1].callback_data));
+  await app.until("return (await window.ide.call('state')).decisions.some((d) => d.answer === 'Right')", 'the answer in the app');
+  await waitFor(() => tg.state.acks.some((a) => a.text === 'Right'), 'the press acknowledged');
+  await waitFor(() => tg.state.edits.some((e) => e.message_id === side.message_id && /→ Right$/.test(e.text ?? '')), 'its buttons off on the phone');
+
+  await app.click('#chat-ins .dec [data-action="answer"][data-val="Up"]');
+  await waitFor(() => tg.state.edits.some((e) => e.message_id === way.message_id && /→ Up$/.test(e.text ?? '')), 'the desktop answer on the phone');
+  // Pressed again after it was answered: already handled.
+  tg.push(tg.press(42, way.message_id, way.reply_markup.inline_keyboard[0][1].callback_data));
+  await waitFor(() => tg.state.acks.some((a) => a.text === 'Already handled.'), 'already handled');
+  assert.ok(!(await app.state()).decisions.some((d) => d.answer === 'Down'));
+});

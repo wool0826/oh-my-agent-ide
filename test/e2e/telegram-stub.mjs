@@ -11,7 +11,7 @@ export const STUB_TOKEN = '123456789:AAEhBP0av18q1wQ7stubstubstubstubstub';
  * next call to that method fail, `user(id, text)` builds a private-chat message update from that user.
  */
 export async function startTelegramStub({ token = STUB_TOKEN, bot = { id: 123456789, is_bot: true, first_name: 'Stub', username: 'stub_bot' } } = {}) {
-  const state = { sent: [], calls: [], updates: [], nextId: 1, nextMessage: 1, token, bot, fails: new Map(), waiting: null };
+  const state = { sent: [], calls: [], updates: [], nextId: 1, nextMessage: 1, token, bot, fails: new Map(), waiting: null, edits: [], acks: [] };
 
   const reply = (res, status, body) => {
     res.writeHead(status, { 'content-type': 'application/json' });
@@ -74,8 +74,13 @@ export async function startTelegramStub({ token = STUB_TOKEN, bot = { id: 123456
           state.sent.push({ ...p, message_id: msg.message_id });
           return ok(res, msg);
         }
-        case 'editMessageReplyMarkup': return ok(res, true);
-        case 'answerCallbackQuery': return ok(res, true);
+        case 'editMessageText':
+        case 'editMessageReplyMarkup':
+          state.edits.push({ method, ...p });
+          return ok(res, true);
+        case 'answerCallbackQuery':
+          state.acks.push(p);
+          return ok(res, true);
         default: return err(res, 404, 'Not Found: method not found');
       }
     });
@@ -95,6 +100,10 @@ export async function startTelegramStub({ token = STUB_TOKEN, bot = { id: 123456
     },
     user(id, text, { date = Math.floor(Date.now() / 1000), type = 'private', name = 'Owner' } = {}) {
       return { message: { message_id: state.nextMessage++, date, chat: { id: type === 'private' ? id : -id, type }, from: { id, is_bot: false, first_name: name }, text } };
+    },
+    /** A press on a button under the bot's message `messageId`, by user `id` in their private chat. */
+    press(id, messageId, data) {
+      return { callback_query: { id: `cb${state.nextId}`, from: { id, is_bot: false, first_name: 'Owner' }, message: { message_id: messageId, chat: { id, type: 'private' } }, data } };
     },
     failNext(method, status, description, extra = {}, times = 1) {
       const list = state.fails.get(method) ?? [];

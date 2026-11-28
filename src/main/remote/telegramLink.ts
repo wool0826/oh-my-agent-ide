@@ -123,9 +123,12 @@ export class TelegramLink extends EventEmitter {
   prefs(): RemotePrefs { return this.cfg.prefs; }
 
   /** Turns one kind of news on or off, sets how much is sent, or whether the phone's messages are taken. */
-  setPrefs(patch: { events?: Partial<Record<RemoteEvent, boolean>>; level?: RemoteLevel; requests?: boolean }) {
+  setPrefs(patch: { events?: Partial<Record<RemoteEvent, boolean>>; level?: RemoteLevel; requests?: boolean; buttons?: boolean }) {
     const c = this.cfg;
-    const prefs = cleanPrefs({ events: { ...c.prefs.events, ...patch.events }, level: patch.level ?? c.prefs.level, requests: patch.requests ?? c.prefs.requests });
+    const prefs = cleanPrefs({
+      events: { ...c.prefs.events, ...patch.events }, level: patch.level ?? c.prefs.level,
+      requests: patch.requests ?? c.prefs.requests, buttons: patch.buttons ?? c.prefs.buttons,
+    });
     this.store.save(this.store.load().tokenEnc, { ...c, prefs });
     this.syncPoll();
     this.changed();
@@ -189,11 +192,11 @@ export class TelegramLink extends EventEmitter {
     this.changed();
   }
 
-  /** Is there something to read: an open code, or the owner's messages while requests are on? */
+  /** Is there something to read: an open code, or the owner's messages or button presses while either is on? */
   private wantsPoll(): boolean {
     if (this.pairing && !this.candidate) return true;
     const c = this.cfg;
-    return c.enabled && c.ownerId !== null && c.prefs.requests && !!this.inbound && this.trouble !== 'invalid' && this.trouble !== 'elsewhere';
+    return c.enabled && c.ownerId !== null && (c.prefs.requests || c.prefs.buttons) && !!this.inbound && this.trouble !== 'invalid' && this.trouble !== 'elsewhere';
   }
 
   /** Starts or stops polling to match wantsPoll. Never waits, so a handler of an update may call it. */
@@ -289,6 +292,21 @@ export class TelegramLink extends EventEmitter {
       this.noteFailure(e);
       throw e instanceof TelegramError ? e : userError(e);
     }
+  }
+
+  /** Takes the buttons off one of the bot's messages to the owner, and with `text` changes its text. */
+  async edit(messageId: number, text: string | null): Promise<void> {
+    const c = this.cfg;
+    const api = this.client();
+    if (!api || !c.enabled || c.ownerId === null) throw new Error(t('tg.err.notReady'));
+    try { await api.editMessage(c.ownerId, messageId, text); } catch (e) { this.noteFailure(e); throw e; }
+  }
+
+  /** Ends a button press's spinner; Telegram asks for it on every press. Never throws. */
+  async ack(id: string, text?: string): Promise<void> {
+    const api = this.client();
+    if (!api) return;
+    await api.answerCallbackQuery(id, text).catch((e) => this.noteFailure(e));
   }
 
   /** The Settings button: a test message, with an error fit for the page. */

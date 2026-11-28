@@ -281,6 +281,21 @@ test('telegramLink: another bot or a disconnect forgets what was kept about the 
   assert.equal(forgot, 2);
 }, PAIRED));
 
+test('telegramLink: with requests off but answers on it still polls, and only the owner presses are handed on', () => withLink(async (s, link) => {
+  const got: string[] = [];
+  link.inbound = (u) => { got.push(u.callback_query?.data ?? u.message?.text ?? ''); };
+  await link.setToken(s.token);
+  link.setPrefs({ requests: false });
+  await until(() => polling(s), 'polling for presses');
+  s.push(s.press(777, 5, 'd:x:0'));
+  s.push(s.press(42, 5, 'd:x:1'));
+  await until(() => got.length === 1, 'the press');
+  assert.deepEqual(got, ['d:x:1']);
+  assert.equal(link.dropped, 1);
+  link.setPrefs({ buttons: false });
+  await until(() => !polling(s), 'polling to stop');
+}, PAIRED));
+
 test('telegramLink: no handler, no polling once paired', () => withLink(async (s, link) => {
   await link.setToken(s.token);
   link.syncPoll();

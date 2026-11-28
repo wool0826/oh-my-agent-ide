@@ -7,17 +7,20 @@ import { workers } from '../agents/workers';
 import { dismissSuggestion, saveSuggestion, suggestFromCorrection, suggestFromDecision } from '../agents/memorySuggest';
 import { t } from '../i18n';
 import { nowIso, oneLine } from '../util';
-import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
 import { worthRemembering } from '../../shared/decisionMemory';
+import { shownAnswer } from '../../shared/remoteDecision';
 
-/** The user's answer to a decision, from the inbox, a Worker's composer or a notification button. */
-export function userAnswer(id: string, ans: string) {
+/**
+ * The user's answer to a decision, from the inbox, a Worker's composer, a notification button or the phone
+ * (`via` 'telegram': the Dispatcher's turn about it answers there too).
+ */
+export function userAnswer(id: string, ans: string, via?: 'telegram') {
   const d = answerDecision(id, ans);
   if (!d) return;
-  const shown = ans === ALLOW ? t(d.source === 'plan' ? 'plan.approve' : 'allow') : ans === ALLOW_TASK ? t('allowTask') : ans === DENY ? t('deny') : ans;
+  const shown = shownAnswer(t, d, ans);
   const who = d.workerId ? `${d.workerId}: ` : '';
   store.chat('decision', `${who}${oneLine(d.title, 80)} → ${shown}`);
-  if (d.source === 'dispatcher') dispatcher.decisionAnswered(d.title, ans);
+  if (d.source === 'dispatcher') dispatcher.decisionAnswered(d.title, ans, via === 'telegram');
   // Permissions, plans approved as they were and other bare yes-or-no answers stay out of memory (decisionMemory.ts).
   if (worthRemembering(d)) remember('decision', `${d.workerId ?? 'Dispatcher'}: ${oneLine(d.title, 160)} → ${shown}`);
   suggestFromDecision(d);
@@ -25,7 +28,7 @@ export function userAnswer(id: string, ans: string) {
 
 /** Decisions, the Dispatcher's answers the user corrects, and memory suggestions. */
 export function registerDecisionIpc() {
-  handle('decision:answer', userAnswer);
+  handle('decision:answer', (id: string, ans: string) => userAnswer(id, ans));
   handle('auto:correct', (id: string, newAnswer: string, scope: 'once' | 'preference') => {
     const a = store.data.autoAnswers.find((x) => x.id === id);
     if (!a) throw new Error(t('err.noItem'));

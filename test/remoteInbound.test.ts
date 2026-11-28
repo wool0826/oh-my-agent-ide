@@ -2,14 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Inbound, type HeldMessage, type InboundDeps } from '../src/main/remote/inbound';
 import type { TgUpdate } from '../src/shared/remote';
+import type { Decision } from '../src/shared/types';
+
+type Dec = Pick<Decision, 'id' | 'source' | 'options' | 'status'>;
 
 const NOW = 1_800_000_000_000;
 
-function setup(o: { requests?: boolean; held?: boolean; busy?: boolean; refs?: Record<number, string>; waiting?: HeldMessage[]; fail?: boolean } = {}) {
+function setup(o: { level?: 'title' | 'summary'; requests?: boolean; buttons?: boolean; held?: boolean; busy?: boolean; refs?: Record<number, string>; waiting?: HeldMessage[]; fail?: boolean; decisions?: Dec[] } = {}) {
   const seen = new Set<number>();
   const kept = { list: o.waiting ?? [] };
-  const log = { sent: [] as { text: string; replyTo: string | null }[], answers: [] as { text: string; replyTo?: number }[], flushes: 0, locked: 0, stops: 0 };
+  const log = {
+    sent: [] as { text: string; replyTo: string | null }[], answers: [] as { text: string; replyTo?: number; buttons?: unknown }[], flushes: 0, locked: 0, stops: 0,
+    decided: [] as [string, string][], acks: [] as [string, string | undefined][], cleared: [] as number[],
+  };
   let requests = o.requests ?? true;
+  let buttons = o.buttons ?? true;
   const deps: InboundDeps = {
     say: (k, v) => (v ? `${k}(${Object.values(v).join(',')})` : k),
     now: () => NOW,
@@ -19,9 +26,15 @@ function setup(o: { requests?: boolean; held?: boolean; busy?: boolean; refs?: R
       return { held: !!o.held };
     },
     stop: async () => { log.stops++; return !!o.busy; },
-    lock: () => { log.locked++; requests = false; },
+    lock: () => { log.locked++; requests = false; buttons = false; },
     requests: () => requests,
-    answer: (text, replyTo) => { log.answers.push({ text, replyTo }); },
+    buttons: () => buttons,
+    level: () => o.level ?? 'summary',
+    answer: (text, replyTo, b) => { log.answers.push({ text, replyTo, ...(b ? { buttons: b } : {}) }); },
+    decision: (id) => o.decisions?.find((d) => d.id === id) ?? null,
+    answerDecision: (id, ans) => { log.decided.push([id, ans]); },
+    ack: (id, text) => { log.acks.push([id, text]); },
+    clearButtons: (id) => { log.cleared.push(id); },
     refOf: (id) => (id === undefined ? null : o.refs?.[id] ?? null),
     statusText: () => 'STATUS',
     inboxText: () => 'INBOX',
@@ -33,6 +46,11 @@ function setup(o: { requests?: boolean; held?: boolean; busy?: boolean; refs?: R
 }
 
 let next = 1;
+const press = (data: string, messageId = 500): TgUpdate => ({
+  update_id: next++,
+  callback_query: { id: `cb${next}`, from: { id: 42 }, message: { message_id: messageId, chat: { id: 42, type: 'private' } }, data },
+});
+const question: Dec = { id: 'q1', source: 'question', status: 'pending', options: [{ label: 'Postgres' }, { label: 'SQLite' }] };
 const msg = (text: string | undefined, o: { date?: number; reply?: number; forwarded?: boolean } = {}): TgUpdate => ({
   update_id: next++,
   message: {
@@ -153,4 +171,78 @@ test('remoteInbound: a voice note or a sticker gets "not supported"; unknown com
   await inbound.handle(msg('/deploy'));
   assert.deepEqual(log.answers.map((a) => a.text), ['tg.r.unsupported', 'tg.r.help']);
   assert.deepEqual(log.sent, []);
+});
+
+test('remoteInbound: a press on a decision button answers it as the user and ends the spinner with its label', async () => {
+  const { inbound, log } = setup({ decisions: [question] });
+  const u = press('d:q1:1');
+  await inbound.handle(u);
+  await inbound.handle(u);
+  assert.deepEqual(log.decided, [['q1', 'SQLite']]);
+  assert.deepEqual(log.acks, [[u.callback_query!.id, 'SQLite']]);
+  assert.equal(log.flushes, 1);
+});
+
+test('remoteInbound: a press on a decision settled or gone says so and takes the buttons off', async () => {
+  const { inbound, log } = setup({ decisions: [{ ...question, status: 'answered' }] });
+  await inbound.handle(press('d:q1:0', 501));
+  await inbound.handle(press('d:zz:0', 502));
+  await inbound.handle(press('d:q1:9', 503));
+  assert.deepEqual(log.decided, []);
+  assert.deepEqual(log.acks.map((a) => a[1]), ['tg.r.handled', 'tg.r.handled', 'tg.r.handled']);
+  assert.deepEqual(log.cleared, [501, 502, 503]);
+});
+
+test('remoteInbound: with answers off a press answers nothing; a button the app did not send only ends the spinner', async () => {
+  const { inbound, log } = setup({ decisions: [question], buttons: false });
+  await inbound.handle(press('d:q1:0'));
+  await inbound.handle(press('rm -rf'));
+  assert.deepEqual(log.decided, []);
+  assert.deepEqual(log.acks.map((a) => a[1]), ['tg.r.answersOff', undefined]);
+});
+
+test('remoteInbound: a reply to a waiting question answers it, even with requests off; to a permission it is refused', async () => {
+  const perm: Dec = { id: 'p1', source: 'permission', status: 'pending', options: [] };
+  const { inbound, log } = setup({ decisions: [question, perm], requests: false, refs: { 7: 'd:q1', 8: 'd:p1' } });
+  await inbound.handle(msg('MySQL, please', { reply: 7 }));
+  await inbound.handle(msg('yes', { reply: 8 }));
+  assert.deepEqual(log.decided, [['q1', 'MySQL, please']]);
+  assert.deepEqual(log.answers.map((a) => a.text), ['tg.r.desktopOnly']);
+  assert.deepEqual(log.sent, []);
+});
+
+test('remoteInbound: a reply to a decision at the title level, or an old one, is sent to the computer', async () => {
+  const { inbound, log } = setup({ decisions: [question], level: 'title', refs: { 7: 'd:q1' } });
+  await inbound.handle(msg('SQLite', { reply: 7 }));
+  const old = setup({ decisions: [question], refs: { 7: 'd:q1' } });
+  await old.inbound.handle(msg('SQLite', { reply: 7, date: 1 }));
+  assert.deepEqual([...log.decided, ...old.log.decided], []);
+  assert.deepEqual([...log.answers, ...old.log.answers].map((a) => a.text), ['tg.r.desktopOnly', 'tg.r.desktopOnly']);
+});
+
+test('remoteInbound: a forwarded reply never answers a decision', async () => {
+  const { inbound, log } = setup({ decisions: [question], refs: { 7: 'd:q1' } });
+  await inbound.handle(msg('Postgres', { reply: 7, forwarded: true }));
+  assert.deepEqual(log.decided, []);
+  assert.equal(log.sent.length, 1);
+});
+
+test('remoteInbound: held messages are asked about with Send and Drop buttons, and Send sends them', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { inbound, log } = setup();
+  await inbound.handle(msg('while off', { date: Math.floor(NOW / 1000) - 3600 }));
+  t.mock.timers.tick(2_000);
+  assert.deepEqual(log.answers.at(-1), { text: 'tg.r.stale(1)', replyTo: undefined, buttons: [[{ text: 'tg.b.run', data: 'h:run' }, { text: 'tg.b.drop', data: 'h:drop' }]] });
+  await inbound.handle(press('h:run', 600));
+  assert.deepEqual(log.sent, [{ text: 'while off', replyTo: null }]);
+  assert.deepEqual(log.cleared, [600]);
+  assert.equal(log.answers.at(-1)!.text, 'tg.r.ran(1)');
+});
+
+test('remoteInbound: /lock turns answers off as well', async () => {
+  const { inbound, log } = setup({ decisions: [question], requests: false });
+  await inbound.handle(msg('/lock'));
+  await inbound.handle(press('d:q1:0'));
+  assert.equal(log.locked, 1);
+  assert.deepEqual(log.decided, []);
 });

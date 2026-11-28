@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Outbox } from '../src/main/remote/bridge';
+import { ASKED_MAX, Outbox } from '../src/main/remote/bridge';
 import { TelegramError } from '../src/main/remote/telegramApi';
 import { TelegramLink, type LinkCrypt, type LinkStore } from '../src/main/remote/telegramLink';
 import { cleanTelegram, type TelegramStored } from '../src/shared/remote';
-import type { RemoteNews } from '../src/shared/remoteNotice';
+import { decisionNews, type RemoteNews } from '../src/shared/remoteNotice';
 import { startTelegramStub, type TelegramStub } from './e2e/telegram-stub.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-bridge-'));
@@ -108,7 +108,8 @@ test('remoteBridge: a message that keeps failing is dropped after its tries and 
 /** A channel without Telegram: `fail` decides what each send does, `sent` keeps what went. */
 function fakeChannel(fail: (n: number) => Error | null = () => null) {
   const ch = { ready: true, sent: [] as string[], calls: 0, prefs: () => cleanTelegram(null).prefs,
-    async send(text: string) { const e = fail(ch.calls++); if (e) throw e; ch.sent.push(text); return ch.sent.length; } };
+    async send(text: string) { const e = fail(ch.calls++); if (e) throw e; ch.sent.push(text); return ch.sent.length; },
+    async edit(_id: number, _text: string | null) {} };
   return ch;
 }
 
@@ -195,4 +196,105 @@ test('remoteBridge: Dispatcher answers are switched off on their own', () => wit
   assert.equal(box.tell(result(1)), true);
   await box.idle();
   assert.equal(s.state.sent.length, 1);
+}));
+
+const asked = (o: { id?: string; source?: 'question' | 'plan' | 'permission'; who?: string; code?: string | null } = {}): RemoteNews => decisionNews(
+  { id: o.id ?? 'abc', source: o.source ?? 'question', workerId: o.who ?? 'W-01', title: 'Which database?', detail: '', options: [{ label: 'Postgres' }, { label: 'SQLite' }], code: o.code ?? null },
+  o.source === 'permission' ? [] : o.source === 'plan' ? [{ label: 'Approve plan', answer: 'allow' }, { label: 'Deny', answer: 'deny' }] : [{ label: 'Postgres', answer: 'Postgres' }, { label: 'SQLite', answer: 'SQLite' }],
+);
+const keys = (m: { [k: string]: unknown }) => (m.reply_markup as { inline_keyboard: { text: string; callback_data: string }[][] } | undefined)?.inline_keyboard.flat().map((b) => b.callback_data) ?? [];
+
+test('remoteBridge: a question goes with its answers as buttons; answered, they come off and the answer is added', () => withOutbox(async (s, box) => {
+  box.tell(asked());
+  await box.idle();
+  assert.deepEqual(keys(s.state.sent[0]), ['d:abc:0', 'd:abc:1']);
+  box.settle('abc', 'Postgres');
+  await box.idle();
+  const e = s.state.edits[0];
+  assert.equal(e.method, 'editMessageText');
+  assert.equal(e.message_id, s.state.sent[0].message_id);
+  assert.match(e.text!, /Which database\?[\s\S]*\n\n→ Postgres$/);
+  assert.deepEqual(e.reply_markup, { inline_keyboard: [] });
+  box.settle('abc', 'Postgres');
+  await box.idle();
+  assert.equal(s.state.edits.length, 1, 'settled once');
+}));
+
+test('remoteBridge: two decisions with buttons from one Worker stay two messages', () => withOutbox(async (s, box) => {
+  box.tell({ type: 'error', text: 'first' });
+  box.tell(asked({ id: 'one' }));
+  box.tell(asked({ id: 'two' }));
+  await box.idle();
+  assert.deepEqual(s.state.sent.slice(1).map(keys), [['d:one:0', 'd:one:1'], ['d:two:0', 'd:two:1']]);
+}));
+
+test('remoteBridge: a decision settled before its message went is not sent', () => withOutbox(async (s, box) => {
+  box.tell({ type: 'error', text: 'first' });
+  box.tell(asked({ id: 'gone' }));
+  box.settle('gone', null);
+  await box.idle();
+  assert.equal(s.state.sent.length, 1);
+  assert.equal(s.state.edits.length, 0);
+}));
+
+test('remoteBridge: a decision settled while its message is on its way loses its buttons once it lands', async () => {
+  let land = () => {};
+  let started = false;
+  const edits: [number, string | null][] = [];
+  const ch = { ready: true, prefs: () => cleanTelegram(null).prefs,
+    send: (_text: string) => { started = true; return new Promise<number>((r) => { land = () => r(9); }); },
+    async edit(id: number, text: string | null) { edits.push([id, text]); } };
+  const box = new Outbox(ch, { quiet: () => false, gapMs: 0 });
+  box.tell(asked());
+  while (!started) await new Promise((r) => setTimeout(r, 1));
+  box.settle('abc', 'SQLite');
+  land();
+  await box.idle();
+  assert.equal(edits.length, 1);
+  assert.equal(edits[0][0], 9);
+  assert.match(edits[0][1]!, /→ SQLite$/);
+});
+
+test('remoteBridge: only the latest decisions with buttons are kept track of', async () => {
+  const ch = fakeChannel();
+  const edits: number[] = [];
+  ch.edit = async (id: number) => { edits.push(id); };
+  const box = new Outbox(ch, { quiet: () => false, gapMs: 0 });
+  for (let i = 0; i <= ASKED_MAX; i++) {
+    box.tell(asked({ id: `q${i}` }));
+    if (i % 20 === 19) await box.idle();
+  }
+  await box.idle();
+  box.settle('q0', 'Postgres');
+  box.settle(`q${ASKED_MAX}`, 'Postgres');
+  await box.idle();
+  assert.deepEqual(edits, [ASKED_MAX + 1]);
+});
+
+test('remoteBridge: a withdrawn decision says so in place of its buttons', () => withOutbox(async (s, box) => {
+  box.tell(asked());
+  await box.idle();
+  box.settle('abc', null);
+  await box.idle();
+  assert.match(s.state.edits[0].text!, /\n\nWithdrawn$/);
+}));
+
+test('remoteBridge: a plan goes with its text and buttons at the summary level, its title only otherwise', () => withOutbox(async (s, box, link) => {
+  box.tell(asked({ id: 'p1', source: 'plan', code: 'WHAT: add a cache\n1. Write it\n2. Test it' }));
+  await box.idle();
+  assert.match(s.state.sent[0].text, /Write it/);
+  assert.deepEqual(keys(s.state.sent[0]), ['d:p1:0', 'd:p1:1']);
+  link.setPrefs({ level: 'title' });
+  box.tell(asked({ id: 'p2', source: 'plan', code: 'WHAT: other\n1. Secret step' }));
+  await box.idle();
+  assert.doesNotMatch(s.state.sent[1].text, /Secret step/);
+  assert.deepEqual(keys(s.state.sent[1]), []);
+}));
+
+test('remoteBridge: with answers off a decision goes without buttons; a permission never has any', () => withOutbox(async (s, box, link) => {
+  box.tell(asked({ id: 'perm', source: 'permission' }));
+  link.setPrefs({ buttons: false });
+  box.tell(asked({ id: 'q', who: 'W-02' }));
+  await box.idle();
+  assert.deepEqual(s.state.sent.map(keys), [[], []]);
 }));
