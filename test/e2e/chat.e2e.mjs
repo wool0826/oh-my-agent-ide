@@ -330,7 +330,7 @@ flow('"@" after a space lists repositories and files, and the picked ones go as 
   await app.evaluate("document.querySelector('#chat-form').requestSubmit(); return 1;");
   await app.until("return (await window.ide.call('state')).chat.some((c) => c.kind === 'user' && c.text.includes('[Mentioned]'))", 'the message sent');
   const sent = (await app.state()).chat.find((c) => c.kind === 'user' && c.text.includes('[Mentioned]'));
-  assert.equal(sent.text, 'look at\n\n[Mentioned]\n- file src/settings.ts (demo)');
+  assert.equal(sent.text, 'look at\n\n[Mentioned]\n- file src/settings.ts — demo');
   await app.until("document.querySelector('#chat-thread .sent-chips .mchip')?.textContent === 'settings.ts'", 'the chip over the sent message');
   assert.equal(await app.evaluate("[...document.querySelectorAll('#chat-thread .bub.me')].some((b) => b.textContent.includes('[Mentioned]'))"), false);
   assert.equal(await app.evaluate("document.querySelector('#chat-preset').hidden"), true);

@@ -11,6 +11,8 @@ const FRESH_MS = 60_000;
 const cache = new Map<string, { files: string[]; at: number }>();
 let job: Promise<void> | null = null;
 let failed = false;
+/** Goes up when a read changes the files; a window that has this one is not sent them again. */
+let version = 0;
 
 function start(force: boolean) {
   if (job) return;
@@ -20,13 +22,16 @@ function start(force: boolean) {
       const had = cache.get(r.name);
       if (!force && had && Date.now() - had.at <= FRESH_MS) continue;
       try {
-        cache.set(r.name, { files: await listFiles(r.path, MENTION_FILES_MAX), at: Date.now() });
+        const files = await listFiles(r.path, MENTION_FILES_MAX);
+        const old = had?.files;
+        if (!old || old.length !== files.length || old.some((f, i) => f !== files[i])) version++;
+        cache.set(r.name, { files, at: Date.now() });
       } catch (e) {
         failed = true;
         log.warn('mentions', `file index of ${r.name}: ${(e as Error).message}`);
       }
     }
-    for (const name of [...cache.keys()]) if (!store.repo(name)) cache.delete(name);
+    for (const name of [...cache.keys()]) if (!store.repo(name)) { cache.delete(name); version++; }
   })().finally(() => { job = null; });
 }
 
@@ -34,19 +39,26 @@ export interface MentionIndex {
   /** 'indexing' while a repository has never been read; 'error' when one could not be. */
   state: 'ready' | 'indexing' | 'error';
   count: number;
-  repos: { name: string; where: string; files: string[] }[];
+  version: number;
+  /** `files` is left out when the window already has this version. */
+  repos: { name: string; where: string; files?: string[] }[];
 }
 
-/** The index for a list that opens. `wait`: once the read under way ends. `retry`: read every repository again. */
-export async function mentionIndex(opts: { wait?: boolean; retry?: boolean } = {}): Promise<MentionIndex> {
+/**
+ * The index for a list that opens. `wait`: once the read under way ends. `retry`: read every repository again.
+ * `have`: the version the window holds.
+ */
+export async function mentionIndex(opts: { wait?: boolean; retry?: boolean; have?: number } = {}): Promise<MentionIndex> {
   const stale = store.data.repos.some((r) => { const c = cache.get(r.name); return !c || Date.now() - c.at > FRESH_MS; });
   if (!opts.wait && (opts.retry || stale)) start(!!opts.retry);
   if (opts.wait && job) await job;
-  const repos = store.data.repos.map((r) => ({ name: r.name, where: repoWhere(r, paths().repos), files: cache.get(r.name)?.files ?? [] }));
+  const same = opts.have === version;
+  const repos = store.data.repos.map((r) => ({ name: r.name, where: repoWhere(r, paths().repos), ...(same ? {} : { files: cache.get(r.name)?.files ?? [] }) }));
   const missing = store.data.repos.some((r) => !cache.has(r.name));
   return {
     state: missing && job ? 'indexing' : missing && failed ? 'error' : 'ready',
-    count: repos.reduce((n, r) => n + r.files.length, 0),
+    count: store.data.repos.reduce((n, r) => n + (cache.get(r.name)?.files.length ?? 0), 0),
+    version,
     repos,
   };
 }

@@ -564,6 +564,8 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 /* A group after the first starts under a hairline in the "/" list (its commands), and a little lower in the "@" list. */
 .cpop[data-kind="prompts"] .cpop-l .cpop-h:not(:first-child) { margin-top: var(--space-4); padding-top: var(--space-8); border-top: .5px solid var(--border-subtle); }
 .cpop[data-kind="mentions"] .cpop-l .cpop-h:not(:first-child) { margin-top: var(--space-4); }
+/* A long folder gives way before the name does. */
+.cpop[data-kind="mentions"] .cpop-it > span { flex: none; max-width: 70%; }
 /* The line under the rows: files still being read (a turning icon), or not read (warning, with a retry). */
 .cpop-st { flex: none; display: flex; align-items: center; gap: var(--space-8); min-height: var(--control-sm); margin-top: var(--space-4); padding: 0 var(--space-6) 0 var(--space-8); border-radius: var(--radius-sm); font-size: var(--fs-caption); color: var(--text-tertiary); }
 .cpop-st > .sym { flex: none; width: 14px; height: 14px; }

@@ -31,6 +31,7 @@ export function workerPrompt(w: Worker, codex = false) {
     '',
     'Task messages start with "[Task T-xxxx]". Messages starting with "[Dispatcher]", "[User message]", "[Review comments]" or "[CI failure]" are further instructions for the work in progress.',
     'A message may end with an "[Attached files]" list of paths the user dropped in. Read them directly from those paths when relevant.',
+    'A "[Mentioned]" list names the repositories, files (path, then repository), PRs, tasks or Workers the user pointed at.',
     '',
     'Talking to the Dispatcher (tell_dispatcher tool). It does not see your conversation, so write each message complete on its own:',
     '- "[Dispatcher question]" asks you something. Reply with kind "answer", then go on with what you were doing. It is not a new task and needs no RESULT lines.',

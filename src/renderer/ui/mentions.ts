@@ -7,10 +7,14 @@ import type { Mention, MentionKind, Task } from '../../shared/types';
 import { $, call, esc, MENTION_ICON, mentionChip, S, t, ui } from './core';
 import { closeCpop, cpopOpen, showCpop, type CpopList, type CpopRow } from './cpop';
 import type { Box } from './chat';
-import { presetChipsHtml } from './prompts';
 import type { Key } from '../../shared/i18n';
 
-interface Index { state: 'ready' | 'indexing' | 'error'; count: number; repos: { name: string; where: string; files: string[] }[] }
+interface Index { state: 'ready' | 'indexing' | 'error'; count: number; version: number; repos: { name: string; where: string; files: string[] }[] }
+type Sent = Omit<Index, 'repos'> & { repos: { name: string; where: string; files?: string[] }[] };
+
+/** The preset's chips that come first in the chat's row (ui/prompts.ts sets it, so neither module imports the other). */
+let presetHtml = () => '';
+export function chipsBefore(fn: () => string) { presetHtml = fn; }
 
 /** The last file index main sent; the list draws from it while a newer one is read. */
 let index: Index | null = null;
@@ -74,16 +78,23 @@ function redraw(box: Box) {
   if (at) showCpop(box, mentionList(box, at, () => void readIndex(box, true)));
 }
 
+/** Tasks, Workers or repositories changed: an open list shows them as they are now. */
+export function mentionsChanged() {
+  redraw('chat');
+  redraw('ws');
+}
+
 /** Asks main for the files; while it reads them for the first time, the list says so and fills in once it is done. */
 async function readIndex(box: Box, retry = false) {
-  const now = await call<Index>('mention:index', { retry });
-  if (!now) return;
-  index = now;
-  redraw(box);
-  if (now.state === 'indexing') {
-    index = (await call<Index>('mention:index', { wait: true })) ?? now;
+  const take = (s: Sent | undefined) => {
+    if (!s) return;
+    // Files are sent only when they changed since the version the window has.
+    const had = new Map((index?.repos ?? []).map((r) => [r.name, r.files]));
+    index = { ...s, repos: s.repos.map((r) => ({ ...r, files: r.files ?? had.get(r.name) ?? [] })) };
     redraw(box);
-  }
+  };
+  take(await call<Sent>('mention:index', { retry, have: index?.version }));
+  if (index?.state === 'indexing') take(await call<Sent>('mention:index', { wait: true, have: index.version }));
 }
 
 /** The text changed: "@" after a space at the caret opens the list (or narrows it), anything else closes it. */
@@ -127,7 +138,7 @@ function mentionChipsHtml(box: Box): string {
 /** One row over the composer's text: the preset's chips (chat), a divider, then the "@" ones. */
 export function drawComposerChips(box: Box) {
   const el = $(box === 'chat' ? '#chat-preset' : '#ws-preset');
-  const pre = box === 'chat' ? presetChipsHtml() : '';
+  const pre = box === 'chat' ? presetHtml() : '';
   const men = mentionChipsHtml(box);
   el.innerHTML = pre + (pre && men ? '<span class="chip-sep" aria-hidden="true"></span>' : '') + men;
   el.hidden = !pre && !men;
@@ -155,7 +166,8 @@ export function openMentionChips(box: Box) {
  */
 export function mentionKeys(e: KeyboardEvent, box: Box): boolean {
   const list = ui.mentions[box];
-  if (!list.length || e.isComposing || e.keyCode === 229) return false;
+  // A shell line takes no chips: they wait for the next message, out of reach of its keys.
+  if (!list.length || e.isComposing || e.keyCode === 229 || (box === 'chat' && ui.shell)) return false;
   const input = e.target as HTMLTextAreaElement;
   const sel = ui.mentionSel[box];
   const atStart = input.selectionStart === 0 && input.selectionEnd === 0;

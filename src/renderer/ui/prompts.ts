@@ -11,7 +11,7 @@ import { closeCpop, cpopOpen, showCpop, type CpopList, type CpopRow } from './cp
 import { renderChatInspector, type Box } from './chat';
 import { renderConfirmDialog } from './workers';
 import { togglePanel } from './sidebar';
-import { drawComposerChips } from './mentions';
+import { chipsBefore, drawComposerChips } from './mentions';
 
 const inputOf = (box: Box) => $<HTMLTextAreaElement>(box === 'chat' ? '#chat-input' : '#ws-input');
 
@@ -100,6 +100,7 @@ export const chatPreset = () => (presetEmpty(ui.presetChat) ? null : ui.presetCh
 export function drawPresetChips() {
   drawComposerChips('chat');
 }
+chipsBefore(presetChipsHtml);
 
 /** The preset's chips over the chat composer's text, with their ×. */
 export function presetChipsHtml(): string {

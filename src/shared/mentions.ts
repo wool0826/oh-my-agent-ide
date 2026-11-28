@@ -57,13 +57,20 @@ export interface MentionRow { mention: Mention; meta: string; state?: string }
 const fileName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 const fileDir = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
 
-/** Those whose key starts with the query first, then those that hold it; all when nothing is typed. */
-function rank<T>(list: readonly T[], q: string, keys: (x: T) => string[]): T[] {
-  if (!q) return [...list];
-  const low = (x: T) => keys(x).map((k) => k.toLowerCase());
-  const first = list.filter((x) => low(x).some((k) => k.startsWith(q)));
-  const then = list.filter((x) => !first.includes(x) && low(x).some((k) => k.includes(q)));
-  return [...first, ...then];
+/**
+ * The first `max`: those whose key starts with the query, then those that hold it; in list order when nothing is
+ * typed. One pass that stops once `max` start with it, so 50,000 files a keystroke stay cheap.
+ */
+function rank<T>(list: readonly T[], q: string, keys: (x: T) => string[], max: number): T[] {
+  if (!q) return list.slice(0, max);
+  const first: T[] = [];
+  const then: T[] = [];
+  for (const x of list) {
+    const ks = keys(x).map((k) => k.toLowerCase());
+    if (ks.some((k) => k.startsWith(q))) { first.push(x); if (first.length >= max) break; }
+    else if (then.length < max && ks.some((k) => k.includes(q))) then.push(x);
+  }
+  return [...first, ...then].slice(0, max);
 }
 
 const DONE: Task['status'][] = ['done', 'cancelled', 'failed'];
@@ -77,24 +84,24 @@ export function mentionRows(src: MentionSources, query: string, words: { done: s
   const q = query.toLowerCase();
   const max = q ? MENTION_GROUP_MAX.typed : MENTION_GROUP_MAX.empty;
   const recent = [...src.tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const repos = rank(src.repos, q, (r) => [r.name]).slice(0, max)
+  const repos = rank(src.repos, q, (r) => [r.name], max)
     .map((r): MentionRow => ({ mention: { kind: 'repo', id: r.name, label: r.name }, meta: r.where }));
   const files = q
-    ? rank(src.files, q, (f) => [fileName(f.path), f.path]).slice(0, MENTION_GROUP_MAX.files)
+    ? rank(src.files, q, (f) => [fileName(f.path), f.path], MENTION_GROUP_MAX.files)
       .map((f): MentionRow => ({ mention: { kind: 'file', id: f.path, label: fileName(f.path), repo: f.repo }, meta: fileDir(f.path) || f.repo }))
     : [];
   const prTasks = recent.filter((t) => prNumber(t.prUrl) !== null);
-  const prs = rank(prTasks, q, (t) => [`#${prNumber(t.prUrl)}`, String(prNumber(t.prUrl)), t.title]).slice(0, max)
+  const prs = rank(prTasks, q, (t) => [`#${prNumber(t.prUrl)}`, String(prNumber(t.prUrl)), t.title], max)
     .map((t): MentionRow => ({
       mention: { kind: 'pr', id: t.prUrl!, label: `#${prNumber(t.prUrl)}`, title: t.title, repo: t.repo ?? undefined },
       meta: t.prState === 'MERGED' ? words.merged : t.prState === 'CLOSED' ? words.closed : t.repo ?? '',
       state: t.prState === 'MERGED' ? 'merged' : 'open',
     }));
-  const tasks = rank(recent, q, (t) => [t.id, t.title]).slice(0, max)
+  const tasks = rank(recent, q, (t) => [t.id, t.title], max)
     .map((t): MentionRow => ({ mention: { kind: 'task', id: t.id, label: t.id, title: t.title }, meta: DONE.includes(t.status) ? words.done : t.workerId ?? '', state: t.status }));
   const live = src.workers.filter((w) => w.status !== 'archived');
   const taskOf = (w: (typeof live)[number]) => src.tasks.find((t) => t.id === w.taskIds[w.taskIds.length - 1])?.title ?? w.title;
-  const workers = rank(live, q, (w) => [w.id, w.title, taskOf(w)]).slice(0, max)
+  const workers = rank(live, q, (w) => [w.id, w.title, taskOf(w)], max)
     .map((w): MentionRow => ({ mention: { kind: 'worker', id: w.id, label: w.id }, meta: taskOf(w) }));
   return { repo: repos, file: files, pr: prs, task: tasks, worker: workers };
 }
@@ -113,13 +120,16 @@ export function chipFold<T>(list: readonly T[], open: boolean, shown = MENTION_C
 const WORD: Record<MentionKind, string> = { repo: 'repository', file: 'file', pr: 'PR', task: 'task', worker: 'Worker' };
 const KIND_OF: Record<string, MentionKind> = { repository: 'repo', file: 'file', PR: 'pr', task: 'task', Worker: 'worker' };
 const MARK = '\n\n[Mentioned]\n';
+/** Between a mention and what is said about it: a path or a name may hold brackets, never this. */
+const SEP = ' — ';
+const LINE = /^- (repository|file|PR|task|Worker) (.+?)(?: — .*)?$/;
 
 /** A mention as the agent reads it, on one line. `detail` is anything that helps find it (a folder, a URL). */
 function mentionLine(m: Mention): string {
   const clean = (s: string) => s.replace(/[\r\n]+/g, ' ').trim();
   const head = m.kind === 'file' ? m.id : m.label;
   const extra = [m.title, m.kind === 'pr' ? m.id : '', m.kind !== 'repo' ? m.repo : '', m.detail].filter(Boolean).map((s) => clean(s!));
-  return `- ${WORD[m.kind]} ${clean(head)}${extra.length ? ` (${extra.join('; ')})` : ''}`;
+  return `- ${WORD[m.kind]} ${clean(head)}${extra.length ? `${SEP}${extra.join('; ')}` : ''}`;
 }
 
 /** The block a message with mentions ends with. */
@@ -129,17 +139,18 @@ export function mentionBlock(list: readonly Mention[]): string {
 
 /** A sent message's own text and the chips its "[Mentioned]" block names (kind and label only). */
 export function splitMentions(text: string): { text: string; mentions: Pick<Mention, 'kind' | 'label'>[] } {
-  const i = text.indexOf(MARK);
+  // The last one, so the words "[Mentioned]" typed in a message are left alone.
+  const i = text.lastIndexOf(MARK);
   if (i < 0) return { text, mentions: [] };
   const rest = text.slice(i + MARK.length);
   // The block runs to the attached files, if any.
   const j = rest.indexOf('\n\n');
-  const block = j < 0 ? rest : rest.slice(0, j);
-  const mentions = block.split('\n').map((line) => {
-    const m = /^- (repository|file|PR|task|Worker) (.+?)(?: \(.*\))?$/.exec(line);
-    if (!m) return null;
-    const kind = KIND_OF[m[1]];
-    return { kind, label: kind === 'file' ? fileName(m[2]) : m[2] };
-  }).filter((x): x is Pick<Mention, 'kind' | 'label'> => !!x);
+  const lines = (j < 0 ? rest : rest.slice(0, j)).split('\n').map((line) => LINE.exec(line));
+  // Every line is a mention, or it is not the block.
+  if (!lines.length || lines.some((m) => !m)) return { text, mentions: [] };
+  const mentions = lines.map((m) => {
+    const kind = KIND_OF[m![1]];
+    return { kind, label: kind === 'file' ? fileName(m![2]) : m![2] };
+  });
   return { text: text.slice(0, i) + (j < 0 ? '' : rest.slice(j)), mentions };
 }

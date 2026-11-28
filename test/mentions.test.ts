@@ -108,9 +108,9 @@ test('mentions: the block names each mention on a line and is read back into chi
   assert.equal(block, [
     '\n\n[Mentioned]',
     '- repository app',
-    '- file src/a/b.ts (app)',
-    '- PR #243 (Line break; https://github.com/o/r/pull/243; app)',
-    '- task T-0176 (Prompt history)',
+    '- file src/a/b.ts — app',
+    '- PR #243 — Line break; https://github.com/o/r/pull/243; app',
+    '- task T-0176 — Prompt history',
     '- Worker W-05',
   ].join('\n'));
   assert.equal(mentionBlock([]), '');
@@ -123,4 +123,25 @@ test('mentions: attached files after the block stay in the text', () => {
   const text = `hi${mentionBlock([{ kind: 'worker', id: 'W-01', label: 'W-01' }])}\n\n[Attached files]\n- C:/a.png`;
   assert.deepEqual(splitMentions(text), { text: 'hi\n\n[Attached files]\n- C:/a.png', mentions: [{ kind: 'worker', label: 'W-01' }] });
   assert.deepEqual(splitMentions('plain'), { text: 'plain', mentions: [] });
+});
+
+test('mentions: a path with brackets reads back whole', () => {
+  const list: Mention[] = [{ kind: 'file', id: 'docs/a (1).md', label: 'a (1).md', repo: 'app' }, { kind: 'repo', id: 'b (old)', label: 'b (old)' }];
+  assert.deepEqual(splitMentions(`x${mentionBlock(list)}`).mentions, [{ kind: 'file', label: 'a (1).md' }, { kind: 'repo', label: 'b (old)' }]);
+});
+
+test('mentions: "[Mentioned]" typed in a message is not a block', () => {
+  const typed = 'about\n\n[Mentioned]\nsome words';
+  assert.deepEqual(splitMentions(typed), { text: typed, mentions: [] });
+  const both = `${typed}${mentionBlock([{ kind: 'worker', id: 'W-01', label: 'W-01' }])}`;
+  assert.deepEqual(splitMentions(both), { text: typed, mentions: [{ kind: 'worker', label: 'W-01' }] });
+});
+
+test('mentions: a long file list gives the first matches by name, then by path', () => {
+  const files = Array.from({ length: 50_000 }, (_, i) => ({ repo: 'r', path: `src/m${i}/x${i}.ts` }));
+  const t0 = Date.now();
+  const r = mentionRows({ ...src, files }, 'x1', words).file;
+  assert.equal(r.length, 6);
+  assert.ok(r.every((x) => x.mention.label.startsWith('x1')));
+  assert.ok(Date.now() - t0 < 500);
 });

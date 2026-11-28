@@ -28,7 +28,7 @@ import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad
 import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile } from './ui/history';
 import type { Mention } from '../shared/types';
-import { drawComposerChips, dropMentionChip, mentionKeys, mentionsSent, mentionTyped, openMentionChips, withMentions } from './ui/mentions';
+import { drawComposerChips, dropMentionChip, mentionKeys, mentionsChanged, mentionsSent, mentionTyped, openMentionChips, withMentions } from './ui/mentions';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
@@ -1425,6 +1425,7 @@ export function init() {
     // At launch: what happened since the app was last looked at, a quit included.
     if (first) checkAway();
     renderAll(false, parts);
+    if (has('tasks', 'workers', 'repos')) mentionsChanged();
     if (ui.settingsShown && has('update', 'settings')) drawUpdate();
     if (ui.settingsShown && has('telegram')) drawTelegram();
     if (!has('accounts', 'setupNeeded', 'settings')) return;
