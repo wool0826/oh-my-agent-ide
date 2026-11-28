@@ -1405,3 +1405,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
       the Korean IME, npm prompts, Ctrl+C, resizing, by hand on Windows; zsh with 8.3 on a Mac).
     - Rejected: a find of the app's own (the addon already marks what scrolled away), a shell picker in Settings (one
       more place; the menu is where a tab is opened), and restarting into a new tab (the ended tab would stay to close).
+
+265. **The columns start 12 below the top strip, which has no line under it; the terminal in use shows a grey edge round the dock instead of an accent line** (T-0169, options 1C and 2B of the mock-up; follows 249).
+    - The user picked 1C and 2B. 1C: both sidebars and the resize handles get a `--space-12` top margin and the main column the same top padding, so the three tops line up; the strip loses its hairline and its tinted fill (the settings strip `.stopbar` keeps both). Same in both themes, wide and narrow, open and as a rail.
+    - 2B: `.dock:has(.tm:focus-within)` adds `0 0 0 1px var(--border-strong)` between the rim and the shadow, for the PTY and the line mode alike; the accent line under the input is gone. With forced colours the dock's border turns `Highlight`.
+    - Rejected: the gap on the left sidebar only (1B "sidebar only"; the columns' tops would not line up), and a brighter prompt as the only sign (2C; too faint to see the focus).
