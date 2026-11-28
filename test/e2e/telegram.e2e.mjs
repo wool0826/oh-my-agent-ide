@@ -199,6 +199,8 @@ flow('a message sent while the app was off waits, and Send passes it to the Disp
   await waitFor(() => tg.state.sent.slice(from).some((m) => m.reply_markup && /waiting/.test(m.text)), 'the question about it');
   assert.ok(!(await app.state()).chat.some((m) => m.kind === 'user' && m.via === 'telegram'), 'it waits');
   const ask = tg.state.sent.slice(from).find((m) => m.reply_markup && /waiting/.test(m.text));
-  tg.push(tg.press(42, ask.message_id, ask.reply_markup.inline_keyboard[0][0].callback_data));
+  const send = ask.reply_markup.inline_keyboard.flat().find((b) => b.text === 'Send');
+  assert.ok(send, 'a Send button');
+  tg.push(tg.press(42, ask.message_id, send.callback_data));
   await waitFor(() => tg.state.sent.slice(from).some((m) => m.text === 'Picked up the old one.'), 'the answer on the phone');
 });

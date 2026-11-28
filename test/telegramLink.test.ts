@@ -309,7 +309,22 @@ test('telegramLink: waking from sleep starts a fresh poll at once, and a message
   assert.deepEqual(got, ['after sleep']);
 }, PAIRED));
 
-test('telegramLink: waking with nothing polling starts nothing', () => withLink(async (s, link) => {
+test('telegramLink: waking during a retry pause polls again at once instead of waiting it out', () => withLink(async (s, link) => {
+  const got: string[] = [];
+  link.inbound = (u) => { got.push(u.message?.text ?? ''); };
+  const polls = () => s.state.calls.filter((c) => c.method === 'getUpdates').length;
+  s.failNext('getUpdates', 502, 'Bad Gateway', {}, 3);
+  await link.setToken(s.token);
+  // The third failure in a row waits 4 s before the next poll.
+  await until(() => polls() === 3, 'three failed polls');
+  const at = Date.now();
+  await link.resume();
+  s.push(s.user(42, 'after sleep'));
+  await until(() => got.length === 1, 'the message');
+  assert.ok(Date.now() - at < 3_000, 'it did not wait out the pause');
+}, PAIRED));
+
+test('telegramLink: waking with nothing polling starts nothing',() => withLink(async (s, link) => {
   await link.setToken(s.token);
   await link.resume();
   assert.equal(s.state.calls.some((c) => c.method === 'getUpdates'), false);

@@ -66,9 +66,9 @@ export function wireRemote() {
     flush: () => { try { store.flush(); } catch (e) { log.warn('telegram flush', (e as Error).message); } },
   });
   telegram.inbound = (u) => inbound.handle(u);
-  // Answered or withdrawn anywhere: its message on the phone loses its buttons (decision 251).
   // After sleep the poll starts over at once instead of waiting on a connection that is gone.
   powerMonitor.on('resume', () => { void telegram.resume(); });
+  // Answered or withdrawn anywhere: its message on the phone loses its buttons (decision 251).
   onDecisionSettled((d, answered) => outbox.settle(d.id, answered ? shownAnswer(t, d, d.answer ?? '') : null));
   // Update ids count per bot: another bot, or none, starts them over.
   telegram.onForget = () => {
