@@ -2,6 +2,7 @@
 import { type Key } from '../../shared/i18n';
 import { $, esc, isMac, t, ui } from './core';
 import { layerClose, layerOpen } from './layer';
+import { publishKeys } from './exportMd';
 
 /** One row: what it does, then its keys. A key list of strings is shown as separate keys; '+' joins them on Windows. */
 function row(label: string, keys: string[]) {
@@ -19,6 +20,8 @@ export function shortcutsHtml() {
     row(t('keys.move'), ['↓', '↑']),
   ].join('')) + group('keys.chat', [
     row(t('chat.reply'), ['R']),
+  ].join('')) + group('keys.worker', [
+    row(t('keys.publish'), publishKeys()),
   ].join('')) + group('keys.composer', [
     row(t('keys.history'), ['↑']),
     row(t('keys.prompts'), ['/']),

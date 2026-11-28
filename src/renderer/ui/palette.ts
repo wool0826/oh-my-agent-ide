@@ -14,6 +14,7 @@ import { go } from './history';
 import { layerClose, layerOpen } from './layer';
 import { closeSettings, openSettings } from './settings';
 import { openShortcuts } from './shortcuts';
+import { copyExport, openPublish, saveExport } from './exportMd';
 import { hideUsagePop, ms, togglePanel, workerIcon } from './sidebar';
 import { openSide } from './side';
 import { openTerm } from './terminal';
@@ -39,6 +40,14 @@ export function paletteItems(): Cmd[] {
   // "New automation": the Automations tab with a fresh form, the cursor in its prompt.
   out.push({ id: 'auto:new', group: t('cmdk.cmds'), title: t('auto.new'), icon: sym('s-refresh'),
     run: () => { ui.insTab = 'auto'; ui.autoSel = 'new'; ui.autoNew = freshAutoForm(); if (ui.insMin) togglePanel('ins'); go({ view: 'chat' }); renderChatInspector(); requestAnimationFrame(() => $<HTMLTextAreaElement>('#auto-prompt')?.focus()); } });
+  // The open Worker's work, exported (item 12A): the same three as its header ⋯ menu.
+  const open = ui.view === 'worker' && ui.wOpen ? worker(ui.wSel) : null;
+  if (open) {
+    const g = t('export.menu');
+    out.push({ id: 'export:copy', group: g, title: t('export.copy'), hint: open.id, icon: sym('s-copy'), run: () => void copyExport(open.id) });
+    out.push({ id: 'export:save', group: g, title: t('export.save'), hint: open.id, icon: sym('s-doc'), run: () => void saveExport(open.id) });
+    out.push({ id: 'export:publish', group: g, title: t('export.publish'), hint: open.id, keys: isMac ? '⇧⌘E' : 'Ctrl+Shift+E', icon: sym('s-open'), run: () => void openPublish(open.id) });
+  }
   const views: [View, string, string][] = [['chat', t('nav.chat'), 's-chat'], ['worker', 'Worker', 's-cpu'], ['repo', t('nav.repo'), 's-box'], ['memory', t('nav.memory'), 's-doc']];
   views.forEach(([v, title, icon], i) => out.push({ id: `view:${v}`, group: t('cmdk.go'), title, keys: `${mod}${i + 1}`, icon: sym(icon), run: () => go({ view: v }) }));
   const tabs: [typeof ui.insTab, Key][] = [['inbox', 'ins.tabInbox'], ['memo', 'ins.tabMemo'], ['auto', 'ins.tabAuto'], ['script', 'ins.tabScript']];

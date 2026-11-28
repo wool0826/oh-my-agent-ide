@@ -40,6 +40,7 @@ import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll
 import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
 import { renderSleep, setSleep } from './ui/sleep';
 import { copyValue, folderThere, loadEditors, openFolder, openMenuHtml, rowOpenItems } from './ui/openWith';
+import { closePublish, copyExport, exportMenuHtml, exportPartChanged, openPublish, publishGo, publishOpen, saveExport } from './ui/exportMd';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderAccountsOff, renderSidebar, renderUsage, showUsagePop, togglePanel, toggleUsagePin, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
@@ -471,6 +472,25 @@ export async function act(el: HTMLElement, e: Event) {
       openCtxMenu(r.left, r.bottom + 4, el);
       break;
     }
+    // Exporting a Worker's work (item 12A): the header ⋯ menu and the publish dialog.
+    case 'export-menu': {
+      const menu = $('#ctxmenu');
+      if (!menu.hidden && menu.dataset.for === 'export') { closeCtxMenu(true); break; }
+      if (!worker(id)) break;
+      menu.dataset.for = 'export';
+      menu.innerHTML = exportMenuHtml(id);
+      el.setAttribute('aria-expanded', 'true');
+      const r = el.getBoundingClientRect();
+      openCtxMenu(r.left, r.bottom + 4, el);
+      break;
+    }
+    case 'export-copy': void copyExport(id); break;
+    case 'export-save': void saveExport(id); break;
+    case 'export-publish': void openPublish(id); break;
+    case 'export-go': void publishGo(); break;
+    case 'export-close': closePublish(); break;
+    case 'export-copy-url': await navigator.clipboard.writeText(el.dataset.v ?? '').then(() => toast(t('sel.copied')), () => toast(t('copy.failed'), true)); break;
+    case 'export-open-url': await call('open:external', el.dataset.v); break;
     case 'open-queued': ui.qSel = id; go({ view: 'worker', wSel: null, wOpen: false }); renderWorkerInspector(); break;
     case 'chat-stop': {
       const b = el as HTMLButtonElement;
@@ -899,7 +919,7 @@ function openCtxMenu(x: MenuAt, y: MenuAt, back = document.activeElement as HTML
 /** The open menu's button reads as closed again. */
 function menuGone() {
   ui.openMenu = null;
-  document.querySelector('[data-action="open-menu"][aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
+  document.querySelector('[data-action="open-menu"][aria-expanded="true"], [data-action="export-menu"][aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
 }
 export function closeCtxMenu(refocus = false) {
   const menu = $('#ctxmenu');
@@ -1139,12 +1159,13 @@ export function init() {
     if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure, [data-action="bundle-merge"]')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell, .osplit') || el?.hasAttribute('data-close')) { $('#ctxmenu').hidden = true; menuGone(); }
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell, .osplit, #ws-more') || el?.hasAttribute('data-close')) { $('#ctxmenu').hidden = true; menuGone(); }
   });
   document.addEventListener('change', (e) => void (async () => {
     const el = e.target as HTMLSelectElement;
     if (el.id === 'repo-step') syncPorts();
     if (el.dataset.change === 'sound-kind') syncSoundRows();
+    if (el.dataset.change === 'export-part') { exportPartChanged(); return; }
     if (el.classList?.contains('step-v')) syncStep(el as unknown as HTMLInputElement, true);
     // The Jira token goes to the main process by itself and is cleared from the field: it is never part of the page's state.
     if (el.id?.startsWith('tg-') && await telegramChange(el as unknown as HTMLInputElement, () => openSettings())) return;
@@ -1272,6 +1293,8 @@ export function init() {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyI' && !ui.settingsShown && $('#dlg').hidden && !shotOpen()) { e.preventDefault(); goWaiting(e.shiftKey ? -1 : 1); return; }
     // Ctrl/Cmd+Shift+U: the usage popover, held open with the focus in it (T-0180), and closed again.
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === 'KeyU' && !ui.settingsShown && $('#dlg').hidden) { e.preventDefault(); toggleUsagePin(true); return; }
+    // Ctrl/Cmd+Shift+E: publish the open Worker's work (item 12A). Only on its screen, with nothing else on top.
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === 'KeyE' && !ui.settingsShown && $('#dlg').hidden && !shotOpen() && ui.view === 'worker' && ui.wOpen && worker(ui.wSel)) { e.preventDefault(); void openPublish(ui.wSel!); return; }
     // An open screenshot goes to the report's previous or next one with the arrow keys.
     if (shotOpen() && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); stepShot(e.key === 'ArrowLeft' ? -1 : 1); return; }
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
@@ -1383,6 +1406,7 @@ export function init() {
     if (e.key === 'Escape') {
       if (pop.el) { closePop(true); return; }
       if (shortcutsOpen()) { closeShortcuts(); return; }
+      if (publishOpen()) { closePublish(); return; }
       if (shotOpen()) { closeShot(); return; }
       if (!$('#ctxmenu').hidden) { closeCtxMenu(true); return; }
       if (ui.cancelAsk) { ui.cancelAsk = null; renderCancelDialog(); return; }
