@@ -1505,5 +1505,6 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
    - A scaled screen (150%) rounds the size of a new window by a few pixels: the bounds are set again after it is made, and a window not moved since it opened keeps the bounds it was placed at, so it does not grow at each start.
    - Screen and drafts: the window sends the screen (`shared/history.ts` Screen) and the drafts of the Dispatcher and of every Worker, the composers on screen included, to main once a second when they changed and when it unloads; main writes them with the state (no redraw). A Worker that is gone loses its draft and is deselected; an archived one opens as it was. Sidebar widths and collapsed states were already kept in the window's storage and stay there.
    - The start focuses the composer only on a screen that has one, so a restored repository or memory screen is not left for the chat.
-   - Side-by-side panes (15A) and composer chips (6A) are not in main yet; their restore rows of the mock-up follow with them.
+   - Side-by-side panes (15A) are not in main yet, and the composer chips of saved prompts (6A, 275) came in while this was made: neither is restored yet; their rows of the mock-up follow on their own.
+   - Drafts over a million characters in all are not written: the screen still is, and the drafts on disk stay as they were.
    - Rejected: a separate `window.json` (the state file already has backups and read-only mode); saving on every keystroke (a second's interval is enough and costs one compare).
