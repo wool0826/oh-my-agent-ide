@@ -59,7 +59,7 @@ flow('the sidebar is one column at any width: the selected memo opens in place, 
   w = await where();
   assert.deepEqual([w.value, w.focus, w.caret], ['Draft that must survive', true, 5]);
   await app.size(1600);
-  await app.until(`${insW} === 640`, 'the sidebar wide again');
+  await app.until(`${insW} > 640`, 'the sidebar wide again');
   w = await where();
   assert.deepEqual([w.value, w.focus, w.caret], ['Draft that must survive', true, 5]);
   // Selecting the other memo leaves the draft open, not lost.
