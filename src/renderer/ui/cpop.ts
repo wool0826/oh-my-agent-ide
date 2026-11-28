@@ -18,18 +18,22 @@ export interface CpopRow {
 
 export interface CpopList {
   kind: 'history' | 'prompts' | 'mentions';
-  /** The heading of a list with one group, with the number of rows after it. */
+  /** The heading of the rows with no group, with `count` after it when given. */
   title?: string;
   count?: number;
   rows: CpopRow[];
   /** What an empty list says. */
   empty: string;
+  /** Said under the heading when the rows there are none but the list goes on (no prompt matches, none saved). */
+  note?: string;
   /** The keys at the foot: [keys, what they do]. None while the list is empty. */
   hints: [string[], Key][];
   /** 'history': Up goes to older rows (shared/quickInput.ts recentStep), Down back, and past the newest closes. */
   nav: 'history' | 'list';
   /** Tab takes the row too (mentions). */
   tab?: boolean;
+  /** No row chosen at first, so Enter does what it does without the list (a "/word" that matches nothing is sent). */
+  none?: boolean;
   pick: (row: CpopRow) => void;
 }
 
@@ -66,15 +70,15 @@ function labelHtml(l: CpopRow['label']) {
 function draw(box: Box) {
   const o = open[box]!;
   const { list } = o;
-  const one = list.title !== undefined;
   let group: string | undefined;
   const rows = list.rows.map((r, i) => {
-    const head = !one && r.group !== group ? `<div class="cpop-h">${esc(r.group ?? '')}</div>` : '';
+    const head = r.group && r.group !== group ? `<div class="cpop-h">${esc(r.group)}</div>` : '';
     group = r.group;
     return `${head}<div class="cpop-it${i === o.at ? ' on' : ''}" role="option" id="cpop-${box}-${i}" data-i="${i}" aria-selected="${i === o.at}">${sym(r.icon)}<span>${labelHtml(r.label)}</span>${r.meta ? `<small${r.mono ? ' class="mono"' : ''}>${esc(r.meta)}</small>` : ''}</div>`;
   }).join('');
-  const head = one ? `<div class="cpop-h">${esc(list.title!)}<span class="gap"></span><small>${list.count ?? list.rows.length}</small></div>` : '';
-  const body = list.rows.length ? rows : `<div class="cpop-none">${esc(list.empty)}</div>`;
+  const head = list.title !== undefined ? `<div class="cpop-h">${esc(list.title)}<span class="gap"></span>${list.count !== undefined ? `<small>${list.count}</small>` : ''}</div>` : '';
+  const note = list.note ? `<div class="cpop-none">${esc(list.note)}</div>` : '';
+  const body = list.rows.length ? note + rows : `<div class="cpop-none">${esc(list.empty)}</div>`;
   const foot = list.rows.length && list.hints.length
     ? `<div class="cpop-foot">${list.hints.map(([keys, what]) => `<span>${keys.map((k) => `<kbd>${esc(k)}</kbd>`).join('')}${esc(t(what))}</span>`).join('')}</div>`
     : '';
@@ -85,7 +89,7 @@ function draw(box: Box) {
   o.el.querySelector<HTMLElement>('.cpop-it.on')?.scrollIntoView({ block: 'nearest' });
 }
 
-/** Opens a list over the composer, or puts a new one in the one open; the first row is chosen. */
+/** Opens a list over the composer, or puts a new one in the one open; the first row is chosen, unless `none`. */
 export function showCpop(box: Box, list: CpopList) {
   let o = open[box];
   if (!o) {
@@ -108,7 +112,7 @@ export function showCpop(box: Box, list: CpopList) {
     input.setAttribute('aria-expanded', 'true');
   }
   o.list = list;
-  o.at = list.rows.length ? 0 : -1;
+  o.at = list.rows.length && !list.none ? 0 : -1;
   o.el.setAttribute('aria-label', list.title ?? '');
   draw(box);
 }
@@ -131,7 +135,8 @@ export function cpopKeys(e: KeyboardEvent, box: Box): boolean {
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
     e.preventDefault();
     if (!n) return true;
-    if (o.list.nav === 'history') {
+    if (o.at < 0) o.at = e.key === 'ArrowDown' ? 0 : n - 1;
+    else if (o.list.nav === 'history') {
       const next = recentStep(n, o.at, e.key === 'ArrowUp' ? 'up' : 'down');
       if (next < 0) { closeCpop(box); return true; }
       o.at = next;
@@ -142,8 +147,10 @@ export function cpopKeys(e: KeyboardEvent, box: Box): boolean {
     return true;
   }
   if ((e.key === 'Enter' && !e.shiftKey) || (e.key === 'Tab' && o.list.tab && !e.shiftKey)) {
+    // No row chosen: the list closes and the key does what it does without it (Enter sends).
+    if (o.at < 0 || !n) { closeCpop(box); return false; }
     e.preventDefault();
-    if (o.at >= 0 && n) take(box, o.at); else closeCpop(box);
+    take(box, o.at);
     return true;
   }
   return false;

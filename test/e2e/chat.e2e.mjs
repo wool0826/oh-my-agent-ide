@@ -233,3 +233,63 @@ flow('Up in an empty composer lists the prompts sent from it, narrows as typed a
   await app.key('ArrowUp', 'ArrowUp', 38);
   await app.until("!!document.querySelector('#cpop-ws .cpop-none')", 'an empty history for the Worker');
 });
+
+flow('"/" at the start of a line lists the saved prompts and commands, and a prompt goes in with its preset chips', {}, async (app) => {
+  const set = (v) => app.evaluate(`const i = document.querySelector('#chat-input'); i.focus(); i.value = ${JSON.stringify(v)}; i.setSelectionRange(i.value.length, i.value.length); i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  const rows = () => app.evaluate("return [...document.querySelectorAll('#cpop-chat .cpop-it')].map((r) => (r.classList.contains('on') ? '*' : '') + r.querySelector('span').textContent)");
+  // None saved: the list says so and still offers saving what was typed and the commands.
+  await set('/');
+  await app.until("!!document.querySelector('#cpop-chat .cpop-none')", 'the empty list');
+  assert.equal((await rows()).length, 3);
+  await app.key('Escape', 'Escape', 27);
+  // A prompt saved from the Memos tab's form, and one with a model saved through main.
+  await app.click('#chat-ins [data-action="ins-tab"][data-v="memo"]');
+  await app.click('#chat-ins [data-action="memo-seg"][data-v="prompt"]');
+  await app.click('#chat-ins [data-action="prompt-new"]');
+  await app.until("!!document.querySelector('#chat-ins [data-keep=\"prompt-name-new\"]')", 'the new prompt form');
+  await app.evaluate(`for (const [k, v] of [['name', 'Review'], ['cmd', '/review'], ['text', 'Review the open PRs']]) document.querySelector('#chat-ins [data-keep="prompt-' + k + '-new"]').value = v; return 1;`);
+  await app.click('#chat-ins [data-action="prompt-save"][data-id="new"]');
+  await app.until("return (await window.ide.call('state')).prompts.length === 1", 'the prompt saved');
+  await app.evaluate("return window.ide.call('prompt:add', { name: 'Release', cmd: 'release', text: '@fake task - Release', model: 'claude-sonnet-5-5', planFirst: true })");
+  await app.until("document.querySelectorAll('#chat-ins .memo.prompt').length === 2", 'both cards');
+  // A taken command is refused, and why shows under the list.
+  await app.click('#chat-ins [data-action="prompt-new"]');
+  await app.evaluate(`for (const [k, v] of [['name', 'Again'], ['cmd', 'review'], ['text', 'x']]) document.querySelector('#chat-ins [data-keep="prompt-' + k + '-new"]').value = v; return 1;`);
+  await app.click('#chat-ins [data-action="prompt-save"][data-id="new"]');
+  await app.until("!!document.querySelector('#chat-ins .ferr')", 'the taken command refused');
+  await app.click('#chat-ins [data-action="prompt-cancel"]');
+  // "/" lists both, then saving, then the commands; "/re" narrows and marks the match; "a /" opens nothing.
+  await set('/');
+  await app.until("document.querySelectorAll('#cpop-chat .cpop-it').length === 5", 'the full list');
+  assert.deepEqual((await rows()).map((r) => r.replace(/^\*/, '')).slice(0, 2), ['/review', '/release']);
+  assert.equal(await app.evaluate("document.querySelectorAll('#cpop-chat .cpop-h').length"), 2);
+  await set('/rel');
+  await app.until("document.querySelectorAll('#cpop-chat .cpop-it').length === 2", 'one prompt and saving');
+  assert.equal(await app.evaluate("document.querySelector('#cpop-chat .cpop-it .hl').textContent"), '/rel');
+  await set('/xyz');
+  await app.until("!!document.querySelector('#cpop-chat .cpop-none')", 'no match');
+  // Nothing matches, so no row is chosen and Enter sends the "/word" as it is.
+  assert.equal(await app.evaluate("document.querySelectorAll('#cpop-chat .cpop-it.on').length"), 0);
+  await app.key('Enter', 'Enter', 13);
+  await app.until("return (await window.ide.call('state')).chat.some((c) => c.kind === 'user' && c.text === '/xyz')", 'the /xyz message sent');
+  assert.equal(await app.evaluate("!document.querySelector('#cpop-chat') && document.querySelector('#chat-input').value === ''"), true);
+  await set('a /re');
+  await app.until("!document.querySelector('#cpop-chat')", 'closed after a space');
+  // Enter puts the prompt in place of "/rel", with its model and plan first as chips; × drops one.
+  await set('/rel');
+  await app.until("document.querySelectorAll('#cpop-chat .cpop-it').length === 2", 'the list for Enter');
+  await app.key('Enter', 'Enter', 13);
+  await app.until("document.querySelector('#chat-input').value === '@fake task - Release'", 'the prompt in the composer');
+  assert.equal(await app.evaluate("document.querySelectorAll('#chat-preset .pchip').length"), 2);
+  await app.click('#chat-preset [data-action="preset-x"][data-k="planFirst"]');
+  await app.until("document.querySelectorAll('#chat-preset .pchip').length === 1", 'plan first dropped');
+  // Sent: the chips go with it and the task is made with the preset's model.
+  await app.evaluate("document.querySelector('#chat-form').requestSubmit(); return 1;");
+  await app.until("return (await window.ide.call('state')).tasks.some((t) => t.title === 'Release')", 'the task made');
+  const s = await app.state();
+  const task = s.tasks.find((x) => x.title === 'Release');
+  assert.equal(s.workers.find((w) => w.id === task.workerId)?.model ?? task.model, 'claude-sonnet-5-5');
+  assert.ok(!task.planFirst);
+  assert.deepEqual(s.chat.find((c) => c.kind === 'user' && c.text === '@fake task - Release').preset, { repo: '', model: 'claude-sonnet-5-5', planFirst: false });
+  assert.equal(await app.evaluate("document.querySelector('#chat-preset').hidden"), true);
+});
