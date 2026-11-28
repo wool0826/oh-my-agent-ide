@@ -5,7 +5,7 @@ import { matchItems, stepIndex, type PaletteItem } from '../../shared/palette';
 import { SEARCH_MIN, type TextHit } from '../../shared/textSearch';
 import { PAGE } from '../../shared/paging';
 import { type View } from '../../shared/history';
-import { act, openWorker } from '../app';
+import { act, goWaiting, openWorker } from '../app';
 import { chatAll, renderChat, renderChatInspector } from './chat';
 import { closePop } from './controls';
 import { startFind } from './find';
@@ -34,6 +34,8 @@ export function paletteItems(): Cmd[] {
     out.push({ id: `dec:${d.id}`, group: t('side.decisions'), title: oneLine(d.summary?.what || d.title, 80), hint: d.workerId ?? 'Dispatcher', icon: ic('ask'),
       run: () => { const row = document.createElement('i'); row.dataset.action = 'goto-decision'; row.dataset.id = d.id; void act(row, new Event('click')); } });
   }
+  out.push({ id: 'next', group: t('cmdk.cmds'), title: t('next.tip'), keys: `${mod}I`, icon: sym('s-reply'), run: () => goWaiting(1) });
+  out.push({ id: 'prev', group: t('cmdk.cmds'), title: t('next.prev'), keys: isMac ? '⇧⌘I' : 'Ctrl+Shift+I', icon: sym('s-reply'), run: () => goWaiting(-1) });
   const views: [View, string, string][] = [['chat', t('nav.chat'), 's-chat'], ['worker', 'Worker', 's-cpu'], ['repo', t('nav.repo'), 's-box'], ['memory', t('nav.memory'), 's-doc']];
   views.forEach(([v, title, icon], i) => out.push({ id: `view:${v}`, group: t('cmdk.go'), title, keys: `${mod}${i + 1}`, icon: sym(icon), run: () => go({ view: v }) }));
   const tabs: [typeof ui.insTab, Key][] = [['inbox', 'ins.tabInbox'], ['memo', 'ins.tabMemo'], ['auto', 'ins.tabAuto'], ['script', 'ins.tabScript']];

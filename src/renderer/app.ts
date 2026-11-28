@@ -45,7 +45,7 @@ import { bindDock } from './ui/dock';
 import { bindTerm, hideTerm, newTermTab, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
 import { clearPty, closeTab, closeTermFind, openTermFind, pty, ptyOn, restartTab, selectTab, termFindStep } from './ui/xterm';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
-import { navItem, navItems, noteNav, rove } from './ui/panes';
+import { navItem, navItems, noteNav, rove, waitingStop } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
 import { canStop } from '../shared/canStop';
 
@@ -230,6 +230,20 @@ async function clearOne(kind: 'result' | 'auto', id: string) {
 
 /* ---------- actions ---------- */
 
+/**
+ * Next (dir 1) or previous (dir -1) waiting decision: its card is selected and takes the focus, in the inbox (the
+ * drawer opens when the window is narrow) or in the asking Worker's own panel. With nothing waiting, a toast says so.
+ */
+export function goWaiting(dir: 1 | -1) {
+  const id = waitingStop(dir);
+  if (!id) { toast(t('next.none'), false, undefined, 'done'); return; }
+  ui.decSel = id;
+  const row = document.createElement('i');
+  row.dataset.action = 'goto-decision';
+  row.dataset.id = id;
+  void act(row, new Event('click'));
+}
+
 export async function act(el: HTMLElement, e: Event) {
   const a = el.dataset.action!;
   const id = el.dataset.id ?? '';
@@ -394,6 +408,7 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     case 'close-settings': closeSettings(); break;
     case 'pane': showPane(id as Pane); break;
+    case 'next-waiting': goWaiting(1); break;
     case 'goto-decision': {
       // In the view of the Worker that asks, its own panel shows the card.
       const here = ui.view === 'worker' && ui.wOpen && !!document.getElementById(`wdec-${id}`);
@@ -1141,6 +1156,8 @@ export function init() {
     // Ctrl/Cmd+F opens the same palette to find something said, with a short text selected on the page already in it.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyF') { e.preventDefault(); if (cmdk.open) $('#cmdk-q').focus(); else openPalette(findSeed()); return; }
     if (cmdk.open) { paletteKeys(e); return; }
+    // Ctrl/Cmd+I: the next waiting decision, with Shift the previous one (T-0180). Not while Settings covers the window.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyI' && !ui.settingsShown && $('#dlg').hidden && !shotOpen()) { e.preventDefault(); goWaiting(e.shiftKey ? -1 : 1); return; }
     // An open screenshot goes to the report's previous or next one with the arrow keys.
     if (shotOpen() && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); stepShot(e.key === 'ArrowLeft' ? -1 : 1); return; }
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
@@ -1410,8 +1427,8 @@ export function init() {
     if (S && loud) void playSound(S.settings.sound, S.settings.soundVolume, S.settings.customSound);
     document.querySelector('.sec-dec')?.classList.add('blink');
     $('#dec-count')?.classList.add('pulse');
-    // The right sidebar stays hidden when a decision arrives; its button's count pulses instead.
-    const badge = $('#ins-count');
+    // The right sidebar stays as it is when a decision arrives; the Next button's count pulses.
+    const badge = $('#next-count');
     badge.classList.remove('pulse');
     void badge.offsetWidth;
     badge.classList.add('pulse');
