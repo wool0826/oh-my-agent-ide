@@ -160,11 +160,11 @@ button { font: inherit; }
    macOS, the caption buttons at its end elsewhere. The strip's content keeps between --strip-start and --strip-end,
    which follow the box the window reports (titleBarOverlay → the titlebar-area-* values) and are never less than the
    usual box (78px of lights on macOS 15, the 150px the caption buttons take at 100%), for a frame drawn before it
-   reports one. In full screen macOS has no lights. Settings' strip (.stopbar) starts at the same place. */
+   reports one. In full screen macOS has no lights. Settings' strip (.stopbar) starts at the same place and, like this
+   one, has no line or fill of its own (T-0174). */
 body { --strip-start: var(--space-12); --strip-end: var(--space-12); }
 .platform-darwin:not(.fullscreen) { --strip-start: calc(max(78px, env(titlebar-area-x, 0px)) + var(--space-8)); }
 .platform-win32, .platform-linux { --strip-end: max(150px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + var(--space-12))); }
-.stopbar { border-bottom: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--surface-panel) 55%, transparent); }
 .toolbar { grid-row: 1; grid-column: 1 / 4; display: flex; align-items: center; gap: var(--space-8); padding: 0 var(--strip-end) 0 var(--strip-start); white-space: nowrap; min-width: 0; }
 .toolbar > * { flex: none; }
 /* Away from the traffic lights the sidebar's button stands over the rail's icons (T-0170): its centre is the rail's,
