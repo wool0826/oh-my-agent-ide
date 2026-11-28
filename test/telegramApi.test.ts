@@ -203,3 +203,25 @@ test('telegramPoller: ids that start over are not taken for ones already seen', 
   await until(() => got.length === 2, 'the update after the ids started over');
   await pl.stop();
 }));
+
+test('telegramApi: a file is downloaded by its id through getFile and its address', () => withStub(async (s, api) => {
+  s.addFile('doc1', 'hello file', { path: 'documents/file_1.txt' });
+  const bytes = await api.download('doc1', 1_000);
+  assert.equal(Buffer.from(bytes).toString(), 'hello file');
+  assert.deepEqual(s.state.downloads, ['documents/file_1.txt']);
+}));
+
+test('telegramApi: a file past the limit is refused, as said or as counted, without the token in the error', () => withStub(async (s, api) => {
+  s.addFile('said', 'x', { size: 5_000 });
+  s.addFile('counted', 'y'.repeat(2_000));
+  for (const id of ['said', 'counted']) {
+    await assert.rejects(api.download(id, 1_000), (e: unknown) => e instanceof TelegramError && e.kind === 'bad' && !e.message.includes(s.token));
+  }
+  assert.deepEqual(s.state.downloads, []);
+}));
+
+test('telegramApi: an odd path from getFile never goes into an address', () => withStub(async (s, api) => {
+  s.addFile('odd', 'z', { path: '../bot/getMe' });
+  await assert.rejects(api.download('odd', 1_000), (e: unknown) => e instanceof TelegramError && e.method === 'getFile');
+  assert.deepEqual(s.state.downloads, []);
+}));

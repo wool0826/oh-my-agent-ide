@@ -18,7 +18,14 @@ export interface TgMessage {
   forward_origin?: { type: string };
   /** The bot's message this one answers (Telegram's "Reply"). */
   reply_to_message?: { message_id: number };
+  /** A photo, in the sizes Telegram keeps of it; with a photo or a file, the words are its caption. */
+  photo?: TgPhotoSize[];
+  document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+  caption?: string;
+  /** Shared by the photos and files sent together as one album, each its own message. */
+  media_group_id?: string;
 }
+export interface TgPhotoSize { file_id: string; width?: number; height?: number; file_size?: number }
 /** A press on one of the bot's inline buttons; `data` is what the button carried (remoteDecision.ts). */
 export interface TgCallback { id: string; from: TgUser; message?: { message_id: number; chat: TgChat }; data?: string }
 export interface TgUpdate { update_id: number; message?: TgMessage; callback_query?: TgCallback }

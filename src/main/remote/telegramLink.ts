@@ -123,11 +123,11 @@ export class TelegramLink extends EventEmitter {
   prefs(): RemotePrefs { return this.cfg.prefs; }
 
   /** Turns one kind of news on or off, sets how much is sent, or whether the phone's messages are taken. */
-  setPrefs(patch: { events?: Partial<Record<RemoteEvent, boolean>>; level?: RemoteLevel; requests?: boolean; buttons?: boolean }) {
+  setPrefs(patch: { events?: Partial<Record<RemoteEvent, boolean>>; level?: RemoteLevel; requests?: boolean; buttons?: boolean; files?: boolean }) {
     const c = this.cfg;
     const prefs = cleanPrefs({
       events: { ...c.prefs.events, ...patch.events }, level: patch.level ?? c.prefs.level,
-      requests: patch.requests ?? c.prefs.requests, buttons: patch.buttons ?? c.prefs.buttons,
+      requests: patch.requests ?? c.prefs.requests, buttons: patch.buttons ?? c.prefs.buttons, files: patch.files ?? c.prefs.files,
     });
     this.store.save(this.store.load().tokenEnc, { ...c, prefs });
     this.syncPoll();
@@ -300,6 +300,13 @@ export class TelegramLink extends EventEmitter {
     const api = this.client();
     if (!api || !c.enabled || c.ownerId === null) throw new Error(t('tg.err.notReady'));
     try { await api.editMessage(c.ownerId, messageId, text); } catch (e) { this.noteFailure(e); throw e; }
+  }
+
+  /** A file the owner sent, as bytes, at most `max` of them. */
+  async download(fileId: string, max: number): Promise<Uint8Array> {
+    const api = this.client();
+    if (!api || !this.cfg.enabled || this.cfg.ownerId === null) throw new Error(t('tg.err.notReady'));
+    try { return await api.download(fileId, max); } catch (e) { this.noteFailure(e); throw e; }
   }
 
   /** Ends a button press's spinner; Telegram asks for it on every press. Never throws. */

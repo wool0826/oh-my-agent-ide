@@ -5,19 +5,24 @@
 // remote/wire.ts.
 import type { Say } from '../../shared/askWhy';
 import { isStale, type TgCallback, type TgMessage, type TgUpdate } from '../../shared/remote';
-import { InboundLimit, readInbound, type RemoteCommand } from '../../shared/remoteChat';
+import { InboundLimit, forwardedBlock, readInbound, type RemoteCommand } from '../../shared/remoteChat';
+import { ALBUM_MAX, ALBUM_SETTLE_MS, pickFile, type PickedFile, type TgAttachment } from '../../shared/remoteFile';
 import { HELD_DROP, HELD_RUN, answersByReply, readPress, remoteChoices, type TgButton } from '../../shared/remoteDecision';
 import type { RemoteLevel } from '../../shared/remoteNotice';
 import type { Decision } from '../../shared/types';
 
-/** A message that waits for /run or /drop. */
-export interface HeldMessage { text: string; replyTo: string | null }
+/** A message that waits for /run or /drop, with the files it brought (already on the computer). */
+export interface HeldMessage { text: string; replyTo: string | null; files?: string[] }
 
 export interface InboundDeps {
   say: Say;
   now(): number;
   /** Words for the Dispatcher, filed under `replyTo` (a task or a chat item); `held`: they wait for a usage limit. */
-  toDispatcher(text: string, replyTo: string | null): { held: boolean };
+  toDispatcher(text: string, replyTo: string | null, files: string[]): { held: boolean };
+  /** Photos and files from the phone are taken. */
+  files(): boolean;
+  /** Downloads a file the owner sent and writes it on the computer; its path there. */
+  fetchFile(file: TgAttachment): Promise<string>;
   /** Stops the Dispatcher's turn; true when one was running. */
   stop(): Promise<boolean>;
   /** Turns requests and answers from the phone off (/lock); only the desktop turns them on again. */
@@ -59,6 +64,8 @@ export class Inbound {
   private slowTold = false;
   private stale: HeldMessage[];
   private staleTimer: NodeJS.Timeout | null = null;
+  /** The album coming in: its photos and files go to the Dispatcher together once no more arrive. */
+  private album: { id: string; text: string[]; files: string[]; to: string | null; msg: number; stale: boolean; timer: NodeJS.Timeout } | null = null;
 
   constructor(private readonly d: InboundDeps) {
     this.stale = d.waiting.load();
@@ -115,6 +122,10 @@ export class Inbound {
 
   private async take(m: TgMessage) {
     const { say } = this.d;
+    const picked = pickFile(m);
+    if (picked) return this.takeFile(m, picked);
+    // An album is over once anything else comes.
+    if (this.album) this.sendAlbum();
     const r = readInbound(m);
     // /lock and /stop always go through; everything else, answers included, counts towards the limit.
     const urgent = r.kind === 'command' && (r.name === 'lock' || r.name === 'stop');
@@ -137,10 +148,67 @@ export class Inbound {
     this.pass(r.text, to, m.message_id);
   }
 
-  /** Hands words to the Dispatcher and says so when they wait; a failure is told, since the update is already taken. */
-  private pass(text: string, to: string | null, msg?: number): boolean {
+  /**
+   * A photo or a file, with its caption as the words: it is downloaded at once (Telegram's address for it lasts an
+   * hour), then goes as a message would. The photos of one album go together, counted as one message.
+   */
+  private async takeFile(m: TgMessage, picked: PickedFile) {
+    const { say } = this.d;
+    const stale = isStale(m.date, this.d.now());
+    const group = m.media_group_id;
+    const more = !!group && this.album?.id === group;
+    if (!more && this.album) this.sendAlbum();
+    if (!more && !stale && !this.allow(m.message_id)) return;
+    if (!this.d.requests()) return more ? undefined : this.d.answer(say('tg.r.locked'), m.message_id);
+    if (!this.d.files()) return more ? undefined : this.d.answer(say('tg.r.filesOff'), m.message_id);
+    if (picked.kind !== 'file') return this.d.answer(say(picked.kind === 'tooBig' ? 'tg.r.tooBig' : 'tg.r.blocked'), m.message_id);
+    let file: string;
     try {
-      const { held } = this.d.toDispatcher(text, to);
+      file = await this.d.fetchFile(picked.file);
+    } catch {
+      return this.d.answer(say('tg.r.fileFailed'), m.message_id);
+    }
+    const caption = (m.caption ?? '').trim();
+    const text = caption && m.forward_origin ? forwardedBlock(caption) : caption;
+    const ref = this.d.refOf(m.reply_to_message?.message_id);
+    const to = ref && !ref.startsWith('d:') ? ref : null;
+    if (group) {
+      const a = this.album?.id === group ? this.album : null;
+      if (a) {
+        clearTimeout(a.timer);
+        if (text) a.text.push(text);
+        a.files.push(file);
+        a.timer = this.albumTimer();
+        if (a.files.length >= ALBUM_MAX) this.sendAlbum();
+      } else {
+        this.album = { id: group, text: text ? [text] : [], files: [file], to, msg: m.message_id, stale, timer: this.albumTimer() };
+      }
+      return;
+    }
+    if (stale) return this.hold(text, to, [file]);
+    this.pass(text, to, m.message_id, [file]);
+  }
+
+  private albumTimer(): NodeJS.Timeout {
+    const timer = setTimeout(() => this.sendAlbum(), ALBUM_SETTLE_MS);
+    timer.unref?.();
+    return timer;
+  }
+
+  private sendAlbum() {
+    const a = this.album;
+    if (!a) return;
+    this.album = null;
+    clearTimeout(a.timer);
+    const text = a.text.join('\n\n');
+    if (a.stale) this.hold(text, a.to, a.files);
+    else this.pass(text, a.to, a.msg, a.files);
+  }
+
+  /** Hands words to the Dispatcher and says so when they wait; a failure is told, since the update is already taken. */
+  private pass(text: string, to: string | null, msg?: number, files: string[] = []): boolean {
+    try {
+      const { held } = this.d.toDispatcher(text, to, files);
       if (held) this.d.answer(this.d.say('tg.r.held'), msg);
       return held;
     } catch {
@@ -173,14 +241,15 @@ export class Inbound {
         this.clearStale();
         // One turn for all of them, in the order they were sent; filed under a thread only when they all were.
         const to = list.every((x) => x.replyTo === list[0].replyTo) ? list[0].replyTo : null;
-        if (!this.pass(list.map((x) => x.text).join('\n\n'), to, msg)) this.d.answer(say('tg.r.ran', { n: list.length }), msg);
+        const files = list.flatMap((x) => x.files ?? []);
+        if (!this.pass(list.map((x) => x.text).filter(Boolean).join('\n\n'), to, msg, files)) this.d.answer(say('tg.r.ran', { n: list.length }), msg);
         return;
       }
     }
   }
 
-  private hold(text: string, replyTo: string | null) {
-    this.stale.push({ text, replyTo });
+  private hold(text: string, replyTo: string | null, files?: string[]) {
+    this.stale.push(files?.length ? { text, replyTo, files } : { text, replyTo });
     if (this.stale.length > STALE_MAX) this.stale.shift();
     this.d.waiting.save(this.stale);
     if (this.staleTimer) clearTimeout(this.staleTimer);
@@ -194,7 +263,11 @@ export class Inbound {
   }
 
   /** The bot changed or was disconnected: the waiting messages were its. */
-  forget() { this.clearStale(); }
+  forget() {
+    if (this.album) clearTimeout(this.album.timer);
+    this.album = null;
+    this.clearStale();
+  }
 
   private clearStale(): number {
     const n = this.stale.length;
