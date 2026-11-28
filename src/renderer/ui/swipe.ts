@@ -86,8 +86,12 @@ export function initSwipe(root: HTMLElement, clear: (nav: string) => Promise<unk
     clearTimeout(w.timer);
     w.timer = window.setTimeout(idle, WHEEL_IDLE);
     if (w.s.mode === 'scroll') return;
-    // Let go already: the momentum is not the list's to scroll either.
-    if (w.s.done) { e.preventDefault(); return; }
+    // Let go already: the momentum is not the list's to scroll either. A scroll down is a new gesture: the list's.
+    if (w.s.done) {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { clearTimeout(w.timer); return idle(); }
+      e.preventDefault();
+      return;
+    }
     w.s = wheelStep(w.s, { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, t: e.timeStamp }, w.width);
     if (w.s.mode === 'scroll') return;
     // Sideways so far: not the list's (nor the window's back and forward) to scroll. A vertical start is left to the list.
@@ -182,7 +186,7 @@ function swipe(row: HTMLElement, clear: (nav: string) => Promise<unknown>): Swip
     // The list drops the row once it is cleared (a redraw held back meanwhile waits for that, or it would draw the row
     // again). If clearing fails, or the row is somehow still drawn, it comes back.
     const restore = () => { if (row.isConnected) tidy(); };
-    clear(nav).then(() => { release(); setTimeout(restore, 1000); }, () => { release(); restore(); });
+    Promise.resolve().then(() => clear(nav)).then(() => { release(); setTimeout(restore, 1000); }, () => { release(); restore(); });
   };
 
   // Out to the side, then the row closes up, then the list loses it (the toast offers Undo).

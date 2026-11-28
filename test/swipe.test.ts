@@ -109,6 +109,12 @@ test('swipe: fingers that slow down and speed up again keep moving the row', () 
   assert.equal(wheelShown(s), 73);
 });
 
+test('swipe: fingers moving at an uneven speed are not taken for momentum', () => {
+  const s = play([-12, -14, -13, -15, -14, -12, -16, -13, -15, -11, -14]);
+  assert.equal(s.done, null);
+  assert.equal(wheelShown(s), s.dx);
+});
+
 test('swipe: fingers resting before they leave do not flick the row', () => {
   const s = play([-10, -15, -20]);
   assert.deepEqual(wheelRelease(s, s.t + WHEEL_IDLE), { dx: 45, v: 0 });
