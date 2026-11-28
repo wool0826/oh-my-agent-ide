@@ -6,6 +6,7 @@ import { dispatcher } from '../agents/dispatcher';
 import { workers } from '../agents/workers';
 import { runs } from '../runs';
 import { automations } from '../automations';
+import { pollAutomationEvents } from '../prmonitor';
 import { listJiraIssues, setJiraToken } from '../jira';
 import type { AutoTrigger } from '../../shared/types';
 
@@ -14,9 +15,11 @@ export function registerRepoIpc(ctx: IpcContext) {
   handle('repo:issues', (name: string) => listIssues(name));
   handle('jira:issues', () => listJiraIssues());
   handle('jira:token', (token: string) => { setJiraToken(String(token ?? '')); ctx.pushState(); });
-  handle('auto:add', (prompt: string, trigger: AutoTrigger) => { automations.add({ prompt, trigger }); });
-  handle('auto:update', (id: string, prompt: string, trigger: AutoTrigger) => { automations.update(id, { prompt, trigger }); });
-  handle('auto:toggle', (id: string, on: boolean) => automations.setEnabled(id, on));
+  // A new or changed event automation takes note of what is on GitHub now, so only what comes after sets it off.
+  handle('auto:add', (prompt: string, trigger: AutoTrigger, maxPerDay?: number | null) => { automations.add({ prompt, trigger, maxPerDay }); void pollAutomationEvents(); });
+  handle('auto:update', (id: string, prompt: string, trigger: AutoTrigger, maxPerDay?: number | null) => { automations.update(id, { prompt, trigger, maxPerDay }); void pollAutomationEvents(); });
+  handle('auto:run', (id: string) => { automations.runNow(id); });
+  handle('auto:toggle', (id: string, on: boolean) => { automations.setEnabled(id, on); if (on) void pollAutomationEvents(); });
   handle('auto:remove', (id: string) => { automations.remove(id); });
   handle('repo:add', (url: string, name?: string, description?: string) => registerRepo({ url, name, description }).then((r) => { dispatcher.refreshContext(); return r; }));
   handle('repo:addCancel', () => cancelAddRepo());

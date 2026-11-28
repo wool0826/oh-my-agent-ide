@@ -508,7 +508,16 @@ export interface ModelInfo { id: string; name: string; created: string; provider
 export interface ModelList { models: ModelInfo[]; fetchedAt: string | null; error: string | null }
 
 /** What sets an automation off: a time every day (local, "HH:MM"; on weekdays only if asked), or a PR being merged. */
-export type AutoTrigger = { kind: 'daily'; time: string; weekdays: boolean } | { kind: 'merged' };
+/** A GitHub event an automation can wait for (shared/automations.ts). */
+export type AutoEventKind = 'merged' | 'ciFailed' | 'prOpened' | 'reviewRequested' | 'issueLabel';
+
+export type AutoTrigger =
+  | { kind: 'daily'; time: string; weekdays: boolean }
+  /** Once a week on `day` (0 Sunday – 6 Saturday) at `time`. */
+  | { kind: 'weekly'; time: string; day: number }
+  | { kind: 'every'; hours: number }
+  /** An event; `repo`, `branch` and `label` narrow it (unset: any). */
+  | { kind: AutoEventKind; repo?: string; branch?: string; label?: string };
 
 /** Work the Dispatcher is handed by itself (shared/automations.ts). */
 export interface Automation {
@@ -521,8 +530,12 @@ export interface Automation {
   lastRunAt: string | null;
   /** The chat message the last run handed the Dispatcher, so "Last run" can show it. */
   lastRunChatId?: string;
-  /** When a daily one runs next; null for an event trigger. */
+  /** When a scheduled one runs next; null for an event trigger. */
   nextRunAt: string | null;
+  /** At most this many runs a local day; null or unset: no limit. */
+  maxPerDay?: number | null;
+  /** How many times it ran on `day` (local "YYYY-MM-DD"). */
+  runs?: { day: string; n: number };
   createdAt: string;
 }
 

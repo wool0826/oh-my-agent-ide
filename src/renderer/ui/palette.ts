@@ -6,7 +6,7 @@ import { SEARCH_MIN, type TextHit } from '../../shared/textSearch';
 import { PAGE } from '../../shared/paging';
 import { type View } from '../../shared/history';
 import { act, goWaiting, openWorker } from '../app';
-import { chatAll, renderChat, renderChatInspector } from './chat';
+import { chatAll, freshAutoForm, renderChat, renderChatInspector } from './chat';
 import { closePop } from './controls';
 import { startFind } from './find';
 import { $, call, esc, ic, isMac, modelLabel, oneLine, Pane, prNum, S, sym, t, taskLabel, toast, ui, when, worker, workerTask } from './core';
@@ -36,6 +36,9 @@ export function paletteItems(): Cmd[] {
   }
   out.push({ id: 'next', group: t('cmdk.cmds'), title: t('next.tip'), keys: `${mod}I`, icon: sym('s-reply'), run: () => goWaiting(1) });
   out.push({ id: 'prev', group: t('cmdk.cmds'), title: t('next.prev'), keys: isMac ? '⇧⌘I' : 'Ctrl+Shift+I', icon: sym('s-reply'), run: () => goWaiting(-1) });
+  // "New automation": the Automations tab with a fresh form, the cursor in its prompt.
+  out.push({ id: 'auto:new', group: t('cmdk.cmds'), title: t('auto.new'), icon: sym('s-refresh'),
+    run: () => { ui.insTab = 'auto'; ui.autoSel = 'new'; ui.autoNew = freshAutoForm(); if (ui.insMin) togglePanel('ins'); go({ view: 'chat' }); renderChatInspector(); requestAnimationFrame(() => $<HTMLTextAreaElement>('#auto-prompt')?.focus()); } });
   const views: [View, string, string][] = [['chat', t('nav.chat'), 's-chat'], ['worker', 'Worker', 's-cpu'], ['repo', t('nav.repo'), 's-box'], ['memory', t('nav.memory'), 's-doc']];
   views.forEach(([v, title, icon], i) => out.push({ id: `view:${v}`, group: t('cmdk.go'), title, keys: `${mod}${i + 1}`, icon: sym(icon), run: () => go({ view: v }) }));
   const tabs: [typeof ui.insTab, Key][] = [['inbox', 'ins.tabInbox'], ['memo', 'ins.tabMemo'], ['auto', 'ins.tabAuto'], ['script', 'ins.tabScript']];

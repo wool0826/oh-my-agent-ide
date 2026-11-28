@@ -7,7 +7,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { PTY_EMPTY, PTY_REPLAY, PTY_SCROLLBACK, ptyFresh, ptyLabel, termFont, termKey, termMatch, termTheme, type PtyTab, type PtyView } from '../../shared/pty';
+import { PTY_EMPTY, PTY_REPLAY, PTY_SCROLLBACK, ptyFresh, ptyLabel, termFont, termKey, termMatch, termTheme, OpenedTabs, type PtyTab, type PtyView } from '../../shared/pty';
 import { findCount } from '../../shared/findMarks';
 import { $, esc, ide, isMac, sym, t, toast, tryCall } from './core';
 
@@ -41,6 +41,8 @@ export const pty = {
 export const ptyOn = () => pty.view.available !== false;
 
 const views = new Map<string, View>();
+/** Main's views, with the tabs this window opened that none holds yet. */
+const kept = new OpenedTabs();
 /** Output of a tab with no view yet (before pty:open answered); drawn when its view comes. */
 const stray = new Map<string, Piece[]>();
 
@@ -168,10 +170,10 @@ function syncViews(before: PtyTab[]) {
 
 export function setPtyView(v: PtyView) {
   const before = pty.view.tabs;
-  pty.view = v;
+  pty.view = kept.view(v);
   if (pty.opening) return;
   // Before the last view goes, while the focus is still in it.
-  if (before.length && !v.tabs.length) hooks.empty();
+  if (before.length && !pty.view.tabs.length) hooks.empty();
   syncViews(before);
   hooks.render();
 }
@@ -197,6 +199,8 @@ export async function newTab(repo: string, shell = ''): Promise<boolean> {
     v.id = r.v.id;
     v.have = 0;
     views.set(v.id, v);
+    // Kept when main's view with it is not here yet, so syncViews below does not take the view away.
+    pty.view = kept.opened(r.v);
     // Sized again while it opened.
     if (v.term.cols !== cols || v.term.rows !== rows) ide.ptySend('resize', v.id, v.term.cols, v.term.rows);
     for (const p of stray.get(v.id) ?? []) put(v, p);
@@ -228,6 +232,7 @@ function stepTab(dir: -1 | 1) {
 }
 
 export async function closeTab(id: string) {
+  kept.closed(id);
   const r = await tryCall('pty:close', id);
   if (!r.ok) toast(r.error, true);
 }

@@ -643,7 +643,7 @@ export function openWorkspacePicker(btn: HTMLElement) {
   const inp = document.getElementById(btn.dataset.dd!) as HTMLInputElement | null;
   if (!inp) return;
   const items: Opt[] = btn.dataset.pick === 'editor'
-    ? [...EDITORS.map((e) => ({ value: e.id, label: e.name, icon: badge(e.id, e.badge) })), { value: 'custom', label: t('set.editorCustom') }]
+    ? [...EDITORS.map((e) => ({ value: e.id, label: e.name, html: badge(e.id, e.badge) })), { value: 'custom', label: t('set.editorCustom') }]
     : terminalsFor(ide.platform).map((x) => ({ value: x.id, label: terminalName(x.id) }));
   openPop(btn, items, inp.value, (v) => {
     if (v === inp.value) return;
