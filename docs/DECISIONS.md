@@ -1436,3 +1436,6 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - On Windows and Linux `#side-toggle` gets `margin-left: --toggle-shift`, `(--panel-inset + --rail-w - --control-lg) / 2 - --strip-start` (6px at the usual sizes), so its centre is the rail's at any zoom; the view tabs' margin subtracts the same shift and stay on the main column's line. Open, the button lines up with the sidebar rows' icons too.
     - macOS is left as is: there the button sits after the traffic lights, not over the rail.
     - Rejected: moving `--strip-start` (it also places Settings' back button and the strip checks), and a fixed 18px.
+
+268. **The right sidebar can widen to 960 again** (T-0172, asked for by the user; changes 215).
+    - **Width:** the widest is 960, up from 640 (about 1.5x). The middle still keeps at least 420px (`MAIN_MIN`), so on a narrow window the sidebar stops earlier and never covers the chat. Default 344 and minimum 320 are unchanged.

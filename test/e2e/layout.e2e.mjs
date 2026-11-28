@@ -37,7 +37,7 @@ flow('the sidebar is one column at any width: the selected memo opens in place, 
     value: ta?.value, focus: !!ta && document.activeElement === ta, caret: ta?.selectionStart };`);
   // At the widest sidebar a click on a memo selects it in place: no detail pane, no list rows.
   await handle('End', 35);
-  await app.until(`${insW} === 640`, 'the widest sidebar');
+  await app.until(`${insW} > 640`, 'the widest sidebar');
   await app.click('#chat-ins .pk-c > .memo[data-action="pick"]');
   await app.until("!!document.querySelector('#chat-ins .pk.sel')", 'the memo selected');
   let w = await where();
@@ -50,7 +50,7 @@ flow('the sidebar is one column at any width: the selected memo opens in place, 
   // Edit it, type, and narrow the window so the sidebar gives way, then widen it again: the field keeps its text,
   // the focus and the caret.
   await handle('End', 35);
-  await app.until(`${insW} === 640`, 'the widest sidebar again');
+  await app.until(`${insW} > 640`, 'the widest sidebar again');
   await app.click('#chat-ins .pk.sel [data-action="memo-edit"]');
   await app.until("document.activeElement?.matches('#chat-ins .pk.sel textarea')", 'the edit field');
   await app.evaluate("const ta = document.activeElement; ta.value = 'Draft that must survive'; ta.setSelectionRange(5, 5); return 1;");
@@ -59,7 +59,7 @@ flow('the sidebar is one column at any width: the selected memo opens in place, 
   w = await where();
   assert.deepEqual([w.value, w.focus, w.caret], ['Draft that must survive', true, 5]);
   await app.size(1600);
-  await app.until(`${insW} === 640`, 'the sidebar wide again');
+  await app.until(`${insW} > 640`, 'the sidebar wide again');
   w = await where();
   assert.deepEqual([w.value, w.focus, w.caret], ['Draft that must survive', true, 5]);
   // Selecting the other memo leaves the draft open, not lost.

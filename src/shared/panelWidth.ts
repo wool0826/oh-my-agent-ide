@@ -10,7 +10,7 @@ export const PANELS: Record<Panel, PanelLimits> = {
   side: { def: 272, min: 200, max: 480 },
   // Below 320 the right sidebar's tabs wrap to two lines. Up to 640: its lists are one column (shared/insPanes.ts),
   // and wider lines get hard to read; on a small window fitWidths caps it.
-  ins: { def: 344, min: 320, max: 640 },
+  ins: { def: 344, min: 320, max: 960 },
 };
 
 /** The main area never gets narrower than this while a panel can still give way. */
