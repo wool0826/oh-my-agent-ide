@@ -1546,3 +1546,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
    - **Keys:** Alt+↑↓, Alt+Shift+↑ and P act on the focused row, and the focus stays on it after the move. Shift+F10 (and the context menu) opens its menu, on the Mac too. The Ctrl+/ list has a Queue group.
    - The mock-up's empty "Nothing waiting" row was not added: the sidebar hides every empty section, and the empty sidebar has its own state.
    - Rejected: priority levels (11C), and hover-only buttons without a menu (11A).
+
+
+285. **A result's shots sit in two equal columns on every row: the before/after pair side by side, every shot without a role as a labelled tile of the same size on the rows after it** (T-0187, follows 232 and 242).
+    - Cause: T-0181 named `changes-narrow-dark.png` beside `changes-dark-before/after.png`. A role-less shot of a set with roles got a third grid column (`setView`), and `publish-dark.png` and `changes-split-light.png` became sets of one, untitled and 200px wide. So one row held three tiles of other sizes and the next one a lone smaller tile.
+    - Now `.shot-grid` is `repeat(2, minmax(0, 1fr))` at every card width. `setView` gives the before/after columns and `extras` (all role-less shots), each labelled by its own parts (`shotTags`: "Narrow · Dark"). A tagged screen always shows its name. Thumbnails are `object-fit: contain`, so a tall or narrow shot keeps its shape in the same 16:10 box.
+    - The Width/Theme switches of 232 stay and only take values from the before/after shots, so a role-less shot never adds a switch it cannot answer. A set with no before/after (publish-dark plus publish-light) has no switch and shows each shot as its own labelled tile. The opened view's order (242) is unchanged.
+    - Rejected: one tile per variant on the card, which is 232's rejected option A; a third column that shrinks the pair.

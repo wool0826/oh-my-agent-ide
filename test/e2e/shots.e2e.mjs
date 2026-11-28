@@ -182,6 +182,47 @@ flow('a result card shows one before/after pair of its screenshots, with switche
   assert.deepEqual(await app.evaluate("const c = document.querySelector('#ws-sum .sum-task'); return [c.querySelectorAll('.rfiles .fchip').length, !!c.querySelector('.racts .prchip'), c.querySelectorAll('.shot-row .seg').length];"), [2, true, 2]);
 });
 
+flow('a result card puts every shot in two equal columns: pairs side by side, the others on rows of their own (T-0187)', {}, async (app) => {
+  // The shots T-0181 reported: three pairs, a narrow shot of one of their screens, and two screens with one shot each.
+  const dir = path.join(app.home, 'T-0181');
+  fs.mkdirSync(dir);
+  const png = Buffer.from((await app.capture()).result.data, 'base64');
+  const names = ['worker-head-dark-before', 'worker-head-dark-after', 'export-head-dark-before', 'export-head-dark-after', 'publish-dark',
+    'changes-dark-before', 'changes-dark-after', 'changes-split-light', 'changes-narrow-dark'];
+  for (const n of names) fs.writeFileSync(path.join(dir, `${n}.png`), png);
+  await app.say(['@fake task - Ship the C items', '@@fake result Shipped.', ...names.map((n) => `@@fake file ${path.join(dir, `${n}.png`)}`)].join('\n'));
+  await app.until(`document.querySelectorAll('${CARD} .shot').length === 9`, 'all nine shots on the result card');
+  for (const w of [1400, 900]) {
+    await app.size(w, 860);
+    await app.until(`return (() => { const ws = [...document.querySelectorAll('${CARD} .shot')].map((x) => Math.round(x.getBoundingClientRect().width)); return ws.length === 9 && ws.every((x) => x === ws[0]); })()`, `nine tiles of one size at ${w}px`);
+    const sets = await app.evaluate(`return [...document.querySelectorAll('${CARD} .shot-set')].map((s) => {
+      const grid = s.querySelector('.shot-grid').getBoundingClientRect();
+      return [s.querySelector('.shot-row b')?.innerText, [...s.querySelectorAll('.shot-col')].map((c) => {
+        const r = c.querySelector('.shot').getBoundingClientRect();
+        return [c.querySelector('.shot-h')?.innerText, Math.round(r.left - grid.left), Math.round(r.top - grid.top), Math.round(r.width), Math.round(r.height)];
+      })];
+    })`);
+    // Every tile the same size, in the left or the right half; a shot without a partner starts a row of its own.
+    const [[, [[, , top, tw, th], [, R]]]] = sets, next = sets[2][1][2][2];
+    assert.ok(tw > 100 && R > tw && next >= top + th, `tiles ${tw}×${th}, the right column at ${R}, the second row at ${next}`);
+    const at = (h, x, y) => [h, x, y, tw, th];
+    assert.deepEqual(sets, [
+      ['worker head', [at('Before', 0, top), at('After', R, top)]],
+      ['export head', [at('Before', 0, top), at('After', R, top)]],
+      ['changes', [at('Before', 0, top), at('After', R, top), at('Narrow · Dark', 0, next)]],
+      ['publish', [at('Dark', 0, top)]],
+      ['changes split', [at('Light', 0, top)]],
+    ], `at ${w}px`);
+  }
+  // The opened view still steps through them set by set, each before right ahead of its after.
+  await app.click(`${CARD} .shot[data-path$="changes-narrow-dark.png"]`);
+  await app.until(`!!document.querySelector('${DLG}')`, 'the shot opened');
+  assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('${DLG} .shot-strip button')].map((b) => b.getAttribute('aria-label'))`), [
+    'Before · worker head · Dark', 'After · worker head · Dark', 'Before · export head · Dark', 'After · export head · Dark',
+    'Before · changes · Dark', 'After · changes · Dark', 'changes · Narrow · Dark', 'publish · Dark', 'changes split · Light']);
+  assert.equal(await app.evaluate("document.querySelector('#shot-t').textContent"), 'changes · Narrow · Dark');
+});
+
 flow('the images a user attaches get previews that open in the same view as a report\'s shots (T-0152)', {}, async (app) => {
   const dir = path.join(app.home, 'mine');
   fs.mkdirSync(dir);

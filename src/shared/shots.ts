@@ -106,9 +106,11 @@ export function shotSets(files: readonly string[]): { sets: ShotSet[]; rest: str
   const sets = [...groups.values()].map((g) => {
     const { shots, pairs } = orderShots(g);
     const roles = (['before', 'after'] as const).filter((r) => shots.some((s) => s.role === r));
+    // The switches pick the before/after columns, so only their shots give them values; the others are all in sight.
+    const switched = roles.length ? shots.filter((s) => s.role) : [];
     const axes: ShotSet['axes'] = {};
     for (const a of AXIS_NAMES) {
-      const vs = SHOT_AXES[a].filter((v) => shots.some((s) => s[a] === v));
+      const vs = SHOT_AXES[a].filter((v) => switched.some((s) => s[a] === v));
       if (vs.length > 1) axes[a] = vs;
     }
     return { set: { screen: shots[0].screen, shots, roles, axes } as ShotSet, pairs };
@@ -140,16 +142,18 @@ export function pickShot(set: ShotSet, role: ShotRole | null, pick: ShotPick): S
 }
 
 /**
- * What a set shows on a card: a column per role (one column when it has none), each with its shot under the switches,
- * and how many of its images that leaves out of sight.
+ * What a set shows on a card (T-0187): its before/after columns, each with its shot under the switches, then every
+ * shot without a role (a screen of its own, or card-narrow-dark.png beside card-before-dark.png) as tiles of the same
+ * size, two to a row, in the order of `orderShots`. `hidden`: the before/after shots the switches leave out of sight.
  */
 export function setView(set: ShotSet, pick: ShotPick) {
-  const roles: (ShotRole | null)[] = set.roles.length ? [...set.roles] : [null];
-  // A shot without a role in a set with roles (card-dark.png beside card-before-dark.png) gets a column of its own.
-  if (set.roles.length && set.shots.some((s) => !s.role)) roles.push(null);
-  const cols = roles.map((role) => ({ role, shot: pickShot(set, role, pick) }));
-  return { cols, hidden: set.shots.length - cols.filter((c) => c.shot).length };
+  const cols = set.roles.map((role) => ({ role, shot: pickShot(set, role, pick) }));
+  const extras = set.shots.filter((s) => !s.role);
+  return { cols, extras, hidden: set.shots.length - extras.length - cols.filter((c) => c.shot).length };
 }
+
+/** A shot's own parts for its label, in the order they are shown: its role, then its width and theme. */
+export const shotTags = (s: Shot) => [s.role, ...AXIS_NAMES.map((a) => s[a])].filter((x): x is string => !!x);
 
 /** The address the window loads an image file from. */
 export const shotUrl = (p: string) => `${SHOT_SCHEME}://file/${encodeURIComponent(p)}`;

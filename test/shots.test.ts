@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { firstPick, isImagePath, isLocalPath, orderShots, pickShot, setView, shotOf, shotPath, shotSets, shotUrl } from '../src/shared/shots';
+import { firstPick, isImagePath, isLocalPath, orderShots, pickShot, setView, shotOf, shotPath, shotSets, shotTags, shotUrl } from '../src/shared/shots';
 
 test('shots: image files are told apart from the rest by their extension', () => {
   for (const p of ['a.png', 'B.PNG', 'c.jpg', 'd.jpeg', 'D.JPEG', 'e.gif', 'f.webp', ' g.png ', 'h.bmp', 'i.avif', 'j.jfif', 'k.Png']) assert.equal(isImagePath(p), true, p);
@@ -92,7 +92,7 @@ test('shots: one image is a set of one, with no switches', () => {
   assert.equal(sets.length, 1);
   assert.deepEqual([sets[0].roles, sets[0].axes, sets[0].shots.length], [[], {}, 1]);
   const v = setView(sets[0], firstPick(sets[0]));
-  assert.deepEqual([v.cols.length, v.cols[0].role, v.cols[0].shot?.path, v.hidden], [1, null, '/r/usage-narrow.png', 0]);
+  assert.deepEqual([v.cols.length, names(v.extras), v.hidden], [0, ['usage-narrow.png'], 0]);
 });
 
 test('shots: a before/after pair is one set with two columns and no switches', () => {
@@ -128,9 +128,53 @@ test('shots: a missing shot takes the closest one: a name without the part is ha
   assert.equal(pickShot(set, null, {}), null);
 });
 
-test('shots: a shot without a role in a set with roles gets a column of its own', () => {
+test('shots: a shot without a role in a set with roles is shown after the pair, not as a third column', () => {
   const { sets } = shotSets(['/r/card-before-dark.png', '/r/card-after-dark.png', '/r/card-dark.png']);
-  assert.deepEqual(setView(sets[0], {}).cols.map((c) => c.role), ['before', 'after', null]);
+  const v = setView(sets[0], {});
+  assert.deepEqual(v.cols.map((c) => c.role), ['before', 'after']);
+  assert.deepEqual([names(v.extras), v.hidden], [['card-dark.png'], 0]);
+});
+
+test('shots: the switches come from the before/after shots only, never from a shot shown on its own', () => {
+  const { sets } = shotSets(['/r/card-before-wide.png', '/r/card-after-wide.png', '/r/card-narrow.png']);
+  assert.deepEqual(sets[0].axes, {});
+  assert.deepEqual(names(setView(sets[0], firstPick(sets[0])).extras), ['card-narrow.png']);
+});
+
+test('shots: a set without before/after shows every shot, each labelled by its parts in the order the report names them, with no switch', () => {
+  const { sets } = shotSets(['/r/publish-dark.png', '/r/publish-light.png']);
+  assert.deepEqual(sets[0].axes, {});
+  assert.deepEqual(setView(sets[0], firstPick(sets[0])).extras.map(shotTags), [['dark'], ['light']]);
+});
+
+// The screenshots T-0181 reported (T-0187): its "changes" screen showed a third image beside its pair and two images
+// of other screens squeezed after it.
+const T0181 = ['app\\worker-head-dark-before.png', 'app\\worker-head-dark-after.png', 'app12\\export-head-dark-before.png', 'app12\\export-head-dark-after.png',
+  'app12\\publish-dark.png', 'app10\\changes-dark-before.png', 'app10\\changes-dark-after.png', 'app10\\changes-split-light.png', 'app10\\changes-narrow-dark.png']
+  .map((f) => `C:\\Temp\\t0181\\${f}`);
+
+test('shots: T-0181: three pairs, the narrow shot of the changes screen on a row after its pair, and the two lone shots as screens of their own', () => {
+  const { sets, rest } = shotSets(T0181);
+  assert.deepEqual(rest, []);
+  const views = sets.map((set) => {
+    const v = setView(set, firstPick(set));
+    return [set.screen, v.cols.map((c) => c.shot && names([c.shot])[0]), v.extras.map((x) => [names([x])[0], shotTags(x).join(' ')]), v.hidden];
+  });
+  assert.deepEqual(views, [
+    ['worker-head', ['worker-head-dark-before.png', 'worker-head-dark-after.png'], [], 0],
+    ['export-head', ['export-head-dark-before.png', 'export-head-dark-after.png'], [], 0],
+    ['changes', ['changes-dark-before.png', 'changes-dark-after.png'], [['changes-narrow-dark.png', 'narrow dark']], 0],
+    ['publish', [], [['publish-dark.png', 'dark']], 0],
+    ['changes-split', [], [['changes-split-light.png', 'light']], 0],
+  ]);
+  // No set has a switch: every shot is in sight.
+  assert.deepEqual(sets.map((s) => s.axes), [{}, {}, {}, {}, {}]);
+});
+
+test('shots: T-0181: the opened view steps through the shots set by set, each before right ahead of its after', () => {
+  assert.deepEqual(names(shotSets(T0181).sets.flatMap((s) => s.shots)), ['worker-head-dark-before.png', 'worker-head-dark-after.png',
+    'export-head-dark-before.png', 'export-head-dark-after.png', 'changes-dark-before.png', 'changes-dark-after.png', 'changes-narrow-dark.png',
+    'publish-dark.png', 'changes-split-light.png']);
 });
 
 test('shots: only a local path from the root is shown; a relative or network one stays a file link', () => {
