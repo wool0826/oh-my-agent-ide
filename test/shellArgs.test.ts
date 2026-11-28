@@ -101,8 +101,8 @@ test('psLine: the line goes in encoded, to be read after the UTF-8 line; a very 
 });
 
 test('Windows PowerShell: a line it cannot read says why in UTF-8 and ends with 1, and other lines run as before', { skip: process.platform !== 'win32' && 'Windows only' }, () => {
-  const run = (cmd: string) => {
-    const plan = shellArgs({ platform: 'win32', shell: '', cmd, profile: false, pwsh: null });
+  const run = (cmd: string, profile = false) => {
+    const plan = shellArgs({ platform: 'win32', shell: '', cmd, profile, pwsh: null });
     const r = spawnSync(plan.file, plan.args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 20_000, windowsHide: true });
     return { code: r.status, out: r.stdout.toString('utf8').replace(/\r/g, ''), err: r.stderr.toString('utf8') };
   };
@@ -112,6 +112,12 @@ test('Windows PowerShell: a line it cannot read says why in UTF-8 and ends with 
     assert.equal(r.code, 1, bad);
     assert.equal(r.out, '', bad);
     assert.ok(r.err.trim().length > 0 && !r.err.includes('�'), `${bad}: ${r.err}`);
+  }
+  // The message quotes the line: Korean in it reads as Korean on any console code page, with the profile loaded too.
+  for (const profile of [false, true]) {
+    const r = run('echo "한글', profile);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /한글/);
   }
   assert.deepEqual(run('echo 한글; cmd /c exit 3'), { code: 3, out: '한글\n', err: '' });
   assert.deepEqual(run('echo one\necho two'), { code: 0, out: 'one\ntwo\n', err: '' });

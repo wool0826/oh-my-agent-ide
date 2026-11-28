@@ -50,7 +50,7 @@ export const psLine = (line: string, profile = false) => {
   const body = `${line}\n${PS_EXIT}`;
   const encoded = base64(body);
   if (encoded.length > PS_ENCODED_MAX) return `${head}${body}`;
-  return `${head}try { $__oma = [scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}'))) } catch { $e = $_.Exception; if ($e.InnerException) { $e = $e.InnerException }; [Console]::Error.WriteLine($e.Message); exit 1 }\n. $__oma`;
+  return `${head}try { $__oma = [scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}'))) } catch { $__oma = $_.Exception; if ($__oma.InnerException) { $__oma = $__oma.InnerException }; [Console]::Error.WriteLine($__oma.Message); exit 1 }\n. $__oma`;
 };
 
 /**
