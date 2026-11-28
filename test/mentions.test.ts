@@ -24,7 +24,7 @@ const src: MentionSources = {
     task('T-0176', 'Prompt history', { prUrl: 'https://github.com/o/r/pull/243', prState: 'OPEN', updatedAt: '2026-11-04T00:00:00Z' }),
   ],
   workers: [
-    { id: 'W-05', title: 'w5', status: 'working', taskIds: ['T-0174'] },
+    { id: 'W-05', title: 'w5', status: 'running', taskIds: ['T-0174'] },
     { id: 'W-09', title: 'w9', status: 'archived', taskIds: [] },
   ],
 };
