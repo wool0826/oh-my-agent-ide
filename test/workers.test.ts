@@ -1619,6 +1619,7 @@ test('worker prompt: a UI change is reported with before and after screenshots o
     assert.match(p, /capture the changed screen before your change \(on the default branch\) and after it/);
     assert.match(p, /`<screen>-before\.png` and `<screen>-after\.png`/);
     assert.match(p, /Name both on FILE: lines in the report/);
+    assert.match(p, /A separate checkout of the default branch has no build output: build it there before you start the app from it\./);
   }
 });
 
