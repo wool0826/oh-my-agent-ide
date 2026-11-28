@@ -17,12 +17,18 @@ const PROBE = `window.__strip = (want) => {
   const h = parseFloat(getComputedStyle(document.body).getPropertyValue('--toolbar-h'));
   const s = box(strip), pad = getComputedStyle(bar);
   near('strip left', s.left, 0); near('strip top', s.top, 0); near('strip right', s.right, innerWidth); near('strip height', s.height, h);
+  // No line under it and no fill of its own, in Settings as on the main screen (T-0169, T-0174).
+  const look = getComputedStyle(strip);
+  if (look.borderBottomStyle !== 'none' || look.backgroundColor !== 'rgba(0, 0, 0, 0)') bad.push('the strip has a line or a fill: ' + look.borderBottom + ' / ' + look.backgroundColor);
   if (want.start != null) near('strip start', parseFloat(pad.paddingLeft), want.start);
   if (want.end != null) near('strip end', parseFloat(pad.paddingRight), want.end);
   const from = parseFloat(pad.paddingLeft), to = innerWidth - parseFloat(pad.paddingRight);
   if (settings) {
     near('back button left', box(settings.querySelector('.sback')).left, from);
     near('settings nav top', box(settings.querySelector('.snav')).top, s.bottom);
+    near('settings panes top', box(settings.querySelector('.spanes')).top, s.bottom);
+    // Back and the title on the strip's middle line, the one the window's own buttons are centred on (T-0174).
+    for (const e of [settings.querySelector('.sback'), settings.querySelector('.stopbar h1')]) { const r = box(e); near((e.className || e.tagName) + ' middle', (r.top + r.bottom) / 2, s.top + h / 2); }
   } else {
     // The panels and the main column: right below the strip, never beside it (T-0159, T-0171).
     const main = document.querySelector('.content.view:not([hidden])'), ins = document.querySelector('.inspector.view:not([hidden])'), side = document.querySelector('.sidebar');

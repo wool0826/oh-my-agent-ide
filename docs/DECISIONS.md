@@ -1458,3 +1458,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - **Nothing waiting:** Ctrl/Cmd+I shows a toast, "Nothing waiting", with the done glyph.
     - **Taskbar:** Windows gets an overlay icon that the window draws on a canvas in the theme's ask colours (1–9, then 9+). macOS and Linux get `app.setBadgeCount`, now always rather than only with the tray on. A new decision still flashes the taskbar.
     - Rejected: a count on both buttons (said twice), drawing the overlay in the main process (no text rendering there without a bitmap font), and starting at the second card when the first is already selected (the first press would skip the one in front).
+
+272. **Settings' top strip looks like the main one: no line under it and no fill of its own** (T-0174, follows 266 and 269).
+    - Settings' `.stopbar` already had the main strip's height (`--toolbar-h`, 56), its `--strip-start` / `--strip-end` and panes starting right under it; what differed was a 1 line and a 55% panel tint. Both are gone, so the window's backdrop shows through as on the main screen, and the back button and the title sit on the strip's middle line (y = 28; the line had pulled them up to 27.67).
+    - No other view draws its own top strip (the quick-prompt window has none; dialogs and popovers have no title bar), so nothing else changed.
+    - Rejected: sharing one class between `.toolbar` and `.stopbar` (their layouts differ, flex row against a two-column grid; with neither drawing a line or a fill there is no style left to share).
