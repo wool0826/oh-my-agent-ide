@@ -30,6 +30,7 @@ import { segc } from './settings';
 import { queueCtx } from './workers';
 import { shownStalled } from '../../shared/stall';
 import { badgeText } from '../../shared/waiting';
+import { afterQueueDrawn } from './queue';
 
 export function workerIcon(w: Worker) {
   const x = workerTask(w);
@@ -138,13 +139,18 @@ export function renderSidebar() {
   const qRow = (x: Task) => {
     const line = queueLine(t, x, qctx)!;
     const why = queueWhy(t, x, qctx);
-    const mark = line.pos === null ? ic('wait') : `<span class="q-pos" aria-hidden="true">${line.pos}</span>`;
+    // A pinned task carries the pin instead of its place (11B); a row the pointer or the focus is on shows its grip.
+    const pinned = !!x.queuePinned;
+    const mark = pinned ? sym('s-pin', 'q-pin') : line.pos === null ? ic('wait') : `<span class="q-pos" aria-hidden="true">${line.pos}</span>`;
+    const grip = `<span class="q-grip" aria-hidden="true">${sym('s-updown')}</span>`;
     const cls = line.pos === null ? ' held' : line.pos === 1 ? ' next' : '';
+    const text = [x.repo ?? t('general'), pinned ? t('side.qPinned') : '', line.text].filter(Boolean).join(' · ');
+    const more = `<span class="row-acts"><button type="button" class="row-act" data-action="queue-menu" data-id="${esc(x.id)}" data-tip="${t('side.qMenu')}" aria-label="${esc(`${t('side.qMenu')}: ${x.title}`)}" aria-haspopup="menu">${sym('s-more')}</button></span>`;
     const tip = [x.workerId, why ? queueWhyText(why) : ''].filter(Boolean).join(' · ');
     // A task with no Worker yet (T-0146) opens its own waiting card.
     const open = x.workerId ? `data-action="open-worker" data-id="${esc(x.workerId)}"` : `data-action="open-queued" data-id="${esc(x.id)}"`;
     const sel = x.workerId ? selCls(x.workerId) : ui.view === 'worker' && !ui.wSel && ui.qSel === x.id ? ' sel' : '';
-    return { pos: line.pos, html: `<div class="row split q-row${cls}${sel}" data-tip="${esc(tip)}"><button type="button" class="row-main" ${open}>${mark}<span class="t"><b>${esc(x.title)}</b><small${line.cancelled ? ' class="warn"' : ''}>${esc(`${x.repo ?? t('general')} · ${line.text}`)}</small></span></button>${cancelX(x)}</div>` };
+    return { pos: line.pos, html: `<div class="row split q-row${cls}${pinned ? ' pinned' : ''}${sel}" data-ctx="queue" data-id="${esc(x.id)}" data-tip="${esc(tip)}"><button type="button" class="row-main" ${open}>${grip}${mark}<span class="t"><b>${esc(x.title)}</b><small${line.cancelled ? ' class="warn"' : ''}>${esc(text)}</small></span></button>${more}</div>` };
   };
   const qAll = queued.map(qRow);
   const inLine = qAll.filter((r) => r.pos !== null).sort((a, b) => a.pos! - b.pos!).map((r) => r.html).join('');
@@ -198,6 +204,7 @@ export function renderSidebar() {
   for (const id of seen.keys()) if (!s.tasks.some((x) => x.id === id)) seen.delete(id);
   $('#side').innerHTML = sec(t('side.decisions'), decRows, 'sec-dec') + sec(t('side.running'), runRows) + sec(prTitle, prRows) + sec(qTitle, qRows) + sec(t('side.errors'), errRows) + empty + misc;
   tickDecisions($('#side'));
+  afterQueueDrawn();
 }
 
 /** What a finished task did, in one line: its PR and state, then the summary its Worker reported. */
@@ -267,12 +274,6 @@ export function workerActs(w: Worker) {
   const busy = ui.stopping.has(w.id);
   const stop = canStop(w, x) ? btn('worker-stop', 's-stop16', t('wk.stopWho', { id: w.id }), 'stop', busy ? ' disabled aria-busy="true"' : '') : '';
   return `<span class="row-acts${busy ? ' on' : ''}">${stop}${btn('open-worker', 's-open', t('wk.openWho', { id: w.id }), 'open')}</span>`;
-}
-
-/** The × on a queued task's row: asks before cancelling it. */
-export function cancelX(x: Task) {
-  const label = esc(`${t('cancel.task')}: ${x.title}`);
-  return `<button class="btn btn-icon btn-sm clear-x" data-action="task-cancel" data-id="${esc(x.id)}" data-tip="${t('cancel.task')}" aria-label="${label}"><svg><use href="#s-x"/></svg></button>`;
 }
 
 /** "5h", "7d", "30d": how long a usage window is. */

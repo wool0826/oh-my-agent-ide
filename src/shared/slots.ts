@@ -2,6 +2,7 @@
 // Shared by the main process (which starts tasks) and the renderer (which shows "3/3").
 
 import type { Task } from './types';
+import { byQueue } from './queue';
 
 export const MAX_WORKERS_DEFAULT = 3;
 export const MAX_WORKERS_MIN = 1;
@@ -70,10 +71,10 @@ export function waitsForLimit(t: Pick<Task, 'status' | 'queueReason'>): boolean 
 }
 
 /**
- * Queued tasks of one kind, the longest waiting first.
- * A queued task's updatedAt is when it joined the queue: nothing else changes a task while it waits.
+ * Queued tasks of one kind in the queue's order (shared/queue.ts byQueue): pinned first, then as the user put them,
+ * then the longest waiting first.
  */
-export function queueOrder<T extends Pick<Task, 'status' | 'queueReason' | 'updatedAt'>>(tasks: T[], reason: 'slot' | 'limit'): T[] {
+export function queueOrder<T extends Pick<Task, 'id' | 'status' | 'queueReason' | 'updatedAt'> & Partial<Pick<Task, 'queuedSince' | 'queueRank' | 'queuePinned'>>>(tasks: T[], reason: 'slot' | 'limit'): T[] {
   const pick = reason === 'slot' ? waitsForSlot : waitsForLimit;
-  return tasks.filter(pick).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+  return tasks.filter(pick).sort(byQueue);
 }

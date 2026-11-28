@@ -120,6 +120,43 @@ flow('with one slot, the second task waits and starts when the first ends', { se
   assert.equal(s.tasks.length, 2);
 });
 
+flow('the queue moves with Alt+arrows, P, the row menu and a drag, and the free slot goes to the new first', { settings: { maxWorkers: 1 } }, async (app) => {
+  await app.say('@fake task - First\n@@fake permission npm run one\n@@fake result One.\n@fake task - B\n@@fake result B.\n@fake task - C\n@@fake result C.\n@fake task - D\n@@fake result D.');
+  await app.until(`!!document.querySelector('${DEC}')`, "the first task's permission card");
+  const ORDER = "[...document.querySelectorAll('#side .q-line .q-row')].map((r) => r.querySelector('b').textContent + (r.classList.contains('pinned') ? '*' : '')).join(' ')";
+  const order = (want, what) => app.until(`(${ORDER}) === ${JSON.stringify(want)}`, `${what}: ${want}`);
+  await order('B C D', 'B, C and D in line');
+  const s = await app.state();
+  const id = (title) => task(s, title).id;
+  const row = (title) => `#side .q-row[data-id="${id(title)}"]`;
+  // Alt+Up on the focused row moves it one place up, and the focus stays on it; P pins it.
+  await app.evaluate(`document.querySelector('${row('D')} .row-main').focus(); return 1;`);
+  await app.key('ArrowUp', 'ArrowUp', 38, 1);
+  await order('B D C', 'D one place up');
+  await app.until(`document.activeElement?.closest('.q-row')?.dataset.id === '${id('D')}'`, 'the focus still on D');
+  await app.key('KeyP', 'p', 80);
+  await order('D* B C', 'D pinned');
+  // The row menu: start next puts C first of all, pinned as D was ahead of it.
+  await app.click(`${row('C')} [data-action="queue-menu"]`);
+  await app.until("!document.querySelector('#ctxmenu').hidden && document.querySelectorAll('#ctxmenu .menu-item').length === 4", 'the queue menu');
+  await app.click('#ctxmenu [data-action="queue-move"][data-v="next"]');
+  await order('C* D* B', 'C started next');
+  // Dragged below the last row, D leaves the pinned ones.
+  const dy = await app.evaluate(`const a = document.querySelector('${row('D')}').getBoundingClientRect(), b = document.querySelector('${row('B')}').getBoundingClientRect(); return Math.round(b.bottom - 3 - (a.top + a.height / 2));`);
+  await app.drag(`${row('D')} .row-main`, 0, { dy, steps: 6, ready: "!document.getElementById('q-drop')?.hidden" });
+  await order('C* B D', 'D dropped at the end');
+  // Ctrl+/ lists the queue's keys.
+  await app.key('Slash', '/', 191, 2);
+  await app.until("(document.querySelector('#dlg .keys')?.innerText ?? '').includes('Row menu')", "the queue's keys in the list");
+  await app.click('#dlg [data-action="keys-close"]');
+  // The slot goes to C, then B, then D.
+  await app.click(answer('allow'));
+  const done = await app.until("return (await window.ide.call('state')).tasks.every((x) => x.status === 'done') && (await window.ide.call('state'));", 'every task done');
+  const at = (title) => Date.parse(task(done, title).finishedAt);
+  assert.ok(at('C') <= at('B') && at('B') <= at('D'), `finished C ${at('C')}, B ${at('B')}, D ${at('D')}`);
+  assert.equal(done.tasks.some((x) => x.queueRank != null || x.queuePinned), false);
+});
+
 flow('the hand-outs of one turn fold into one block with a row per task', {}, async (app) => {
   await app.say('@fake task - One\n@@fake result One.\n@fake task - Two\n@@fake permission npm run two\n@@fake result Two.');
   await app.until("document.querySelectorAll('#chat-thread .hand .hrow').length === 2", 'one block with two rows');

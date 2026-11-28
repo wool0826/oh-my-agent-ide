@@ -25,6 +25,7 @@ import { fakeMode } from '../fake';
 import { addSpend, hasSpend } from '../../shared/spend';
 import { COMPACT_AT, kTokens } from '../../shared/context';
 import { WORKER_COMPACT } from '../../shared/compactInstructions';
+import type { QueueMove } from '../../shared/queue';
 import { needsPlan, taskStarted, workerPrompt } from './workerPrompt';
 import { SHELL_OUTPUT_CHARS, type TellKind, UNUSED_TOOLS, WORKER_ENV } from './workerText';
 import { workerCodexTools, workerMemoryDir, workerTools, type StepsOp } from './workerTools';
@@ -379,6 +380,7 @@ export class WorkerManager {
   sendReview(task: Task, body: string, kind?: FeedbackKind) { return messages.sendReview(this, task, body, kind); }
   cancelTask(id: string, by: 'user' | 'dispatcher') { return cancel.cancelTask(this, id, by); }
   clearQueue(by: 'user' | 'dispatcher') { return cancel.clearQueue(this, by); }
+  moveInQueue(id: string, move: QueueMove) { return queue.moveInQueue(id, move); }
   inUse(workerId: string) { return archive.inUse(this, workerId); }
   archive(workerId: string): Promise<{ kept: 'task' | 'dirty' | null }> { return archive.archive(this, workerId); }
   checkArchive(workerId: string) { return archive.checkArchive(this, workerId); }

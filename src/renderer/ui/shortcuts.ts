@@ -31,6 +31,11 @@ export function shortcutsHtml() {
     row(t('keys.prompts'), ['/']),
     row(t('keys.mention'), ['@']),
     row(t('keys.chipErase'), ['⌫']),
+  ].join('')) + group('keys.queue', [
+    row(t('side.qOrder'), [isMac ? '⌥' : 'Alt', '↑↓']),
+    row(t('side.qTop'), isMac ? ['⇧', '⌥', '↑'] : ['Alt', 'Shift', '↑']),
+    row(t('side.qPin'), ['P']),
+    row(t('side.qRowMenu'), isMac ? ['⇧', 'F10'] : ['Shift', 'F10']),
   ].join('')) + group('keys.any', [
     row(t('next.tip'), [mod, 'I']),
     row(t('next.prev'), isMac ? ['⇧', '⌘', 'I'] : ['Ctrl', 'Shift', 'I']),
