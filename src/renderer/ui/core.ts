@@ -43,6 +43,7 @@ declare global {
       onDecisionAlert(fn: (loud: boolean) => void): void;
       /** A task-end notification was clicked: show that task's result card. */
       onOpenResult(fn: (taskId: string) => void): void;
+      onUsageOpen(fn: () => void): void;
       /** A task ended and may sound: play the task-end sound. */
       onDoneAlert(fn: () => void): void;
       /** Back or Forward from the OS (mouse side buttons and Back keys arrive as app commands on Windows and Linux). */

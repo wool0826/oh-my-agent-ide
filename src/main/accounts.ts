@@ -8,6 +8,7 @@ import { t } from './i18n';
 import { accountWait, chooseAccount, clampUsageMins, isExhausted, limitEnd, liveWindow, nextFreeAtFor, type AccountWait, type UsageClock } from '../shared/usage';
 import { allPaused, isPaused, nextPauseEnd, pauseEnd, pauseFields, type AssignMode } from '../shared/accountPause';
 import { readUnifiedHeaders } from '../shared/usageHeaders';
+import { leaveEarly } from '../shared/usageForecast';
 import { MAX_ACCOUNTS, type AccountPlan, type AccountView, type Provider, type UsageWindow } from '../shared/types';
 import { codexClient } from './codex/client';
 import { limitWindows, type CodexRateLimits } from '../shared/codexEvents';
@@ -253,6 +254,12 @@ class Accounts extends EventEmitter {
     chosen.lastAssignedAt = nowIso();
     saveSettings();
     return chosen;
+  }
+
+  /** With "Switch accounts before the limit" on: the account is past the warning threshold and another is under it (T-0180). */
+  leaveEarly(id: string | null, provider: Provider = 'claude') {
+    const s = loadSettings();
+    return s.usageSwitch && leaveEarly(this.list(), id, s.usageWarnAt, provider);
   }
 
   /** An account (other than `exclude`) could carry a new session of this provider now (pick would find one), without picking it. */
