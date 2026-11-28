@@ -56,7 +56,7 @@ export const scale = {
     'control-sm': '24px', 'control-md': '28px', 'control-lg': '32px', 'row-min': '44px',
     'icon-sm': '13px', 'icon-md': '16px', 'icon-lg': '18px', 'icon-hero': '44px',
     // toolbar-h is the top strip across the window: as tall as the window's own buttons over it (STRIP_H in src/shared/theme.ts).
-    'sidebar-w': '272px', 'inspector-w': '344px', 'toolbar-h': '44px', 'panel-inset': '8px', 'settings-nav-w': '240px', 'settings-max': '680px',
+    'sidebar-w': '272px', 'inspector-w': '344px', 'toolbar-h': '56px', 'panel-inset': '8px', 'settings-nav-w': '240px', 'settings-max': '680px',
   },
   dur: { instant: '80ms', fast: '120ms', base: '180ms', slow: '300ms', glide: '460ms', spin: '1000ms', attention: '1100ms' },
   ease: {

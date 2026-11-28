@@ -1439,3 +1439,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 
 268. **The right sidebar can widen to 960 again** (T-0172, asked for by the user; changes 215).
     - **Width:** the widest is 960, up from 640 (about 1.5x). The middle still keeps at least 420px (`MAIN_MIN`), so on a narrow window the sidebar stops earlier and never covers the chat. Default 344 and minimum 320 are unchanged.
+
+269. **The top strip takes in the 12 gap under it: `--toolbar-h` is 56 and everything in it, the window's own buttons too, sits on its middle line, 12 from the window's top and 12 from the panels** (T-0171, follows 266).
+    - Measured on main (Windows, 1280 and 900 wide, device scale 0.8–1.5, dark and light): every item was already centred in the 44 strip (y = 22, no border); the caption buttons are centred in the same 44 (`STRIP_H`). What looked uneven was the 12 gap from 266 under a strip with no line: 6 above the 32 buttons, 18 below them to the panels.
+    - Now `--toolbar-h` and `STRIP_H` are 56 and the sidebars, the main column and the resize handles lose their 12 top inset, so the panels stay where they were and the strip's items move down 6. The window's buttons follow through `titleBarOverlay.height` (the traffic lights on macOS too, centred on the same line). Settings' strip is 56 as well, so its back button stays on the caption buttons' line.
+    - The usage pill is `--control-lg` tall with `min-width: --control-lg` (one account: a 32 circle like its neighbours; it was 30 tall).
+    - Rejected: shifting only the page's items down 6 (the caption buttons, centred in the overlay, would stay 6 higher), an overlay taller than the strip (Settings' strip, with its line, would no longer match), and removing the 12 gap from 266 (the user picked it).
