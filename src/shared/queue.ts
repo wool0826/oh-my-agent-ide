@@ -30,9 +30,12 @@ export function stampQueued(tasks: (Pick<Task, 'status' | 'updatedAt' | 'queuedS
 
 type Ranked = Pick<Task, 'id' | 'updatedAt'> & Partial<Pick<Task, 'queuedSince' | 'queueRank' | 'queuePinned'>>;
 
-/** Where a task stands in its group: its rank, or the time it joined the queue. */
+/**
+ * Where a task stands in its group: its rank, or the time it joined the line. A task that waited for a merge keeps
+ * its queuedSince, but joins the line for a slot when the hold clears (its updatedAt), behind the tasks already there.
+ */
 export function queueKey(t: Ranked): number {
-  return t.queueRank ?? (Date.parse(t.queuedSince ?? t.updatedAt) || 0);
+  return t.queueRank ?? Math.max(Date.parse(t.queuedSince ?? '') || 0, Date.parse(t.updatedAt) || 0);
 }
 
 /** The queue's order: pinned first, then by queueKey, then by id. */

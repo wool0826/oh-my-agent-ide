@@ -169,6 +169,11 @@ test('queue order: the moved tasks keep the keys the line had, so a task queued 
   assert.deepEqual([...l, late].sort(byQueue).map((t) => t.id), ['T-4', 'T-1', 'T-2', 'T-3', 'T-5']);
 });
 
+test('queue order: a task whose merge hold just cleared joins behind the tasks that queued while it waited', () => {
+  const freed = task('T-9', { queuedSince: '2026-11-28T09:00:00Z', updatedAt: '2026-11-28T10:30:00Z' });
+  assert.deepEqual([freed, ...line()].sort(byQueue).map((t) => t.id), ['T-1', 'T-2', 'T-3', 'T-4', 'T-9']);
+});
+
 test('queue order: a task that leaves the queue loses its place and pin', () => {
   const t = task('T-1', { status: 'running', queuedSince: '2026-11-28T10:00:00Z', queueRank: 5, queuePinned: true });
   assert.equal(stampQueued([t]), true);

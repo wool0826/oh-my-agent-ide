@@ -23,7 +23,9 @@ export async function moveTask(id: string, move: QueueMove) {
   if (!canMove(id, move)) return;
   if (document.activeElement?.closest('#side .q-row')) refocus = id;
   const r = await tryCall<boolean>('queue:move', id, move);
-  if (!r.ok) { refocus = null; toast(r.error, true); }
+  if (!r.ok) toast(r.error, true);
+  // Refused (the line changed meanwhile): nothing is drawn again, so nothing takes the focus back later.
+  if (!r.ok || !r.v) refocus = null;
 }
 
 /** After the sidebar is drawn: the row that had the focus before its move gets it back. */
