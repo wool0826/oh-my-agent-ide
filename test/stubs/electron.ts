@@ -18,3 +18,7 @@ export class Notification {
   static isSupported() { return false; }
   show() {}
 }
+
+export const nativeImage = {
+  createFromDataURL: () => ({ isEmpty: () => true }),
+};

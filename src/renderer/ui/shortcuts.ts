@@ -23,10 +23,13 @@ export function shortcutsHtml() {
     row(t('keys.history'), ['↑']),
     row(t('keys.prompts'), ['/']),
   ].join('')) + group('keys.any', [
+    row(t('next.tip'), [mod, 'I']),
+    row(t('next.prev'), isMac ? ['⇧', '⌘', 'I'] : ['Ctrl', 'Shift', 'I']),
     row(t('keys.input'), [mod, 'L']),
     row(t('keys.find'), [mod, 'K']),
     row(t('keys.findSaid'), [mod, 'F']),
     row(t('keys.view'), [mod, '1–4']),
+    row(t('keys.usage'), isMac ? ['⇧', '⌘', 'U'] : ['Ctrl', 'Shift', 'U']),
     row(t('sq.title'), [mod, 'J']),
     row(t('term.title'), [isMac ? '⌃' : 'Ctrl', '`']),
     row(t('cmdk.side'), [mod, 'B']),

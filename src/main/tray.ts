@@ -42,7 +42,6 @@ export function updateTray(c: TrayCounts, show: () => void, quit: () => void) {
     { label: t('tray.open'), click: show },
     { label: t('tray.quit'), click: quit },
   ]));
-  if (process.platform === 'darwin') app.setBadgeCount(c.decisions);
 }
 
 export const hasTray = () => !!tray;

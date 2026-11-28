@@ -18,7 +18,7 @@ import { ptys } from './pty';
 import { side } from './side';
 import { automations } from './automations';
 import { startPrMonitor, checkPrsSoon, prWatchChanged, resumeCiQuestion } from './prmonitor';
-import { notifyDecision, notifyInfo, setWindow } from './notify';
+import { notifyDecision, notifyInfo, notifyUsage, setWindow } from './notify';
 import { notifyActions } from '../shared/notifyActions';
 import { t } from './i18n';
 import { listModels, setSessionModelSource } from './models';
@@ -220,6 +220,9 @@ async function boot() {
   if (fakeMode()) registerE2eIpc(awake);
   accounts.on('changed', pushState);
   accounts.on('changed', scheduleLimitRetry);
+  // The first look notes the accounts already past the threshold; a crossing after it is told.
+  notifyUsage(accounts.views());
+  accounts.on('changed', () => notifyUsage(accounts.views()));
   // An account switched back on (by hand or when its hour ends): work that waited for one goes on now.
   accounts.on('resumed', retryAfterLimits);
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));

@@ -175,13 +175,15 @@ export class AgentSession {
    */
   ready(begun = true): boolean {
     const id = this.cfg.accountId;
-    const step = sessionAccountStep({ free: accounts.isFree(id), live: !!this.q, busy: this.busy, paused: accounts.isPausedId(id), otherFree: accounts.hasFree('claude', id), begun });
+    // Past the usage warning with "Switch accounts before the limit" on, the account counts as switched off (T-0180).
+    const early = accounts.leaveEarly(id);
+    const step = sessionAccountStep({ free: accounts.isFree(id) && !early, live: !!this.q, busy: this.busy, paused: accounts.isPausedId(id) || early, otherFree: accounts.hasFree('claude', id), begun });
     if (step !== 'move') return step === 'keep';
     const next = accounts.pick(id);
     if (!next) return false;
     if (this.q) {
       // Between turns: the process ends here and the same session resumes on the other account with the next message.
-      log.info(`[${this.cfg.label}] account ${id} is switched off; moving to ${next.id}`);
+      log.info(`[${this.cfg.label}] account ${id} is ${early ? 'past the usage warning' : 'switched off'}; moving to ${next.id}`);
       this.input?.close();
       try { this.q.close(); } catch { /* ignore */ }
       this.q = null;

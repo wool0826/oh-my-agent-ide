@@ -14,6 +14,7 @@ import { reasonText } from '../../shared/askWhy';
 import { RING, ringArc, untilReset } from '../../shared/usageRing';
 import { USAGE_INTERVALS, limitWindow, usageFoot, usedUp, type UsageFoot } from '../../shared/usage';
 import { activeOf, allPaused } from '../../shared/accountPause';
+import { accountWarning, stripWarning, winName } from '../../shared/usageForecast';
 import { queuedPrs, readyToQueue } from '../../shared/mergeQueue';
 import { DONE_SHOWN, groupByRepo, recentlyFinished } from '../../shared/sidebar';
 import { type WorkerFilter } from '../../shared/history';
@@ -28,6 +29,7 @@ import { runCardHtml } from './runCard';
 import { segc } from './settings';
 import { queueCtx } from './workers';
 import { shownStalled } from '../../shared/stall';
+import { badgeText } from '../../shared/waiting';
 
 export function workerIcon(w: Worker) {
   const x = workerTask(w);
@@ -351,12 +353,16 @@ export function usageCard(a: AccountView) {
     ...(a.provider !== 'chatgpt' || a.windowMins?.[0] ? [{ label: a.provider === 'chatgpt' ? winLabel(a.windowMins?.[0], '5h') : '5h', w: a.fiveHour }] : []),
     { label: a.provider === 'chatgpt' ? winLabel(a.windowMins?.[1], '7d') : '7d', w: a.sevenDay },
   ];
+  // Past the warning threshold (T-0180, spec 8B): the block is marked, its window's note is orange, and a line says
+  // when it runs out at the pace so far.
+  const warn = accountWarning(a, S!.settings.usageWarnAt);
+  const hot = warn?.kind === 'warn' ? (warn.win ? a.sevenDay : a.fiveHour) : null;
   const rows = wins.map(({ label, w }) => {
     const left = leftText(w.resetsAt);
     // A window without a figure looks unknown (a hatched track), never like 0%.
     const none = w.utilization === null;
     const note = none ? (a.usageUpdatedAt ? t('usage.noFigure') : '') : left ? t('usage.resetsIn', { t: left }) : '';
-    return `<div class="uw"><span class="wl">${label}</span><span class="meter${none ? ' none' : ''}"${meterLevel(w.utilization)}><i style="width:${Math.min(100, w.utilization ?? 0)}%"></i></span><b>${pct(w.utilization)}</b><small>${esc(note)}</small></div>`;
+    return `<div class="uw"><span class="wl">${label}</span><span class="meter${none ? ' none' : ''}"${meterLevel(w.utilization)}><i style="width:${Math.min(100, w.utilization ?? 0)}%"></i></span><b>${pct(w.utilization)}</b><small${w === hot ? ' class="warn"' : ''}>${esc(note)}</small></div>`;
   }).join('');
   // A failed account keeps its last figures, dimmed, with the time they are from.
   const old = !!a.lastError && !!a.usageUpdatedAt;
@@ -369,8 +375,11 @@ export function usageCard(a: AccountView) {
     : `<time>${esc(fresh)}</time>`;
   const note = a.lastError ? `<p class="err">${esc(a.lastError)}</p>` : !a.usageUpdatedAt ? `<p>${t('usage.unknown')}</p>` : '';
   const how = a.provider === 'claude' ? ` · ${t(a.kind === 'token' ? 'usage.token' : 'usage.login')}` : '';
-  const cls = `ua${a.id === usagePop.hover ? ' on' : ''}${a.limited ? ' limited' : ''}${old ? ' old' : ''}`;
-  return `<section class="${cls}" data-id="${esc(a.id)}"><header>${ringsSvg(a)}<span class="who"><b>${esc(a.label)}</b><small>${esc(planName(a) + how)}</small></span>${state}</header>${rows}${note}</section>`;
+  const fc = warn?.kind === 'warn' && warn.exhaust !== null && warn.reset && S!.settings.usageForecast
+    ? `<p class="ufc">${sym('e-clock')}<span>${esc(t('usage.forecast', { a: clock(new Date(warn.exhaust).toISOString()), b: clock(warn.reset) }))}</span></p>`
+    : '';
+  const cls = `ua${a.id === usagePop.hover ? ' on' : ''}${a.limited ? ' limited' : ''}${old ? ' old' : ''}${hot ? ' warn' : ''}`;
+  return `<section class="${cls}" data-id="${esc(a.id)}"><header>${ringsSvg(a)}<span class="who"><b>${esc(a.label)}</b><small>${esc(planName(a) + how)}</small></span>${state}</header>${rows}${fc}${note}</section>`;
 }
 
 /** The foot's line: when the figures were read and when they are read next, or why not. */
@@ -415,7 +424,7 @@ function usagePopHtml() {
  * The usage popover: every account's numbers while the pointer or the focus is on the rings or on the popover.
  * `keys`: the focus in it came with the keyboard, so it holds the popover open; a click's focus does not.
  */
-export const usagePop = { shown: false, hover: null as string | null, timer: 0, hideTimer: 0, html: '', quiet: false, keys: false };
+export const usagePop = { shown: false, hover: null as string | null, timer: 0, hideTimer: 0, html: '', quiet: false, keys: false, pinned: false };
 
 /** Opens the popover. Once it is open, moving between the rings only moves the mark (hoverUsage): nothing is drawn again. */
 export function showUsagePop() {
@@ -442,6 +451,8 @@ export function hideUsagePop() {
   usagePop.shown = false;
   usagePop.hover = null;
   usagePop.keys = false;
+  usagePop.pinned = false;
+  $('#usage-warn').setAttribute('aria-expanded', 'false');
   const el = $('#usage-pop');
   clearTimeout(usagePop.timer);
   el.classList.remove('opening');
@@ -453,9 +464,23 @@ export function hideUsagePop() {
 export function hideUsageSoon() {
   clearTimeout(usagePop.hideTimer);
   usagePop.hideTimer = window.setTimeout(() => {
-    if ($('#usage-pop').matches(':hover') || (usagePop.keys && $('#usage-pop').contains(document.activeElement))) return;
+    if (usagePop.pinned || $('#usage-pop').matches(':hover') || (usagePop.keys && $('#usage-pop').contains(document.activeElement))) return;
     hideUsagePop();
   }, 200);
+}
+
+/**
+ * The warning chip or Ctrl/Cmd+Shift+U (T-0180): the popover opens and stays until a press outside, Escape or the
+ * same again; the keyboard goes into it. Closed again when it was open this way.
+ */
+export function toggleUsagePin(keys: boolean) {
+  if (usagePop.shown && usagePop.pinned) { hideUsagePop(); return; }
+  if (!S?.accounts.length || allPaused(S.accounts)) return;
+  showUsagePop();
+  usagePop.pinned = true;
+  usagePop.keys = keys;
+  $('#usage-warn').setAttribute('aria-expanded', 'true');
+  if (keys) $('#usage-pop').querySelector<HTMLElement>('.ubtn:not(:disabled), [data-segc][aria-checked="true"]')?.focus();
 }
 
 /** New numbers while the popover is open: written in place, with no opening motion, and only if something changed. */
@@ -501,6 +526,7 @@ export function renderAccountsOff() {
 export function renderUsage() {
   const accs = S!.accounts;
   const el = $('#usage');
+  renderUsageWarn();
   if (!accs.length) {
     el.className = 'usage-empty nodrag';
     el.removeAttribute('tabindex');
@@ -532,18 +558,49 @@ export function renderUsage() {
 }
 
 /**
- * One account in the toolbar: its rings, and only for an account whose usage is used up, when it comes back
- * ("Resets in 2h 10m"); a narrow window keeps the rings alone. A failed read fades the rings and adds a dot.
+ * The warning chip before the rings (T-0180, spec 8B), only past the threshold: "5h 91% · 13:05" (the window, its use
+ * and when it runs out at the pace so far) in orange, or "Limit · 14:20" (when it comes back) in red. A narrow
+ * window keeps its icon alone. A click opens the usage popover.
+ */
+let warnKey = '';
+function renderUsageWarn() {
+  const el = $('#usage-warn');
+  const accs = S!.accounts;
+  const st = S!.settings;
+  const w = accs.length && !allPaused(accs) ? stripWarning(accs, st.usageWarnAt) : null;
+  const a = w && accs.find((x) => x.id === w.id);
+  if (!w || !a) {
+    if (!el.hidden) { el.hidden = true; warnKey = ''; if (usagePop.pinned) hideUsagePop(); }
+    return;
+  }
+  const fc = w.kind === 'warn' && st.usageForecast && w.exhaust !== null ? ` · ${clock(new Date(w.exhaust).toISOString())}` : '';
+  const text = w.kind === 'limit'
+    ? w.at ? t('usage.limitAt', { t: untilText(w.at) }) : t('usage.limited')
+    : `${winName(w.win, a.windowMins)} ${w.pct}%${fc}`;
+  const label = `${t('usage.warn')} · ${a.label} · ${text}`;
+  el.hidden = false;
+  if (label === warnKey) return;
+  warnKey = label;
+  el.dataset.tone = w.kind === 'limit' ? 'danger' : 'warning';
+  el.innerHTML = `${sym(w.kind === 'limit' ? 'e-pause' : 's-alert')}<span class="ut">${esc(text)}</span>`;
+  el.setAttribute('aria-label', label);
+  setTip(el, label, isMac ? '⇧⌘U' : 'Ctrl+Shift+U');
+}
+
+/**
+ * One account in the toolbar: its rings, red for a used-up account (the warning chip says when it comes back). A
+ * failed read fades the rings and adds a dot.
  */
 function toolbarAccount(a: AccountView) {
   const failed = !!a.lastError;
   const out = usedUp(a);
-  const left = out && leftText(out.at);
-  const side = out ? `<span class="pill ulim" data-tone="danger">${esc(left ? t('usage.resetsIn', { t: left }) : t('usage.limited'))}</span>` : '';
-  return `<span class="uacct${out ? ' limited' : ''}${failed ? ' failed' : ''}" data-id="${esc(a.id)}"><span class="ur">${ringsSvg(a)}</span>${side}</span>`;
+  return `<span class="uacct${out ? ' limited' : ''}${failed ? ' failed' : ''}" data-id="${esc(a.id)}"><span class="ur">${ringsSvg(a)}</span></span>`;
 }
 
-/** Put the sidebars away or back, and say so on their buttons. The right one's button counts open decisions while it is hidden. */
+/**
+ * Put the sidebars away or back, and say so on their buttons. The waiting decisions are counted on the strip's Next
+ * button only (and on the taskbar); the right sidebar's button is its icon alone (T-0180).
+ */
 export function applyPanels() {
   const win = $('#win');
   win.classList.toggle('side-min', ui.sideMin);
@@ -555,7 +612,7 @@ export function applyPanels() {
   setTip(left, leftTip, isMac ? '⌘B' : 'Ctrl+B');
   left.setAttribute('aria-label', leftTip);
   left.setAttribute('aria-expanded', String(!ui.sideMin));
-  const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
+  const n = S?.decisions.filter((d) => d.status === 'pending').length ?? 0;
   $('#fake-badge').hidden = !S?.fake;
   // A failed check comes before a newer release: the gear's dot is red for it.
   document.querySelector('.side-foot [data-action="open-settings"]')?.classList.toggle('has-issue', !!S?.preflightFailed);
@@ -566,15 +623,48 @@ export function applyPanels() {
   find.setAttribute('aria-label', t('cmdk.tip'));
   const right = $('#ins-toggle');
   const key = isMac ? '⌥⌘B' : 'Ctrl+Alt+B';
-  const rightTip = !ui.insMin ? t('ins.collapse') : n ? t('ins.expandDec', { n }) : t('ins.expand');
+  const rightTip = t(ui.insMin ? 'ins.expand' : 'ins.collapse');
   setTip(right, rightTip, key);
   right.setAttribute('aria-label', rightTip);
   right.setAttribute('aria-expanded', String(!ui.insMin));
-  // As a drawer the right sidebar is opened from here: the button says what it holds, with its count.
-  $('#ins-lbl').textContent = t('ins.tabInbox');
-  const badge = $('#ins-count');
-  badge.hidden = !n;
-  badge.textContent = n ? String(n) : '';
+  const next = $('#next-btn');
+  next.hidden = !n;
+  $('#next-count').textContent = n ? String(n) : '';
+  setTip(next, t('next.tip'), isMac ? '⌘I' : 'Ctrl+I');
+  next.setAttribute('aria-label', `${t('next.tip')} ${n}`);
+  syncBadge(n);
+}
+
+let badgeKey = '';
+/**
+ * The taskbar (Windows) or Dock (macOS) badge: the count of waiting decisions. Windows takes an overlay image, drawn
+ * here with the theme's ask colours; 9+ past nine.
+ */
+function syncBadge(n: number) {
+  const text = badgeText(n);
+  const css = getComputedStyle(document.documentElement);
+  const fill = css.getPropertyValue('--state-ask').trim();
+  const ink = css.getPropertyValue('--text-on-ask').trim();
+  const key = `${n}|${fill}|${ink}`;
+  if (key === badgeKey) return;
+  badgeKey = key;
+  let url = '';
+  if (text && !isMac) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const g = c.getContext('2d');
+    if (g) {
+      g.fillStyle = fill;
+      g.beginPath(); g.arc(16, 16, 16, 0, Math.PI * 2); g.fill();
+      g.fillStyle = ink;
+      g.font = `700 ${text.length > 1 ? 17 : 21}px system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(text, 16, 17);
+      url = c.toDataURL('image/png');
+    }
+  }
+  void tryCall('app:badge', n, url).then((r) => { if (!r.ok) badgeKey = ''; });
 }
 
 export let sideAnim: number | undefined;

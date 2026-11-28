@@ -246,11 +246,11 @@ flow('the app starts in the message field, the views are one Tab stop, and a nar
   await app.until("document.querySelector('#dlg .keys')?.innerText.includes('Message field')", 'Ctrl+L in the list of keys');
   await app.key('Escape', 'Escape', 27);
 
-  // I1: below 1100 the right sidebar is a drawer, closed, and its button names it; the chat keeps its width.
-  const box = "const r = (q) => document.querySelector(q).getBoundingClientRect(); const w = document.querySelector('#win').classList; return JSON.stringify({ main: r('main[data-view=\"chat\"]').width, ins: r('#chat-ins').left, over: w.contains('ins-over'), insMin: w.contains('ins-min'), sideMin: w.contains('side-min'), lbl: getComputedStyle(document.querySelector('#ins-lbl')).display });";
+  // I1: below 1100 the right sidebar is a drawer, closed, behind its icon-only button (T-0180); the chat keeps its width.
+  const box = "const r = (q) => document.querySelector(q).getBoundingClientRect(); const w = document.querySelector('#win').classList; return JSON.stringify({ main: r('main[data-view=\"chat\"]').width, ins: r('#chat-ins').left, over: w.contains('ins-over'), insMin: w.contains('ins-min'), sideMin: w.contains('side-min'), lbl: document.querySelector('#ins-toggle').innerText.trim() });";
   await app.size(1000, 760);
   let b = JSON.parse(await app.until(`return document.querySelector('#win').classList.contains('ins-over') && (() => { ${box} })()`, 'the drawer at 1000px'));
-  assert.ok(b.insMin && !b.sideMin && b.lbl !== 'none' && b.main >= 520, JSON.stringify(b));
+  assert.ok(b.insMin && !b.sideMin && b.lbl === '' && b.main >= 520, JSON.stringify(b));
   const mainW = b.main;
   await app.click('#ins-toggle');
   b = JSON.parse(await app.until(`return !document.querySelector('#win').classList.contains('ins-min') && (() => { ${box} })()`, 'the drawer open'));
@@ -279,5 +279,5 @@ flow('the app starts in the message field, the views are one Tab stop, and a nar
   // Wide again, both come back as they were.
   await app.size(1320, 860);
   b = JSON.parse(await app.until(`return !document.querySelector('#win').classList.contains('ins-over') && (() => { ${box} })()`, 'wide again'));
-  assert.ok(!b.insMin && !b.sideMin && b.lbl === 'none', JSON.stringify(b));
+  assert.ok(!b.insMin && !b.sideMin && b.lbl === '', JSON.stringify(b));
 });
