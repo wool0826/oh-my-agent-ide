@@ -1149,7 +1149,7 @@ export function init() {
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyF') { e.preventDefault(); if (cmdk.open) $('#cmdk-q').focus(); else openPalette(findSeed()); return; }
     if (cmdk.open) { paletteKeys(e); return; }
     // Ctrl/Cmd+I: the next waiting decision, with Shift the previous one (T-0180). Not while Settings covers the window.
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyI' && !ui.settingsShown) { e.preventDefault(); goWaiting(e.shiftKey ? -1 : 1); return; }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyI' && !ui.settingsShown && $('#dlg').hidden && !shotOpen()) { e.preventDefault(); goWaiting(e.shiftKey ? -1 : 1); return; }
     // An open screenshot goes to the report's previous or next one with the arrow keys.
     if (shotOpen() && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); stepShot(e.key === 'ArrowLeft' ? -1 : 1); return; }
     // Ctrl/Cmd+/ opens the list of keys, and closes it.

@@ -6,7 +6,7 @@ import { loadSettings } from './settings';
 import { Burst, inQuietHours } from '../shared/notifyRules';
 
 let win: BrowserWindow | null = null;
-export function setWindow(w: BrowserWindow) { win = w; }
+export function setWindow(w: BrowserWindow) { win = w; if (last.n) setBadge(last.n, last.png); }
 
 /** Notifications with buttons or a click are kept from garbage collection until they close, or those do nothing. */
 const live = new Set<Notification>();
@@ -74,13 +74,18 @@ function showInfo(title: string, body: string, taskId?: string) {
 
 /** What the taskbar or Dock badge shows now: the count, and whether Windows has an overlay image for it. */
 export const badge = { n: 0, overlay: false };
+/** The last count and image the window sent, put back on a window that comes after it. */
+const last = { n: 0, png: '' };
 
 /**
  * The waiting decisions on the app's taskbar button (T-0180, spec 2bA). Windows takes an overlay image, which the
  * window draws (a PNG data URL, 9+ past nine); macOS and Linux take the number. 0 clears it.
  */
 export function setBadge(n: number, png: string) {
-  badge.n = Math.max(0, Math.floor(Number(n) || 0));
+  badge.n = Math.min(9999, Math.max(0, Math.floor(Number(n) || 0)));
+  // A 32px badge is a few kB; anything far bigger is not one.
+  if (png.length > 65536) png = '';
+  last.n = badge.n; last.png = png;
   if (process.platform !== 'win32') { app.setBadgeCount(badge.n); return; }
   if (!win || win.isDestroyed()) return;
   const img = badge.n && png.startsWith('data:image/png;base64,') ? nativeImage.createFromDataURL(png) : null;

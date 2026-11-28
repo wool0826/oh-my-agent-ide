@@ -592,7 +592,7 @@ function syncBadge(n: number) {
   const css = getComputedStyle(document.documentElement);
   const fill = css.getPropertyValue('--state-ask').trim();
   const ink = css.getPropertyValue('--text-on-ask').trim();
-  const key = `${text}|${fill}|${ink}`;
+  const key = `${n}|${fill}|${ink}`;
   if (key === badgeKey) return;
   badgeKey = key;
   let url = '';
@@ -611,7 +611,7 @@ function syncBadge(n: number) {
       url = c.toDataURL('image/png');
     }
   }
-  void tryCall('app:badge', n, url);
+  void tryCall('app:badge', n, url).then((r) => { if (!r.ok) badgeKey = ''; });
 }
 
 export let sideAnim: number | undefined;
