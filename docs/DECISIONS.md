@@ -1301,3 +1301,10 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - The placement is now under `:is(.res, .aa) >` only. The sidebar keeps its own rule (in the row's line, on hover,
       focus or selection).
     - Rejected: renaming one of the two classes (more markup and tests to touch for the same result).
+258. **Every icon-only button the audit found without a tooltip gets one, and a stepper's buttons get words for names** (T-0163, follows 163).
+    - The three send buttons (chat, Worker, side question) had no tooltip in English: `index.html` gave them
+      `aria-label="Send"`, and the code that sets the tooltip returns early when the name is already right. They now
+      carry `data-i18n-tip="send"`, which sets the name and the tooltip together in both languages.
+    - A stepper's buttons were named "-" and "+" (read aloud as "minus" or not at all) and had no tooltip: now
+      "Decrease" / "Increase" (`set.stepDown`, `set.stepUp`). The account's "…" button shows its name as a tooltip.
+    - Rejected: dropping the early return in `updateSendButton` (it is there so a redraw does not rebuild the button).

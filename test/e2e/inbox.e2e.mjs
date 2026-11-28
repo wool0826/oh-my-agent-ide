@@ -10,6 +10,8 @@ flow('one name for a waiting decision, a search that finds nothing says so, and 
   assert.equal(await typeIn('   '), true);
   assert.equal(await typeIn('Hello'), false);
   assert.equal(await typeIn(''), true);
+  // An icon alone says what it is in a tooltip, as its name does: the three send buttons.
+  assert.deepEqual(await app.evaluate("['#chat-send', '#ws-send', '#sq-send'].map((s) => document.querySelector(s).dataset.tip)"), ['Send', 'Send', 'Send']);
   // The sidebar, its row and the right sidebar use the same words for a decision that waits.
   await app.say(['Hello', '@fake task - Write a note', '@@fake permission npm install left-pad'].join('\n'));
   await app.until("document.querySelectorAll('#chat-ins .dec').length === 1 && !!document.querySelector('#side .drow')", 'a decision');
@@ -31,6 +33,8 @@ flow('one name for a waiting decision, a search that finds nothing says so, and 
   await app.until("!document.querySelector('#set-mlist .skel')", 'the model list read');
   const state = await app.evaluate("document.getElementById('set-mlist').textContent.trim()");
   assert.ok(state.length > 1 && state !== '–', state);
+  // And a stepper's two buttons, which were named "-" and "+".
+  assert.deepEqual(await app.evaluate("[...document.querySelectorAll('[data-step][data-for=\"set-maxw\"]')].map((b) => [b.getAttribute('aria-label'), b.dataset.tip])"), [['Decrease', 'Decrease'], ['Increase', 'Increase']]);
 });
 
 flow('a result is cleared on its own by its ✕ or Delete and comes back with Undo, and the list answers the arrows at any width', {}, async (app) => {
