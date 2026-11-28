@@ -29,10 +29,10 @@ export function swapPanes(p: Panes): Panes {
 /**
  * "Open beside" Worker `id` (Ctrl/Cmd+\, the sidebar row menu). With nothing open it simply opens. Already in a
  * pane, that pane is selected. Otherwise it opens in the other pane, on the right of a single one, and is selected;
- * the Worker that was selected stays where it was.
+ * the Worker that was selected stays where it was. An archived Worker is never one of two: it opens alone.
  */
-export function openBeside(p: Panes, id: string): Panes {
-  if (!p.wSel) return { wSel: id, wTab: 'chat', pair: null };
+export function openBeside(p: Panes, id: string, archived: (id: string) => boolean = () => false): Panes {
+  if (!p.wSel || archived(id) || archived(p.wSel)) return id === p.wSel ? { ...p, pair: null } : { wSel: id, wTab: 'chat', pair: null };
   if (id === p.wSel) return p;
   if (p.pair?.id === id) return swapPanes(p);
   return { wSel: id, wTab: 'chat', pair: { id: p.wSel, tab: p.wTab, left: p.pair ? !p.pair.left : true } };
@@ -58,13 +58,14 @@ export function closePane(p: Panes, which: 'pair' | 'sel'): Panes {
 
 /**
  * Ctrl/Cmd+\ with no Worker row focused: with two panes it closes the other one; with one it opens beside it the
- * Worker that was active last among the others (`order`, most recent first), live ones before archived ones.
- * Null when there is nothing to open.
+ * Worker that was active last among the others (`order`, most recent first). Archived Workers are left out, and an
+ * archived one on screen gets nothing beside it. Null when there is nothing to open.
  */
 export function toggleBeside(p: Panes, order: readonly { id: string; archived: boolean }[]): Panes | null {
   if (p.pair) return closePane(p, 'pair');
-  const next = [...order.filter((w) => !w.archived), ...order.filter((w) => w.archived)].find((w) => w.id !== p.wSel);
-  return next && p.wSel ? openBeside(p, next.id) : null;
+  if (!p.wSel || order.some((w) => w.id === p.wSel && w.archived)) return null;
+  const next = order.find((w) => !w.archived && w.id !== p.wSel);
+  return next ? openBeside(p, next.id) : null;
 }
 
 /** The pair kept for the next start, as it can show now: both Workers still there and neither archived (5A). */
@@ -75,10 +76,15 @@ export function restorePair(v: unknown, wSel: string | null, there: { worker: (i
   return { id: o.id, tab: TABS.includes(o.tab as WTab) ? (o.tab as WTab) : 'chat', left: o.left === true };
 }
 
-/** A Worker that is gone leaves its pane: the pair closes, or the other pane takes the selected one's place. */
-export function dropGone(p: Panes, there: (id: string) => boolean): Panes {
+/**
+ * A Worker that is gone leaves its pane: the pair closes, or the other pane takes the selected one's place. One that
+ * is archived while shown stays alone, as it opens (and as restorePair brings it back).
+ */
+export function dropGone(p: Panes, there: (id: string) => boolean, archived: (id: string) => boolean = () => false): Panes {
   if (!p.pair) return p;
   if (!there(p.pair.id)) return { ...p, pair: null };
   if (p.wSel && !there(p.wSel)) return closePane(p, 'sel');
+  if (archived(p.pair.id)) return { ...p, pair: null };
+  if (p.wSel && archived(p.wSel)) return { ...p, pair: null };
   return p;
 }

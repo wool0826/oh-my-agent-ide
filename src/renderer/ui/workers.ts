@@ -393,7 +393,7 @@ export async function loadDiff(id: string) {
   }
   const w = worker(id);
   if (w && ui.wSel === id && ui.wTab === 'changes') renderDiff(w);
-  if (ui.pair?.id === id) renderPair();
+  if (ui.pair?.id === id && ui.pair.tab === 'changes') renderPair(true);
 }
 
 /** A Worker's conversation opens on its last page. */

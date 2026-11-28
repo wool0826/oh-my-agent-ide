@@ -20,6 +20,8 @@ export function panesShown() {
   return ui.view === 'worker' && ui.wOpen && !!ui.pair && !!worker(ui.wSel) && !!worker(ui.pair.id) && panesFit(innerWidth);
 }
 
+const isArchived = (id: string) => worker(id)?.status === 'archived';
+
 const panesNow = (): Panes => ({ wSel: ui.wSel, wTab: ui.wTab, pair: ui.pair });
 
 /**
@@ -63,9 +65,10 @@ export function selectOther(focus = false, tab: WTab | null = null) {
 /** Opens Worker `id` beside the one on screen (Ctrl/Cmd+\, the row menu), or says the window is too narrow. */
 export function openBesideOf(id: string) {
   if (!worker(id)) return;
-  if (!panesFit(innerWidth)) { toast(t('pane.narrow'), false, undefined, 'err'); return; }
   const cur = ui.view === 'worker' && ui.wOpen ? panesNow() : { wSel: ui.wSel, wTab: ui.wTab, pair: null };
-  apply(openBeside(worker(cur.wSel) ? cur : { ...cur, wSel: null }, id), true);
+  const next = openBeside(worker(cur.wSel) ? cur : { ...cur, wSel: null }, id, isArchived);
+  if (next.pair && !panesFit(innerWidth)) { toast(t('pane.narrow'), false, undefined, 'err'); return; }
+  apply(next, true);
 }
 
 /**
@@ -73,9 +76,8 @@ export function openBesideOf(id: string) {
  * beside the one on screen.
  */
 export function toggleBesideKey() {
-  if (!S) return;
+  if (!S || ui.view !== 'worker' || !ui.wOpen || !worker(ui.wSel)) return;
   if (!panesFit(innerWidth)) { toast(t('pane.narrow'), false, undefined, 'err'); return; }
-  if (ui.view !== 'worker' || !ui.wOpen || !worker(ui.wSel)) return;
   const order = S.workers.slice().sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)).map((w) => ({ id: w.id, archived: w.status === 'archived' }));
   const next = toggleBeside(panesNow(), order);
   if (next) apply(next, true);
@@ -92,10 +94,10 @@ export function paneKey() {
   return true;
 }
 
-/** A Worker that is gone leaves its pane. */
+/** A Worker that is gone leaves its pane; one archived while shown stays alone. */
 export function keepPanes() {
   if (!ui.pair || !S) return;
-  const p = dropGone(panesNow(), (id) => !!worker(id));
+  const p = dropGone(panesNow(), (id) => !!worker(id), isArchived);
   if (p.pair !== ui.pair || p.wSel !== ui.wSel) Object.assign(ui, { pair: p.pair, wSel: p.wSel, wTab: p.wTab });
 }
 
@@ -115,7 +117,23 @@ function noTabStops(el: HTMLElement) {
   el.querySelectorAll<HTMLElement>('a, button, input, textarea, select, summary, [tabindex]').forEach((x) => { x.tabIndex = -1; });
 }
 
-let drawn = { head: '', log: '', body: '' };
+let drawn = { head: '', log: '', body: '', data: '' };
+
+/** A number for each diff loaded, so a new load (a refresh) draws the pane again. */
+const loads = new WeakMap<object, number>();
+let loadN = 0;
+const loadOf = (x: unknown) => {
+  if (!x || typeof x !== 'object') return String(x);
+  if (!loads.has(x)) loads.set(x, ++loadN);
+  return String(loads.get(x));
+};
+
+/** What the other pane's Changes or Summary is drawn from: when it changes, the pane is drawn again. */
+function dataKey(w: Worker, tab: WTab) {
+  if (tab === 'changes') return `${lang()}:${ui.diffLayout}:${loadOf(ui.diffs.get(w.id))}:${ui.diffNotes.get(w.id)?.length ?? 0}`;
+  const tasks = ui.sumScope === 'week' ? S?.tasks ?? [] : w.taskIds.map((id) => S?.tasks.find((x) => x.id === id));
+  return `${lang()}:${ui.sumScope}:${w.status}:${tasks.length}:${tasks.map((x) => x?.updatedAt ?? '').join(',')}`;
+}
 
 function headHtml(w: Worker, tab: WTab) {
   const x = workerTask(w);
@@ -135,7 +153,7 @@ export function renderPair(force = false) {
   main.classList.toggle('panes', on);
   $('#wk-pair').hidden = !on;
   $('#ws-close').hidden = !on;
-  if (!on || !ui.pair) { drawn = { head: '', log: '', body: '' }; return; }
+  if (!on || !ui.pair) { drawn = { head: '', log: '', body: '', data: '' }; return; }
   main.classList.toggle('pair-left', ui.pair.left);
   const w = worker(ui.pair.id)!;
   if (!w.repo && ui.pair.tab === 'changes') ui.pair = { ...ui.pair, tab: 'chat' };
@@ -155,9 +173,13 @@ export function renderPair(force = false) {
       noTabStops(body);
       drawn.log = key;
     }
-  } else if (force || drawn.body !== at) {
-    if (tab === 'changes') renderDiff(w, body); else renderSummary(w, body);
-    noTabStops(body);
+  } else {
+    const data = dataKey(w, tab);
+    if (force || drawn.body !== at || drawn.data !== data) {
+      if (tab === 'changes') renderDiff(w, body); else renderSummary(w, body);
+      noTabStops(body);
+      drawn.data = data;
+    }
   }
   drawn.body = at;
   const d = draftOf(w.id);

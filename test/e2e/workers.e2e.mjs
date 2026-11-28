@@ -212,10 +212,10 @@ flow('what is typed for one Worker waits for that Worker while another one is op
   assert.equal(await typed(), '');
 });
 
-flow('two Workers side by side: Ctrl+\\ opens one beside, F6 and a click switch, a narrow window shows one, ✕ closes, a restart brings them back', {}, async (app) => {
+flow('two Workers side by side: Ctrl+\\ opens one beside, F6 and a click switch, a narrow window shows one, ✕ closes, a restart brings them back', { repos: ['demo'] }, async (app) => {
   const mod = process.platform === 'darwin' ? 4 : 2;
   await app.size(1440, 860);
-  await app.say('@fake task - Left\n@@fake result Done.\n@fake task - Right\n@@fake result Done.');
+  await app.say('@fake task demo Left\n@@fake write src/left.ts export const L = 1;\n@@fake result Done.\n@fake task - Right\n@@fake result Done.');
   await app.until("document.querySelectorAll('#chat-ins .res').length >= 2", 'both tasks done');
   await app.click('#side [data-action="done-toggle"]');
   await app.until("document.querySelectorAll('#side [data-action=\"open-worker\"]').length >= 2", 'both Workers in the sidebar');
@@ -246,11 +246,15 @@ flow('two Workers side by side: Ctrl+\\ opens one beside, F6 and a click switch,
   await app.until(`document.querySelector('#wk-pair').hidden && ${selected(b)}`, 'one pane in a narrow window');
   await app.size(1440, 860);
   await app.until(beside(a), 'both panes again');
-  // A restart opens both as they were.
-  await waitFor(() => { try { return JSON.parse(fs.readFileSync(path.join(app.home, 'data', 'state.json'), 'utf8')).session?.screen?.pair?.id === a; } catch { return false; } }, 'The pair was never saved');
+  // A restart opens both as they were, the other pane loading its changes.
+  await app.click('#wk-pair [data-action="pane-tab"][data-v="changes"]');
+  await app.until(`${selected(a)} && !!document.querySelector('#ws-diff .df')`, `${a} selected on its changes`);
+  await app.key('F6', 'F6', 117);
+  await app.until(`${selected(b)} && ${beside(a)} && !document.querySelector('#wp-diff').hidden`, `${a} beside on its changes`);
+  await waitFor(() => { try { const pair = JSON.parse(fs.readFileSync(path.join(app.home, 'data', 'state.json'), 'utf8')).session?.screen?.pair; return pair?.id === a && pair.tab === 'changes'; } catch { return false; } }, 'The pair was never saved');
   await app.restart();
   await app.size(1440, 860);
-  await app.until(`${selected(b)} && ${beside(a)}`, 'both panes after the restart');
+  await app.until(`${selected(b)} && ${beside(a)} && !!document.querySelector('#wp-diff .df')?.textContent.includes('src/left.ts')`, 'both panes after the restart, with the changes beside');
   // ✕ closes the other pane; Ctrl+\ in a narrow window says why nothing opens.
   await app.click('#wp-head [data-action="pane-close"]');
   await app.until(`document.querySelector('#wk-pair').hidden && ${selected(b)}`, 'one pane after ✕');

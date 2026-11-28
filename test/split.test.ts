@@ -42,18 +42,32 @@ test('split: closing a pane leaves the other one alone', () => {
   assert.equal(closePane(one, 'sel'), one);
 });
 
-test('split: Ctrl+\\ closes the other pane, or opens beside the last active other Worker, live ones first', () => {
+test('split: Ctrl+\\ closes the other pane, or opens beside the last active other Worker that is not archived', () => {
   const order = [{ id: 'W-09', archived: true }, { id: 'W-01', archived: false }, { id: 'W-04', archived: false }];
   assert.deepEqual(toggleBeside(two, order), closePane(two, 'pair'));
   assert.deepEqual(toggleBeside(one, order), openBeside(one, 'W-04'));
-  assert.deepEqual(toggleBeside(one, [{ id: 'W-01', archived: false }, { id: 'W-09', archived: true }]), openBeside(one, 'W-09'));
+  assert.equal(toggleBeside(one, [{ id: 'W-01', archived: false }, { id: 'W-09', archived: true }]), null);
+  assert.equal(toggleBeside(one, [{ id: 'W-01', archived: true }, { id: 'W-04', archived: false }]), null);
   assert.equal(toggleBeside(one, [{ id: 'W-01', archived: false }]), null);
+});
+
+test('split: an archived Worker opens alone, never beside another', () => {
+  const gone = (id: string) => id === 'W-09';
+  assert.deepEqual(openBeside(two, 'W-09', gone), { wSel: 'W-09', wTab: 'chat', pair: null });
+  assert.deepEqual(openBeside({ ...one, wSel: 'W-09' }, 'W-02', gone), { wSel: 'W-02', wTab: 'chat', pair: null });
 });
 
 test('split: a gone Worker closes its pane', () => {
   assert.deepEqual(dropGone(two, (id) => id !== 'W-01'), { ...two, pair: null });
   assert.deepEqual(dropGone(two, (id) => id !== 'W-02'), { wSel: 'W-01', wTab: 'changes', pair: null });
   assert.equal(dropGone(two, () => true), two);
+});
+
+test('split: a Worker archived while shown leaves the pair, the selected one staying alone', () => {
+  const yes = () => true;
+  assert.deepEqual(dropGone(two, yes, (id) => id === 'W-01'), { ...two, pair: null });
+  assert.deepEqual(dropGone(two, yes, (id) => id === 'W-02'), { ...two, pair: null });
+  assert.equal(dropGone(two, yes, () => false), two);
 });
 
 test('split: the pair comes back at the next start unless a Worker is gone or archived', () => {
