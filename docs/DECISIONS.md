@@ -1405,3 +1405,24 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
       the Korean IME, npm prompts, Ctrl+C, resizing, by hand on Windows; zsh with 8.3 on a Mac).
     - Rejected: a find of the app's own (the addon already marks what scrolled away), a shell picker in Settings (one
       more place; the menu is where a tab is opened), and restarting into a new tab (the ended tab would stay to close).
+265. **A touchpad swipe over a Notifications row is let go when the fingers leave, and its momentum moves nothing** (T-0168, follows 195, 200).
+    - Why: on a Mac the momentum after the fingers left kept moving the row (a short flick slid past the threshold),
+      the row was let go only once the momentum ended (up to a second and a half late, never as a flick), and a state
+      change mid-gesture drew the list again and dropped the row (T-0167 investigation).
+    - Momentum is told by its steps: four sideways steps in a row, each no bigger than the one before, down to 85% of
+      the last one before them. The row is let go where it was before those steps, at the speed it had then, so a
+      flick clears. From the second fading step the row is drawn there. A step that grows again is the fingers: the
+      row catches up. Equal steps (a held tilt wheel, a mouse) never start a fade. An empty wheel event (macOS may send
+      one as the fingers leave) lets it go at once. The rest of the gesture is held back and moves nothing.
+    - The gesture ends after 200 ms without an event (was 120, so a short rest of the fingers does not end it). It
+      counts as sideways or a scroll after 12 px (was the first event's direction), so a start that drifts down a
+      pixel is still a swipe. After a row is cleared, new wheel events start nothing for 350 ms: the row below has
+      moved under the pointer.
+    - The distance that clears is 35% of the row's width kept between 80 and 120 px, taken once per gesture; the
+      drag uses it too (unchanged for a sidebar of usual width).
+    - The Notifications list is not drawn again while a row is being swiped or animates away: the last draw asked for
+      runs once it is let go (after the clear, so the row does not flash back).
+    - Direction stays `-deltaX` (200): Chromium tells nothing about natural scrolling, and either side clears.
+      Shift, Ctrl, Alt and ⌘ wheels stay left alone.
+    - Rejected: switching the touchpad swipe off on macOS (the gesture is the point), and a fixed timer to tell
+      momentum (the gap before it differs by device). The numbers are guesses to tune on a real Mac.

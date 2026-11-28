@@ -3,7 +3,7 @@
 // keyboard keeps Delete. A row that cannot be cleared (a decision waiting for the user, an "while you were away" row)
 // only gives a little and comes back.
 
-import { WHEEL_IDLE, swipeClears, swipeIntent, swipeResist, wheelStart, wheelStep, type WheelSwipe } from '../../shared/swipe';
+import { WHEEL_IDLE, WHEEL_SETTLE, swipeClears, swipeIntent, swipeResist, wheelRelease, wheelShown, wheelStart, wheelStep, type WheelRelease, type WheelSwipe } from '../../shared/swipe';
 
 /** Rows the swipe handles: results and auto-answers are cleared; decisions and away rows only resist. */
 const ROW = '.ins-list :is([data-nav^="res:"], [data-nav^="aa:"], [data-nav^="inbox:"], [data-nav^="away:"])';
@@ -14,6 +14,27 @@ const OWN = 'button, a, input, textarea, select, label, [contenteditable], .fix'
 const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Rows a drag or a touchpad swipe holds: the other one leaves them alone. */
 const held = new WeakSet<HTMLElement>();
+
+// Rows being swiped (or animating away): the list is not drawn again under them, which would drop the row mid-gesture.
+let swiping = 0;
+let redraw: (() => void) | null = null;
+function hold(n: number) {
+  swiping = Math.max(0, swiping + n);
+  if (swiping || !redraw) return;
+  const r = redraw;
+  redraw = null;
+  r();
+}
+
+/**
+ * Whether the list may be drawn now; when a row is being swiped, `draw` runs once the last swipe is let go instead
+ * (T-0168).
+ */
+export function drawAfterSwipe(draw: () => void): boolean {
+  if (!swiping) return true;
+  redraw = draw;
+  return false;
+}
 
 /** The row a pointer or wheel event at `at` would swipe, if any. */
 function rowAt(root: HTMLElement, at: Element | null, own: boolean): HTMLElement | null {
@@ -31,47 +52,59 @@ export function initSwipe(root: HTMLElement, clear: (nav: string) => Promise<unk
   });
 
   // A two-finger swipe: wheel events mostly sideways move the row under the fingers; ones mostly down scroll the list.
-  // The gesture (and its momentum) ends once the events stop for a moment.
-  let wheel: { row: HTMLElement; s: WheelSwipe; ctl: Swipe | null; timer: number } | null = null;
-  // Wheel events before this time start nothing: the rest of a scroll, or the momentum of a swipe already let go.
+  // The row is let go once the fingers leave (an empty event, or the steps fading into momentum) or the events stop for
+  // a moment; the rest of the gesture (its momentum) moves nothing.
+  let wheel: { row: HTMLElement; s: WheelSwipe; ctl: Swipe | null; timer: number; width: number } | null = null;
+  // Wheel events before this time start nothing: the rest of a scroll, or the row below that moved under the pointer.
   let calm = 0;
-  const done = () => {
+  const letGo = (w: NonNullable<typeof wheel>, at: WheelRelease) => {
+    const ctl = w.ctl;
+    w.ctl = null;
+    if (!ctl) return;
+    ctl.move(at.dx);
+    if (ctl.end(false, at.v)) calm = performance.now() + WHEEL_SETTLE;
+  };
+  const idle = () => {
     if (!wheel) return;
-    const { row, ctl } = wheel;
+    const w = wheel;
     wheel = null;
-    held.delete(row);
-    calm = performance.now() + WHEEL_IDLE;
-    ctl?.end(false, 0);
+    held.delete(w.row);
+    calm = Math.max(calm, performance.now());
+    if (w.ctl) letGo(w, w.s.done ?? wheelRelease(w.s, performance.now()));
   };
   root.addEventListener('wheel', (e) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     if (!wheel) {
+      // An event that moves nothing starts nothing (and holds nothing back).
+      if (!e.deltaX && !e.deltaY) return;
       const row = rowAt(root, e.target as Element | null, false);
-      // A vertical scroll is the list's to the end, even when its last events drift sideways.
-      if (!row || Math.abs(e.deltaX) <= Math.abs(e.deltaY) || e.timeStamp < calm) { calm = e.timeStamp + WHEEL_IDLE; return; }
-      wheel = { row, s: wheelStart(), ctl: null, timer: 0 };
+      if (!row || e.timeStamp < calm) { calm = Math.max(calm, e.timeStamp + WHEEL_IDLE); return; }
+      wheel = { row, s: wheelStart(), ctl: null, timer: 0, width: row.offsetWidth };
       held.add(row);
     }
     const w = wheel;
     clearTimeout(w.timer);
-    w.timer = window.setTimeout(done, WHEEL_IDLE);
+    w.timer = window.setTimeout(idle, WHEEL_IDLE);
     if (w.s.mode === 'scroll') return;
-    w.s = wheelStep(w.s, e.deltaX, e.deltaY, e.deltaMode, w.row.offsetWidth);
+    // Let go already: the momentum is not the list's to scroll either.
+    if (w.s.done) { e.preventDefault(); return; }
+    w.s = wheelStep(w.s, { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, t: e.timeStamp }, w.width);
     if (w.s.mode === 'scroll') return;
-    // Sideways: not the list's (nor the window's back and forward) to scroll.
-    e.preventDefault();
+    // Sideways so far: not the list's (nor the window's back and forward) to scroll. A vertical start is left to the list.
+    if (Math.abs(w.s.dx) > Math.abs(w.s.dy)) e.preventDefault();
     if (w.s.mode !== 'swipe') return;
-    if (!w.row.isConnected) { clearTimeout(w.timer); return done(); }
-    if (!w.ctl) w.ctl = swipe(w.row, clear);
-    w.ctl.move(w.s.dx);
+    if (!w.row.isConnected) { clearTimeout(w.timer); return idle(); }
+    if (!w.ctl && !w.s.done) w.ctl = swipe(w.row, clear);
+    if (w.s.done) return letGo(w, w.s.done);
+    w.ctl?.move(wheelShown(w.s));
   }, { passive: false });
 }
 
 interface Swipe {
   /** Draws the row `dx` from where it rests. */
   move: (dx: number) => void;
-  /** Lets go moving at `v` px/ms: the row goes away or comes back. */
-  end: (cancel: boolean, v: number) => void;
+  /** Lets go moving at `v` px/ms: the row goes away (true) or comes back. */
+  end: (cancel: boolean, v: number) => boolean;
 }
 
 /** Starts moving `row` sideways: the red side it leaves, and what letting go does. */
@@ -80,12 +113,16 @@ function swipe(row: HTMLElement, clear: (nav: string) => Promise<unknown>): Swip
   const clears = CLEARS.test(nav);
   let dx = 0;
   let under: HTMLElement | null = null;
+  // The row's width, and so how far clears it, is taken once for the gesture.
+  const w = row.offsetWidth;
+  hold(+1);
+  let holding = true;
+  const release = () => { if (holding) { holding = false; hold(-1); } };
 
   const draw = () => {
     const x = clears ? dx : swipeResist(dx);
     row.style.transform = x ? `translateX(${x}px)` : '';
     if (!under) return;
-    const w = row.offsetWidth;
     under.style.width = `${Math.min(Math.abs(dx), w)}px`;
     under.classList.toggle('right', dx < 0);
     under.classList.toggle('armed', swipeClears(dx, 0, w));
@@ -112,6 +149,7 @@ function swipe(row: HTMLElement, clear: (nav: string) => Promise<unknown>): Swip
     row.classList.remove('swiping', 'swipe-out', 'swipe-close');
     row.style.transform = '';
     row.style.height = '';
+    release();
   };
 
   /**
@@ -141,13 +179,14 @@ function swipe(row: HTMLElement, clear: (nav: string) => Promise<unknown>): Swip
     under?.remove();
     under = null;
     row.parentElement?.classList.remove('swipe-host');
-    // The list drops the row once it is cleared. If clearing fails, or the row is somehow still drawn, it comes back.
+    // The list drops the row once it is cleared (a redraw held back meanwhile waits for that, or it would draw the row
+    // again). If clearing fails, or the row is somehow still drawn, it comes back.
     const restore = () => { if (row.isConnected) tidy(); };
-    clear(nav).then(() => setTimeout(restore, 1000), restore);
+    clear(nav).then(() => { release(); setTimeout(restore, 1000); }, () => { release(); restore(); });
   };
 
   // Out to the side, then the row closes up, then the list loses it (the toast offers Undo).
-  const away = (side: number, w: number) => {
+  const away = (side: number) => {
     row.classList.add('swipe-out');
     glide('--dur-base', () => { dx = side * w; draw(); }, () => {
       if (!row.isConnected) return finish();
@@ -162,11 +201,11 @@ function swipe(row: HTMLElement, clear: (nav: string) => Promise<unknown>): Swip
   return {
     move: (to) => { dx = to; draw(); },
     end: (cancel, v) => {
-      if (!row.isConnected) return tidy();
-      const w = row.offsetWidth;
-      if (!cancel && clears && swipeClears(dx, v, w)) return away(Math.sign(dx) || 1, w);
+      if (!row.isConnected) { tidy(); return false; }
+      if (!cancel && clears && swipeClears(dx, v, w)) { away(Math.sign(dx) || 1); return true; }
       dx = 0;
       glide('--dur-base', draw, tidy);
+      return false;
     },
   };
 }
