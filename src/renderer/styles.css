@@ -981,6 +981,16 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .srow .sval.path { font-family: var(--font-mono); }
 .srow.vol > .lbl { flex: 0 0 auto; margin-right: var(--space-16); }
 .srow.vol .slider-wrap { flex: 1; }
+/* A window too narrow for the nav and a row's label and control side by side (a small window zoomed in): the nav and
+   the panes' margins give room, and a control goes under its label before it would leave its card. */
+@media (max-width: 700px) {
+  .settings-win { --settings-nav-w: 168px; }
+  .stopbar h1 { justify-self: start; margin-left: var(--space-12); max-width: calc(100% - var(--space-12) - var(--strip-end)); }
+  .spanes { padding: var(--space-16) var(--space-4) var(--space-32); }
+  .srow { flex-wrap: wrap; }
+  .srow > .lbl { flex: 1 1 auto; min-width: 0; }
+  .srow > :where(:not(.lbl)) { max-width: 100%; }
+}
 .inp.bad { box-shadow: var(--well), 0 0 0 1px var(--warning); }
 
 /* account cards */

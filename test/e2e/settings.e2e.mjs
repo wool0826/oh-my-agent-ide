@@ -133,6 +133,26 @@ flow('the appearance follows the setting, at once and after a restart of the pag
   await app.until("return (await window.ide.call('state')).settings.theme === 'light';", 'the setting saved');
 });
 
+flow('Settings in a small window zoomed in keeps every row inside its card and does not scroll sideways', {}, async (app) => {
+  await app.click('[data-action="open-settings"]');
+  // 760×640 at 150% zoom is this much page.
+  await app.size(507, 427);
+  for (const id of ['accounts', 'general', 'display', 'alerts', 'memory', 'models']) {
+    await app.click(`[data-action="pane"][data-id="${id}"]`);
+    await app.until(`document.querySelector('[data-action="pane"][data-id="${id}"]').classList.contains('on') && !!document.querySelector('.spanes .srow')`, `the ${id} pane`);
+    // Every row and account card is inside the pane's column, and what a row holds is inside the row.
+    const r = await app.evaluate(`const p = document.querySelector('.spanes'); const col = p.querySelector('.sinner').getBoundingClientRect();
+      const past = (el, b) => { const e = el.getBoundingClientRect(); return e.width > 0 && (e.right > b.right + 1 || e.left < b.left - 1); };
+      const out = [...p.querySelectorAll('.srow, .acc-card')].flatMap((row) => [...(past(row, col) ? [row] : []), ...[...row.children].filter((el) => past(el, row.getBoundingClientRect()))]).map((el) => el.className || el.tagName);
+      return { sideways: p.scrollWidth - p.clientWidth, out };`);
+    assert.deepEqual(r, { sideways: 0, out: [] }, id);
+    // The volume slider keeps a length that can be dragged.
+    if (id === 'alerts') assert.ok(await app.evaluate("return document.querySelector('.srow.vol .slider-wrap').getBoundingClientRect().width;") >= 120);
+  }
+  // The nav gave room, and the title stays whole next to Back.
+  assert.deepEqual(await app.evaluate("const h = document.querySelector('.stopbar h1'); return [document.querySelector('.snav').offsetWidth, h.scrollWidth <= h.clientWidth && h.offsetWidth > 0];"), [168, true]);
+});
+
 flow('do-not-disturb hours are set in Settings and kept as times', {}, async (app) => {
   await app.click('[data-action="open-settings"]');
   await app.click('[data-action="pane"][data-id="alerts"]');

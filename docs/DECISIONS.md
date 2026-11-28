@@ -1322,3 +1322,12 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Rejected: decoding the output as the console's code page (the app cannot know which part is in which encoding),
       `chcp 65001` before PowerShell (a second process per line, and it does not change what Windows PowerShell writes
       for a parse error), `-EncodedCommand` (it turns the output into CLIXML for a non-interactive host).
+260. **Settings in a window under 700 px of page (a small window zoomed in) gives up margins, not rows: a narrower nav, and a control under its label** (T-0163).
+    - Found in the UI audit: at 760×640 and 150% zoom (507 px of page) the 240 px nav left the panes about 170 px.
+      Controls left their cards, the panes scrolled sideways, and the title was gone.
+    - Under 700 px the nav is 168 px (the longest label still fits in both languages), the panes' side padding goes
+      down to 4 px, a row wraps so its control goes under the label, nothing in a row is wider than the row, and the
+      title starts at the panes' edge so it is not cut for the caption buttons twice. The smallest window at 100%
+      (760 px) is as before, so no screen picture changes.
+    - Rejected here, kept as a proposal in the audit report: an icons-only nav or a nav that folds away (a change of
+      the screen's structure).
