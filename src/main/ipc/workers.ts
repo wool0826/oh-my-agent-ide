@@ -11,6 +11,7 @@ import { t } from '../i18n';
 import { PICK_MESSAGE, canPick } from '../../shared/compare';
 import { answerTarget } from '../../shared/inbox';
 import { PAGE } from '../../shared/paging';
+import { parseQueueMove } from '../../shared/queue';
 
 /** A Worker's conversation, its tasks, checkpoints and archive, and the merge queue. */
 export function registerWorkerIpc(ctx: IpcContext) {
@@ -27,6 +28,10 @@ export function registerWorkerIpc(ctx: IpcContext) {
   handle('worker:stop', (id: string) => workers.stop(id, 'user'));
   handle('task:cancel', (id: string) => workers.cancelTask(id, 'user'));
   handle('queue:clear', () => workers.clearQueue('user'));
+  handle('queue:move', (id: string, move: unknown) => {
+    const m = parseQueueMove(move);
+    return m ? workers.moveInQueue(String(id), m) : false;
+  });
   handle('worker:diff', (id: string) => workers.diff(id));
   // Exporting a Worker's work (item 12A): the window writes the Markdown from this, then copies, saves or publishes it.
   handle('worker:export', (id: string) => exportSource(id));

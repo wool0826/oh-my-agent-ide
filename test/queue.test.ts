@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { afterDependency, branchPrDue, cancelSet, cancelWhy, describeCancel, followersOf, hasOpenPr, isQueued, pickBranchPr, statusAfterCancel } from '../src/shared/queue';
+import { afterDependency, branchPrDue, byQueue, dropBefore, parseQueueMove, cancelSet, cancelWhy, describeCancel, followersOf, hasOpenPr, isQueued, moveQueued, pickBranchPr, stampQueued, statusAfterCancel, type QueueMove } from '../src/shared/queue';
 import type { Task } from '../src/shared/types';
 
 function task(id: string, patch: Partial<Task> = {}): Task {
@@ -104,6 +104,92 @@ test('queue: blocked tasks are cancelled because the task they wait for had its 
   assert.equal(cancelWhy(task('T-1', { prState: 'CLOSED' }), false), 'closed');
   assert.equal(cancelWhy(task('T-1'), false), 'gone');
   assert.equal(cancelWhy(task('T-1', { status: 'failed' }), true), 'failed');
+});
+
+/** Four tasks that joined the queue a minute apart, T-1 first; `pins` are pinned. */
+function line(pins: string[] = []): Task[] {
+  return ['T-1', 'T-2', 'T-3', 'T-4'].map((id, i) => task(id, { queuedSince: `2026-11-28T10:0${i}:00Z`, queuePinned: pins.includes(id) })).sort(byQueue);
+}
+
+/** The line after the move, as ids with * on the pinned ones; null when it could not move. */
+function moved(l: Task[], id: string, move: QueueMove, held?: Task): string | null {
+  const ch = moveQueued(l, id, move, held);
+  if (!ch) return null;
+  for (const c of ch) Object.assign(l.find((t) => t.id === c.id) ?? held!, { queueRank: c.queueRank, queuePinned: c.queuePinned });
+  return l.sort(byQueue).map((t) => t.id + (t.queuePinned ? '*' : '')).join(' ');
+}
+
+test('queue order: pinned tasks first, then the longest waiting', () => {
+  assert.deepEqual(line(['T-3']).map((t) => t.id), ['T-3', 'T-1', 'T-2', 'T-4']);
+});
+
+test('queue order: up and down move one place, and stop at the ends', () => {
+  assert.equal(moved(line(), 'T-3', 'up'), 'T-1 T-3 T-2 T-4');
+  assert.equal(moved(line(), 'T-3', 'down'), 'T-1 T-2 T-4 T-3');
+  assert.equal(moved(line(), 'T-1', 'up'), null);
+  assert.equal(moved(line(), 'T-4', 'down'), null);
+});
+
+test('queue order: up and top stay below the pinned tasks', () => {
+  assert.equal(moved(line(['T-1']), 'T-2', 'up'), null);
+  assert.equal(moved(line(['T-1']), 'T-4', 'top'), 'T-1* T-4 T-2 T-3');
+});
+
+test('queue order: next goes first of all, pinned when a pinned task was ahead', () => {
+  assert.equal(moved(line(), 'T-3', 'next'), 'T-3 T-1 T-2 T-4');
+  assert.equal(moved(line(['T-1']), 'T-3', 'next'), 'T-3* T-1* T-2 T-4');
+  assert.equal(moved(line(), 'T-1', 'next'), null);
+});
+
+test('queue order: pin toggles and puts the task ahead of the others', () => {
+  const l = line();
+  assert.equal(moved(l, 'T-4', 'pin'), 'T-4* T-1 T-2 T-3');
+  assert.equal(moved(l, 'T-4', 'pin'), 'T-1 T-2 T-3 T-4');
+});
+
+test('queue order: a dropped task takes the pin of where it lands', () => {
+  assert.equal(moved(line(), 'T-4', { before: 'T-2' }), 'T-1 T-4 T-2 T-3');
+  assert.equal(moved(line(), 'T-1', { before: null }), 'T-2 T-3 T-4 T-1');
+  assert.equal(moved(line(['T-1']), 'T-3', { before: 'T-1' }), 'T-3* T-1* T-2 T-4');
+  assert.equal(moved(line(['T-1', 'T-2']), 'T-1', { before: 'T-4' }), 'T-2* T-3 T-1 T-4');
+  assert.equal(moved(line(['T-1']), 'T-1', { before: 'T-2' }), null);
+  assert.equal(moved(line(), 'T-2', { before: 'T-9' }), null);
+});
+
+test('queue order: a task held by a merge can only be pinned', () => {
+  const held = task('T-9', { status: 'blocked', queuedSince: '2026-11-28T09:00:00Z' });
+  assert.equal(moveQueued(line(), 'T-9', 'up', held), null);
+  assert.deepEqual(moveQueued(line(), 'T-9', 'pin', held), [{ id: 'T-9', queueRank: null, queuePinned: true }]);
+});
+
+test('queue order: the moved tasks keep the keys the line had, so a task queued later still joins at the back', () => {
+  const l = line();
+  moved(l, 'T-4', 'top');
+  const late = task('T-5', { queuedSince: '2026-11-28T10:09:00Z' });
+  assert.deepEqual([...l, late].sort(byQueue).map((t) => t.id), ['T-4', 'T-1', 'T-2', 'T-3', 'T-5']);
+});
+
+test('queue order: a task that leaves the queue loses its place and pin', () => {
+  const t = task('T-1', { status: 'running', queuedSince: '2026-11-28T10:00:00Z', queueRank: 5, queuePinned: true });
+  assert.equal(stampQueued([t]), true);
+  assert.equal(t.queueRank, null);
+  assert.equal(t.queuePinned, false);
+});
+
+test('queue order: a row dropped over the top half of another goes before it, below the last one at the end', () => {
+  const rows = [{ id: 'T-1', top: 0, height: 40 }, { id: 'T-2', top: 40, height: 40 }];
+  assert.equal(dropBefore(rows, 10), 'T-1');
+  assert.equal(dropBefore(rows, 30), 'T-2');
+  assert.equal(dropBefore(rows, 70), null);
+});
+
+test('queue order: only the moves the queue knows come from the window', () => {
+  assert.equal(parseQueueMove('top'), 'top');
+  assert.deepEqual(parseQueueMove({ before: 'T-2' }), { before: 'T-2' });
+  assert.deepEqual(parseQueueMove({ before: null }), { before: null });
+  assert.equal(parseQueueMove('left'), null);
+  assert.equal(parseQueueMove({ before: 3 }), null);
+  assert.equal(parseQueueMove({}), null);
 });
 
 test('branchPrDue: a code task done on a branch with no PR known asks GitHub once before its followers start', () => {

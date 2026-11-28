@@ -2072,6 +2072,18 @@ mark.find.cur.arrive { animation: hit-pulse calc(var(--dur-slow) * 2) var(--ease
 .q-row.next .q-pos { color: var(--warning-text); box-shadow: inset 0 0 0 1.5px var(--state-wait); }
 .q-held { padding: var(--space-6) var(--space-8) var(--space-2); font-size: var(--fs-caption2); color: var(--text-tertiary); }
 .row .t small.warn { color: var(--warning-text); }
+/* Moving a queued task (11B): a pinned row carries the pin, the pointer or the focus shows the grip in the mark's place,
+   the dragged row lifts and the drop line (#q-drop, over the page) is red where it cannot go. */
+.sym.q-pin { flex: none; width: var(--icon-lg); height: var(--icon-sm); color: var(--accent-text); }
+.q-grip { display: none; flex: none; width: var(--icon-lg); height: var(--icon-lg); place-items: center; color: var(--text-tertiary); cursor: grab; }
+.q-grip .sym { width: var(--icon-sm); height: var(--icon-sm); }
+.q-row:is(:hover, :focus-within, .drag) .q-grip { display: grid; }
+.q-row:is(:hover, :focus-within, .drag) .q-grip + * { display: none; }
+.q-row.drag { position: relative; z-index: var(--z-raised); background: var(--surface-overlay); box-shadow: var(--rim-strong), var(--shadow-3); translate: var(--space-6) 0; }
+body.q-dragging, body.q-dragging * { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+#q-drop { position: fixed; z-index: var(--z-menu); height: 2px; border-radius: var(--radius-full); background: var(--accent); pointer-events: none; }
+#q-drop.bad { background: var(--danger); }
+#q-drop[hidden] { display: none; }
 
 /* Above a composer's text: what it answers while a decision is open (M7), and why the last send failed (L8). */
 .cstrip, .cerr { flex: 1 1 100%; display: flex; align-items: center; gap: var(--space-8); margin: var(--space-2) var(--space-2) 0 calc(-1 * var(--space-6)); padding: var(--space-4) var(--space-10); border-radius: var(--radius-lg); background: var(--surface-sunken); box-shadow: var(--well); font-size: var(--fs-caption); min-width: 0; animation: rise-in var(--dur-base) var(--ease-out); }
