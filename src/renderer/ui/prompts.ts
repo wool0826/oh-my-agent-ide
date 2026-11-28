@@ -1,7 +1,7 @@
 // Saved prompts (decision 6A, shared/prompts.ts): "/" at the start of a composer's line lists them over the composer
 // with the Dispatcher's commands; one taken puts its text in place of the "/" and its preset as chips over the chat
 // composer's text. The Memos tab keeps them under its Prompts segment.
-import { filterCommands, filterPrompts, insertPrompt, presetEmpty, presetOf, slashAt, PROMPT_CMD_MAX, PROMPT_NAME_MAX, PROMPT_TEXT_MAX, type BuiltinCommand } from '../../shared/prompts';
+import { filterCommands, filterPrompts, insertPrompt, mergePreset, presetEmpty, presetOf, slashAt, PROMPT_CMD_MAX, PROMPT_NAME_MAX, PROMPT_TEXT_MAX, type BuiltinCommand } from '../../shared/prompts';
 import { matchParts } from '../../shared/quickInput';
 import type { PromptPreset, SavedPrompt } from '../../shared/types';
 import { $, call, esc, modelLabel, S, sym, t, tryCall, ui } from './core';
@@ -39,17 +39,22 @@ function slashList(box: Box, at: { start: number; query: string }): CpopList {
     note: !all.length ? t('prompt.empty') : !found.length ? t('slash.none') : undefined,
     hints: all.length ? [[['↑', '↓'], 'cpop.move'], [['↵'], 'cpop.insert'], [['Esc'], 'close']] : [],
     nav: 'list',
+    none: !!at.query && !found.length && !cmds.length,
     pick: (row) => void pickSlash(box, at, row),
   };
 }
 
-/** The composer's text without the "/" being typed, and the caret where it was. */
-function dropSlash(box: Box, at: { start: number; query: string }) {
+/** Set while a pick changes the text, so a "/" line in what it puts in does not open the list again. */
+let picking = false;
+
+/** Puts `text` in place of the "/" being typed and tells the composer its text changed. */
+function replaceSlash(box: Box, at: { start: number; query: string }, text: string) {
   const input = inputOf(box);
-  const next = insertPrompt(input.value, at, '');
+  const next = insertPrompt(input.value, at, text);
   input.value = next.value;
   input.setSelectionRange(next.caret, next.caret);
-  input.dispatchEvent(new Event('input', { bubbles: true }));
+  picking = true;
+  try { input.dispatchEvent(new Event('input', { bubbles: true })); } finally { picking = false; }
 }
 
 async function pickSlash(box: Box, at: { start: number; query: string }, row: CpopRow) {
@@ -57,14 +62,11 @@ async function pickSlash(box: Box, at: { start: number; query: string }, row: Cp
   if (row.id.startsWith('p:')) {
     const p = S?.prompts.find((x) => `p:${x.id}` === row.id);
     if (!p) return;
-    const next = insertPrompt(input.value, at, p.text);
-    input.value = next.value;
-    input.setSelectionRange(next.caret, next.caret);
-    if (box === 'chat') setPreset(presetOf(p));
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    if (box === 'chat') setPreset(mergePreset(ui.presetChat, presetOf(p)));
+    replaceSlash(box, at, p.text);
     return;
   }
-  dropSlash(box, at);
+  replaceSlash(box, at, '');
   if (row.id === 'save') { openPromptForm({ text: input.value.trim(), ...(box === 'chat' ? ui.presetChat ?? {} : {}) }); return; }
   if (row.id === 'c:compact') { await call('dispatcher:compact'); return; }
   if (row.id === 'c:new') {
@@ -76,6 +78,7 @@ async function pickSlash(box: Box, at: { start: number; query: string }, row: Cp
 
 /** The text changed: "/" at the start of the caret's line opens the list, and anything else closes it. */
 export function slashTyped(box: Box) {
+  if (picking) return;
   const input = inputOf(box);
   const at = (box !== 'chat' || !ui.shell) && input.selectionStart === input.selectionEnd ? slashAt(input.value, input.selectionStart) : null;
   if (at) showCpop(box, slashList(box, at));
@@ -251,8 +254,9 @@ export function usePrompt(id: string) {
   const input = inputOf('chat');
   const before = input.value.replace(/\s+$/, '');
   input.value = before ? `${before}\n${p.text}` : p.text;
-  setPreset(presetOf(p));
+  setPreset(mergePreset(ui.presetChat, presetOf(p)));
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
-  input.dispatchEvent(new Event('input', { bubbles: true }));
+  picking = true;
+  try { input.dispatchEvent(new Event('input', { bubbles: true })); } finally { picking = false; }
 }

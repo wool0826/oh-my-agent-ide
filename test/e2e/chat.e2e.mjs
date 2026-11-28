@@ -268,6 +268,11 @@ flow('"/" at the start of a line lists the saved prompts and commands, and a pro
   assert.equal(await app.evaluate("document.querySelector('#cpop-chat .cpop-it .hl').textContent"), '/rel');
   await set('/xyz');
   await app.until("!!document.querySelector('#cpop-chat .cpop-none')", 'no match');
+  // Nothing matches, so no row is chosen and Enter sends the "/word" as it is.
+  assert.equal(await app.evaluate("document.querySelectorAll('#cpop-chat .cpop-it.on').length"), 0);
+  await app.key('Enter', 'Enter', 13);
+  await app.until("return (await window.ide.call('state')).chat.some((c) => c.kind === 'user' && c.text === '/xyz')", 'the /xyz message sent');
+  assert.equal(await app.evaluate("!document.querySelector('#cpop-chat') && document.querySelector('#chat-input').value === ''"), true);
   await set('a /re');
   await app.until("!document.querySelector('#cpop-chat')", 'closed after a space');
   // Enter puts the prompt in place of "/rel", with its model and plan first as chips; × drops one.

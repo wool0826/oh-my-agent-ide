@@ -545,7 +545,7 @@ class Dispatcher {
   private heldRemote = false;
   /** Where the user last wrote from: a turn that starts by itself answers there too. */
   private lastVia: 'desktop' | 'telegram' = 'desktop';
-  /** The preset of the user's last message (shared/prompts.ts), applied to the tasks created until the next one. */
+  /** The preset of the user's last message (shared/prompts.ts), applied to the tasks created until the Dispatcher is idle again. */
   preset: PromptPreset | null = null;
   /** Something waits for a usage limit to reset. */
   get holding() { return this.held.length > 0; }
@@ -621,6 +621,8 @@ class Dispatcher {
           this.autoActed = false;
         }
         if (st !== 'busy') this.statusText = '';
+        // The preset goes with the turns of the message it came with, not with a later turn (a report, a wake).
+        if (st !== 'busy') this.preset = null;
         // Queued turns follow each other without an idle between them: the clock runs from the first.
         this.busyAt = st === 'busy' ? this.busyAt ?? nowIso() : null;
         store.changed();
@@ -791,7 +793,8 @@ class Dispatcher {
   send(text: string, files: string[] = [], replyTo: string | null = null, via: 'desktop' | 'telegram' | 'auto' = 'desktop', preset: PromptPreset | null = null): string {
     const attached = registerAttachments(files);
     const full = text + attachmentBlock(attached);
-    this.preset = preset;
+    // A message sent during a turn without chips leaves the preset of the one that started it.
+    if (preset || !this.busy) this.preset = preset;
     // A reply is filed under a report or a Dispatcher message still in the chat (a reply to a reply, under its root);
     // anything else is a plain message.
     const to = threadTarget(store.data.chat, replyTo);

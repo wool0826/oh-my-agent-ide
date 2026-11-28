@@ -32,6 +32,8 @@ export interface CpopList {
   nav: 'history' | 'list';
   /** Tab takes the row too (mentions). */
   tab?: boolean;
+  /** No row chosen at first, so Enter does what it does without the list (a "/word" that matches nothing is sent). */
+  none?: boolean;
   pick: (row: CpopRow) => void;
 }
 
@@ -87,7 +89,7 @@ function draw(box: Box) {
   o.el.querySelector<HTMLElement>('.cpop-it.on')?.scrollIntoView({ block: 'nearest' });
 }
 
-/** Opens a list over the composer, or puts a new one in the one open; the first row is chosen. */
+/** Opens a list over the composer, or puts a new one in the one open; the first row is chosen, unless `none`. */
 export function showCpop(box: Box, list: CpopList) {
   let o = open[box];
   if (!o) {
@@ -110,7 +112,7 @@ export function showCpop(box: Box, list: CpopList) {
     input.setAttribute('aria-expanded', 'true');
   }
   o.list = list;
-  o.at = list.rows.length ? 0 : -1;
+  o.at = list.rows.length && !list.none ? 0 : -1;
   o.el.setAttribute('aria-label', list.title ?? '');
   draw(box);
 }
@@ -133,7 +135,8 @@ export function cpopKeys(e: KeyboardEvent, box: Box): boolean {
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
     e.preventDefault();
     if (!n) return true;
-    if (o.list.nav === 'history') {
+    if (o.at < 0) o.at = e.key === 'ArrowDown' ? 0 : n - 1;
+    else if (o.list.nav === 'history') {
       const next = recentStep(n, o.at, e.key === 'ArrowUp' ? 'up' : 'down');
       if (next < 0) { closeCpop(box); return true; }
       o.at = next;
@@ -144,8 +147,10 @@ export function cpopKeys(e: KeyboardEvent, box: Box): boolean {
     return true;
   }
   if ((e.key === 'Enter' && !e.shiftKey) || (e.key === 'Tab' && o.list.tab && !e.shiftKey)) {
+    // No row chosen: the list closes and the key does what it does without it (Enter sends).
+    if (o.at < 0 || !n) { closeCpop(box); return false; }
     e.preventDefault();
-    if (o.at >= 0 && n) take(box, o.at); else closeCpop(box);
+    take(box, o.at);
     return true;
   }
   return false;

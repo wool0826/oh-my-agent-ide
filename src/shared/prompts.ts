@@ -77,12 +77,20 @@ export function presetOf(p: Pick<PromptInput, 'repo' | 'model' | 'planFirst'>): 
 
 export const presetEmpty = (p: PromptPreset | null | undefined) => !p || (!p.repo && !p.model && !p.planFirst);
 
-/** A preset sent from the window: only its known fields, a repository that is not registered left out. */
-export function cleanPreset(raw: unknown, repoExists: (name: string) => boolean): PromptPreset | null {
+/** The chips once another prompt is put in: what it sets replaces, what it leaves unset stays as it was. */
+export function mergePreset(cur: PromptPreset | null, next: PromptPreset | null): PromptPreset | null {
+  if (!next) return cur;
+  if (!cur) return next;
+  return { repo: next.repo || cur.repo, model: next.model || cur.model, planFirst: next.planFirst || cur.planFirst };
+}
+
+/** A preset sent from the window: only its known fields, a repository that is not registered or a model the app does not offer left out. */
+export function cleanPreset(raw: unknown, repoExists: (name: string) => boolean, modelExists: (id: string) => boolean = () => true): PromptPreset | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   const repo = typeof r.repo === 'string' && repoExists(r.repo) ? r.repo : '';
-  const model = typeof r.model === 'string' ? r.model.trim().slice(0, 100) : '';
+  const id = typeof r.model === 'string' ? r.model.trim().slice(0, 100) : '';
+  const model = id && modelExists(id) ? id : '';
   return presetOf({ repo, model, planFirst: r.planFirst === true });
 }
 
@@ -96,12 +104,15 @@ export function presetNote(p: PromptPreset, modelName: string): string {
   return `[Preset for the tasks of this message: ${parts.join('; ')}. The app applies it to create_task.]`;
 }
 
-/** The arguments of a task the Dispatcher creates for a message with a preset: the preset's model and plan first, and its repository when none is given. */
-export function applyPreset<A extends { repo?: string; model_id?: string; plan_first?: boolean }>(args: A, p: PromptPreset | null): A {
+/**
+ * The arguments of a task the Dispatcher creates for a message with a preset: the preset's model and plan first, and
+ * its repository when a code task names none (research and mock-ups are not tied to one).
+ */
+export function applyPreset<A extends { kind?: string; repo?: string; model_id?: string; plan_first?: boolean }>(args: A, p: PromptPreset | null): A {
   if (!p) return args;
   return {
     ...args,
-    ...(p.repo && !args.repo ? { repo: p.repo } : {}),
+    ...(p.repo && !args.repo && args.kind !== 'other' ? { repo: p.repo } : {}),
     ...(p.model ? { model_id: p.model } : {}),
     ...(p.planFirst ? { plan_first: true } : {}),
   };

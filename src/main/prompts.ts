@@ -9,7 +9,9 @@ function clean(input: Partial<PromptInput>, id?: string) {
   const others = (store.data.prompts ?? []).filter((p) => p.id !== id);
   const r = cleanPrompt(input ?? {}, others);
   if (!r.ok) throw new Error(t(r.error));
-  if (r.value.repo && !store.repo(r.value.repo)) throw new Error(t('shell.err.noRepo', { name: r.value.repo }));
+  // A repository removed since the prompt was saved does not keep the user from changing its name or text.
+  const kept = id && store.data.prompts?.find((p) => p.id === id)?.repo === r.value.repo;
+  if (r.value.repo && !kept && !store.repo(r.value.repo)) throw new Error(t('shell.err.noRepo', { name: r.value.repo }));
   return r.value;
 }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyPreset, cleanPreset, cleanPrompt, filterCommands, filterPrompts, insertPrompt, presetNote, presetOf, promptCmd, slashAt } from '../src/shared/prompts';
+import { applyPreset, cleanPreset, cleanPrompt, filterCommands, filterPrompts, insertPrompt, mergePreset, presetNote, presetOf, promptCmd, slashAt } from '../src/shared/prompts';
 import type { SavedPrompt } from '../src/shared/types';
 
 const saved = (cmd: string, name: string): SavedPrompt => ({ id: cmd, cmd, name, text: `${name} text`, repo: '', model: '', planFirst: false, createdAt: '', updatedAt: '' });
@@ -53,6 +53,15 @@ test('prompts: a preset with nothing set is none, and one from the window keeps 
   assert.deepEqual(cleanPreset({ repo: 'app', model: 'm', planFirst: true, x: 1 }, has), { repo: 'app', model: 'm', planFirst: true });
   assert.equal(cleanPreset({ repo: 'gone' }, has), null);
   assert.equal(cleanPreset('x', has), null);
+  assert.deepEqual(cleanPreset({ model: 'gone', planFirst: true }, has, (m) => m === 'm'), { repo: '', model: '', planFirst: true });
+  assert.equal(cleanPreset({ model: 'gone' }, has, (m) => m === 'm'), null);
+});
+
+test('prompts: mergePreset keeps the chips another prompt leaves unset', () => {
+  const cur = { repo: 'app', model: 'a', planFirst: true };
+  assert.deepEqual(mergePreset(cur, null), cur);
+  assert.deepEqual(mergePreset(null, cur), cur);
+  assert.deepEqual(mergePreset(cur, { repo: '', model: 'b', planFirst: false }), { repo: 'app', model: 'b', planFirst: true });
 });
 
 test('prompts: applyPreset sets the model and plan first, and the repository only when none is given', () => {
@@ -61,5 +70,6 @@ test('prompts: applyPreset sets the model and plan first, and the repository onl
   assert.deepEqual(applyPreset(args, p), { title: 't', repo: 'app', model_id: 'claude-sonnet-5-5', plan_first: true });
   assert.deepEqual(applyPreset({ repo: 'web' }, { repo: 'app', model: '', planFirst: false }), { repo: 'web' });
   assert.deepEqual(applyPreset({ repo: 'web' }, null), { repo: 'web' });
+  assert.deepEqual(applyPreset({ kind: 'other' }, p), { kind: 'other', model_id: 'claude-sonnet-5-5', plan_first: true });
   assert.match(presetNote(p, 'Sonnet 5.5'), /repository app; model Sonnet 5\.5; plan first/);
 });
