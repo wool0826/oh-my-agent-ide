@@ -199,7 +199,7 @@ export async function createTask(a: { title: string; prompt: string; kind: 'code
     planFirst: !!a.plan_first,
     ...(a.compare ? { compare: a.compare } : {}),
     ...(bundleName(a.bundle) ? { bundle: bundleName(a.bundle) } : {}),
-    ...(a.rerun_of ? { rerunOf: a.rerun_of } : {}),
+    ...(a.rerun_of && !a.new_worker ? { rerunOf: a.rerun_of } : {}),
   };
   // Work in progress already changing files the prompt names: a warning in the result, the task is still created.
   const overlaps = task.kind === 'code' ? findOverlaps({ id: task.id, repo: task.repo, paths: promptPaths(task.prompt), after: a.after_task_id, compareGroup: a.compare?.group }, store.data.tasks) : [];

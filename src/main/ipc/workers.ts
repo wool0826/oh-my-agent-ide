@@ -41,7 +41,7 @@ export function registerWorkerIpc(ctx: IpcContext) {
     if (!x) throw new Error(t('err.noTask', { id: String(id) }));
     if (!how || !canRerun(x)) throw new Error(t('err.rerun', { id: x.id }));
     if (x.kind === 'code' && x.repo && !store.repo(x.repo)) throw new Error(t('err.noRepo', { name: x.repo }));
-    const body = text?.trim() ? text + attachmentBlock(registerAttachments(files ?? [])) : null;
+    const body = typeof text === 'string' && text.trim() ? text + attachmentBlock(registerAttachments(files ?? [])) : null;
     const model = x.model ?? (x.workerId ? store.worker(x.workerId)?.model : null) ?? null;
     const { task, worker } = await createTask(rerunInput(x, how, model, body));
     store.handout(assignedEvent(task, worker, false), task.id);

@@ -28,7 +28,7 @@ import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
 import { closeCpop, cpopKeys, historyKeys, historyTyped, rememberSent } from './ui/cpop';
-import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, sym, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
+import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, sym, t, task, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
 import type { Mention } from '../shared/types';
 import { drawComposerChips, dropMentionChip, mentionKeys, mentionsChanged, mentionsSent, mentionTyped, openMentionChips, withMentions } from './ui/mentions';
@@ -1402,7 +1402,7 @@ export function init() {
     if (threadKeys(e)) return;
     // The right sidebar's list: ↑/↓, Home and End move between its items at any width and select one that can be.
     if (listKeys(e, el)) return;
-    // A result that can run again: Shift+F10 opens its menu at the row, Enter opens its Worker (4B).
+    // A result row: Shift+F10 opens its menu when it can run again, Enter opens its Worker (4B).
     const res = el.matches?.('#chat-ins .res[data-ctx="result"]') ? rerunnable(el.dataset.task) : null;
     if (res && e.shiftKey && e.key === 'F10' && !e.altKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
@@ -1410,7 +1410,8 @@ export function init() {
       openResultMenu(res.id, r.left + 16, r.bottom);
       return;
     }
-    if (res && e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing && res.workerId) { e.preventDefault(); openWorker(res.workerId); return; }
+    const ran = el.matches?.('#chat-ins .res[data-task]') ? task(el.dataset.task ?? '') : null;
+    if (ran?.workerId && e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing) { e.preventDefault(); openWorker(ran.workerId); return; }
     // K1: the selected inbox card answers to keys while no text field has the focus. Enter on one of its buttons is
     // left to that button. A card that is not selected is selected first, by Enter or Space.
     const card = el.closest?.<HTMLElement>('#chat-ins [data-dec]');

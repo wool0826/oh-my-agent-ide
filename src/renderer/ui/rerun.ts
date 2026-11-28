@@ -3,6 +3,7 @@
 // which joins the back of the queue.
 import { canRerun, rerunInput, type RerunMode } from '../../shared/queue';
 import type { Task } from '../../shared/types';
+import { leaveShell } from './shell';
 import { closeDrawer } from './sidebar';
 import { $, esc, modelLabel, renderReply, S, sym, t, task, toast, tryCall, ui, worker } from './core';
 
@@ -54,7 +55,7 @@ async function undoRerun(id: string) {
  */
 export async function rerun(id: string, mode: RerunMode, text?: string, files: string[] = []): Promise<string | null> {
   const x = task(id);
-  if (!x) return null;
+  if (!x) return text === undefined ? null : t('rerun.failed', { msg: t('err.noTask', { id }) });
   const r = repoGone(x)
     ? { ok: false as const, error: t('rerun.noRepo') }
     : await tryCall<{ id: string; worker: string | null; status: Task['status'] }>('task:rerun', id, mode, text ?? null, files);
@@ -71,6 +72,9 @@ export async function rerun(id: string, mode: RerunMode, text?: string, files: s
 export function rerunInComposer(id: string, mode: RerunMode) {
   const x = task(id);
   if (!x) return;
+  // A rerun chip already there takes its untouched request with it; what the user typed stays, under the request.
+  leaveRerun();
+  leaveShell();
   const w = x.workerId ? worker(x.workerId) : null;
   const model = x.model ?? w?.model ?? null;
   const where = [mode === 'copy' ? t('rerun.newWorker') : x.workerId, x.kind === 'code' ? x.repo : null, model ? modelLabel(model) : null].filter(Boolean).join(' · ');
@@ -79,21 +83,23 @@ export function rerunInComposer(id: string, mode: RerunMode) {
   // In a narrow window the drawer would cover the composer.
   closeDrawer(false);
   const input = $<HTMLTextAreaElement>('#chat-input');
-  input.value = filled = rerunInput(x, mode, null).prompt;
+  const typed = input.value.trim();
+  const ask = rerunInput(x, mode, null).prompt;
+  input.value = typed ? `${ask}
+
+${typed}` : ask;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
 }
 
-/** The request put into the composer, so its chip's ✕ takes it out again while it is unchanged. */
-let filled = '';
-
-/** The rerun chip goes (✕): the request it brought goes with it unless it was edited. */
+/** The rerun chip goes (✕): the request it brought goes with it unless it was edited (also after a reload). */
 export function leaveRerun() {
-  if (!ui.reply.chat?.rerun) return;
+  const again = ui.reply.chat?.rerun;
+  const x = again ? task(again.of) : null;
+  if (!again || !x) return;
   const input = $<HTMLTextAreaElement>('#chat-input');
-  if (input.value === filled) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
-  filled = '';
+  if (input.value === rerunInput(x, again.mode, null).prompt) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
 }
 
 /** Copy request: the task's request as it was sent. */
