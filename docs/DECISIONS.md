@@ -1439,3 +1439,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
 
 268. **The right sidebar can widen to 960 again** (T-0172, asked for by the user; changes 215).
     - **Width:** the widest is 960, up from 640 (about 1.5x). The middle still keeps at least 420px (`MAIN_MIN`), so on a narrow window the sidebar stops earlier and never covers the chat. Default 344 and minimum 320 are unchanged.
+
+269. **Up in an empty composer opens the prompts sent from it, in a list over the composer** (T-0179, item 1B of the convenience mock-up; follows 135).
+    - **What:** the chat composer and each Worker's composer keep their own history (newest first, 50 each, the same text once) in the state under `history`, keyed `chat` or `w:<Worker>`; a Worker that is gone loses its list. Main keeps it (`history:list`, `history:add`); the window records a prompt once it went, never a `!` shell line.
+    - **Keys:** Up opens it only when the composer is empty, so it never takes the caret's move up a line. In the list Up goes to older prompts and Down back, as in the quick box (`recentStep`, decision 135); Down past the newest closes it. Typing narrows it (bold match) and closes it when nothing matches; Enter or a click fills the composer without sending; Esc closes it and keeps what was typed. The text field keeps the focus (`aria-activedescendant`).
+    - **Look:** the shared composer popover `ui/cpop.ts` (`.cpop`), which the saved prompts (6A) and mentions (7C) reuse: heading with the count, a clock per row, the age (just now, minutes, hours, yesterday, then M/D), and the keys at the foot. Opaque, since the composer under it is already blurred. The shortcut list gets "In the message field".
+    - Rejected: stepping the composer's text through the history in place, as the quick box does (nothing shows what comes next or how far back it goes), and keeping the history in the window's local storage (not in the state backups).
