@@ -21,6 +21,7 @@ import { restoreScreen, type Screen, type View, type WorkerFilter } from '../sha
 import { menuPlace } from '../shared/menu';
 import { addAuto, cancelAddAuto, pickAutoField, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
+import { bindQueueDrag, moveTask, queueKeys, queueMenuHtml } from './ui/queue';
 import { closeShot, markBrokenShot, openShot, pickAxis, shotOpen, showShot, stepShot } from './ui/shotview';
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
@@ -782,6 +783,16 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'task-cancel': ui.cancelAsk = { ids: [id], all: false }; renderCancelDialog(); break;
+    // A queued task's ⋯ (11B): its menu below the button, its right edge on the button's.
+    case 'queue-menu': {
+      const menu = $('#ctxmenu');
+      if (!menu.hidden && menu.dataset.for === `queue:${id}`) { closeCtxMenu(true); break; }
+      // Shown only on hover or focus: a button that is not drawn puts the menu at its row.
+      const r = (el.offsetParent ? el : el.closest<HTMLElement>('.q-row') ?? el).getBoundingClientRect();
+      openQueueMenu(id, (w) => r.right - w, r.bottom + 4, el);
+      break;
+    }
+    case 'queue-move': { const v = el.dataset.v; if (v === 'next' || v === 'top' || v === 'pin') void moveTask(id, v); break; }
     case 'queue-clear': ui.cancelAsk = { ids: [], all: true }; renderCancelDialog(); break;
     case 'cancel-dismiss': ui.cancelAsk = null; renderCancelDialog(); break;
     case 'cancel-ok': await confirmCancel(); break;
@@ -924,6 +935,13 @@ function openCtxMenu(x: MenuAt, y: MenuAt, back = document.activeElement as HTML
   menu.style.left = `${p.left}px`;
   menu.style.top = `${p.top}px`;
   menu.querySelector<HTMLElement>('button')?.focus();
+}
+/** A queued task's menu (11B): start next, to the top, pin, cancel. */
+function openQueueMenu(id: string, x: MenuAt, y: MenuAt, back = document.activeElement as HTMLElement | null) {
+  const menu = $('#ctxmenu');
+  menu.dataset.for = `queue:${id}`;
+  menu.innerHTML = queueMenuHtml(id);
+  openCtxMenu(x, y, back);
 }
 /** The open menu's button reads as closed again. */
 function menuGone() {
@@ -1168,7 +1186,7 @@ export function init() {
     if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure, [data-action="bundle-merge"]')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell, .osplit, #ws-more') || el?.hasAttribute('data-close')) { $('#ctxmenu').hidden = true; menuGone(); }
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell, .osplit, #ws-more, [data-action="queue-menu"]') || el?.hasAttribute('data-close')) { $('#ctxmenu').hidden = true; menuGone(); }
   });
   document.addEventListener('change', (e) => void (async () => {
     const el = e.target as HTMLSelectElement;
@@ -1468,9 +1486,21 @@ export function init() {
     if (dir) { e.preventDefault(); navStep(dir, 'key'); }
   });
 
-  // Context menu on auto-answers and sidebar Worker rows
+  // A queued task moves with Alt+arrows and P where it has the focus; Shift+F10 opens its menu there, on the Mac too.
+  $('#side').addEventListener('keydown', (e) => {
+    if (queueKeys(e)) return;
+    const row = (e.target as HTMLElement).closest<HTMLElement>('.q-row[data-id]');
+    if (row && e.shiftKey && e.key === 'F10' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const r = row.getBoundingClientRect();
+      openQueueMenu(row.dataset.id!, r.left + 16, r.bottom);
+    }
+  });
+  bindQueueDrag();
+
+  // Context menu on auto-answers, sidebar Worker rows and queued tasks
   document.addEventListener('contextmenu', (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ctx="aa"], [data-ctx="worker"]');
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ctx="aa"], [data-ctx="worker"], [data-ctx="queue"]');
     const menu = $('#ctxmenu');
     if (!el) { menu.hidden = true; return; }
     e.preventDefault();
@@ -1478,6 +1508,7 @@ export function init() {
     // Opened from the keyboard (the Menu key, Shift+F10), it shows at the row instead of at the pointer.
     const r = el.getBoundingClientRect();
     const x = e.clientX || r.left + 16, y = e.clientY || r.bottom;
+    if (el.dataset.ctx === 'queue') { openQueueMenu(id, x, y); return; }
     if (el.dataset.ctx === 'worker') {
       const w = worker(id);
       const cur = w ? workerTask(w) : null;

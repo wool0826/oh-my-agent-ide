@@ -149,6 +149,10 @@ export interface Task {
   queueReason?: 'slot' | 'limit' | null;
   /** When it entered the queue (queued or blocked); cleared when it leaves. Set by stampQueued (shared/queue.ts). */
   queuedSince?: string | null;
+  /** Its place in the queue when the user moved it (shared/queue.ts sortQueue); unset, it goes by queuedSince. Cleared when it leaves. */
+  queueRank?: number | null;
+  /** Pinned by the user: it starts before every task not pinned (shared/queue.ts). Cleared when it leaves the queue. */
+  queuePinned?: boolean;
   /** The steps its Worker planned and which are done (shared/steps.ts). Unset or null: the Worker gave none. */
   steps?: TaskStep[] | null;
   /** When the task began waiting for an answer, and whether it has since given its slot back (shared/slots.ts). */

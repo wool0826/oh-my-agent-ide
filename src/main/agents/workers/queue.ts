@@ -14,7 +14,7 @@ import { WORKER_TASK_COMPACT } from '../../../shared/context';
 import { providerOf } from '../../../shared/models';
 import { isLocalRepo } from '../../../shared/localRepo';
 import { branchPrOwned } from '../../../shared/prOwner';
-import { afterDependency, branchPrDue, cancelWhy, describeCancel, isQueued, pickBranchPr } from '../../../shared/queue';
+import { afterDependency, branchPrDue, cancelWhy, describeCancel, isQueued, moveQueued, pickBranchPr, type QueueMove } from '../../../shared/queue';
 import { describePick, startWorker } from '../../../shared/routing';
 import { canStart, queueOrder, slotsUsed, waitStep, waitsForSlot } from '../../../shared/slots';
 import { isStalled } from '../../../shared/stall';
@@ -427,6 +427,23 @@ export function fillSlots(m: WorkerManager) {
     deliver(m, w, s, [], task);
   }
   sendFeedback(m);
+}
+
+/**
+ * The user moved or pinned a waiting task (11B). The line is the tasks waiting for a slot; a task something else
+ * holds can only be pinned. Says whether anything changed.
+ */
+export function moveInQueue(id: string, move: QueueMove): boolean {
+  const task = store.task(id);
+  if (!task || !isQueued(task)) return false;
+  const changes = moveQueued(queueOrder(store.data.tasks, 'slot'), id, move, task);
+  if (!changes) return false;
+  for (const c of changes) {
+    const t = store.task(c.id);
+    if (t) { t.queueRank = c.queueRank; t.queuePinned = c.queuePinned; }
+  }
+  store.changed();
+  return true;
 }
 
 /**
