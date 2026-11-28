@@ -16,6 +16,7 @@ import {
 import { appendLines, asideName, readFold, copyAside, setAside, writeLines } from './stateFiles';
 import { readLogPage, searchLog } from './logFile';
 import { stampQueued } from '../shared/queue';
+import { addSent, type SentPrompt } from '../shared/quickInput';
 import { stampHistory } from '../shared/retro';
 import { callers, moveLine, statusMoves } from '../shared/taskStatus';
 import { log } from './log';
@@ -63,6 +64,8 @@ export interface Data {
   mergeQueue?: MergeQueueEntry[];
   /** The phone channel: Telegram update ids already taken (remote/inbound.ts), saved with the chat lines they made. */
   remote?: { telegramSeen?: number[]; telegramHeld?: { text: string; replyTo: string | null; files?: string[] }[] };
+  /** Prompts sent from each composer, newest first, by shared/quickInput.ts historyKey(). Unset before they existed. */
+  history?: Record<string, SentPrompt[]>;
 }
 
 type ChatPage = { items: ChatItem[]; more: boolean };
@@ -376,6 +379,19 @@ class Store extends EventEmitter {
   worker(id: string) { return this.data.workers.find((w) => w.id === id) ?? null; }
   task(id: string) { return this.data.tasks.find((t) => t.id === id) ?? null; }
   repo(name: string) { return this.data.repos.find((r) => r.name.toLowerCase() === name.toLowerCase()) ?? null; }
+
+  /** The prompts sent from one composer (shared/quickInput.ts historyKey()), newest first. */
+  sentPrompts(key: string): SentPrompt[] {
+    return this.data.history?.[key] ?? [];
+  }
+
+  /** A prompt went from a composer. The lists of Workers that are gone are dropped with it. */
+  addSentPrompt(key: string, text: string) {
+    const all = (this.data.history ??= {});
+    all[key] = addSent(all[key] ?? [], text, nowIso());
+    for (const k of Object.keys(all)) if (k.startsWith('w:') && !this.worker(k.slice(2))) delete all[k];
+    this.changed();
+  }
 
   chat(kind: ChatKind, text: string, ref?: string, replyTo?: string | null) {
     const item: ChatItem = { id: uid(), ts: nowIso(), kind, text, ref };

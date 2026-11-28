@@ -272,11 +272,11 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .tbtn svg { width: var(--icon-md); height: var(--icon-md); }
 /* "Sleep when done" armed: the moon in accent with the 2px ring, no fill. */
 .tbtn[aria-pressed="true"] { color: var(--accent-text); box-shadow: 0 0 0 2px var(--accent), var(--shadow-2); }
-/* As a drawer's button it names the drawer, with its count inline (I1). */
-.tbtn .lbl { display: none; }
-.win.ins-over #ins-toggle { width: auto; grid-auto-flow: column; gap: var(--space-6); padding: 0 var(--space-12); font-size: var(--fs-caption); font-weight: 500; }
-.win.ins-over #ins-toggle .lbl { display: inline; }
-.win.ins-over #ins-toggle .n { position: static; }
+/* Next waiting item (T-0180): the ask glyph and its count in one pill; the only count on the strip. */
+.tbtn.wide { width: auto; display: inline-flex; align-items: center; gap: var(--space-6); padding: 0 var(--space-12); font-size: var(--fs-caption); font-weight: 500; color: var(--text-primary); }
+.tbtn.wide[hidden] { display: none; }
+.tbtn.wide .ic { width: var(--icon-md); height: var(--icon-md); }
+.tbtn.wide .n { position: static; }
 .tbtn .n { position: absolute; right: -4px; top: -4px; min-width: 16px; height: 16px; padding: 0 var(--space-4); border-radius: var(--radius-full); background: var(--state-ask); color: var(--text-on-ask); font-size: var(--fs-caption2); line-height: 16px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
 .meter { height: 6px; border-radius: var(--radius-full); background: var(--meter-track); overflow: hidden; }
 .meter > i { display: block; height: 100%; border-radius: inherit; background: var(--meter-ok); }
@@ -532,6 +532,27 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .composer.shell.risky .field.input { caret-color: var(--danger); }
 .field.input.mono { font-family: var(--font-mono); font-size: var(--fs-caption); }
 @media (forced-colors: active) { .composer.shell { outline: 2px solid CanvasText; } }
+
+/* The list over a composer (ui/cpop.ts): prompt history, saved prompts, mentions. The text field keeps the focus; the
+   row chosen is a filled row, as in the palette. Opaque, since it sits inside the composer's own blur. */
+.cpop { position: absolute; left: var(--space-8); bottom: calc(100% + var(--space-6)); z-index: 1; width: min(380px, calc(100% - var(--space-16))); max-height: min(360px, 50vh); display: flex; flex-direction: column; padding: var(--space-6); border-radius: var(--radius-lg); background: linear-gradient(var(--surface-overlay), var(--surface-overlay)), var(--bg-canvas); box-shadow: var(--rim-strong), var(--shadow-4); box-sizing: border-box; animation: pop-in var(--dur-fast) var(--ease-out); cursor: default; }
+.cpop-l { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; }
+.cpop-h { flex: none; display: flex; align-items: center; gap: var(--space-6); padding: var(--space-4) var(--space-8) var(--space-2); font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); }
+.cpop-h .gap { flex: 1; }
+.cpop-h small { font-weight: 500; font-variant-numeric: tabular-nums; }
+.cpop-it { flex: none; display: flex; align-items: center; gap: var(--space-8); min-height: var(--control-md); padding: 0 var(--space-10) 0 var(--space-8); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--fs-body); white-space: nowrap; }
+.cpop-it > .sym { flex: none; width: 16px; height: 16px; color: var(--text-secondary); }
+.cpop-it > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cpop-it .hl { font-weight: 700; }
+.cpop-it small { margin-left: auto; padding-left: var(--space-12); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-caption2); color: var(--text-tertiary); }
+.cpop-it small.mono { font-family: var(--font-mono); }
+.cpop-it:hover:not(.on) { background: var(--surface-hover); }
+.cpop-it.on { background: var(--accent-solid); color: var(--text-on-accent); }
+.cpop-it.on :is(small, .sym) { color: inherit; }
+.cpop-none { padding: var(--space-12) var(--space-8); text-align: center; font-size: var(--fs-caption); color: var(--text-tertiary); }
+.cpop-foot { flex: none; display: flex; gap: var(--space-10); padding: var(--space-6) var(--space-8) var(--space-2); margin-top: var(--space-2); border-top: .5px solid var(--border-subtle); font-size: var(--fs-caption2); color: var(--text-tertiary); }
+.cpop-foot span { display: inline-flex; align-items: center; gap: var(--space-4); }
+@media (forced-colors: active) { .cpop-it.on { outline: 2px solid Highlight; } }
 
 /* A shell run in the thread. Its "!" is grey: in the thread red means one thing, an exit code that is not 0. */
 .sh-run { align-self: stretch; display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--surface-card); box-shadow: var(--rim); overflow: hidden; }
@@ -1149,6 +1170,7 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .toasts { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: center; gap: var(--space-6); max-width: 70vw; pointer-events: none; }
 .toast { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--space-12); max-width: 100%; background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); color: var(--text-primary); padding: var(--space-8) var(--space-16); border-radius: var(--radius-full); font-size: var(--fs-caption); box-shadow: var(--rim-strong), var(--shadow-3); }
 .toast > span { min-width: 0; overflow-wrap: anywhere; }
+.toast > .ic { --c: var(--state-done); flex: none; width: var(--icon-md); height: var(--icon-md); margin-right: calc(var(--space-6) - var(--space-12)); }
 .toast.err { color: var(--danger-text); padding-right: var(--space-8); }
 .toast .linkbtn { flex: none; font-weight: 600; }
 .toast .toast-x { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
@@ -1549,6 +1571,9 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 /* ---------- command palette ---------- */
 /* Floating glass over a scrim, a third of the way down: a field, then the list. The highlighted row is the menu's. */
 .toolbar > #cmdk-btn { margin-left: auto; }
+/* The Next button, when shown, starts the strip's right group ahead of Find (T-0180). */
+.toolbar > #next-btn { margin-left: auto; }
+.toolbar > #next-btn:not([hidden]) + #cmdk-btn { margin-left: 0; }
 .toolbar > #cmdk-btn + .usage { margin-left: 0; }
 .cmdk { position: fixed; z-index: var(--z-dialog); left: 0; right: 0; top: 16vh; margin-inline: auto; width: 560px; max-width: calc(100% - 32px); max-height: min(440px, 68vh); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-xl); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-5); }
 .cmdk-in { flex: none; display: flex; align-items: center; gap: var(--space-10); min-height: var(--row-min); padding: 0 var(--space-16); border-bottom: .5px solid var(--border-subtle); color: var(--text-secondary); }

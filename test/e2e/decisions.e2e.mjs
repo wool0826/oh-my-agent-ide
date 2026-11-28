@@ -143,6 +143,45 @@ flow('decision cards take the keys: none is selected at first, Enter or ↓ sele
   await app.until("document.querySelector('#dlg').hidden", 'the shortcut list closed');
 });
 
+flow('the Next button and Ctrl/Cmd+I go round the waiting decisions; the count is on Next and the taskbar only', {}, async (app) => {
+  const mod = process.platform === 'darwin' ? 4 : 2;
+  await app.say('@fake task - Install one\n@@fake permission npm install a\n@@fake result Installed.\n@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.');
+  const CARD = `${DEC}[data-dec]`;
+  await app.until(`document.querySelectorAll('${CARD}').length === 2`, 'both decision cards');
+  const ids = await app.evaluate(`return [...document.querySelectorAll('${CARD}')].map((c) => c.dataset.dec);`);
+  const at = () => app.evaluate(`const c = document.querySelector('${CARD}[aria-current="true"]'); return c && document.activeElement === c ? c.dataset.dec : null;`);
+  const go = async (want, what) => app.until(`const c = document.querySelector('${CARD}[aria-current="true"]'); return !!c && c.dataset.dec === ${JSON.stringify(want)} && document.activeElement === c;`, what);
+  // The strip's Next button counts them; the right sidebar's button is its icon alone.
+  assert.deepEqual(JSON.parse(await app.evaluate("const b = document.querySelector('#next-btn'); return JSON.stringify([b.hidden, b.innerText.trim(), document.querySelector('#ins-toggle').innerText.trim(), b.getAttribute('aria-label')]);")),
+    [false, '2', '', 'Next waiting item 2']);
+  await app.until("return (async () => (await window.ide.call('e2e:badge')).n === 2)();", 'the taskbar badge at 2');
+  if (process.platform === 'win32') assert.equal((await app.evaluate("return await window.ide.call('e2e:badge');")).overlay, true);
+  // Nothing is selected: Next goes to the first, then on and round; Shift goes back.
+  await app.click('#next-btn');
+  await go(ids[0], 'Next: the first card');
+  await app.key('KeyI', 'i', 73, mod);
+  await go(ids[1], 'Ctrl+I: the second card');
+  await app.key('KeyI', 'i', 73, mod);
+  await go(ids[0], 'Ctrl+I: round to the first');
+  await app.key('KeyI', 'I', 73, mod | 8);
+  await go(ids[1], 'Ctrl+Shift+I: back to the second');
+  assert.equal(await at(), ids[1]);
+  // The palette lists both commands with their keys.
+  await app.key('KeyK', 'k', 75, mod);
+  await app.until("document.querySelector('#cmdk-q') === document.activeElement", 'the palette');
+  await app.evaluate("const q = document.querySelector('#cmdk-q'); q.value = 'waiting'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
+  await app.until("[...document.querySelectorAll('#cmdk-list .cmdk-it')].map((x) => x.innerText).join('|').includes('Previous waiting item')", 'both commands in the palette');
+  await app.key('Escape', 'Escape', 27);
+  // With every decision answered, Next is gone, the badge clears and Ctrl+I says nothing waits.
+  for (const id of await app.evaluate(`return [...document.querySelectorAll('${CARD}')].map((c) => c.dataset.dec);`)) {
+    await app.evaluate(`await window.ide.call('decision:answer', ${JSON.stringify(id)}, document.querySelector('[data-dec="' + ${JSON.stringify(id)} + '"] [data-val="deny"]') ? 'deny' : 'Left'); return 1;`);
+  }
+  await app.until(`document.querySelectorAll('${CARD}').length === 0 && document.querySelector('#next-btn').hidden`, 'Next hidden with nothing waiting');
+  await app.until("return (async () => (await window.ide.call('e2e:badge')).n === 0)();", 'the taskbar badge cleared');
+  await app.key('KeyI', 'i', 73, mod);
+  await app.until("[...document.querySelectorAll('#toasts .toast')].some((x) => x.innerText.includes('Nothing waiting') && x.querySelector('.ic'))", 'the nothing-waiting toast');
+});
+
 flow('a plan waits for approval before the work goes on', {}, async (app) => {
   await app.say('@fake task - Plan the change\n@@fake plan WHAT: rename the field\\nHOW: one commit\\nOUTPUT: a PR\n@@fake result Carried out the plan.');
   await app.until(`!!document.querySelector('${DEC}')`, 'the plan card');

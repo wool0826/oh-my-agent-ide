@@ -506,17 +506,18 @@ function dropToast(el: Element) {
 
 /**
  * A short message over the composer. They stack, newest at the bottom, each on its own timer; `action` adds a button
- * (Undo). An error is announced at once and stays until it is dismissed.
+ * (Undo). An error is announced at once and stays until it is dismissed. `glyph`: an icon before the text (ic kind).
  */
-export function toast(text: string, err = false, action?: ToastAction) {
+export function toast(text: string, err = false, action?: ToastAction, glyph?: string) {
   const box = $('#toasts');
   // The same message again moves to the bottom instead of showing twice.
-  for (const old of box.children) if (old.querySelector(':scope > span')?.textContent === text) old.remove();
+  for (const old of box.children) if (old.querySelector(':scope > span:not(.ic)')?.textContent === text) old.remove();
   const el = document.createElement('div');
   el.className = `toast${err ? ' err' : ''}`;
   if (err) el.setAttribute('role', 'alert');
   const msg = document.createElement('span');
   msg.textContent = text;
+  if (glyph) el.insertAdjacentHTML('afterbegin', ic(glyph));
   el.append(msg);
   if (action) {
     const b = document.createElement('button');

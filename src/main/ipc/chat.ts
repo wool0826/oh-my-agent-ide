@@ -13,6 +13,9 @@ export function registerChatIpc(ctx: IpcContext) {
   handle('state:full', () => ctx.sender.full(ctx.snapshot()));
   handle('chat:send', (text: string, files?: string[], replyTo?: string | null) => dispatcher.send(text, files ?? [], typeof replyTo === 'string' ? replyTo : null));
   handle('chat:stop', () => dispatcher.stop());
+  // The composers' prompt history (decision 1B): kept in main, read when Up opens it.
+  handle('history:list', (key: string) => store.sentPrompts(String(key)));
+  handle('history:add', (key: string, text: string) => store.addSentPrompt(String(key), String(text ?? '')));
   // The quick message box: its texts, a send (the same as typing in the chat) and putting it away.
   handle('quick:text', () => ({ ph: t('quick.ph'), sent: t('quick.sent'), files: t('quick.files'), lang: loadSettings().language, theme: loadSettings().theme, fontFamily: loadSettings().fontFamily, fontSize: loadSettings().fontSize, repos: store.data.repos.map((r) => r.name) }));
   handle('quick:send', (text: string, files?: string[]) => dispatcher.send(String(text), Array.isArray(files) ? files.map(String) : []));
