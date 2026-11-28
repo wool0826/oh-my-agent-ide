@@ -1461,6 +1461,26 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 .run-cmd { align-self: flex-start; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-code); }
 .run-url { font-size: var(--fs-caption); color: var(--text-link); cursor: pointer; overflow-wrap: anywhere; }
 .run-url:hover { text-decoration: underline; }
+.run-pills { display: inline-flex; align-items: center; gap: var(--space-6); min-width: 0; }
+.run-port svg, .run-warn svg { flex: none; width: var(--icon-sm); height: var(--icon-sm); }
+.run-port { font-variant-numeric: tabular-nums; }
+.run-warn { display: flex; align-items: center; gap: var(--space-6); font-size: var(--fs-caption); color: var(--warning-text); }
+.run-warn > span { min-width: 0; overflow-wrap: anywhere; }
+.kv > .kv-port { display: flex; align-items: center; justify-content: space-between; gap: var(--space-8); }
+.kv-port b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.kv-port .btn { margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-6)) calc(-1 * var(--space-4)) 0; }
+/* A repository's run port: base port and Worker step, then the variables one Worker's run gets (13A). */
+.group.run-set { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-8) var(--space-12); padding: var(--space-10) var(--space-12); font-size: var(--fs-caption); }
+.rs-port { width: 6em; text-align: center; font-variant-numeric: tabular-nums; }
+.inp.rs-port.bad { box-shadow: var(--well), 0 0 0 1px var(--danger); }
+.rs-err { grid-column: 1 / -1; justify-self: end; display: flex; align-items: center; gap: var(--space-4); margin-top: calc(-1 * var(--space-4)); font-size: var(--fs-caption2); color: var(--danger-text); }
+.rs-err[hidden] { display: none; }
+.rs-err svg { width: var(--icon-sm); height: var(--icon-sm); }
+.envt { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-caption); }
+.envt th { padding: var(--space-6) var(--space-12); text-align: left; font-weight: var(--fw-medium); color: var(--text-tertiary); }
+.envt th:first-child { width: 42%; }
+.envt td { padding: var(--space-6) var(--space-12); border-top: .5px solid var(--border-subtle); font-family: var(--font-mono); font-size: var(--fs-code); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text; }
+.envt td:first-child { font-weight: 600; }
 .run-out { margin: 0; padding: var(--space-8) var(--space-10); max-height: 190px; overflow: auto; border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: var(--well); font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--text-secondary); }
 
 /* ---------- a repository's open issues ---------- */

@@ -1,6 +1,7 @@
 // The window's entry: drawing every screen, what each control does, and start-up.
 import { panelsFor, type Panel, type Part, type StateMsg } from '../shared/stateSync';
 import { hasSpend } from '../shared/spend';
+import { parseBasePort } from '../shared/runEnv';
 import { reviewMessage } from '../shared/diffComment';
 import { readyToQueue } from '../shared/mergeQueue';
 import { issueMessage } from '../shared/issues';
@@ -30,7 +31,7 @@ import { go, navKey, navStep, readMemFile } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
-import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira } from './ui/repos';
+import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira, syncPorts } from './ui/repos';
 import { copyStatus, toggleStatus } from './ui/status';
 import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
@@ -754,7 +755,13 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'repo-add': await addRepo(); break;
-    case 'repo-save': await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value, $<HTMLTextAreaElement>('#repo-run').value); toast(t('toast.descSaved')); break;
+    case 'repo-save': {
+      const port = $<HTMLInputElement>('#repo-port');
+      if (parseBasePort(port.value) === 'bad') { port.focus(); break; }
+      await call('repo:update', id, $<HTMLTextAreaElement>('#repo-desc').value, $<HTMLTextAreaElement>('#repo-setup').value, $<HTMLTextAreaElement>('#repo-run').value, { basePort: port.value, portStep: Number($<HTMLInputElement>('#repo-step').value) });
+      toast(t('toast.descSaved'));
+      break;
+    }
     case 'repo-remove': askRepoRemove(id); break;
     // Picking the open file again reads it again (a Worker may have changed it).
     case 'mem-select': if (ui.memSel === id) void readMemFile(id); else go({ memSel: id }); break;
@@ -1044,6 +1051,7 @@ export function init() {
   });
   document.addEventListener('change', (e) => void (async () => {
     const el = e.target as HTMLSelectElement;
+    if (el.id === 'repo-step') syncPorts();
     if (el.dataset.change === 'sound-kind') syncSoundRows();
     if (el.classList?.contains('step-v')) syncStep(el as unknown as HTMLInputElement, true);
     // The Jira token goes to the main process by itself and is cleared from the field: it is never part of the page's state.
@@ -1074,6 +1082,7 @@ export function init() {
     const el = e.target as HTMLInputElement;
     if (el.id === 'cmdk-q') { renderPalette(el.value); return; }
     if (el.id === 'set-qkey') markBad(el, normalizeQuickKey(el.value) === null);
+    if (el.id === 'repo-port') syncPorts();
     if (el.id === 'set-qfrom' || el.id === 'set-qto') markBad(el, !!el.value.trim() && !cleanTime(el.value));
     if (el.id === 'set-vol') syncSlider(el);
     if (el.classList.contains('step-v')) syncStep(el, false);

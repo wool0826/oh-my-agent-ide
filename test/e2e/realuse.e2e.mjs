@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { flow, waitFor } from './harness.mjs';
 
@@ -172,6 +173,39 @@ flow('row 5.3: a run command starts from a Worker, shows its output, opens its a
   const run = await app.until(`return (await window.ide.call('state')).runs.find((r) => r.workerId === ${JSON.stringify(wid)} && !r.running);`, 'the run stopped', 30_000);
   assert.equal(run.stopped, true);
   await app.until("!document.querySelector('[data-action=\"run-stop\"]') && !!document.querySelector('[data-action=\"run-start\"]') && !document.querySelector('.run-url')", 'Start again in place of Stop');
+});
+
+// 13A: each Worker's run gets its own port from the repository's base port; a taken one moves the run up by one.
+flow('13A: a run gets PORT and the worktree variables, and a taken port moves it to the next one', { repos: ['demo'] }, async (app) => {
+  // $PORT is in the command itself: PowerShell gets it as its own variable, a POSIX shell from the environment.
+  const cmd = `node -e "console.log('Listening on http://localhost:' + process.env.PORT + '/ ' + process.env.WORKTREE_NAME + ' arg ' + process.argv[1]); setInterval(() => {}, 1000)" $PORT`;
+  const update = (basePort) => app.evaluate(`return await window.ide.call('repo:update', 'demo', 'e2e', undefined, ${JSON.stringify(cmd)}, { basePort: '${basePort}', portStep: 10 }).then(() => 'saved', () => 'refused');`);
+  assert.equal(await update(80), 'refused', 'a base port under 1024');
+  assert.equal(await update(45000), 'saved');
+  await app.say('@fake task demo Look around\n@@fake result Looked.');
+  const wid = task(await settled(app, 'Look around'), 'Look around').workerId;
+  const want = 45000 + (Number(/\d+$/.exec(wid)[0]) - 1) * 10;
+  // Something else holds the Worker's own port.
+  const holder = net.createServer();
+  await new Promise((resolve) => holder.listen(want, '127.0.0.1', resolve));
+  try {
+    await openWorker(app, wid);
+    await app.until(`(document.querySelector('#wk-ins .kv-port')?.textContent ?? '').includes('${want}')`, 'the port row before the run');
+    await app.click('[data-action="run-start"]');
+    const next = want + 1;
+    await app.until(`(document.querySelector('.run-out')?.textContent ?? '').includes('Listening on http://localhost:${next}/ ${wid} arg ${next}')`, 'the run on the next port with its variables', 30_000);
+    await app.until(`(document.querySelector('.run-warn')?.textContent ?? '').includes('${want}') && (document.querySelector('.run-port')?.textContent ?? '') === '${next}' && !!document.querySelector('.kv-port [data-action="open-url"]')`, 'the taken port said, the port it got, and the open button');
+    await app.click('[data-action="run-stop"]');
+    await app.until(`return (await window.ide.call('state')).runs.some((r) => r.workerId === ${JSON.stringify(wid)} && !r.running);`, 'the run stopped', 30_000);
+  } finally {
+    holder.close();
+  }
+  // The repository view lists the variables for its first Worker, and marks a base port out of range.
+  await app.click('#views button[data-v="repo"]');
+  await app.click('#repo-main [data-action="repo-select"][data-id="demo"]');
+  await app.until(`[...document.querySelectorAll('#repo-env .envt td')].map((td) => td.textContent).join(' ').includes('PORT ${want} WORKTREE_NAME ${wid}')`, 'the variables table');
+  await app.evaluate("const i = document.querySelector('#repo-port'); i.value = '80'; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
+  await app.until("!document.querySelector('#repo-port-err').hidden && document.querySelector('#repo-port').getAttribute('aria-invalid') === 'true' && !document.querySelector('#repo-env').textContent.includes('PORT ')", 'the range error and no PORT');
 });
 
 // 9.5: the red dot on the gear goes once the sign-in is back and the checks run again.

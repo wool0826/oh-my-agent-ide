@@ -67,6 +67,10 @@ export interface Repo {
   setup?: string;
   /** Shell command that runs the project (a dev server, the app), started in a Worker's worktree on request. */
   run?: string;
+  /** The port Worker W-01's run gets; each later Worker gets `portStep` more (shared/runEnv.ts). None: no PORT. */
+  basePort?: number;
+  /** 1, 10 or 100; 10 when unset. */
+  portStep?: number;
 }
 
 export type WorkerStatus = 'starting' | 'running' | 'waiting' | 'idle' | 'error' | 'archived';
@@ -546,6 +550,10 @@ export interface RunView {
   /** The first local address it printed, to open in a browser. */
   url: string | null;
   startedAt: string;
+  /** The port it was given in PORT, when the repository sets a base port. */
+  port?: number;
+  /** The Worker's own port, when something else held it and the run got the next free one. */
+  busyPort?: number;
 }
 
 export interface AppState {
