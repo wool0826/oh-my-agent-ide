@@ -1293,3 +1293,11 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
       "Separate context" chip gives way first (its words are cut with an ellipsis, the lock stays).
     - Not changed here: under about 600px of page width the view tabs and the rings shrink to slivers. That needs a
       compact toolbar (icons or a menu for the views), which is a layout change and is left as a proposal.
+257. **The sidebar's row buttons stay in their row: the result cards' top-right placement is theirs alone** (T-0163).
+    - Found in the UI audit: a sidebar row never showed its Stop and Open buttons. The rule that puts a result's ✕ and an
+      auto-answer's pencil at the card's top right was written for every `.row-acts`, so it also took the sidebar's
+      ones out of their rows: all of them lay invisible on each other at the sidebar's top-right corner, where a click on
+      what looked like empty space stopped a Worker, and the keyboard focus went to buttons nobody could see.
+    - The placement is now under `:is(.res, .aa) >` only. The sidebar keeps its own rule (in the row's line, on hover,
+      focus or selection).
+    - Rejected: renaming one of the two classes (more markup and tests to touch for the same result).
