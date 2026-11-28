@@ -80,14 +80,15 @@ export function renderRepos() {
     main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b></div><div class="empty-view">${sym('s-box')}<b>${t('repo.emptyTitle')}</b>${addBtn('btn-primary')}</div>${jiraHtml()}`;
   } else keepScroll(main, () => {
     // Columns for what tells repositories apart (B2): the default branch and where it is, which narrow widths drop.
+    // The header and the rows share one grid (.repo-rows), so a row's pills do not move its columns off the header's.
     const cols = `<div class="li-cols repo" aria-hidden="true"><span></span><span>${t('repo.colName')}</span><span class="c-br">${t('kv.defaultBranch')}</span><span class="c-path">${t('kv.path')}</span><span></span></div>`;
-    main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list">${cols}${s.repos.map((r) => {
+    main.innerHTML = `<div class="vhead"><b role="heading" aria-level="1">${t('nav.repo')}</b><span class="vhead-r"><small>${s.repos.length}</small>${addBtn('')}</span></div><div class="lst" data-scroll="repo-list"><div class="repo-rows">${cols}${s.repos.map((r) => {
       const ts = s.tasks.filter((x) => x.repo === r.name);
       const run = ts.filter((x) => x.status === 'running' || x.status === 'waiting').length;
       const pr = prsInReview(ts).length;
       const local = r.local ? `<span class="pill" data-tip="${esc(t('repo.localNote'))}">${t('repo.local')}</span>` : '';
       return `<div tabindex="0" role="button" class="li repo${ui.repoSel === r.name ? ' sel' : ''}" data-action="repo-select" data-id="${esc(r.name)}">${ic('repo', 'box')}<span class="m"><b>${esc(r.name)}</b><span>${esc(r.description || r.url)}</span></span><span class="c-br">${esc(r.defaultBranch || '–')}</span><span class="c-path" data-tip="${esc(r.path)}">${esc(shortPath(r.path, 2))}</span><span class="r">${local}${run ? `<span class="pill" data-tone="accent">${t('repo.running', { n: run })}</span>` : ''}${pr ? `<span class="pill" data-tone="pr-open">PR ${pr}</span>` : ''}</span></div>`;
-    }).join('')}${jiraHtml()}</div>`;
+    }).join('')}</div>${jiraHtml()}</div>`;
   });
   const ins = $('#repo-ins');
   if (ui.repoAdd) { keepInputs(ins, () => { ins.innerHTML = repoAddHtml(); }); return; }
@@ -112,9 +113,9 @@ export function renderRepos() {
       <div class="ins-h"><b role="heading" aria-level="2">${t('repo.desc')}</b></div>
       <textarea class="inp" data-keep="repo-desc-${esc(r.name)}" data-scroll="repo-desc-${esc(r.name)}" id="repo-desc" aria-label="${t('repo.desc')}">${esc(r.description)}</textarea>
       <div class="ins-h"><b role="heading" aria-level="2">${t('repo.setup')}</b></div>
-      <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" data-scroll="repo-setup-${esc(r.name)}" id="repo-setup" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
+      <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-setup-${esc(r.name)}" data-scroll="repo-setup-${esc(r.name)}" id="repo-setup" aria-label="${t('repo.setup')}" placeholder="${esc(t('repo.setupPh'))}">${esc(r.setup ?? '')}</textarea>
       <div class="ins-h"><b role="heading" aria-level="2">${t('repo.run')}</b></div>
-      <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-run-${esc(r.name)}" data-scroll="repo-run-${esc(r.name)}" id="repo-run" placeholder="${esc(t('repo.runPh'))}">${esc(r.run ?? '')}</textarea>
+      <textarea class="inp mono" rows="2" spellcheck="false" data-keep="repo-run-${esc(r.name)}" data-scroll="repo-run-${esc(r.name)}" id="repo-run" aria-label="${t('repo.run')}" placeholder="${esc(t('repo.runPh'))}">${esc(r.run ?? '')}</textarea>
       <div class="ins-act"><button class="btn" data-action="repo-save" data-id="${esc(r.name)}">${t('repo.save')}</button></div>
       ${issuesHtml(r)}
       <div class="ins-h"><b role="heading" aria-level="2">${t('wk.tasks')}</b><small>${all.length}</small></div>

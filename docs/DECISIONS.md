@@ -1331,3 +1331,12 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
       (760 px) is as before, so no screen picture changes.
     - Rejected here, kept as a proposal in the audit report: an icons-only nav or a nav that folds away (a change of
       the screen's structure).
+261. **The repository list's header and rows are one grid, so a row's pills cannot move its columns** (T-0163).
+    - Found in the UI audit: every row and the header were grids of their own with an `auto` last column, so a row with
+      "1 running" or "PR 2" pills had narrower name, branch and path columns than the header and than its neighbours
+      (the branch 18px and the path 26px left of their headings at 1320px).
+    - The columns are now on a wrapper (`.repo-rows`) and the header and rows take them with `subgrid`. The narrow
+      variants (path dropped, then the branch) change the wrapper's columns. The pills end at the row's right edge.
+    - The setup and run command fields in the repository's panel get their heading as their accessible name (they had
+      a placeholder only).
+    - Rejected: a fixed width for the pills' column (cuts a long pill or wastes room when there is none).
