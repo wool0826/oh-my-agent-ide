@@ -133,3 +133,74 @@ flow('from the paired phone, words reach the Dispatcher and its answer comes bac
   await waitFor(() => mine().some((m) => /^Locked/.test(m.text)), 'the lock answer');
   await app.until("return (await window.ide.call('state')).telegram.prefs.requests === false", 'requests off');
 });
+
+flow('a question reaches the phone with buttons and a press answers it; one answered on the desktop loses its buttons there', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const asked = (from, n = 1) => tg.state.sent.slice(from).filter((m) => m.reply_markup).slice(n - 1)[0];
+  const from = tg.state.sent.length;
+  await app.say('@fake task - Pick one\n@@fake ask Which side? | Left | Right\n@@fake result Picked.\n@fake task - Pick again\n@@fake ask Which way? | Up | Down\n@@fake result Went.');
+  await waitFor(() => asked(from, 2), 'both questions on the phone with buttons');
+  const [q1, q2] = [asked(from, 1), asked(from, 2)];
+  const side = /Which side/.test(q1.text) ? q1 : q2;
+  const way = side === q1 ? q2 : q1;
+  assert.deepEqual(side.reply_markup.inline_keyboard[0].map((b) => b.text), ['Left', 'Right']);
+
+  tg.push(tg.press(42, side.message_id, side.reply_markup.inline_keyboard[0][1].callback_data));
+  await app.until("return (await window.ide.call('state')).decisions.some((d) => d.answer === 'Right')", 'the answer in the app');
+  await waitFor(() => tg.state.acks.some((a) => a.text === 'Right'), 'the press acknowledged');
+  await waitFor(() => tg.state.edits.some((e) => e.message_id === side.message_id && /→ Right$/.test(e.text ?? '')), 'its buttons off on the phone');
+
+  await app.click('#chat-ins .dec [data-action="answer"][data-val="Up"]');
+  await waitFor(() => tg.state.edits.some((e) => e.message_id === way.message_id && /→ Up$/.test(e.text ?? '')), 'the desktop answer on the phone');
+  // Pressed again after it was answered: already handled.
+  tg.push(tg.press(42, way.message_id, way.reply_markup.inline_keyboard[0][1].callback_data));
+  await waitFor(() => tg.state.acks.some((a) => a.text === 'Already handled.'), 'already handled');
+  assert.ok(!(await app.state()).decisions.some((d) => d.answer === 'Down'));
+});
+
+flow('a photo from the phone is saved in the app folder and reaches the Dispatcher with its caption; a program is refused', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const from = tg.state.sent.length;
+  const mine = () => tg.state.sent.slice(from).map((m) => m.text);
+  tg.addFile('ph1', 'not really a jpeg', { path: 'photos/file_1.jpg' });
+  tg.push(tg.file(42, 'photo', 'ph1', { caption: '@fake say Got the photo.' }));
+  await app.until("return (await window.ide.call('state')).chat.some((m) => m.kind === 'user' && m.via === 'telegram')", 'the photo in the chat');
+  await waitFor(() => mine().includes('Got the photo.'), 'the answer on the phone');
+  // The message names the file, written under <home>/data/telegram in a folder of its own.
+  const item = (await app.state()).chat.find((m) => m.kind === 'user' && m.via === 'telegram');
+  const file = item.text.match(/\S*[\\/]data[\\/]telegram[\\/]\d{8}-[0-9a-f]{8}[\\/]photo-\d{8}-\d{6}\.jpg/)?.[0];
+  assert.ok(file, 'the saved photo in the message');
+  assert.equal(fs.readFileSync(file, 'utf8'), 'not really a jpeg');
+
+  tg.addFile('ex1', 'MZ');
+  tg.push(tg.file(42, 'document', 'ex1', { name: 'setup.exe' }));
+  await waitFor(() => mine().includes('Programs and shortcuts are not received.'), 'the refusal');
+  assert.deepEqual(tg.state.downloads, ['photos/file_1.jpg']);
+});
+
+flow('a plan reaches the phone with its text and Approve, and a press lets the Worker go on', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const from = tg.state.sent.length;
+  await app.say('@fake task - Plan the change\n@@fake plan WHAT: rename the field\\nHOW: one commit\\nOUTPUT: a PR\n@@fake result Carried out the plan.');
+  await waitFor(() => tg.state.sent.slice(from).some((m) => m.reply_markup), 'the plan with buttons');
+  const plan = tg.state.sent.slice(from).find((m) => m.reply_markup);
+  assert.match(plan.text, /rename the field/);
+  const [approve, deny] = plan.reply_markup.inline_keyboard[0];
+  assert.deepEqual([approve.text, deny.text], ['Approve plan', 'Deny']);
+  tg.push(tg.press(42, plan.message_id, approve.callback_data));
+  await waitFor(() => tg.state.sent.slice(from).some((m) => /^W-\d+ done/.test(m.text) && /Plan the change/.test(m.text)), 'the result on the phone');
+  assert.ok(tg.state.edits.some((e) => e.message_id === plan.message_id && /→ Approve plan$/.test(e.text ?? '')), 'its buttons off');
+});
+
+flow('a message sent while the app was off waits, and Send passes it to the Dispatcher', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const from = tg.state.sent.length;
+  tg.push(tg.user(42, '@fake say Picked up the old one.', { date: Math.floor(Date.now() / 1000) - 3600 }));
+  await waitFor(() => tg.state.sent.slice(from).some((m) => m.reply_markup && /waiting/.test(m.text)), 'the question about it');
+  assert.ok(!(await app.state()).chat.some((m) => m.kind === 'user' && m.via === 'telegram'), 'it waits');
+  const ask = tg.state.sent.slice(from).find((m) => m.reply_markup && /waiting/.test(m.text));
+  const send = ask.reply_markup.inline_keyboard.flat().find((b) => b.text === 'Send');
+  assert.ok(send, 'a Send button');
+  tg.push(tg.press(42, ask.message_id, send.callback_data));
+  await waitFor(() => tg.state.sent.slice(from).some((m) => m.text === 'Picked up the old one.'), 'the answer on the phone');
+});

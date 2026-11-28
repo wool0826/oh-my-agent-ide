@@ -3,6 +3,8 @@
 // every failure becomes "method: code description" with any token shape masked.
 import { z } from 'zod';
 import { maskToken, type TgUpdate, type TgUser } from '../../shared/remote';
+import type { TgButton } from '../../shared/remoteDecision';
+import { fileUrlPath } from '../../shared/remoteFile';
 
 /** The API's address; tests point it at a stand-in server with OMA_TELEGRAM_API, as OMA_DATA_DIR moves the data. */
 export const telegramBase = () => (process.env.OMA_TELEGRAM_API || 'https://api.telegram.org').replace(/\/+$/, '');
@@ -26,8 +28,19 @@ const message = z.object({
   text: z.string().optional(),
   forward_origin: z.object({ type: z.string() }).optional(),
   reply_to_message: z.object({ message_id: z.number() }).optional(),
+  photo: z.array(z.object({ file_id: z.string(), width: z.number().optional(), height: z.number().optional(), file_size: z.number().optional() })).optional(),
+  document: z.object({ file_id: z.string(), file_name: z.string().optional(), mime_type: z.string().optional(), file_size: z.number().optional() }).optional(),
+  caption: z.string().optional(),
+  media_group_id: z.string().optional(),
 });
-const update = z.object({ update_id: z.number(), message: message.optional() });
+const fileInfo = z.object({ file_id: z.string(), file_size: z.number().optional(), file_path: z.string().optional() });
+const callback = z.object({
+  id: z.string(),
+  from: user,
+  message: z.object({ message_id: z.number(), chat: z.object({ id: z.number(), type: z.string() }) }).optional(),
+  data: z.string().optional(),
+});
+const update = z.object({ update_id: z.number(), message: message.optional(), callback_query: callback.optional() });
 const reply = z.object({
   ok: z.boolean(),
   result: z.unknown().optional(),
@@ -49,7 +62,9 @@ function kindOf(status: number, telegram = true): TgErrorKind {
 }
 
 export interface CallOpts { timeoutMs?: number; signal?: AbortSignal }
-export interface SendOpts { silent?: boolean; replyTo?: number }
+export interface SendOpts { silent?: boolean; replyTo?: number; buttons?: TgButton[][] }
+
+const keyboard = (rows: TgButton[][]) => ({ inline_keyboard: rows.map((r) => r.map((b) => ({ text: b.text, callback_data: b.data }))) });
 
 export class TelegramApi {
   constructor(private readonly token: string, private readonly base = telegramBase()) {}
@@ -93,7 +108,7 @@ export class TelegramApi {
    * Telegram the ones before it were read, so they do not come again.
    */
   getUpdates(offset: number | null, timeout: number, o: CallOpts = {}): Promise<TgUpdate[]> {
-    const params: Record<string, unknown> = { timeout, allowed_updates: ['message'] };
+    const params: Record<string, unknown> = { timeout, allowed_updates: ['message', 'callback_query'] };
     if (offset !== null) params.offset = offset;
     // The request waits on the server, so it may take longer than the poll itself.
     // Each update is checked on its own: one the app cannot read comes back as its id alone, so the poller still
@@ -111,6 +126,61 @@ export class TelegramApi {
     const params: Record<string, unknown> = { chat_id: chatId, text, link_preview_options: { is_disabled: true } };
     if (s.silent) params.disable_notification = true;
     if (s.replyTo) params.reply_parameters = { message_id: s.replyTo, allow_sending_without_reply: true };
+    if (s.buttons?.length) params.reply_markup = keyboard(s.buttons);
     return this.call('sendMessage', params, message.pick({ message_id: true }), o);
+  }
+
+  /** Takes the buttons off one of the bot's messages, and with `text` puts that text in its place. */
+  async editMessage(chatId: number, messageId: number, text: string | null, o?: CallOpts): Promise<void> {
+    const base = { chat_id: chatId, message_id: messageId, reply_markup: keyboard([]) };
+    if (text === null) await this.call('editMessageReplyMarkup', base, z.unknown(), o);
+    else await this.call('editMessageText', { ...base, text, link_preview_options: { is_disabled: true } }, z.unknown(), o);
+  }
+
+  /**
+   * A file sent to the bot, as bytes: Telegram gives its path (getFile), then its address under /file serves it. More
+   * than `max` bytes, said or counted while it comes, stops the download ('bad': it will never fit).
+   */
+  async download(fileId: string, max: number, o: CallOpts = {}): Promise<Uint8Array> {
+    const info = await this.call('getFile', { file_id: fileId }, fileInfo, o);
+    const where = fileUrlPath(info.file_path ?? '');
+    if (!where) throw new TelegramError('getFile', 'bad', null, 'no file path');
+    if ((info.file_size ?? 0) > max) throw new TelegramError('getFile', 'bad', null, 'too big');
+    const timeout = AbortSignal.timeout(o.timeoutMs ?? 120_000);
+    const signal = o.signal ? AbortSignal.any([o.signal, timeout]) : timeout;
+    let res: Response;
+    try {
+      res = await fetch(`${this.base}/file/bot${this.token}/${where}`, { redirect: 'error', signal });
+    } catch (e) {
+      throw new TelegramError('file', 'network', null, timeout.aborted ? 'timed out' : (e as Error).name || 'failed');
+    }
+    if (!res.ok || !res.body) { await res.body?.cancel().catch(() => {}); throw new TelegramError('file', kindOf(res.status, false), res.status, ''); }
+    if (Number(res.headers.get('content-length') ?? 0) > max) { await res.body.cancel().catch(() => {}); throw new TelegramError('file', 'bad', res.status, 'too big'); }
+    const parts: Uint8Array[] = [];
+    let size = 0;
+    const reader = res.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > max) { await reader.cancel().catch(() => {}); throw new TelegramError('file', 'bad', res.status, 'too big'); }
+        parts.push(value);
+      }
+    } catch (e) {
+      if (e instanceof TelegramError) throw e;
+      throw new TelegramError('file', 'network', null, timeout.aborted ? 'timed out' : (e as Error).name || 'failed');
+    }
+    const out = new Uint8Array(size);
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.byteLength; }
+    return out;
+  }
+
+  /** Ends a button press's spinner, with a short note shown over the chat. */
+  async answerCallbackQuery(id: string, text?: string, o?: CallOpts): Promise<void> {
+    const params: Record<string, unknown> = { callback_query_id: id };
+    if (text) params.text = text.slice(0, 200);
+    await this.call('answerCallbackQuery', params, z.unknown(), o);
   }
 }

@@ -13,7 +13,7 @@ Every row carries one of these:
 | `e2e` | The app's own path, drivable with the fake agents (`@fake` scripts) and the gh stand-in (`test/e2e/gh-stub.mjs`). Not part of the hands-on pass: each runs in the flow its row names. | 15 |
 | `win` | Needs the user's hands and eyes on Windows: tray, notifications, sound, global shortcut, installer, screen reader, OS theme. | 12 |
 | `mac` | Needs a real Mac. Never run there so far. | 1 |
-| `real` | Needs a real model, a real account, real GitHub, Jira or ChatGPT. | 17 |
+| `real` | Needs a real model, a real account, real GitHub, Jira, ChatGPT or a Telegram bot. | 23 |
 
 A row is `e2e` when what it checks is the app's own path. When the expectation is about what a model does with real data (does the Worker merge the base, apply a review comment, does the Dispatcher split a bundle), it is `real`, even if part of it could be scripted.
 
@@ -30,7 +30,8 @@ A row is `e2e` when what it checks is the app's own path. When the expectation i
   - two Claude accounts registered in the app (7.2 needs both; one is enough for everything else),
   - one ChatGPT account for 7.3 (skip the row if there is none),
   - a Jira site with one open issue assigned to you and an API token (Cloud or Data Center) for 6.x,
-  - `gh` signed in to github.com (and to the company host for 2.7).
+  - `gh` signed in to github.com (and to the company host for 2.7),
+  - a Telegram account on a phone, for 10.x (a new bot is made in 10.1).
 - **Windows**: notifications on for the app, sound on, Narrator available (Win+Ctrl+Enter).
 - **Usage** (estimate, not measured): the half-day pass runs about 12 small Worker tasks (each a one-file change or a note) plus their Dispatcher turns and a few CI fix and review rounds. Expect roughly a third to a half of one account's five-hour window. 7.2 deliberately runs an account past 80% and is left to a normal working day.
 
@@ -78,10 +79,17 @@ The hands-on rows in run order. About four and a half hours of hands-on time; th
 | G1 | 8.2 | real | 15 min | | | | |
 | **H. On a real Mac** | | | | | | | |
 | H1 | 8.3 | mac | 60 min | | | | |
+| **I. Telegram** (≈65 min) | | | | | | | |
+| I1 | 10.1 | real | 10 min | | | | |
+| I2 | 10.2 | real | 10 min | | | | |
+| I3 | 10.3 | real | 10 min | | | | |
+| I4 | 10.4 | real | 10 min | | | | |
+| I5 | 10.5 | real | 15 min | | | | |
+| I6 | 10.6 | real | 10 min | | | | |
 
 ## All rows
 
-The original 45 rows with their tag, and where each one is run: a pass order above, or the end-to-end flow that covers it, as `file`: "flow name" (the file is `test/e2e/<file>.e2e.mjs`).
+The original 45 rows and the 6 Telegram rows with their tag, and where each one is run: a pass order above, or the end-to-end flow that covers it, as `file`: "flow name" (the file is `test/e2e/<file>.e2e.mjs`).
 
 ### 1. A real task from start to finish
 
@@ -172,6 +180,17 @@ The original 45 rows with their tag, and where each one is run: a pass order abo
 | 9.8 | Restart the app while a task with an "Allow for this task" is still running. | The allowance is still listed under the task and still applies. | e2e | `realuse`: "row 9.8: an "Allow for this task" outlives a restart of the app, listed under the task and still applied" |
 | 9.9 | Search the palette for something said weeks ago in the chat. | The chat opens at that message, marked for a moment. | e2e | `search`: "the palette finds something said and shows the chat from that message" |
 | 9.10 | Use the app for a few minutes with a screen reader (Narrator, VoiceOver). | Controls are announced by sensible names, and a new decision is noticed. Note what is confusing. | win | D6 (VoiceOver goes with H1) |
+
+### 10. Telegram
+
+| # | Do | Expect | Tag | Where |
+|---|---|---|---|---|
+| 10.1 | Make a bot with @BotFather, paste its token in Settings → Notifications → Telegram, pair from the phone and press "Send test message". | "Connected" with your account's name; the test message arrives. The diagnostics report and the app log carry no token. | real | I1 |
+| 10.2 | From the phone, ask the Dispatcher for a small task; reply to its result; send `/status`, `/inbox`, `/lock`. Have someone else write to the bot. | The request is in the chat marked as from Telegram; the answer and the result come back; the reply goes into that thread. `/lock` turns requests off until turned on in Settings. The stranger gets nothing. | real | I2 |
+| 10.3 | With the window closed, let a Worker ask a question with options, send a plan and ask a permission. | The question and the plan come with buttons; a press answers them and the message shows the answer. The permission has no buttons and no command. A decision answered in the app loses its buttons on the phone. | real | I3 |
+| 10.4 | Send a photo with a caption, an album of three photos, a PDF and an `.exe`. | One Dispatcher message for the photo and one for the album with its three files, saved under the app's data folder; the PDF too. The `.exe` is refused with a reply. | real | I4 |
+| 10.5 | Sleep the computer for ten minutes with the link connected, wake it and write from the phone. Then quit the app, write, start it. | After waking the message arrives within a minute. The message written while the app was off waits and goes with "Send". | real | I5 |
+| 10.6 | Start a second computer with the same token. Then `/revoke` the token at @BotFather. | One of them shows "In use elsewhere". After the revoke, "Token invalid"; a new token pairs again. | real | I6 |
 
 ## Steps
 
@@ -350,3 +369,37 @@ For every hands-on row: what to do, what to look at, and what counts as pass. "T
 2. Repeat 1.1, 3.1 (the menu bar instead of the tray; closing the window keeps the app), 3.2 (menu bar icon), 3.4 and 3.7 with ⌘⇧Space.
 3. Turn on VoiceOver (⌘F5) and repeat 9.10.
 - Pass: the same results as on Windows. Note anything that differs, even when it works. Until this row has a result, no Mac check is on record.
+
+### I. Telegram
+
+**10.1 A real bot** (real)
+1. In Telegram, @BotFather: `/newbot`, then `/setjoingroups` → the bot → Disable.
+2. Settings → Notifications → Telegram: turn on Use, paste the token, open the bot link from the phone, press Connect on your account's name, press "Send test message".
+3. Settings → General → Diagnostics → "Save report…"; search it and the log folder for the part of the token after the colon.
+- Pass: "Connected", the test message on the phone, the token in neither.
+
+**10.2 Chat both ways** (real)
+1. From the phone: "add a line to the README of the test repository". Wait for the result on the phone and reply to it with "also fix the typo".
+2. Send `/status`, `/inbox`, then `/lock`, then another request. Turn requests on again in Settings.
+3. From another Telegram account, write to the bot.
+- Pass: as 10.2 expects. Nothing from the second account shows in the app.
+
+**10.3 Decisions on the phone** (real)
+1. Close the window. Ask a Worker for a change "plan first", and another to ask you which of two names to use.
+2. Press a button on each. Have a third question asked and answer it in the app.
+3. Ask for something that needs a permission (a global install).
+- Pass: as 10.3 expects. The buttons and the edited text read well on the phone.
+
+**10.4 Photos and files** (real)
+1. Send a photo with a caption ("what is on this screen?"), then three photos at once, then a PDF, then an `.exe`.
+- Pass: as 10.4 expects. The files open from the chat; the photo is the full size, not a thumbnail.
+
+**10.5 Sleep, and an app that was off** (real)
+1. With the link connected, sleep the computer for ten minutes, wake it and write from the phone.
+2. Quit the app (tray → Quit), write from the phone, start the app, press "Send" on the waiting message.
+- Pass: as 10.5 expects.
+
+**10.6 One token, two computers, and a revoke** (real)
+1. On a second computer (or a second test profile), paste the same token.
+2. At @BotFather, `/revoke` the token. Paste the new token in Settings and pair again.
+- Pass: as 10.6 expects.

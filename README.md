@@ -79,6 +79,24 @@ Settings opens. Sections are on the left. The Status group at the top of General
 - In the Memory view, review and edit preferences, repository notes and past decisions. Opening a repository note offers a button to have a Worker open a PR adding it to that repository's CLAUDE.md.
 - The Dispatcher and Claude Workers can publish, read, upload and download claude.ai artifacts when you ask: through the claude.ai connectors of your account (such as Claude Docs) and Claude Code's built-in Artifact tools, which the app turns on in its sessions (`CLAUDE_CODE_ARTIFACT=1`; set `CLAUDE_CODE_ARTIFACT=0` before starting the app to keep them off). They need a Claude account signed in with `claude` (a claude.ai login); connectors that ask for a sign-in (Gmail, Drive) are connected in your claude.ai connector settings, not in the app. When one is missing or down, the agent says so and saves files locally instead. Turn them off with "claude.ai artifacts and connectors" in Settings → Memory → Claude Code.
 
+### Telegram
+
+Optional, off by default: talk to the Dispatcher and answer decisions from your phone through a Telegram bot of your own. The app only calls out to `api.telegram.org` (long polling); it opens no port and needs no server.
+
+1. In Telegram, open **@BotFather**, send `/newbot` and pick a name. It gives you a token (`123456:ABC…`). Then send `/setjoingroups`, pick the bot and choose **Disable**, so nobody can add it to a group.
+2. In the app, Settings → Notifications → Telegram: turn on **Use** (Telegram chats are not end-to-end encrypted; the warning says so), and paste the token. It is kept encrypted by the operating system (Windows DPAPI, macOS Keychain) and never shown again.
+3. Open the bot link the app shows (or send the bot `/start <code>`) from your own Telegram account, and confirm the name that appears in Settings. Only that account is answered; everything from anyone else is ignored.
+
+What goes where:
+
+- **To the phone**: decisions waiting for you (a permission without its command), task results with their summary and PR link, merged or closed PRs, errors, and the Dispatcher's answers to what you wrote from the phone. "Content" sends titles only or titles with summaries. Do-not-disturb hours send them silently.
+- **From the phone**: words go to the Dispatcher as a message (a reply to a result goes into its thread); photos and files (up to 20 MB, no programs or shortcuts) go as attached files. Messages sent while the app was off wait for `/run` or `/drop`.
+- **Decisions**: a question with two or three short options, and a plan (after its text), come with buttons; a reply in your own words answers a question too. A permission (force push, merge, a command) is only ever answered on the computer. Answered anywhere, the phone's buttons go away.
+- **Commands**: `/status` Workers and tasks, `/inbox` decisions waiting, `/stop` stops the Dispatcher's turn, `/lock` turns requests and answers off until you turn them on again on the computer, `/help`.
+- From the phone, the Dispatcher may not add repositories, add or remove automations, or put the computer to sleep.
+
+To stop it: **Disconnect** in Settings forgets the account; **Use** off stops everything. If the token leaks, send `/revoke` to @BotFather, then paste the new token. The token works on one computer at a time: a second app on the same bot shows "In use elsewhere".
+
 ### Shortcuts
 
 | Key | Action |
