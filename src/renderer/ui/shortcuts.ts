@@ -28,6 +28,7 @@ export function shortcutsHtml() {
     row(t('keys.find'), [mod, 'K']),
     row(t('keys.findSaid'), [mod, 'F']),
     row(t('keys.view'), [mod, '1–4']),
+    row(t('keys.usage'), isMac ? ['⇧', '⌘', 'U'] : ['Ctrl', 'Shift', 'U']),
     row(t('sq.title'), [mod, 'J']),
     row(t('term.title'), [isMac ? '⌃' : 'Ctrl', '`']),
     row(t('cmdk.side'), [mod, 'B']),

@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow, Notification, app, nativeImage } from 'electron';
-import { t } from './i18n';
+import { t, whenText } from './i18n';
 import { loadSettings } from './settings';
 import { Burst, inQuietHours } from '../shared/notifyRules';
+import { newWarnings, winName, type WarnAccount } from '../shared/usageForecast';
 
 let win: BrowserWindow | null = null;
 export function setWindow(w: BrowserWindow) { win = w; if (last.n) setBadge(last.n, last.png); }
@@ -91,6 +92,35 @@ export function setBadge(n: number, png: string) {
   const img = badge.n && png.startsWith('data:image/png;base64,') ? nativeImage.createFromDataURL(png) : null;
   win.setOverlayIcon(img && !img.isEmpty() ? img : null, img ? t('tray.decisions', { n: badge.n }) : '');
   badge.overlay = !!img && !img.isEmpty();
+}
+
+/** Account windows already past the threshold (shared/usageForecast.ts newWarnings); null until the first look. */
+let warned: Set<string> | null = null;
+/** What the e2e checks: the usage warnings shown so far. */
+export const usageNotes: string[] = [];
+
+/**
+ * An account crossed the usage warning threshold (T-0180, spec 8B): one OS notification per window period, with
+ * its forecast. The first look after start only notes what is already past it: the strip's chip shows those.
+ */
+export function notifyUsage(list: readonly (WarnAccount & { label: string })[]) {
+  const s = loadSettings();
+  const first = !warned;
+  warned ??= new Set();
+  const fresh = newWarnings(list, s.usageWarnAt, warned);
+  if (first || !s.usageNotify || quiet()) return;
+  for (const w of fresh) {
+    const a = list.find((x) => x.id === w.id)!;
+    const vars = { name: a.label, w: winName(w.win, a.windowMins), p: w.pct };
+    const body = s.usageForecast && w.exhaust !== null ? t('usage.notify', { ...vars, t: whenText(w.exhaust) }) : t('usage.notifyPct', vars);
+    usageNotes.push(body);
+    if (!Notification.isSupported()) continue;
+    const n = new Notification({ title: body, silent: true });
+    n.on('click', () => { win?.show(); win?.focus(); win?.webContents.send('usage-open'); });
+    live.add(n);
+    n.on('close', () => live.delete(n));
+    n.show();
+  }
 }
 
 const MIME: Record<string, string> = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac' };
