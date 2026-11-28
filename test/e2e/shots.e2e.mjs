@@ -194,7 +194,7 @@ flow('a result card puts every shot in two equal columns: pairs side by side, th
   await app.until(`document.querySelectorAll('${CARD} .shot').length === 9`, 'all nine shots on the result card');
   for (const w of [1400, 900]) {
     await app.size(w, 860);
-    await app.until(`(() => { const ws = [...document.querySelectorAll('${CARD} .shot')].map((x) => Math.round(x.getBoundingClientRect().width)); return ws.length === 9 && ws.every((x) => x === ws[0]); })()`, `nine tiles of one size at ${w}px`);
+    await app.until(`return (() => { const ws = [...document.querySelectorAll('${CARD} .shot')].map((x) => Math.round(x.getBoundingClientRect().width)); return ws.length === 9 && ws.every((x) => x === ws[0]); })()`, `nine tiles of one size at ${w}px`);
     const sets = await app.evaluate(`return [...document.querySelectorAll('${CARD} .shot-set')].map((s) => {
       const grid = s.querySelector('.shot-grid').getBoundingClientRect();
       return [s.querySelector('.shot-row b')?.innerText, [...s.querySelectorAll('.shot-col')].map((c) => {
