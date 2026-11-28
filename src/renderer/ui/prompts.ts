@@ -11,6 +11,7 @@ import { closeCpop, cpopOpen, showCpop, type CpopList, type CpopRow } from './cp
 import { renderChatInspector, type Box } from './chat';
 import { renderConfirmDialog } from './workers';
 import { togglePanel } from './sidebar';
+import { chipsBefore, drawComposerChips } from './mentions';
 
 const inputOf = (box: Box) => $<HTMLTextAreaElement>(box === 'chat' ? '#chat-input' : '#ws-input');
 
@@ -95,20 +96,25 @@ export function setPreset(p: PromptPreset | null) {
 /** The preset the next chat message goes with. */
 export const chatPreset = () => (presetEmpty(ui.presetChat) ? null : ui.presetChat);
 
+/** The chat composer's chips: the preset's, then a divider and the "@" ones (ui/mentions.ts). */
 export function drawPresetChips() {
-  const el = $('#chat-preset');
+  drawComposerChips('chat');
+}
+chipsBefore(presetChipsHtml);
+
+/** The preset's chips over the chat composer's text, with their ×. */
+export function presetChipsHtml(): string {
   const p = ui.presetChat;
-  if (!p || presetEmpty(p)) { el.hidden = true; el.innerHTML = ''; return; }
+  if (!p || presetEmpty(p)) return '';
   const chip = (k: keyof PromptPreset, icon: string, label: string) => {
     const x = esc(t('preset.remove', { name: label }));
     return `<span class="fchip pchip">${sym(icon)}<span class="fn">${esc(label)}</span><button type="button" data-action="preset-x" data-k="${k}" aria-label="${x}" data-tip="${x}"><svg aria-hidden="true"><use href="#s-x"/></svg></button></span>`;
   };
-  el.innerHTML = [
+  return [
     p.repo ? chip('repo', 's-folder', p.repo) : '',
     p.model ? chip('model', 's-cpu', modelLabel(p.model)) : '',
     p.planFirst ? chip('planFirst', 's-doc', t('prompt.planFirst')) : '',
   ].join('');
-  el.hidden = false;
 }
 
 /** The × on a chip: that setting no longer goes with the message. */

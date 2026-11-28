@@ -293,3 +293,45 @@ flow('"/" at the start of a line lists the saved prompts and commands, and a pro
   assert.deepEqual(s.chat.find((c) => c.kind === 'user' && c.text === '@fake task - Release').preset, { repo: '', model: 'claude-sonnet-5-5', planFirst: false });
   assert.equal(await app.evaluate("document.querySelector('#chat-preset').hidden"), true);
 });
+
+flow('"@" after a space lists repositories and files, and the picked ones go as chips that Backspace removes', { repos: ['demo'] }, async (app) => {
+  const set = (v) => app.evaluate(`const i = document.querySelector('#chat-input'); i.focus(); i.value = ${JSON.stringify(v)}; i.setSelectionRange(i.value.length, i.value.length); i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  const chips = () => app.evaluate("return [...document.querySelectorAll('#chat-preset .mchip')].map((c) => (c.classList.contains('on') ? '*' : '') + c.querySelector('.fn').textContent)");
+  const repo = (await app.state()).repos[0].path;
+  fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'src', 'settings.ts'), 'export {};\n');
+  // Nothing typed: the repository, and no files yet.
+  await set('@');
+  await app.until("document.querySelector('#cpop-chat')?.dataset.kind === 'mentions' && document.querySelector('#cpop-chat .cpop-it')?.textContent.includes('demo')", 'the repository listed');
+  assert.equal(await app.evaluate("[...document.querySelectorAll('#cpop-chat .cpop-h')].some((h) => h.textContent === 'Files')"), false);
+  // Inside a word it does not open.
+  await set('mail@sett');
+  await app.until("!document.querySelector('#cpop-chat')", 'no list inside a word');
+  // A file by its name, with its folder beside it; Enter makes it a chip and takes "@sett" out of the text.
+  await set('look at @sett');
+  await app.until("[...document.querySelectorAll('#cpop-chat .cpop-it')].some((r) => r.textContent.includes('settings.ts'))", 'the file listed');
+  await app.key('Enter', 'Enter', 13);
+  await app.until("document.querySelectorAll('#chat-preset .mchip').length === 1", 'the file chip');
+  assert.equal(await app.evaluate("document.querySelector('#chat-input').value"), 'look at ');
+  assert.equal(await app.evaluate("!document.querySelector('#cpop-chat')"), true);
+  // Tab picks too; the same one twice is one chip.
+  await set('look at @dem');
+  await app.until("document.querySelector('#cpop-chat .cpop-it.on')?.textContent.includes('demo')", 'the repository chosen');
+  await app.key('Tab', 'Tab', 9);
+  await app.until("document.querySelectorAll('#chat-preset .mchip').length === 2", 'the repository chip');
+  // Backspace at the start chooses the last chip (a ring), and again removes it.
+  await app.evaluate("const i = document.querySelector('#chat-input'); i.focus(); i.setSelectionRange(0, 0); return 1;");
+  await app.key('Backspace', 'Backspace', 8);
+  assert.deepEqual(await chips(), ['settings.ts', '*demo']);
+  await app.key('Backspace', 'Backspace', 8);
+  await app.until("document.querySelectorAll('#chat-preset .mchip').length === 1", 'the chip removed');
+  assert.equal(await app.evaluate("document.querySelector('#chat-input').value"), 'look at ');
+  // Sent: the agent reads a "[Mentioned]" block; the thread shows it as chips over the bubble.
+  await app.evaluate("document.querySelector('#chat-form').requestSubmit(); return 1;");
+  await app.until("return (await window.ide.call('state')).chat.some((c) => c.kind === 'user' && c.text.includes('[Mentioned]'))", 'the message sent');
+  const sent = (await app.state()).chat.find((c) => c.kind === 'user' && c.text.includes('[Mentioned]'));
+  assert.equal(sent.text, 'look at\n\n[Mentioned]\n- file src/settings.ts — demo');
+  await app.until("document.querySelector('#chat-thread .sent-chips .mchip')?.textContent === 'settings.ts'", 'the chip over the sent message');
+  assert.equal(await app.evaluate("[...document.querySelectorAll('#chat-thread .bub.me')].some((b) => b.textContent.includes('[Mentioned]'))"), false);
+  assert.equal(await app.evaluate("document.querySelector('#chat-preset').hidden"), true);
+});

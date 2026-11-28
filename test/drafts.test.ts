@@ -46,6 +46,26 @@ test('a message that went while another Worker was open leaves its draft', () =>
   assert.equal(d.take('W-01').text, 'sent text and more');
 });
 
+test('drafts: a Worker keeps its "@" chips, and those that went leave the draft', () => {
+  const d = new Drafts<string>();
+  const a = { kind: 'repo' as const, id: 'app', label: 'app' };
+  const b = { kind: 'task' as const, id: 'T-0001', label: 'T-0001', title: 'x' };
+  d.put('W-01', { text: '', files: [], reply: null, mentions: [a] });
+  assert.deepEqual(d.take('W-01').mentions, [a]);
+  d.put('W-01', { text: 'hi', files: [], reply: null, mentions: [a, b] });
+  d.sent('W-01', 'hi', [], null, [{ ...a }]);
+  assert.deepEqual(d.take('W-01').mentions, [b]);
+});
+
+test('drafts: "@" chips alone are a draft, are kept for the next start and read back', () => {
+  const d = new Drafts<string>();
+  const m = { kind: 'file' as const, id: 'src/a.ts', label: 'a.ts', repo: 'app' };
+  const saved = d.saved({ 'W-01': { text: '', files: [], reply: null, mentions: [m] } });
+  assert.deepEqual(saved, { 'W-01': { text: '', files: [], reply: null, mentions: [m] } });
+  d.load({ 'W-01': { text: '', files: [], mentions: [m, { kind: 'bad', id: 'x', label: 'x' }, 'x'] } }, () => true, () => null);
+  assert.deepEqual(d.take('W-01').mentions, [m]);
+});
+
 test('drafts of Workers that are gone are dropped', () => {
   const d = new Drafts<string>();
   d.put('W-01', { text: 'a', files: [], reply: null });
