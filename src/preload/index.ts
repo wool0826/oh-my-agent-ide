@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('ide', {
   ptySend: (what: 'write' | 'resize' | 'drawn', ...args: unknown[]) => { if (what === 'write' || what === 'resize' || what === 'drawn') ipcRenderer.send(`pty:${what}`, ...args); },
   onDoneAlert: (fn: () => void) => ipcRenderer.on('done-alert', () => fn()),
   onOpenResult: (fn: (taskId: string) => void) => ipcRenderer.on('open-result', (_e, id) => fn(String(id))),
+  /** A usage warning's OS notification was clicked: the usage popover opens. */
+  onUsageOpen: (fn: () => void) => ipcRenderer.on('usage-open', () => fn()),
   /** Back or Forward from an app command (mouse side buttons, Back keys). */
   onNav: (fn: (dir: 'back' | 'forward') => void) => ipcRenderer.on('nav', (_e, dir) => fn(dir)),
   /** The window entered or left full screen. */

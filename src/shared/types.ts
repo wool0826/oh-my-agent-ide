@@ -444,6 +444,14 @@ export interface SettingsView {
   waitSlotMinutes: number;
   /** Minutes between rounds of reading usage (shared/usage USAGE_INTERVALS); 0 = only by hand. */
   usageRefreshMins: number;
+  /** Usage past this share (80, 90 or 95%) shows the warning chip on the strip (shared/usageForecast.ts). */
+  usageWarnAt: number;
+  /** The warning says when the window runs out at the pace so far. */
+  usageForecast: boolean;
+  /** An OS notification when an account crosses the threshold, once per window period. */
+  usageNotify: boolean;
+  /** An account past the threshold takes no new work while another is under it. */
+  usageSwitch: boolean;
   /** Always-ask rules the user switched off (keys of shared/grants.ts ASK_RULES). */
   askOff: string[];
   /** Look for a newer release on GitHub. */
