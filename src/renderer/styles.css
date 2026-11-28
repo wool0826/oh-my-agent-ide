@@ -561,6 +561,8 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .cpop-none { padding: var(--space-12) var(--space-8); text-align: center; font-size: var(--fs-caption); color: var(--text-tertiary); }
 .cpop-foot { flex: none; display: flex; gap: var(--space-10); padding: var(--space-6) var(--space-8) var(--space-2); margin-top: var(--space-2); border-top: .5px solid var(--border-subtle); font-size: var(--fs-caption2); color: var(--text-tertiary); }
 .cpop-foot span { display: inline-flex; align-items: center; gap: var(--space-4); }
+/* A group after the first starts under a hairline (the "/" list's commands). */
+.cpop-l .cpop-h:not(:first-child) { margin-top: var(--space-4); padding-top: var(--space-8); border-top: .5px solid var(--border-subtle); }
 @media (forced-colors: active) { .cpop-it.on { outline: 2px solid Highlight; } }
 
 /* A shell run in the thread. Its "!" is grey: in the thread red means one thing, an exit code that is not 0. */
@@ -705,6 +707,34 @@ button.ctx:focus-visible { outline: var(--focus-outline); outline-offset: var(--
 .memo:has(.mact.sure) .acts { opacity: 1; }
 .mact:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .memo textarea.inp { min-height: 64px; }
+/* The Memos tab's segments, and its saved prompts (ui/prompts.ts): name and command, the text's first line, the preset. */
+.memo-seg { display: flex; margin-bottom: var(--space-8); }
+.memo-seg button { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); }
+.memo-seg .count { line-height: 16px; }
+.pr-h { display: flex; align-items: center; gap: var(--space-6); min-height: var(--control-sm); }
+.pr-h b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-body); font-weight: 600; }
+.pr-cmd { flex: none; padding: 0 var(--space-4); border-radius: var(--radius-xs); background: var(--surface-track); font-family: var(--font-mono); font-size: var(--fs-caption2); color: var(--text-secondary); }
+.pr-h .gap { flex: 1; }
+.memo.prompt .pr-h .acts { margin-left: 0; }
+.memo p.pr-t { font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-chips { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.pr-chip { display: inline-flex; align-items: center; gap: var(--space-4); max-width: 100%; padding: 0 var(--space-6); border-radius: var(--radius-xs); background: var(--surface-track); font-size: var(--fs-caption2); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-chip .sym { flex: none; width: 11px; height: 11px; }
+.prompt-form { padding: 0; gap: 0; }
+.pf-r { display: flex; align-items: center; gap: var(--space-12); min-height: 44px; padding: var(--space-6) var(--space-12); font-size: var(--fs-body); }
+.pf-r + .pf-r { border-top: .5px solid var(--border-subtle); }
+.pf-r.top { align-items: flex-start; }
+.pf-r > span { flex: none; width: 64px; }
+.pf-r.top > span { padding-top: var(--space-6); }
+.pf-r > .inp { flex: 1; min-width: 0; }
+.pf-r > :is(.dd-btn, .switch) { margin-left: auto; }
+.pf-r .dd-btn { min-width: 0; height: var(--control-md); }
+.memo .pf-r textarea.inp { min-height: var(--control-lg); }
+.prompt-form .btns { display: flex; justify-content: flex-end; gap: var(--space-6); padding: var(--space-8) var(--space-12) var(--space-10); border-top: .5px solid var(--border-subtle); }
+.pr-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-12); padding: var(--space-24) var(--space-12); color: var(--text-secondary); font-size: var(--fs-body); }
+.pr-empty b { font-weight: 500; }
+.pr-foot { display: flex; justify-content: center; padding-top: var(--space-10); }
+.pr-new { border-radius: var(--radius-full); }
 .dec { padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-8); }
 .dec + .dec { border-top: .5px solid var(--border-subtle); }
 .dec.flash, .res.flash { animation: flash var(--dur-attention) var(--ease-out); }
@@ -1168,6 +1198,7 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .bub.me .fchip { background: var(--surface-on-accent); color: var(--text-on-accent); padding: var(--space-2) var(--space-8); text-decoration: none; }
 /* An attached image: its preview in place of the file icon, opening the same view as a report's shots. */
 .fchip button.fthumb { width: var(--control-sm); height: var(--icon-lg); border-radius: var(--radius-xs); background: var(--surface-track); overflow: hidden; cursor: zoom-in; }
+.pchip .sym { color: var(--text-secondary); }
 .fchip button.fthumb img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
 .fchip button.fthumb::after { inset: 0; }
 

@@ -22,6 +22,7 @@ import { awayDigest, awayRows, type AwayDigest } from '../../shared/away';
 import { bundleMergeOrder, openBundles } from '../../shared/bundle';
 import { memoSections } from '../../shared/memos';
 import { scriptsHtml } from './scripts';
+import { memoTabHtml } from './prompts';
 import { drawAfterSwipe } from './swipe';
 import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
@@ -989,7 +990,7 @@ export function renderChatInspector() {
     const tabs = `<div class="seg ins-tabs" role="tablist" data-fit="tabs" aria-label="${t('ins.tabs')}">${tab('inbox', t('ins.tabInbox'), 's-bell', pending.length)}${tab('memo', t('ins.tabMemo'), 's-pencil')}${tab('auto', t('ins.tabAuto'), 's-refresh')}${tab('script', t('ins.tabScript'), 's-term')}</div>`;
     // The selected card is placed inside the draw, so the typed text and the focus go back to where it ends up.
     const draw = (list: string) => { root.innerHTML = tabs + colsHtml(list, ` role="tabpanel" id="ins-panel" aria-labelledby="ins-tab-${ui.insTab}"`); rove(root); };
-    if (ui.insTab === 'memo') return draw(memosHtml());
+    if (ui.insTab === 'memo') return draw(memoTabHtml(memosHtml));
     if (ui.insTab === 'auto') return draw(autosHtml());
     if (ui.insTab === 'script') return draw(scriptsHtml());
     // Task outcomes only (s.results). Errors without a task (accounts at their limit, Dispatcher errors) stay in the chat.
