@@ -1308,7 +1308,7 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - A stepper's buttons were named "-" and "+" (read aloud as "minus" or not at all) and had no tooltip: now
       "Decrease" / "Increase" (`set.stepDown`, `set.stepUp`). The account's "…" button shows its name as a tooltip.
     - Rejected: dropping the early return in `updateSendButton` (it is there so a redraw does not rebuild the button).
-260. **A PowerShell line goes in encoded, so what PowerShell says about a line it cannot read is readable** (T-0163).
+259. **A PowerShell line goes in encoded, so what PowerShell says about a line it cannot read is readable** (T-0163).
     - Found in the UI audit on a Korean Windows: `echo a && echo b` (not valid in Windows PowerShell) or an open quote
       showed a block of broken characters in the terminal and under a "!" line. PowerShell reads the whole of
       `-Command` before running any of it, so the error was written before the line that switches the output to UTF-8
