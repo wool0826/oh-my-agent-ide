@@ -64,8 +64,8 @@ test('keyWidth: arrows move the handle, Shift moves it further, Home and End go 
   assert.equal(keyWidth('side', 'ArrowLeft', true, PANELS.side.min, def, wide), PANELS.side.min);
   assert.equal(keyWidth('side', 'Home', false, 300, def, wide), PANELS.side.min);
   assert.equal(keyWidth('ins', 'End', false, 300, def, { ...wide, winW: 2000 }), PANELS.ins.max);
-  // On 1600 the right sidebar stops at its maximum; on a smaller window at what leaves MAIN_MIN.
-  assert.equal(keyWidth('ins', 'End', false, 300, def, wide), PANELS.ins.max);
+  // On 1600 the right sidebar stops at what leaves MAIN_MIN beside the left one.
+  assert.equal(keyWidth('ins', 'End', false, 300, def, wide), 1600 - def.side - MAIN_MIN);
   assert.equal(keyWidth('ins', 'End', false, 300, def, { winW: 1200, sideMin: false, insMin: false }), 1200 - def.side - MAIN_MIN);
   assert.equal(keyWidth('side', 'Enter', false, 300, def, wide), null);
   assert.equal(keyWidth('side', 'ArrowUp', false, 300, def, wide), null);
