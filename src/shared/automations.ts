@@ -40,7 +40,7 @@ export function clampPerDay(v: unknown): number | null {
   return Number.isFinite(n) && n >= 1 ? Math.min(PER_DAY_MAX, n) : null;
 }
 
-export type TriggerError = 'badTime' | 'badHours' | 'badLabel' | 'badDay';
+export type TriggerError = 'badTime' | 'badHours' | 'badLabel' | 'badDay' | 'badKind';
 
 /**
  * A trigger from the window or the Dispatcher, cleaned up: a time as "HH:MM", hours 1–24, a weekday 0 (Sunday)–6, a
@@ -61,6 +61,7 @@ export function normalizeTrigger(input: AutoTrigger): AutoTrigger | { error: Tri
     if (!Number.isInteger(hours) || hours < 1 || hours > 24) return { error: 'badHours' };
     return { kind: 'every', hours };
   }
+  if (!isEventKind(k)) return { error: 'badKind' };
   const repo = input.repo?.trim() || undefined;
   if (k === 'issueLabel') {
     const label = input.label?.trim();

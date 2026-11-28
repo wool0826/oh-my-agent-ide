@@ -19,7 +19,7 @@ export function registerRepoIpc(ctx: IpcContext) {
   handle('auto:add', (prompt: string, trigger: AutoTrigger, maxPerDay?: number | null) => { automations.add({ prompt, trigger, maxPerDay }); void pollAutomationEvents(); });
   handle('auto:update', (id: string, prompt: string, trigger: AutoTrigger, maxPerDay?: number | null) => { automations.update(id, { prompt, trigger, maxPerDay }); void pollAutomationEvents(); });
   handle('auto:run', (id: string) => { automations.runNow(id); });
-  handle('auto:toggle', (id: string, on: boolean) => automations.setEnabled(id, on));
+  handle('auto:toggle', (id: string, on: boolean) => { automations.setEnabled(id, on); if (on) void pollAutomationEvents(); });
   handle('auto:remove', (id: string) => { automations.remove(id); });
   handle('repo:add', (url: string, name?: string, description?: string) => registerRepo({ url, name, description }).then((r) => { dispatcher.refreshContext(); return r; }));
   handle('repo:addCancel', () => cancelAddRepo());

@@ -441,6 +441,7 @@ function boardTools(d: Dispatcher) {
         if (no) return fail(no);
         try {
           const k = a.trigger;
+          if (a.repo && !store.repo(a.repo)) return fail(`No registered repository named "${a.repo}". Registered: ${store.data.repos.map((r) => r.name).join(', ') || 'none'}.`);
           const trigger: AutoTrigger = k === 'daily' ? { kind: 'daily', time: a.time ?? '09:00', weekdays: !!a.weekdays_only }
             : k === 'weekly' ? { kind: 'weekly', time: a.time ?? '09:00', day: a.day ?? 1 }
             : k === 'every' ? { kind: 'every', hours: a.hours ?? 6 }

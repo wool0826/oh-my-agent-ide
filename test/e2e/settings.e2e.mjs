@@ -197,7 +197,8 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
     assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#usage .uacct')].map((u) => [u.classList.contains('limited'), u.classList.contains('failed')])"),
       [[false, false], [true, false], [false, true]]);
     await app.until("!document.querySelector('#usage-warn').hidden", 'the limit chip');
-    const back = await app.evaluate("const d = new Date(Date.now() + 1800 * 60_000); return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });");
+    // From the time the account was given, not from now: the two can fall on either side of a minute.
+    const back = await app.evaluate("const d = new Date(" + JSON.stringify(accounts[1].limitedUntil) + "); return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });");
     assert.deepEqual(await app.evaluate("const c = document.querySelector('#usage-warn'); return [c.dataset.tone, c.textContent, c.getAttribute('aria-label')];"),
       ['danger', `Limit · ${back}`, `Usage warning · Team B · Limit · ${back}`]);
     assert.doesNotMatch(await app.evaluate("document.querySelector('#usage').textContent"), /%/);

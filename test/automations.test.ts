@@ -105,6 +105,7 @@ test('a trigger is cleaned up, and a wrong field says which', () => {
   assert.deepEqual(normalizeTrigger({ kind: 'ciFailed', repo: ' demo ', branch: ' main ' }), { kind: 'ciFailed', repo: 'demo', branch: 'main' });
   assert.deepEqual(normalizeTrigger({ kind: 'reviewRequested', repo: '', branch: 'x' }), { kind: 'reviewRequested', repo: undefined });
   assert.deepEqual(normalizeTrigger({ kind: 'merged' }), { kind: 'merged' });
+  assert.deepEqual(normalizeTrigger({ kind: 'hourly' } as never), { error: 'badKind' });
 });
 
 test('the menu choice of a trigger tells daily from weekdays', () => {

@@ -581,6 +581,8 @@ export function prWatchChanged() {
 const AUTO_POLL = 3 * 60_000;
 let autoTimer: NodeJS.Timeout | null = null;
 let autoRunning: Promise<void> | null = null;
+/** Asked for while a read was under way (an automation added): one more read follows it, so the new watch takes note now. */
+let autoAgain = false;
 
 /**
  * The automations' GitHub events (spec 9A): failed CI runs, opened PRs, reviews asked of the user and labelled issues,
@@ -588,7 +590,8 @@ let autoRunning: Promise<void> | null = null;
  * automations.onEvent, oldest first; the first look only takes note. Merges come from the PR watch (settle).
  */
 export function pollAutomationEvents(): Promise<void> {
-  autoRunning ??= (async () => {
+  if (autoRunning) { autoAgain = true; return autoRunning; }
+  autoRunning = (async () => {
     const repos = store.data.repos.filter((r) => !r.local && ghRepoRef(r.url));
     const watches = eventWatches(automations.list(), repos.map((r) => r.name));
     const seen = (store.data.autoSeen ??= {});
@@ -605,7 +608,7 @@ export function pollAutomationEvents(): Promise<void> {
       store.changed();
       for (const ev of fresh.reverse()) automations.onEvent(ev);
     }
-  })().catch((e) => log.warn('automation events', (e as Error).message)).finally(() => { autoRunning = null; });
+  })().catch((e) => log.warn('automation events', (e as Error).message)).finally(() => { autoRunning = null; if (autoAgain) { autoAgain = false; void pollAutomationEvents(); } });
   return autoRunning;
 }
 
