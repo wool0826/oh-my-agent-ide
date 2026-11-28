@@ -191,12 +191,15 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
     acc('b', 'Team B', { fiveHour: win(42, at(125)), sevenDay: win(100, at(1800)), limitedUntil: at(1800) }),
     acc('c', 'Team C', { fiveHour: win(20, at(200)), sevenDay: win(null, null), lastError: 'Usage lookup failed (500)', usageUpdatedAt: at(-26) }),
   ];
-  flow('the usage widget shows rings alone, says when a used-up account resets, and its popover says when it refreshes and refreshes by hand', { settings: { accounts, usageRefreshMins: 15 } }, async (app) => {
+  flow('the usage widget shows rings alone, the warning chip says when a used-up account comes back, and its popover says when it refreshes and refreshes by hand', { settings: { accounts, usageRefreshMins: 15 } }, async (app) => {
     await app.until("document.querySelectorAll('#usage .uacct').length === 3", 'the rings');
-    // The toolbar: no figures in words; only the used-up account says when it resets; a failed read marked.
-    assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#usage .uacct')].map((u) => [!!u.querySelector('.ulim'), u.classList.contains('limited'), u.classList.contains('failed')])"),
-      [[false, false, false], [true, true, false], [false, false, true]]);
-    assert.match(await app.evaluate("document.querySelector('#usage .ulim').textContent"), /^Resets in 1d [56]h$/);
+    // The toolbar: no figures in words by the rings; the used-up account is red and the chip says when it comes back; a failed read marked.
+    assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#usage .uacct')].map((u) => [u.classList.contains('limited'), u.classList.contains('failed')])"),
+      [[false, false], [true, false], [false, true]]);
+    await app.until("!document.querySelector('#usage-warn').hidden", 'the limit chip');
+    const back = await app.evaluate("const d = new Date(Date.now() + 1800 * 60_000); return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });");
+    assert.deepEqual(await app.evaluate("const c = document.querySelector('#usage-warn'); return [c.dataset.tone, c.textContent, c.getAttribute('aria-label')];"),
+      ['danger', `Limit · ${back}`, `Usage warning · Team B · Limit · ${back}`]);
     assert.doesNotMatch(await app.evaluate("document.querySelector('#usage').textContent"), /%/);
     // The popover, with the foot: the last round, one of three failed, the interval chosen.
     await app.evaluate("document.querySelector('#usage .uacct').dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return 1;");
@@ -251,13 +254,64 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
     await app.key('Escape', 'Escape', 27);
     await app.until(`return ${shut};`, 'the popover closed before the narrow window');
     await app.size(900, 427);
-    await app.until("[...document.querySelectorAll('#usage .ulim')].every((l) => getComputedStyle(l).display === 'none')", 'no reset time beside the rings in a narrow window');
+    await app.until("getComputedStyle(document.querySelector('#usage-warn .ut')).display === 'none'", 'the chip with its icon alone in a narrow window');
+    assert.deepEqual(await app.evaluate("const r = document.querySelector('#usage-warn').getBoundingClientRect(); return [r.width, r.height];"), [32, 32]);
     await app.hover('#usage .uacct');
     await app.until("!document.querySelector('#usage-pop').hidden && !document.querySelector('#usage-pop').classList.contains('out')", 'the popover open in the short window');
     assert.deepEqual(await app.evaluate(`const p = document.querySelector('#usage-pop'), b = p.querySelector('.ubtn');
       const inside = p.getBoundingClientRect().bottom <= innerHeight, scrolls = p.scrollHeight > p.clientHeight;
       b.scrollIntoView({ block: 'nearest' });
       return { inside, scrolls, foot: b.getBoundingClientRect().bottom <= innerHeight };`), { inside: true, scrolls: true, foot: true });
+  });
+
+  flow('past the warning threshold a chip says the window, its use and when it runs out; it opens the popover, notifies once and follows the settings', { settings: { accounts: [accounts[0], accounts[2]] } }, async (app) => {
+    await app.until("document.querySelectorAll('#usage .uacct').length === 2", 'the rings');
+    // 86% is under the 90% threshold: no chip.
+    assert.equal(await app.evaluate("document.querySelector('#usage-warn').hidden"), true);
+    const reset = JSON.stringify(accounts[0].fiveHour.resetsAt);
+    // A session reports 91%: the chip, in orange, with the forecast (the 5h window began 230 min ago, so 9% more lasts about 23 min).
+    await app.evaluate(`await window.ide.call('e2e:usage', 'a', 91, ${reset}); return 1;`);
+    await app.until("!document.querySelector('#usage-warn').hidden", 'the warning chip');
+    assert.equal(await app.evaluate("document.querySelector('#usage-warn').dataset.tone"), 'warning');
+    const chip = await app.evaluate("document.querySelector('#usage-warn').textContent");
+    assert.match(chip, /^5h 91% · \d{1,2}:\d\d [AP]M$/);
+    const runsOut = await app.evaluate("return new Date(Date.now() + 23 * 60_000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });");
+    const mins = (hm) => { const [, h, m, ap] = /(\d+):(\d+) ([AP])M/.exec(hm); return ((Number(h) % 12) + (ap === 'P' ? 12 : 0)) * 60 + Number(m); };
+    assert.ok(Math.abs(mins(chip.split(' · ')[1]) - mins(runsOut)) % (24 * 60) <= 2, 'the forecast about 23 min away');
+    // One OS notification for the crossing, none for a later reading in the same window.
+    assert.deepEqual(await app.evaluate("return window.ide.call('e2e:usageNotes');"), [`Team A 5h 91% · runs out ${chip.split(' · ')[1]}`]);
+    await app.evaluate(`await window.ide.call('e2e:usage', 'a', 93, ${reset}); return 1;`);
+    await app.until("document.querySelector('#usage-warn').textContent.startsWith('5h 93%')", 'the chip at 93%');
+    assert.deepEqual(await app.evaluate("return window.ide.call('e2e:usageNotes');"), [`Team A 5h 91% · runs out ${chip.split(' · ')[1]}`]);
+    // A click opens the popover and holds it: the account is marked, its window's note is orange, the forecast follows.
+    await app.click('#usage-warn');
+    await app.until("!document.querySelector('#usage-pop').hidden && !document.querySelector('#usage-pop').classList.contains('out')", 'the popover from the chip');
+    assert.deepEqual(await app.evaluate("const a = document.querySelector('#usage-pop .ua[data-id=\"a\"]'), c = document.querySelector('#usage-pop .ua[data-id=\"c\"]'); return [a.classList.contains('warn'), !!a.querySelector('.uw small.warn'), c.classList.contains('warn'), document.querySelector('#usage-warn').getAttribute('aria-expanded')];"),
+      [true, true, false, 'true']);
+    assert.match(await app.evaluate("document.querySelector('#usage-pop .ua[data-id=\"a\"] .ufc').textContent"), /^Runs out \d{1,2}:\d\d [AP]M · resets \d{1,2}:\d\d [AP]M$/);
+    const far = await app.evaluate("const r = document.querySelector('.content').getBoundingClientRect(); return { x: Math.round(r.left + 40), y: Math.round(r.bottom - 60) };");
+    await app.hover('#usage .uacct');
+    await app.hover(far);
+    await app.until("document.querySelector('#usage-pop').matches(':not(:hover)')", 'the pointer away');
+    assert.equal(await app.evaluate("document.querySelector('#usage-pop').hidden || document.querySelector('#usage-pop').classList.contains('out')"), false, 'held open as the pointer leaves');
+    await app.click('#usage-warn');
+    await app.until("document.querySelector('#usage-pop').hidden || document.querySelector('#usage-pop').classList.contains('out')", 'closed by the chip again');
+    // Ctrl/Cmd+Shift+U: open with the focus in it, and shut again.
+    const mod = process.platform === 'darwin' ? 4 : 2;
+    await app.key('KeyU', 'U', 85, mod | 8);
+    await app.until("!document.querySelector('#usage-pop').hidden && !!document.activeElement?.closest('#usage-pop')", 'the popover with the focus in it');
+    await app.key('KeyU', 'U', 85, mod | 8);
+    await app.until("document.querySelector('#usage-pop').hidden || document.querySelector('#usage-pop').classList.contains('out')", 'closed by the keys again');
+    // Settings > Accounts: the group, with 90% chosen; without the forecast the chip keeps the window and its use; at 95% it goes.
+    await app.click('[data-action="open-settings"]');
+    await app.click('[data-action="pane"][data-id="accounts"]');
+    await app.until("!!document.querySelector('[data-segc=\"set-uwarn\"][aria-checked=\"true\"]')", 'the threshold');
+    assert.deepEqual(await app.evaluate("[document.querySelector('[data-segc=\"set-uwarn\"][aria-checked=\"true\"]').dataset.v, document.querySelector('#set-ufc').checked, document.querySelector('#set-unoti').checked, document.querySelector('#set-uswitch').checked]"),
+      ['90', true, true, false]);
+    await app.click('#set-ufc');
+    await app.until("document.querySelector('#usage-warn').textContent === '5h 93%'", 'the chip without the forecast');
+    await app.click('[data-segc="set-uwarn"][data-v="95"]');
+    await app.until("return (await window.ide.call('state')).settings.usageWarnAt === 95 && document.querySelector('#usage-warn').hidden;", 'no chip under 95%');
   });
 
   const two = [

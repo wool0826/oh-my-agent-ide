@@ -36,7 +36,7 @@ import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll
 import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
 import { renderSleep, setSleep } from './ui/sleep';
 import { copyValue, folderThere, loadEditors, openFolder, openMenuHtml, rowOpenItems } from './ui/openWith';
-import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderAccountsOff, renderSidebar, renderUsage, showUsagePop, togglePanel, usagePop } from './ui/sidebar';
+import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderAccountsOff, renderSidebar, renderUsage, showUsagePop, togglePanel, toggleUsagePin, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
 import { initTip } from './ui/tip';
@@ -410,6 +410,8 @@ export async function act(el: HTMLElement, e: Event) {
     case 'close-settings': closeSettings(); break;
     case 'pane': showPane(id as Pane); break;
     case 'next-waiting': goWaiting(1); break;
+    // The usage warning chip (T-0180): the popover, held open; from the keyboard the focus goes into it.
+    case 'usage-warn': toggleUsagePin(e instanceof MouseEvent && e.detail === 0); break;
     case 'goto-decision': {
       // In the view of the Worker that asks, its own panel shows the card.
       const here = ui.view === 'worker' && ui.wOpen && !!document.getElementById(`wdec-${id}`);
@@ -1152,7 +1154,7 @@ export function init() {
   // A press anywhere else closes it, focused or not (a press on nothing focusable moves no focus to close it with).
   document.addEventListener('pointerdown', (e) => {
     const at = e.target as Node | null;
-    if (usagePop.shown && !(at && (upop.contains(at) || usage.contains(at)))) hideUsagePop();
+    if (usagePop.shown && !(at && (upop.contains(at) || usage.contains(at) || $('#usage-warn').contains(at)))) hideUsagePop();
   }, true);
   usage.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowDown' && e.key !== 'Enter') return;
@@ -1188,6 +1190,8 @@ export function init() {
     if (cmdk.open) { paletteKeys(e); return; }
     // Ctrl/Cmd+I: the next waiting decision, with Shift the previous one (T-0180). Not while Settings covers the window.
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyI' && !ui.settingsShown && $('#dlg').hidden && !shotOpen()) { e.preventDefault(); goWaiting(e.shiftKey ? -1 : 1); return; }
+    // Ctrl/Cmd+Shift+U: the usage popover, held open with the focus in it (T-0180), and closed again.
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === 'KeyU' && !ui.settingsShown && $('#dlg').hidden) { e.preventDefault(); toggleUsagePin(true); return; }
     // An open screenshot goes to the report's previous or next one with the arrow keys.
     if (shotOpen() && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); stepShot(e.key === 'ArrowLeft' ? -1 : 1); return; }
     // Ctrl/Cmd+/ opens the list of keys, and closes it.
@@ -1303,7 +1307,9 @@ export function init() {
       if (ui.confirmAsk) { ui.confirmAsk = null; renderConfirmDialog(); return; }
       if (usagePop.shown) {
         // From inside the popover, the focus goes back to the rings without opening it again.
-        if ($('#usage-pop').contains(document.activeElement)) { usagePop.quiet = true; $('#usage').focus(); usagePop.quiet = false; }
+        // Opened with the warning chip, it goes back to the chip.
+        const back = usagePop.pinned && !$('#usage-warn').hidden ? $('#usage-warn') : $('#usage');
+        if ($('#usage-pop').contains(document.activeElement)) { usagePop.quiet = true; back.focus(); usagePop.quiet = false; }
         hideUsagePop();
         return;
       }
@@ -1458,6 +1464,7 @@ export function init() {
     if (ui.view === 'worker' && ui.wSel === id) renderSession();
   });
   ide.onOpenResult(gotoResult);
+  ide.onUsageOpen(() => { if (!usagePop.pinned) toggleUsagePin(false); });
   // A task ended: its own sound, not the decision's, so the two are told apart by ear.
   ide.onDoneAlert(() => { if (S) void playSound(S.settings.doneSound, S.settings.soundVolume); });
   ide.onDecisionAlert((loud) => {

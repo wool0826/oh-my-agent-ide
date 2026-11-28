@@ -11,6 +11,7 @@ import { QUICK_KEY_DEFAULT, normalizeQuickKey } from '../shared/quickKey';
 import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared/font';
 import { MAX_WORKERS_DEFAULT, WAIT_SLOT_DEFAULT, clampMaxWorkers, clampWaitSlot } from '../shared/slots';
 import { USAGE_INTERVAL_DEFAULT, clampUsageMins } from '../shared/usage';
+import { WARN_DEFAULT, clampWarnAt } from '../shared/usageForecast';
 import { cleanPause } from '../shared/accountPause';
 import { EDITOR_DEFAULT, cleanEditor, cleanEditorCmd, cleanTerminal, terminalsFor } from '../shared/openWith';
 
@@ -79,6 +80,10 @@ export const DEFAULTS: SettingsView = {
   maxWorkers: MAX_WORKERS_DEFAULT,
   waitSlotMinutes: WAIT_SLOT_DEFAULT,
   usageRefreshMins: USAGE_INTERVAL_DEFAULT,
+  usageWarnAt: WARN_DEFAULT,
+  usageForecast: true,
+  usageNotify: true,
+  usageSwitch: false,
   askOff: [],
   updateCheck: true,
   quickKey: QUICK_KEY_DEFAULT,
@@ -133,6 +138,7 @@ function fix(s: SettingsView) {
   s.maxWorkers = clampMaxWorkers(s.maxWorkers);
   s.waitSlotMinutes = clampWaitSlot(s.waitSlotMinutes);
   s.usageRefreshMins = clampUsageMins(s.usageRefreshMins);
+  s.usageWarnAt = clampWarnAt(s.usageWarnAt);
   s.askOff = cleanAskOff(s.askOff);
   s.theme = cleanTheme(s.theme);
   s.quietFrom = cleanTime(s.quietFrom);

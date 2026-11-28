@@ -1,4 +1,5 @@
 // The Settings window.
+import { WARN_LEVELS, clampWarnAt } from '../../shared/usageForecast';
 import type { ClaudeInfo, ModelList, AccountView, SoundName, Lang, SettingsView } from '../../shared/types';
 import { EFFORTS, MAX_ACCOUNTS, type Effort } from '../../shared/types';
 import { ASK_RULES } from '../../shared/grants';
@@ -382,7 +383,14 @@ export function settingsHtml() {
     ? `<div class="acc-banner" role="alert">${sym('s-alert')}<span>${esc(t('acc.noneOnWait', { n: s.tasks.filter((x) => x.status === 'queued').length }))}</span><button class="btn btn-sm" data-action="acc-resume-all">${t('acc.allOn')}</button></div>`
     : '';
   const count = s.accounts.length ? t('acc.onCount', { n: activeOf(s.accounts).length, total: s.accounts.length }) : `${s.accounts.length} / ${MAX_ACCOUNTS}`;
-  const accounts = `${none}${grp(s.accounts.map(accountCard).join('') || `<div class="srow"><span class="lbl muted">${t('acc.none')}</span></div>`, `${t('acc.registered')} <small>${esc(count)}</small>`)}
+  const sw = (id: string, on: boolean) => `<input class="switch" id="${id}" type="checkbox" ${on ? 'checked' : ''}>`;
+  // The usage warning (T-0180, spec 8B): the chip's threshold, its forecast, its OS notification, and moving work off an account past it.
+  const warn = grp(`
+      ${row(t('acc.warnAt'), 'set-uwarn', segc('set-uwarn', String(st.usageWarnAt), WARN_LEVELS.map((n) => ({ value: String(n), label: `${n}%` })), t('acc.warnAt')))}
+      ${row(t('acc.forecast'), 'set-ufc', sw('set-ufc', st.usageForecast))}
+      ${row(t('acc.usageNoti'), 'set-unoti', sw('set-unoti', st.usageNotify))}
+      ${row(t('acc.usageSwitch'), 'set-uswitch', sw('set-uswitch', st.usageSwitch))}`, t('acc.usageWarn'));
+  const accounts = `${none}${grp(s.accounts.map(accountCard).join('') || `<div class="srow"><span class="lbl muted">${t('acc.none')}</span></div>`, `${t('acc.registered')} <small>${esc(count)}</small>`)}${warn}
     ${full ? '' : grp(`
       ${methods.length < 2 ? '' : row(t('acc.method'), 'acc-kind', segc('acc-kind', ui.accKind, methods, t('acc.method'), 'data-change="acc-kind"'))}
       ${row(t('acc.name'), 'acc-label', `<input class="inp w" id="acc-label" placeholder="${t('acc.namePh')}">`)}
@@ -728,6 +736,10 @@ export function readSettingsForm() {
     archiveDays: Math.min(90, Math.max(0, Math.round(stepNum($<HTMLInputElement>('#set-arch'))))) || 0,
     notifications: ($('#set-noti') as HTMLInputElement).checked,
     notifyDone: ($('#set-nres') as HTMLInputElement).checked,
+    usageWarnAt: clampWarnAt(v('set-uwarn')),
+    usageForecast: ($('#set-ufc') as HTMLInputElement).checked,
+    usageNotify: ($('#set-unoti') as HTMLInputElement).checked,
+    usageSwitch: ($('#set-uswitch') as HTMLInputElement).checked,
     quietFrom: typedTime(v('set-qfrom'), S!.settings.quietFrom),
     quietTo: typedTime(v('set-qto'), S!.settings.quietTo),
     background: ($('#set-bg') as HTMLInputElement).checked,
