@@ -115,6 +115,7 @@ To stop it: **Disconnect** in Settings forgets the account; **Use** off stops ev
 | ⌘/Ctrl+J | Side question, apart from the Dispatcher's context |
 | ⌘/Ctrl+/ | List of shortcuts |
 | `!` at the start of the chat composer | Run the line in a shell |
+| ↑ in an empty composer | Prompts sent from it (the chat, or that Worker): ↑/↓ move, typing narrows, Enter fills the composer, Esc closes |
 | ↑/↓, Enter, D, T, 1–9 on a decision card | Move between cards, allow, deny, allow for the task, pick an answer |
 | Tab, in the quick message box | Finish an `@repository` name |
 | ↑ / ↓, in the quick message box | Lines sent before |

@@ -23,6 +23,7 @@ import { closeShot, markBrokenShot, openShot, pickAxis, shotOpen, showShot, step
 import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
+import { closeCpop, cpopKeys, historyKeys, historyTyped, rememberSent } from './ui/cpop';
 import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile } from './ui/history';
@@ -861,6 +862,7 @@ const wsDrafts = new Drafts<NonNullable<typeof ui.reply.ws>>();
  */
 export function swapDraft(from: string | null, to: string | null) {
   if (from === to) return;
+  closeCpop('ws');
   const input = $<HTMLTextAreaElement>('#ws-input');
   if (from) wsDrafts.put(from, { text: input.value, files: ui.attach.ws, reply: ui.reply.ws });
   wsDrafts.keep((id) => !!worker(id));
@@ -904,11 +906,15 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     host.style.setProperty('--composer-h', h);
     if (thread && atEnd) scrollQuietly(thread, thread.scrollHeight);
   }).observe(form);
-  input.addEventListener('input', () => { if (box === 'chat') shellInput(input); autosize(input); updateSendButton(); });
+  input.addEventListener('input', () => { if (box === 'chat') shellInput(input); autosize(input); updateSendButton(); historyTyped(box); });
+  // The list over the composer goes with the focus; a press on one of its rows keeps the focus here.
+  input.addEventListener('blur', () => closeCpop(box));
   // Files copied in Explorer or Finder attach as if dropped here.
   input.addEventListener('paste', (e) => pasteFiles(box, e));
   input.addEventListener('keydown', (e) => {
+    if (cpopKeys(e, box)) return;
     if (box === 'chat' && shellKeys(e, input)) { updateSendButton(); return; }
+    if (historyKeys(e, box, box === 'chat' && ui.shell)) return;
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       form.requestSubmit();
@@ -927,6 +933,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     const text = typed.trim() || (files.length ? t('attach.defaultText') : '');
     if (!text) return;
     const reply = ui.reply[box];
+    closeCpop(box);
     sending.add(to);
     // Sending goes to the end of the thread, scrolled up or not, and follows what comes after it.
     if (thread) {
@@ -935,6 +942,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     }
     const err = await send(text, files);
     sending.delete(to);
+    if (!err && !sh) void rememberSent(box, target, typed);
     if (box === 'ws' && ui.wSel !== target) {
       // Another Worker is on screen by now: what went leaves the draft kept for the one it went to.
       if (err) toast(err, true); else if (target) wsDrafts.sent(target, typed, files, reply as typeof ui.reply.ws);
