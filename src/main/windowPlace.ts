@@ -37,13 +37,17 @@ export function keepWindowPlace(win: BrowserWindow, place: WindowState) {
   const opened = win.getNormalBounds();
   let shown = false;
   const restore = () => {
+    if (shown) return;
     shown = true;
     if (place.fullScreen) win.setFullScreen(true);
     else if (place.maximized) win.maximize();
   };
   if (win.isVisible()) restore(); else win.once('show', restore);
   const save = () => {
-    if (!shown || win.isDestroyed() || win.isMinimized() || !store.loaded) return;
+    if (win.isDestroyed()) return;
+    // macOS can tell 'show' late (it goes by the window's occlusion): a window on screen has been shown.
+    if (!shown && win.isVisible()) restore();
+    if (!shown || win.isMinimized() || !store.loaded) return;
     store.saveSession({ window: { bounds: boundsToKeep(win.getNormalBounds(), opened, place.bounds), maximized: win.isMaximized(), fullScreen: win.isFullScreen() } satisfies WindowState });
   };
   const soon = debounce(save, 500);
