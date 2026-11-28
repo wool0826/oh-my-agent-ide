@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { DISPATCHER_DRAFT, Drafts, parseDraft } from '../src/shared/drafts';
 import { menuPlace } from '../src/shared/menu';
 
-const none = { text: '', files: [], reply: null, mentions: [] };
+const none = { text: '', files: [], reply: null };
 
 test('a draft waits for its own Worker', () => {
   const d = new Drafts<string>();
   d.put('W-01', { text: 'for one', files: ['a.png'], reply: 'quote' });
   assert.deepEqual(d.take('W-02'), none);
-  assert.deepEqual(d.take('W-01'), { text: 'for one', files: ['a.png'], reply: 'quote', mentions: [] });
+  assert.deepEqual(d.take('W-01'), { text: 'for one', files: ['a.png'], reply: 'quote' });
   // Handed to the composer: not kept twice.
   assert.deepEqual(d.take('W-01'), none);
 });
@@ -36,7 +36,7 @@ test('a message that went while another Worker was open leaves its draft', () =>
   d.put('W-01', { text: 'sent text', files: ['a.png', 'b.png'], reply: 'quote' });
   d.sent('W-01', 'sent text', ['a.png'], 'quote');
   // A file added after the send stays.
-  assert.deepEqual(d.take('W-01'), { text: '', files: ['b.png'], reply: null, mentions: [] });
+  assert.deepEqual(d.take('W-01'), { text: '', files: ['b.png'], reply: null });
   d.put('W-01', { text: 'sent text', files: [], reply: null });
   d.sent('W-01', 'sent text', [], null);
   assert.equal(d.has('W-01'), false);
@@ -55,6 +55,15 @@ test('drafts: a Worker keeps its "@" chips, and those that went leave the draft'
   d.put('W-01', { text: 'hi', files: [], reply: null, mentions: [a, b] });
   d.sent('W-01', 'hi', [], null, [{ ...a }]);
   assert.deepEqual(d.take('W-01').mentions, [b]);
+});
+
+test('drafts: "@" chips alone are a draft, are kept for the next start and read back', () => {
+  const d = new Drafts<string>();
+  const m = { kind: 'file' as const, id: 'src/a.ts', label: 'a.ts', repo: 'app' };
+  const saved = d.saved({ 'W-01': { text: '', files: [], reply: null, mentions: [m] } });
+  assert.deepEqual(saved, { 'W-01': { text: '', files: [], reply: null, mentions: [m] } });
+  d.load({ 'W-01': { text: '', files: [], mentions: [m, { kind: 'bad', id: 'x', label: 'x' }, 'x'] } }, () => true, () => null);
+  assert.deepEqual(d.take('W-01').mentions, [m]);
 });
 
 test('drafts of Workers that are gone are dropped', () => {

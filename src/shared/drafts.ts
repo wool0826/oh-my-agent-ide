@@ -2,23 +2,26 @@
 
 import type { Mention } from './types';
 
-/** `mentions`: the "@" chips over the text (decision 7C). */
+/** `mentions`: the "@" chips over the text (decision 7C), left out when there are none. */
 export interface Draft<R> { text: string; files: string[]; reply: R | null; mentions?: Mention[] }
+
+const blank = (d: Draft<unknown>) => !d.text.trim() && !d.files.length && !d.reply && !d.mentions?.length;
+const copy = <R>(d: Draft<R>): Draft<R> => ({ text: d.text, files: [...d.files], reply: d.reply, ...(d.mentions?.length ? { mentions: [...d.mentions] } : {}) });
 
 export class Drafts<R> {
   private map = new Map<string, Draft<R>>();
 
   /** Keep what the composer holds for `id`. An empty composer leaves nothing. */
   put(id: string, d: Draft<R>): void {
-    if (!d.text.trim() && !d.files.length && !d.reply && !d.mentions?.length) this.map.delete(id);
-    else this.map.set(id, { text: d.text, files: [...d.files], reply: d.reply, mentions: [...(d.mentions ?? [])] });
+    if (blank(d)) this.map.delete(id);
+    else this.map.set(id, copy(d));
   }
 
   /** The draft for `id`, handed to the composer: it is no longer kept here. */
   take(id: string): Draft<R> {
     const d = this.map.get(id);
     this.map.delete(id);
-    return d ?? { text: '', files: [], reply: null, mentions: [] };
+    return d ?? { text: '', files: [], reply: null };
   }
 
   /**
@@ -52,8 +55,8 @@ export class Drafts<R> {
     const out: Record<string, Draft<R>> = {};
     for (const [id, d] of this.map) out[id] = d;
     for (const [id, d] of Object.entries(shown)) {
-      if (!d.text.trim() && !d.files.length && !d.reply) delete out[id];
-      else out[id] = { text: d.text, files: [...d.files], reply: d.reply };
+      if (blank(d)) delete out[id];
+      else out[id] = copy(d);
     }
     return out;
   }
@@ -76,5 +79,13 @@ export function parseDraft<R>(v: unknown, reply: (r: unknown) => R | null): Draf
   const o = v as Partial<Record<keyof Draft<R>, unknown>> | null;
   if (!o || typeof o.text !== 'string') return null;
   const files = Array.isArray(o.files) ? o.files.filter((f): f is string => typeof f === 'string') : [];
-  return { text: o.text, files, reply: o.reply ? reply(o.reply) : null };
+  const mentions = Array.isArray(o.mentions) ? o.mentions.filter(isMention) : [];
+  return { text: o.text, files, reply: o.reply ? reply(o.reply) : null, ...(mentions.length ? { mentions } : {}) };
+}
+
+const KINDS: readonly string[] = ['repo', 'file', 'pr', 'task', 'worker'];
+function isMention(v: unknown): v is Mention {
+  const m = v as Partial<Record<keyof Mention, unknown>> | null;
+  return !!m && typeof m.kind === 'string' && KINDS.includes(m.kind) && typeof m.id === 'string' && typeof m.label === 'string'
+    && [m.title, m.repo, m.detail].every((x) => x === undefined || typeof x === 'string');
 }
