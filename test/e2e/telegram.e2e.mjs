@@ -177,3 +177,30 @@ flow('a photo from the phone is saved in the app folder and reaches the Dispatch
   await waitFor(() => mine().includes('Programs and shortcuts are not received.'), 'the refusal');
   assert.deepEqual(tg.state.downloads, ['photos/file_1.jpg']);
 });
+
+flow('a plan reaches the phone with its text and Approve, and a press lets the Worker go on', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const from = tg.state.sent.length;
+  await app.say('@fake task - Plan the change\n@@fake plan WHAT: rename the field\\nHOW: one commit\\nOUTPUT: a PR\n@@fake result Carried out the plan.');
+  await waitFor(() => tg.state.sent.slice(from).some((m) => m.reply_markup), 'the plan with buttons');
+  const plan = tg.state.sent.slice(from).find((m) => m.reply_markup);
+  assert.match(plan.text, /rename the field/);
+  const [approve, deny] = plan.reply_markup.inline_keyboard[0];
+  assert.deepEqual([approve.text, deny.text], ['Approve plan', 'Deny']);
+  tg.push(tg.press(42, plan.message_id, approve.callback_data));
+  await waitFor(() => tg.state.sent.slice(from).some((m) => /^W-\d+ done/.test(m.text) && /Plan the change/.test(m.text)), 'the result on the phone');
+  assert.ok(tg.state.edits.some((e) => e.message_id === plan.message_id && /→ Approve plan$/.test(e.text ?? '')), 'its buttons off');
+});
+
+flow('a message sent while the app was off waits, and Send passes it to the Dispatcher', { env: { OMA_TELEGRAM_API: tg.url } }, async (app) => {
+  await pair(app);
+  const from = tg.state.sent.length;
+  tg.push(tg.user(42, '@fake say Picked up the old one.', { date: Math.floor(Date.now() / 1000) - 3600 }));
+  await waitFor(() => tg.state.sent.slice(from).some((m) => m.reply_markup && /waiting/.test(m.text)), 'the question about it');
+  assert.ok(!(await app.state()).chat.some((m) => m.kind === 'user' && m.via === 'telegram'), 'it waits');
+  const ask = tg.state.sent.slice(from).find((m) => m.reply_markup && /waiting/.test(m.text));
+  const send = ask.reply_markup.inline_keyboard.flat().find((b) => b.text === 'Send');
+  assert.ok(send, 'a Send button');
+  tg.push(tg.press(42, ask.message_id, send.callback_data));
+  await waitFor(() => tg.state.sent.slice(from).some((m) => m.text === 'Picked up the old one.'), 'the answer on the phone');
+});

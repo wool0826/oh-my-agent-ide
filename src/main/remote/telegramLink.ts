@@ -336,6 +336,16 @@ export class TelegramLink extends EventEmitter {
     try { await run; } finally { if (this.stopping === run) this.stopping = null; }
   }
 
+  /**
+   * The computer woke from sleep: the long poll from before may hang on a connection that is gone, and a retry may
+   * wait out a long pause. A fresh one starts now (no other poller's 'elsewhere' or a refused token is retried).
+   */
+  async resume() {
+    if (!this.poller && this.trouble !== 'retrying') return;
+    await this.stopPolling();
+    this.syncPoll();
+  }
+
   /** Stops everything that runs: polling and the code's timer. */
   async halt() {
     if (this.expiry) { clearTimeout(this.expiry); this.expiry = null; }
