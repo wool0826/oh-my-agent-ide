@@ -268,6 +268,11 @@
   --diff-hunk-bg: rgba(26, 140, 255, .08);
   --diff-add-text: var(--ref-green-300);
   --diff-del-text: var(--ref-red-300);
+  --syn-kw: var(--ref-purple-300);
+  --syn-fn: var(--ref-blue-300);
+  --syn-str: var(--ref-teal-300);
+  --syn-num: var(--ref-yellow-300);
+  --syn-com: var(--ref-gray-400);
   --scrollbar-thumb: rgba(255, 255, 255, .16);
   --term-bg: var(--ref-gray-900);
   --term-fg: var(--ref-gray-50);
@@ -422,6 +427,11 @@
   --diff-hunk-bg: rgba(0, 122, 255, .07);
   --diff-add-text: var(--ref-green-700);
   --diff-del-text: var(--ref-red-700);
+  --syn-kw: var(--ref-purple-700);
+  --syn-fn: var(--ref-blue-700);
+  --syn-str: var(--ref-teal-700);
+  --syn-num: var(--ref-orange-700);
+  --syn-com: var(--ref-gray-600);
   --scrollbar-thumb: rgba(0, 0, 0, .2);
   --term-bg: var(--ref-gray-0);
   --term-fg: var(--ref-gray-900);
@@ -575,6 +585,11 @@
     --diff-hunk-bg: rgba(0, 122, 255, .07);
     --diff-add-text: var(--ref-green-700);
     --diff-del-text: var(--ref-red-700);
+    --syn-kw: var(--ref-purple-700);
+    --syn-fn: var(--ref-blue-700);
+    --syn-str: var(--ref-teal-700);
+    --syn-num: var(--ref-orange-700);
+    --syn-com: var(--ref-gray-600);
     --scrollbar-thumb: rgba(0, 0, 0, .2);
     --term-bg: var(--ref-gray-0);
     --term-fg: var(--ref-gray-900);

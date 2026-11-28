@@ -360,3 +360,68 @@ flow("a Worker's work is copied and saved as Markdown and published from its hea
   await waitFor(async () => (await opened()).some(([k]) => k === 'export:cancelled'), 'the publish stopped');
   await app.evaluate("return window.ide.call('e2e:publish', null, 0);");
 });
+
+flow('the Changes tab marks files as seen, folds them, steps through them by key and lays them side by side only when wide', { repos: ['demo'] }, async (app) => {
+  await app.say('@fake task demo Review me\n@@fake write src/a.ts const a = 1;\nexport function f() { return a; }\n@@fake write notes.txt one\ntwo\n@@fake write yarn.lock lock\n@@fake result Done.');
+  await app.until("document.querySelectorAll('#chat-ins .res').length >= 1", 'the task done');
+  const w = (await app.state()).workers[0];
+  await app.size(1800);
+  // The finished Worker may be listed already or wait under Done today.
+  const row = `#side [data-action="open-worker"][data-id="${w.id}"]`;
+  await app.until(`!!document.querySelector('${row}') || !!document.querySelector('#side [data-action="done-toggle"]')`, 'the Worker row or Done today');
+  if (!(await app.evaluate(`return !!document.querySelector('${row}');`))) await app.click('#side [data-action="done-toggle"]');
+  await app.until(`!!document.querySelector('${row}')`, 'the Worker row');
+  await app.click(row);
+  await app.click('#ws-tab-changes');
+  await app.until("document.querySelectorAll('#ws-diff .df').length === 3", 'three file cards');
+  const seen = () => app.evaluate("return document.querySelector('#ws-diff .seen-n').textContent;");
+  const open = () => app.evaluate("return [...document.querySelectorAll('#ws-diff .df.open .df-t .p')].map((p) => p.textContent);");
+  assert.equal(await seen(), '0 / 3 seen');
+  assert.equal((await open()).length, 3, 'files not seen are open');
+
+  // A lock file is not drawn until asked.
+  const lock = "[...document.querySelectorAll('#ws-diff .df')].find((d) => d.innerText.includes('yarn.lock'))";
+  await app.until(`!!${lock}.querySelector('[data-action="diff-big"]')`, 'the lock file folded away');
+  await app.evaluate(`${lock}.querySelector('[data-action="diff-big"]').click(); return 1;`);
+  await app.until(`!${lock}.querySelector('[data-action="diff-big"]') && !!${lock}.querySelector('.dr.can')`, 'the lock file drawn');
+
+  // Seen in the list closes its card.
+  await app.evaluate("[...document.querySelectorAll('#ws-diff .dli')].find((d) => d.innerText.includes('notes.txt')).querySelector('.xck').click(); return 1;");
+  await app.until("document.querySelector('#ws-diff .seen-n').textContent === '1 / 3 seen'", 'one seen');
+  assert.ok(!(await open()).includes('notes.txt'), 'the seen file is folded');
+
+  // J and K move the ring.
+  const focused = () => app.evaluate("return document.querySelector('#ws-diff .df.focus .df-t .p')?.textContent ?? null;");
+  await app.evaluate('document.activeElement?.blur(); return 1;');
+  await app.key('KeyJ', 'j', 74);
+  await app.until("!!document.querySelector('#ws-diff .df.focus')", 'a file with the ring');
+  const first = await focused();
+  await app.key('KeyJ', 'j', 74);
+  await app.until(`document.querySelector('#ws-diff .df.focus .df-t .p')?.textContent !== ${JSON.stringify(first)}`, 'the ring on the next file');
+  await app.key('KeyK', 'k', 75);
+  await app.until(`document.querySelector('#ws-diff .df.focus .df-t .p')?.textContent === ${JSON.stringify(first)}`, 'the ring back');
+  // V turns seen on and off for the file with the ring.
+  const was = await app.evaluate("return document.querySelector('#ws-diff .df.focus .df-seen input').checked;");
+  await app.key('KeyV', 'v', 86);
+  await app.until(`document.querySelector('#ws-diff .seen-n').textContent === '${was ? 0 : 2} / 3 seen'`, 'V turned seen over');
+  await app.key('KeyV', 'v', 86);
+  await app.until("document.querySelector('#ws-diff .seen-n').textContent === '1 / 3 seen'", 'V turned it back');
+
+  // Fold all, then open all.
+  await app.click('#ws-diff [data-action="diff-fold-all"]');
+  await app.until("document.querySelectorAll('#ws-diff .df.open').length === 0", 'all folded');
+  await app.click('#ws-diff [data-action="diff-fold-all"]');
+  await app.until("document.querySelectorAll('#ws-diff .df.open').length === 3", 'all open');
+
+  // S lays a wide pane side by side; a narrow one goes back to one column and cannot be split.
+  const split = '#ws-diff [data-action="diff-layout"][data-v="split"]';
+  await app.until(`!document.querySelector('${split}').disabled`, 'room for side by side');
+  await app.key('KeyS', 's', 83);
+  await app.until("!!document.querySelector('#ws-diff .df-b.s') && !document.querySelector('#ws-diff .df-b.u')", 'side by side');
+  await app.size(1000);
+  await app.until(`document.querySelector('${split}').disabled && !document.querySelector('#ws-diff .df-b.s')`, 'one column in a narrow pane', 20_000, `return document.querySelector('#ws-diff').clientWidth + ' wide, split disabled: ' + document.querySelector('${split}').disabled;`);
+  assert.equal(await app.evaluate("return document.querySelector('#ws-diff').scrollWidth <= document.querySelector('#ws-diff').clientWidth;"), true, 'nothing scrolls sideways');
+  await app.size(1800);
+  await app.until("!!document.querySelector('#ws-diff .df-b.s')", 'side by side again when wide');
+  await app.evaluate("localStorage.removeItem('oma.diffLayout'); return 1;");
+});
