@@ -7,7 +7,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { PTY_EMPTY, PTY_REPLAY, PTY_SCROLLBACK, ptyFresh, ptyLabel, termFont, termKey, termMatch, termTheme, type PtyTab, type PtyView } from '../../shared/pty';
+import { PTY_EMPTY, PTY_REPLAY, PTY_SCROLLBACK, ptyFresh, ptyLabel, termFont, termKey, termMatch, termTheme, withOpened, type PtyTab, type PtyView } from '../../shared/pty';
 import { findCount } from '../../shared/findMarks';
 import { $, esc, ide, isMac, sym, t, toast, tryCall } from './core';
 
@@ -33,6 +33,8 @@ export const pty = {
   active: '',
   /** A tab is being opened: its view is made, to be measured, before its id is known. */
   opening: false,
+  /** Tabs this window opened that no view from main holds yet (withOpened). */
+  opened: [] as PtyTab[],
   /** The shells a tab can open (pty:shells), the default first. */
   shells: [] as { id: string; name: string }[],
 };
@@ -41,6 +43,10 @@ export const pty = {
 export const ptyOn = () => pty.view.available !== false;
 
 const views = new Map<string, View>();
+/** Tab ids a view from main has held. */
+const seen = new Set<string>();
+/** The tabs as main last sent them; pty.view adds those opened since (withOpened). */
+let fromMain: PtyView = PTY_EMPTY;
 /** Output of a tab with no view yet (before pty:open answered); drawn when its view comes. */
 const stray = new Map<string, Piece[]>();
 
@@ -168,10 +174,12 @@ function syncViews(before: PtyTab[]) {
 
 export function setPtyView(v: PtyView) {
   const before = pty.view.tabs;
-  pty.view = v;
+  fromMain = v;
+  for (const x of v.tabs) seen.add(x.id);
+  ({ view: pty.view, opened: pty.opened } = withOpened(v, pty.opened));
   if (pty.opening) return;
   // Before the last view goes, while the focus is still in it.
-  if (before.length && !v.tabs.length) hooks.empty();
+  if (before.length && !pty.view.tabs.length) hooks.empty();
   syncViews(before);
   hooks.render();
 }
@@ -197,6 +205,9 @@ export async function newTab(repo: string, shell = ''): Promise<boolean> {
     v.id = r.v.id;
     v.have = 0;
     views.set(v.id, v);
+    // Kept when main's view with it is not here yet, so syncViews below does not take the view away (a tab a view
+    // held already and dropped again has ended and gone).
+    if (!seen.has(v.id)) ({ view: pty.view, opened: pty.opened } = withOpened(fromMain, [...pty.opened, r.v]));
     // Sized again while it opened.
     if (v.term.cols !== cols || v.term.rows !== rows) ide.ptySend('resize', v.id, v.term.cols, v.term.rows);
     for (const p of stray.get(v.id) ?? []) put(v, p);
@@ -228,6 +239,7 @@ function stepTab(dir: -1 | 1) {
 }
 
 export async function closeTab(id: string) {
+  pty.opened = pty.opened.filter((x) => x.id !== id);
   const r = await tryCall('pty:close', id);
   if (!r.ok) toast(r.error, true);
 }

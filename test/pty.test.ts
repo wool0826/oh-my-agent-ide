@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { ANSI, Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyFresh, ptyGone, ptyLabel, ptyShells, ptySize, termFont, termKey, termMatch, termTheme } from '../src/shared/pty';
+import { ANSI, Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyFresh, ptyGone, ptyLabel, ptyShells, ptySize, termFont, termKey, termMatch, termTheme, withOpened } from '../src/shared/pty';
 
 const none = () => false;
 
@@ -147,6 +147,22 @@ test('pty: a piece of output the window drew already (in the replay) is not draw
   assert.equal(ptyFresh('abc', 10, 12), '');
   assert.equal(ptyFresh('abc', 10, 10), '');
   assert.equal(ptyFresh('abcdef', 10, 7), 'def');
+});
+
+test('pty: a tab the window opened stays in the view until a view from main holds it', () => {
+  const tab = (id: string) => ({ id, shell: 'bash', name: 'bash', repo: '', fg: '', live: true, code: null, startedAt: '' });
+  const a = tab('a'), b = tab('b');
+  // main's view still without b (it came first, or was sent before b opened): b is kept, at the end.
+  const early = withOpened({ available: true, tabs: [a] }, [b]);
+  assert.deepEqual(early.view.tabs.map((x) => x.id), ['a', 'b']);
+  assert.deepEqual(early.opened, [b]);
+  // A view with b: main's own copy shows, and nothing is waited for any more.
+  const moved = { ...b, fg: 'vim' };
+  const later = withOpened({ available: true, tabs: [moved, a] }, early.opened);
+  assert.deepEqual(later.view.tabs, [moved, a]);
+  assert.deepEqual(later.opened, []);
+  const v = { available: true, tabs: [a] };
+  assert.equal(withOpened(v, []).view, v);
 });
 
 test("pty: a tab's chip names the program in front or the shell, and the repository it started in", () => {

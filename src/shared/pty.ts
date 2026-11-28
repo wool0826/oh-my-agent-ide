@@ -175,6 +175,17 @@ export function ptyFresh(d: string, end: number, have: number): string {
   return start >= have ? d : d.slice(have - start);
 }
 
+/**
+ * The tabs as the window shows them: main's view, with the tabs the window opened that it does not hold yet at the end.
+ * Main's message with a new tab may come after the answer to pty:open (they go apart), and one sent before the tab
+ * opened may come later still; `opened` is what is still waited for (a tab leaves it once a view holds it).
+ */
+export function withOpened(v: PtyView, opened: readonly PtyTab[]): { view: PtyView; opened: PtyTab[] } {
+  const have = new Set(v.tabs.map((x) => x.id));
+  const left = opened.filter((x) => !have.has(x.id));
+  return { view: left.length ? { ...v, tabs: [...v.tabs, ...left] } : v, opened: left };
+}
+
 /** A tab's name on its chip: the program in front (or the shell), and the repository it started in. */
 export function ptyLabel(tab: Pick<PtyTab, 'name' | 'fg' | 'repo'>): string {
   const who = tab.fg || tab.name;
