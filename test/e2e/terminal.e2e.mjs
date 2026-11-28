@@ -83,6 +83,7 @@ flow('the side terminal runs lines apart from the chat in the dock under it, rec
     return { on, off };`);
   assert.notEqual(edges.on.dock, edges.off.dock, `the dock's edge shows the focus: ${JSON.stringify(edges)}`);
   assert.equal(edges.on.line, edges.off.line, `no line under the input on focus: ${JSON.stringify(edges)}`);
+  assert.ok(!edges.on.line.includes('-2px'),`no accent line under the input: ${edges.on.line}`);
   // The dock covers nothing: the chat ends above it, and it ends above the composer.
   const layout = await app.evaluate("const r = (s) => document.querySelector(s).getBoundingClientRect(); return { chat: r('#chat-thread').bottom, top: r('#dock').top, bottom: r('#dock').bottom, composer: r('#chat-form').top };");
   assert.ok(layout.chat <= layout.top + 0.5, `the chat ends above the dock: ${JSON.stringify(layout)}`);
