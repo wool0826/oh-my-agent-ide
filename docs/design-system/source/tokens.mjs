@@ -161,6 +161,8 @@ export const themes = {
     // diff
     'diff-add-bg': 'rgba(48, 209, 88, .14)', 'diff-del-bg': 'rgba(255, 74, 64, .14)', 'diff-hunk-bg': 'rgba(26, 140, 255, .08)',
     'diff-add-text': '{ref.green.300}', 'diff-del-text': '{ref.red.300}',
+    // syntax colours in a diff (item 10A)
+    'syn-kw': '{ref.purple.300}', 'syn-fn': '{ref.blue.300}', 'syn-str': '{ref.teal.300}', 'syn-num': '{ref.yellow.300}', 'syn-com': '{ref.gray.400}',
     // scrollbar
     'scrollbar-thumb': 'rgba(255, 255, 255, .16)',
     // side terminal (xterm.js): its ground, text, cursor and selection, and the 16 colours programs print in
@@ -224,6 +226,7 @@ export const themes = {
     'switch-off': 'rgba(120, 120, 128, .28)', 'switch-on': '{ref.green.600}', 'switch-knob': '{ref.gray.0}',
     'diff-add-bg': 'rgba(52, 199, 89, .16)', 'diff-del-bg': 'rgba(255, 59, 48, .12)', 'diff-hunk-bg': 'rgba(0, 122, 255, .07)',
     'diff-add-text': '{ref.green.700}', 'diff-del-text': '{ref.red.700}',
+    'syn-kw': '{ref.purple.700}', 'syn-fn': '{ref.blue.700}', 'syn-str': '{ref.teal.700}', 'syn-num': '{ref.orange.700}', 'syn-com': '{ref.gray.600}',
     'scrollbar-thumb': 'rgba(0, 0, 0, .2)',
     'term-bg': '{ref.gray.0}', 'term-fg': '{ref.gray.900}', 'term-cursor': '{ref.gray.900}', 'term-selection': 'rgba(0, 122, 255, .2)', 'term-match': '{ref.yellow.300}', 'term-match-current': '{ref.orange.300}',
     'ansi-black': '{ref.gray.900}', 'ansi-red': '{ref.red.600}', 'ansi-green': '{ref.green.600}', 'ansi-yellow': '{ref.yellow.600}',
@@ -302,6 +305,7 @@ export const pairs = [
   ...text('text-secondary', softOn('neutral-soft'), 'Neutral pill.'),
   ...text('diff-add-text', [['add line in card', [...CARD_ON_CANVAS, 'diff-add-bg']]]),
   ...text('diff-del-text', [['del line in card', [...CARD_ON_CANVAS, 'diff-del-bg']]]),
+  ...['syn-kw', 'syn-fn', 'syn-str', 'syn-num'].flatMap((k) => text(k, [['add line in card', [...CARD_ON_CANVAS, 'diff-add-bg']], ['del line in card', [...CARD_ON_CANVAS, 'diff-del-bg']]])),
   ...text('text-primary', [['add line in card', [...CARD_ON_CANVAS, 'diff-add-bg']], ['del line in card', [...CARD_ON_CANVAS, 'diff-del-bg']]]),
   ...ui('focus-ring', [['canvas', CANVAS], ['panel', PANEL], ['card in panel', CARD_IN_PANEL], ['input in panel', SUNKEN_IN_PANEL]]),
   ...['state-ask', 'state-run', 'state-review', 'state-wait', 'state-done', 'state-idle', 'kind-repo', 'kind-pref', 'kind-doc'].flatMap((s) => ui(s, [['panel', PANEL], ['card in panel', CARD_IN_PANEL], ['selected row', SEL_IN_PANEL], ['canvas', CANVAS]])),
