@@ -18,7 +18,7 @@ export function registerIpc(ctx: IpcContext) {
   registerChatIpc(ctx);
   registerToolIpc();
   registerDecisionIpc();
-  registerWorkerIpc();
+  registerWorkerIpc(ctx);
   registerRepoIpc(ctx);
   registerMemoryIpc();
   registerSettingsIpc(ctx);

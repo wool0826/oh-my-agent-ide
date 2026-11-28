@@ -17,9 +17,25 @@ const SECRETS: [RegExp, string][] = [
 
 /** The text with anything that looks like a credential replaced. */
 export function redact(text: string): string {
+  return redactCount(text).text;
+}
+
+/**
+ * The same, with how many values were taken out. `mask` stands in for each hidden value instead of `***` (an export
+ * shows "[hidden]"); what comes before it, such as a token's prefix or a setting's name, stays.
+ */
+export function redactCount(text: string, mask?: string): { text: string; n: number } {
   let out = text;
-  for (const [re, to] of SECRETS) out = out.replace(re, to);
-  return out;
+  let n = 0;
+  const shown = mask ?? '***';
+  for (const [re, to] of SECRETS) {
+    const hits = out.match(re);
+    if (!hits) continue;
+    // A value an earlier rule already hid ("API_KEY=sk-ant-***") is tidied, not counted again.
+    n += hits.filter((h) => !h.includes(shown)).length;
+    out = out.replace(re, mask === undefined ? to : to.replace(/"?\*\*\*"?/, mask.replace(/\$/g, '$$$$')));
+  }
+  return { text: out, n };
 }
 
 export interface DiagnosticsInput {

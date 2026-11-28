@@ -209,6 +209,7 @@ export function renderSession(force = false, older = false) {
   $('#ws-sub').textContent = [w.repo ?? t('general'), x?.branch, modelLabel(w.model)].filter(Boolean).join(' · ');
   const split = openSplitHtml(w);
   if ($('#ws-open').innerHTML !== split) $('#ws-open').innerHTML = split;
+  $('#ws-more').dataset.id = w.id;
   const tabs = w.repo ? (['chat', 'changes', 'summary'] as const) : (['chat', 'summary'] as const);
   if (!w.repo && ui.wTab === 'changes') ui.wTab = 'chat';
   $('#ws-tabs').hidden = false;

@@ -2,7 +2,7 @@
 // Each flow starts the built app on its own empty profile with fake agents and a stand-in for gh. Run with `npm run e2e`.
 import assert from 'node:assert/strict';
 import os from 'node:os';
-import { flow } from './harness.mjs';
+import { flow, waitFor } from './harness.mjs';
 
 const task = (state, title) => state.tasks.find((x) => x.title === title);
 const DEC = '#chat-ins .dec';
@@ -279,4 +279,84 @@ flow('a Worker folder opens in the editor, the terminal and the file manager, an
   await app.until(`!!document.querySelector('.menu.pop [data-v="vscode"]')`, 'the editor list');
   await app.click('.menu.pop [data-v="vscode"]');
   await app.until("return (await window.ide.call('state')).settings.editor === 'vscode' && !document.getElementById('set-ecmd')", 'VS Code saved and the command row gone');
+});
+
+flow("a Worker's work is copied and saved as Markdown and published from its header menu, with secrets hidden", { repos: ['demo'] }, async (app) => {
+  const mod = process.platform === 'darwin' ? 4 : 2;
+  const opened = () => app.evaluate("return await window.ide.call('e2e:opened');");
+  await app.say('@fake task demo Usage forecast\n@@fake write README.md # Demo\n@@fake result Done. env: ANTHROPIC_API_KEY=sk-ant-abcdefghij1234');
+  await app.until("document.querySelectorAll('#chat-ins .res').length >= 1", 'the task done');
+  const w = (await app.state()).workers[0];
+  const x = (await app.state()).tasks[0];
+  await app.click('#side [data-action="done-toggle"]');
+  await app.until(`!!document.querySelector('#side [data-action="open-worker"][data-id="${w.id}"]')`, 'the Worker row');
+  await app.click(`#side [data-action="open-worker"][data-id="${w.id}"]`);
+  await app.until("!!document.querySelector('#ws-more')?.offsetParent", 'the export button in the Worker header');
+  assert.equal(await app.evaluate("return document.querySelector('#ws-more').getAttribute('aria-label');"), 'Export');
+
+  // The menu: copy, save, publish (with its shortcut).
+  await app.click('#ws-more');
+  await app.until("!document.getElementById('ctxmenu').hidden && document.getElementById('ctxmenu').dataset.for === 'export'", 'the export menu');
+  assert.deepEqual(await app.evaluate("return [...document.querySelectorAll('#ctxmenu .menu-item')].map((b) => b.dataset.action);"), ['export-copy', 'export-save', 'export-publish']);
+  assert.equal(await app.evaluate("return document.querySelector('#ws-more').getAttribute('aria-expanded');"), 'true');
+
+  // Copy: the Markdown, its token hidden.
+  await app.evaluate("window.__copied = []; navigator.clipboard.writeText = async (t) => { window.__copied.push(t); }; return 1;");
+  await app.click('#ctxmenu [data-action="export-copy"]');
+  await app.until('window.__copied.length === 1', 'the Markdown copied');
+  const md = await app.evaluate('return window.__copied[0];');
+  assert.ok(md.startsWith(`## ${x.id} Usage forecast\n`), md.slice(0, 80));
+  assert.ok(md.includes('ANTHROPIC_API_KEY=[hidden]') && !md.includes('sk-ant-abc'), 'the token is hidden');
+
+  // Save: a file named after the task.
+  await app.click('#ws-more');
+  await app.until("!document.getElementById('ctxmenu').hidden", 'the export menu again');
+  await app.click('#ctxmenu [data-action="export-save"]');
+  await app.until(`return (await window.ide.call('e2e:opened')).some(([k, v]) => k === 'export:save' && v === '${x.id}.md')`, 'the .md saved');
+
+  // Publish with Ctrl/Cmd+Shift+E: the parts with their counts, what is hidden, and a preview that follows the boxes.
+  await app.evaluate("document.activeElement?.blur(); return 1;");
+  await app.key('KeyE', 'E', 69, mod | 8);
+  await app.until("!!document.querySelector('#dlg .dlg.pub')", 'the publish dialog');
+  const rows = () => app.evaluate("return [...document.querySelectorAll('#dlg .xrow')].map((r) => [r.querySelector('.xck').value, r.querySelector('.xck').checked, r.querySelector('small').textContent]);");
+  const parts = await rows();
+  assert.deepEqual(parts.map(([k, on]) => [k, on]), [['chat', true], ['report', true], ['diff', false], ['shots', false]]);
+  assert.match(await app.evaluate("return document.querySelector('#dlg .pub-hid').textContent;"), /^Hidden [1-9]\d* · tokens [1-9]\d* · paths \d+$/);
+  assert.ok(await app.evaluate("return [...document.querySelectorAll('#dlg .pub-prev mark')].some((m) => m.textContent === '[hidden]');"), 'the preview marks a hidden value');
+  await app.click('#dlg .xck[value="report"]');
+  await app.click('#dlg .xck[value="chat"]');
+  await app.until("document.querySelector('#dlg .pub-hid').textContent.startsWith('Hidden 0')", 'nothing left to hide');
+  await app.click('#dlg .xck[value="report"]');
+  await app.click('#dlg [data-action="export-go"]');
+  await app.until("!!document.querySelector('#dlg .pub-url')", 'the published link');
+  assert.equal(await app.evaluate("return document.querySelector('#dlg .pub-link').textContent;"), 'https://claude.ai/artifact/e2e-export');
+  assert.deepEqual((await opened()).filter(([k]) => k === 'export:publish'), [['export:publish', `${x.id} Usage forecast`]]);
+  await app.click('#dlg .pub-btns [data-action="export-close"]');
+  await app.until("document.getElementById('dlg').hidden", 'the dialog closed');
+
+  // Without a claude.ai login the publish fails and says so; Retry is offered, Escape closes.
+  await app.evaluate("return window.ide.call('e2e:publish', 'login', 0);");
+  await app.click('#ws-more');
+  await app.until("!document.getElementById('ctxmenu').hidden", 'the export menu once more');
+  await app.click('#ctxmenu [data-action="export-publish"]');
+  await app.until("!!document.querySelector('#dlg .dlg.pub')", 'the publish dialog again');
+  await app.click('#dlg [data-action="export-go"]');
+  await app.until("!!document.querySelector('#dlg .pub-err')", 'the publish error');
+  assert.equal(await app.evaluate("return document.querySelector('#dlg .pub-err').textContent;"), 'Publish failed · claude.ai login needed');
+  assert.equal(await app.evaluate("return document.querySelector('#dlg .pub-btns .btn-primary').textContent;"), 'Retry');
+  await app.key('Escape', 'Escape', 27);
+  await app.until("document.getElementById('dlg').hidden", 'Escape closed the dialog');
+
+  // Closed while publishing: the session is stopped, not left to publish unseen.
+  await app.evaluate("return window.ide.call('e2e:publish', null, 5000);");
+  await app.click('#ws-more');
+  await app.until("!document.getElementById('ctxmenu').hidden", 'the export menu a third time');
+  await app.click('#ctxmenu [data-action="export-publish"]');
+  await app.until("!!document.querySelector('#dlg .dlg.pub')", 'the publish dialog a third time');
+  await app.click('#dlg [data-action="export-go"]');
+  await app.until("!!document.querySelector('#dlg .pub-btns .btn-primary.busy')", 'publishing');
+  await app.click('#dlg .pub-btns [data-action="export-close"]');
+  await app.until("document.getElementById('dlg').hidden", 'Cancel closed the dialog while publishing');
+  await waitFor(async () => (await opened()).some(([k]) => k === 'export:cancelled'), 'the publish stopped');
+  await app.evaluate("return window.ide.call('e2e:publish', null, 0);");
 });
