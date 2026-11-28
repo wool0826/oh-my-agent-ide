@@ -56,6 +56,8 @@ export interface Data {
   memos?: Memo[];
   /** Automations (shared/automations.ts). Unset in state files saved before they existed. */
   automations?: Automation[];
+  /** What each automation event watch saw on GitHub last (shared/automations.ts, freshEvents), by watch key. */
+  autoSeen?: Record<string, string[]>;
   /** Saved shell scripts (shared/scripts.ts). Unset in state files saved before they existed. */
   scripts?: ShellScript[];
   /** Saved prompts (shared/prompts.ts). Unset in state files saved before they existed. */

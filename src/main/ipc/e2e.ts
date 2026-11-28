@@ -1,7 +1,7 @@
 import { handle } from './handle';
 import { workers } from '../agents/workers';
 import { automations } from '../automations';
-import { checkPrs, runMergeQueue } from '../prmonitor';
+import { checkPrs, pollAutomationEvents, runMergeQueue } from '../prmonitor';
 import { diagnostics } from '../diagnostics';
 import { autoSleep } from '../sleep';
 import { badge, usageNotes } from '../notify';
@@ -15,6 +15,7 @@ export function registerE2eIpc(awake: { readonly held: boolean }) {
   handle('diag:text', () => diagnostics());
   handle('pr:check', () => checkPrs({ full: true }));
   // The half-minute checks run as if `ms` had passed: a slot given up after a long wait, a daily automation's time.
+  handle('e2e:autoPoll', () => pollAutomationEvents());
   handle('e2e:clock', (ms: number) => { const now = Date.now() + Number(ms); workers.sweepWaiting(now); automations.tick(new Date(now)); });
   // What a test run would have opened on the computer (open:path, open:external keep it instead).
   handle('e2e:opened', () => e2eOpened);

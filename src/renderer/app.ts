@@ -17,7 +17,7 @@ import { FONT_SIZE_DEFAULT } from '../shared/font';
 import { Drafts } from '../shared/drafts';
 import { type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
-import { addAuto, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
+import { addAuto, cancelAddAuto, pickAutoField, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
 import { closeShot, markBrokenShot, openShot, pickAxis, shotOpen, showShot, stepShot } from './ui/shotview';
 import { cardKey, keyAnswer } from '../shared/decisionView';
@@ -349,6 +349,9 @@ export async function act(el: HTMLElement, e: Event) {
     case 'pick': await pick(el, e); break;
     case 'open-chat': if (id && !(await jumpToChat(id))) toast(t('auto.runGone')); break;
     case 'auto-add': await addAuto(); break;
+    case 'auto-cancel': cancelAddAuto(); break;
+    case 'auto-trig': case 'auto-repo': case 'auto-day': pickAutoField(el); break;
+    case 'auto-run': if (id) await call('auto:run', id); break;
     case 'auto-edit': if (id) { editAuto(id); renderChatInspector(); $<HTMLTextAreaElement>('#auto-prompt-e')?.focus(); } break;
     case 'auto-edit-cancel': ui.autoEdit = null; renderChatInspector(); break;
     case 'auto-save': await saveAuto(); break;
@@ -1058,11 +1061,6 @@ export function init() {
     }
     if (el.dataset.change === 'auto-toggle') { void call('auto:toggle', el.dataset.id, (el as unknown as HTMLInputElement).checked); return; }
     if (el.dataset.change === 'prompt-plan') { setPromptPlan(el.dataset.id ?? 'new', (el as unknown as HTMLInputElement).checked); return; }
-    if (el.id === 'auto-wk') { ui.autoWk = (el as unknown as HTMLInputElement).checked; return; }
-    if (el.id === 'auto-kind') { ui.autoKind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoKind === 'merged'); return; }
-    // The same two switches in the form that changes an automation.
-    if (el.id === 'auto-wk-e') { if (ui.autoEdit) ui.autoEdit.wk = (el as unknown as HTMLInputElement).checked; return; }
-    if (el.id === 'auto-kind-e') { if (ui.autoEdit) { ui.autoEdit.kind = el.value === 'merged' ? 'merged' : 'daily'; el.closest('.auto-add')?.classList.toggle('merged', ui.autoEdit.kind === 'merged'); } return; }
     if (el.dataset.change === 'acc-kind') { ui.accKind = el.value as typeof ui.accKind; syncAccRows(); }
     if (el.dataset.change === 'acc-assign') { void call('account:assign', el.dataset.id, el.value); return; }
     if (el.id === 'usage-every') { void call('settings:save', { usageRefreshMins: Number(el.value) }); return; }

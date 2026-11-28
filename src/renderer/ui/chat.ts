@@ -1,7 +1,7 @@
 // The chat with the Dispatcher and its right sidebar: decisions, comparisons, bundles, results, memos, automations, and attachments.
 import { middleName } from '../../shared/middleName';
 import { refreshFind } from './find';
-import type { Automation, Memo } from '../../shared/types';
+import type { Automation, AutoTrigger, Memo } from '../../shared/types';
 import type { AutoAnswer, ChatItem, Decision, MemorySuggestion, PlanSummary, RiskTag, Task } from '../../shared/types';
 import { ALLOW, ALLOW_TASK, DENY } from '../../shared/types';
 import { stepView } from '../../shared/steps';
@@ -16,7 +16,8 @@ import { linkify, reportLinks, type ReportLink } from '../../shared/linkify';
 import { mdInline } from '../../shared/markdown';
 import { busyPrs, mergeWait, type MergeWait } from '../../shared/prMerge';
 import { queuedPrs } from '../../shared/mergeQueue';
-import { parseTime } from '../../shared/automations';
+import { EVENT_CHOICES, PER_DAY_DEFAULT, SCHEDULE_CHOICES, atLimit, choiceOf, clampPerDay, isEventKind, normalizeTrigger, runsToday, takesBranch, type TriggerChoice } from '../../shared/automations';
+import { closePop, openPop, pop, type Opt } from './controls';
 import { canPick, openComparisons } from '../../shared/compare';
 import { awayDigest, awayRows, type AwayDigest } from '../../shared/away';
 import { bundleMergeOrder, openBundles } from '../../shared/bundle';
@@ -39,7 +40,7 @@ import { setTip } from './tip';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
 import { tookText } from './workers';
-import { colsHtml, markPick, navItems, rove, rowHtml, slotHtml } from './panes';
+import { colsHtml, markPick, navItems, rove, slotHtml } from './panes';
 
 export const CI_BADGE: Record<string, [string, Key]> = { passing: ['ok', 'pr.ciPassing'], failing: ['bad', 'pr.ciFailing'], pending: ['run', 'pr.ciPending'] };
 
@@ -1095,9 +1096,26 @@ export function bundlesHtml() {
   }).join('');
 }
 
-/** "Daily 09:00", "Weekdays 09:00", "When a PR merges". */
-export function triggerLabel(a: Automation) {
-  return a.trigger.kind === 'merged' ? t('auto.merged') : t(a.trigger.weekdays ? 'auto.weekdaysAt' : 'auto.dailyAt', { t: a.trigger.time });
+/** The icon of each trigger, in the menu, on the form's button and on a card's chip. */
+const TRIG_ICON: Record<TriggerChoice, string> = {
+  daily: 'e-clock', weekdays: 'e-clock', weekly: 'e-clock', every: 'e-clock',
+  merged: 's-merge', ciFailed: 'e-ci', prOpened: 's-pr', reviewRequested: 'e-bubble', issueLabel: 's-box',
+};
+
+/** A weekday's short name in the window's language; 0 is Sunday. */
+export function dayName(day: number) {
+  return new Date(2026, 10, 22 + day).toLocaleDateString(locale(), { weekday: 'short' });
+}
+
+/** "Daily 09:00", "Weekdays 09:00", "Weekly Mon 09:00", "Every 6h", "CI failed · main", "Issue label · bug". */
+export function triggerLabel(a: Pick<Automation, 'trigger'>) {
+  const tr = a.trigger;
+  if (tr.kind === 'daily') return t(tr.weekdays ? 'auto.weekdaysAt' : 'auto.dailyAt', { t: tr.time });
+  if (tr.kind === 'weekly') return t('auto.weeklyAt', { d: dayName(tr.day), t: tr.time });
+  if (tr.kind === 'every') return t('auto.everyN', { n: tr.hours });
+  const name = t(`auto.c.${tr.kind}`);
+  const narrow = tr.kind === 'issueLabel' ? tr.label : takesBranch(tr.kind) ? tr.branch : '';
+  return narrow ? `${name} · ${narrow}` : name;
 }
 
 /** When a run happens, in words: "Today 9:00 AM", "Tomorrow 9:00 AM", "Mon 9:00 AM", "Nov 30 9:00 AM"; short, no time after today. */
@@ -1111,80 +1129,199 @@ export function runWords(iso: string, short = false) {
   return short ? day : `${day} ${time}`;
 }
 
+/** A card's chip: the trigger's icon and its words. */
+function autoChip(a: Automation) {
+  return `<span class="achip${isEventKind(a.trigger.kind) ? ' ev' : ''}">${sym(TRIG_ICON[choiceOf(a.trigger)])}<span>${esc(triggerLabel(a))}</span></span>`;
+}
+
+/** A card's line after the chip: off; the next run of a schedule; the last run of an event, and today's count of its limit. */
+function autoWhen(a: Automation, now: Date) {
+  if (!a.enabled) return t('auto.off');
+  if (!isEventKind(a.trigger.kind)) return a.nextRunAt ? t('auto.next', { t: runWords(a.nextRunAt) }) : '';
+  if (!a.lastRunAt) return '';
+  const last = t('auto.last', { t: runWords(a.lastRunAt, dayWord(new Date(a.lastRunAt), now) !== 'today') });
+  const n = runsToday(a, now);
+  return a.maxPerDay && n ? `${last} · ${n}/${a.maxPerDay}` : last;
+}
+
+/** Today's limit reached: what sets it off waits for tomorrow. */
+function autoLimitHtml(a: Automation, now: Date) {
+  return a.enabled && atLimit(a, now) ? `<div class="alimit">${sym('s-alert')}<span>${esc(t('auto.limitHit', { n: runsToday(a, now), m: a.maxPerDay ?? 0 }))}</span></div>` : '';
+}
+
+const autoBtn = (action: string, id: string, icon: string, label: string) => `<button class="mact" data-action="${action}" data-id="${id}" data-tip="${esc(label)}" aria-label="${esc(label)}"><svg aria-hidden="true"><use href="#${icon}"/></svg></button>`;
+
 /** One automation as a slot. Selected, its card shows the whole prompt, when it runs, when it ran (a way to that message in the chat) and Delete. */
 function autoSlot(a: Automation) {
   const sel = ui.autoSel === a.id;
+  const now = new Date();
   const off = a.enabled ? '' : ' off';
-  const next = a.enabled && a.nextRunAt ? runWords(a.nextRunAt, true) : '';
   const sw = `<input class="switch" type="checkbox" data-change="auto-toggle" data-id="${a.id}"${a.enabled ? ' checked' : ''} aria-label="${esc(`${t('auto.on')}: ${a.title}`)}">`;
+  const run = autoBtn('auto-run', a.id, 's-play', t('auto.runNow'));
+  const pen = autoBtn('auto-edit', a.id, 's-pencil', t('memo.edit'));
   const edit = ui.autoEdit?.id === a.id;
   // Being changed, its card is the form, filled in; it stays open with what was typed when another one is picked.
   if (edit) return slotHtml(a.id, sel, `<div class="memo auto open${off}">${autoFormHtml(a)}</div>`);
+  const when = autoWhen(a, now);
+  const meta = `<span class="meta">${autoChip(a)}${when ? `<span class="awhen">${esc(when)}</span>` : ''}</span>${autoLimitHtml(a, now)}`;
   if (!sel) {
-    const card = `<div class="memo auto${off}" data-action="pick" data-tab="auto" data-id="${a.id}" data-focus="card-auto-${a.id}" data-nav="auto:${a.id}" tabindex="-1"><p>${esc(a.title)}</p><span class="meta"><span>${esc(triggerLabel(a))}${next ? esc(` · ${t('auto.next', { t: next })}`) : ''}</span><span class="acts">${sw}</span></span></div>`;
+    const card = `<div class="memo auto${off}" data-action="pick" data-tab="auto" data-id="${a.id}" data-focus="card-auto-${a.id}" data-nav="auto:${a.id}" tabindex="-1"><div class="ahead"><p>${esc(a.title)}</p><span class="acts"><span class="ahov">${run}${pen}</span>${sw}</span></div>${meta}</div>`;
     return slotHtml(a.id, false, card);
   }
   const sure = ui.memoDel === a.id;
   const last = !a.lastRunAt ? esc(t('auto.never'))
     : a.lastRunChatId ? `<a tabindex="0" role="link" data-action="open-chat" data-id="${esc(a.lastRunChatId)}">${esc(runWords(a.lastRunAt))}</a>` : esc(runWords(a.lastRunAt));
-  const facts = `<dl class="facts"><dt>${t('auto.when')}</dt><dd>${esc(triggerLabel(a))}</dd>${a.trigger.kind === 'daily' ? `<dt>${t('auto.nextRun')}</dt><dd>${esc(a.enabled && a.nextRunAt ? runWords(a.nextRunAt) : t('auto.off'))}</dd>` : ''}<dt>${t('auto.lastRun')}</dt><dd>${last}</dd></dl>`;
+  const tr = a.trigger;
+  const repo = isEventKind(tr.kind) ? `<dt>${t('auto.repo')}</dt><dd>${esc((tr as { repo?: string }).repo || t('auto.anyRepo'))}</dd>` : '';
+  const limit = a.maxPerDay ? `<dt>${t('auto.limit')}</dt><dd>${esc(`${runsToday(a, now)}/${a.maxPerDay} ${t('auto.perDay')}`)}</dd>` : '';
+  const next = isEventKind(tr.kind) ? '' : `<dt>${t('auto.nextRun')}</dt><dd>${esc(a.enabled && a.nextRunAt ? runWords(a.nextRunAt) : t('auto.off'))}</dd>`;
+  const facts = `<dl class="facts"><dt>${t('auto.when')}</dt><dd>${esc(triggerLabel(a))}</dd>${repo}${limit}${next}<dt>${t('auto.lastRun')}</dt><dd>${last}</dd></dl>`;
   const del = `<button class="mact del${sure ? ' sure' : ''}" data-action="auto-remove" data-id="${a.id}" data-tip="${t('memo.remove')}" aria-label="${t(sure ? 'memo.removeSure' : 'memo.remove')}"><svg aria-hidden="true"><use href="#s-x"/></svg><span class="lbl">${t('memo.removeSure')}</span></button>`;
-  const pen = `<button class="mact" data-action="auto-edit" data-id="${a.id}" data-tip="${t('memo.edit')}" aria-label="${t('memo.edit')}"><svg aria-hidden="true"><use href="#s-pencil"/></svg></button>`;
-  const card = `<div class="memo auto open${off}" data-nav="auto:${a.id}" tabindex="-1"><p>${esc(a.prompt)}</p>${facts}<span class="meta"><span class="gap"></span><span class="acts">${sw}${pen}${del}</span></span></div>`;
+  const card = `<div class="memo auto open${off}" data-nav="auto:${a.id}" tabindex="-1"><div class="ahead"><p>${esc(a.title)}</p><span class="acts">${sw}</span></div><p class="aprompt">${esc(a.prompt)}</p>${facts}${autoLimitHtml(a, now)}<span class="meta"><span class="gap"></span><span class="acts">${run}${pen}${del}</span></span></div>`;
   return slotHtml(a.id, true, card);
 }
 
+/** The repositories an event can be watched in (on GitHub). */
+const autoRepos = () => S!.repos.filter((r) => !r.local).map((r) => r.name);
+const repoBranch = (name: string) => S!.repos.find((r) => r.name === name)?.defaultBranch ?? 'main';
+
+/** What the form being filled in has picked from its menus: the add form's, or the one changing an automation. */
+export function autoFormState(e: string) {
+  return e ? ui.autoEdit : ui.autoNew;
+}
+
+/** A new form's picks: a daily one, in the first repository on GitHub. */
+export function freshAutoForm(): { kind: TriggerChoice; repo: string; day: number } {
+  return { kind: 'daily', repo: autoRepos()[0] ?? '', day: 1 };
+}
+
+const ddBtn = (action: string, e: string, icon: string, text: string, label: string, cls = '') => `<button type="button" class="dd-btn auto-dd${cls}" data-action="${action}" data-form="${e}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(label)}" data-tip="${esc(label)}">${sym(icon)}<span>${esc(text)}</span>${sym('s-updown')}</button>`;
+
 /**
- * The automation form: without `a` it adds one, with it it changes that one (filled in, Cancel and Save).
- * The daily fields are always there and only fade out for "When a PR merges" (.merged), so switching
- * moves nothing and is done in place, without drawing the tab again (app.ts, "auto-kind").
+ * The automation form: without `a` it adds one, with it it changes that one (filled in). "When" is the trigger menu,
+ * then what that trigger needs: a time (and a weekday), the hours, or the repository with its branch or label. Every
+ * field is always there and the trigger shows its own (data-kind), so a pick is made in place (pickAutoField).
  */
 function autoFormHtml(a?: Automation) {
-  const kind = a ? ui.autoEdit!.kind : ui.autoKind;
-  const wk = a ? ui.autoEdit!.wk : ui.autoWk;
+  const e = a ? '-e' : '';
+  const f = a ? ui.autoEdit! : ui.autoNew!;
   // One form adds and one changes, so their fields have their own ids and kept values.
-  const id = (name: string) => (a ? `auto-${name}-e` : `auto-${name}`);
+  const id = (name: string) => `auto-${name}${e}`;
   const keep = (name: string) => (a ? `auto-${name}-e-${a.id}` : `auto-${name}`);
-  const time = a?.trigger.kind === 'daily' ? a.trigger.time : '09:00';
+  const tr = a?.trigger;
+  const time = tr && (tr.kind === 'daily' || tr.kind === 'weekly') ? tr.time : '09:00';
+  const hours = tr?.kind === 'every' ? tr.hours : 6;
+  const ev = tr && isEventKind(tr.kind) ? (tr as { branch?: string; label?: string }) : null;
+  const branch = ev ? ev.branch ?? '' : repoBranch(f.repo);
+  const max = a ? a.maxPerDay ?? '' : PER_DAY_DEFAULT;
+  const inp = (name: string, value: string | number, label: string, cls: string, numeric = false) => `<input class="inp ${cls}" id="${id(name)}" data-keep="${keep(name)}" value="${esc(String(value))}"${numeric ? ' inputmode="numeric"' : ''} aria-label="${esc(label)}" data-tip="${esc(label)}">`;
   const btns = a
     ? `<button class="btn" data-action="auto-edit-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="auto-save" data-id="${a.id}">${t('save')}</button>`
-    : `<button class="btn btn-primary" data-action="auto-add">${t('auto.add')}</button>`;
-  return `<div class="auto-add${kind === 'merged' ? ' merged' : ''}"><textarea class="inp" id="${id('prompt')}" data-keep="${keep('prompt')}" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}">${a ? esc(a.prompt) : ''}</textarea>
-    <div class="auto-when">${segc(id('kind'), kind, [{ value: 'daily', label: t('auto.daily') }, { value: 'merged', label: t('auto.merged') }], t('ins.tabAuto'))}<input class="inp auto-time auto-daily" id="${id('time')}" data-keep="${keep('time')}" value="${esc(time)}" inputmode="numeric" aria-label="${t('auto.time')}"></div>
-    <div class="auto-when"><label class="auto-wk auto-daily">${t('auto.weekdays')}<input class="switch" type="checkbox" id="${id('wk')}"${wk ? ' checked' : ''}></label><span class="gap"></span>${btns}</div></div>`;
+    : `<button class="btn" data-action="auto-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="auto-add">${t('auto.add')}</button>`;
+  return `<div class="auto-add" data-kind="${f.kind}"><textarea class="inp" id="${id('prompt')}" data-keep="${keep('prompt')}" placeholder="${t('auto.prompt')}" aria-label="${t('auto.prompt')}">${a ? esc(a.prompt) : ''}</textarea>
+    <div class="auto-f"><span class="auto-l">${t('auto.when')}</span><div class="auto-when">${ddBtn('auto-trig', e, TRIG_ICON[f.kind], t(`auto.c.${f.kind}`), t('auto.trigger'))}${ddBtn('auto-repo', e, 'e-repo', f.repo || t('auto.anyRepo'), t('auto.repo'), ' auto-ev')}${ddBtn('auto-day', e, 'e-clock', dayName(f.day), t('auto.day'), ' auto-wkly')}${inp('time', time, t('auto.time'), 'auto-time auto-sch', true)}<span class="auto-every">${inp('hours', hours, t('auto.hours'), 'auto-hours', true)}<span class="auto-u">${t('auto.hoursUnit')}</span></span>${inp('branch', branch, t('auto.branch'), 'auto-branch')}${inp('label', ev?.label ?? '', t('auto.label'), 'auto-label')}</div></div>
+    <div class="auto-f"><span class="auto-l">${t('auto.limit')}</span><div class="auto-when">${inp('max', max, t('auto.limit'), 'auto-max', true)}<span class="auto-u">${t('auto.perDay')}</span></div></div>
+    <div class="auto-btns">${btns}</div></div>`;
 }
 
-/** The Automations tab: "New automation" (the form, selected at first), then the ones set up. */
+/**
+ * Opens one of the form's menus (trigger, repository, weekday) on its button and makes the pick in place: the form
+ * shows the trigger's own fields, the button its new words, and a branch still at the old repository's default
+ * follows the new one.
+ */
+export function pickAutoField(btn: HTMLElement) {
+  if (pop.owner === btn) { closePop(); return; }
+  const e = btn.dataset.form ?? '';
+  const f = autoFormState(e);
+  const form = btn.closest<HTMLElement>('.auto-add');
+  if (!f || !form) return;
+  const set = (icon: string | null, text: string) => {
+    if (icon) btn.querySelector('svg:first-child use')?.setAttribute('href', `#${icon}`);
+    btn.querySelector('span')!.textContent = text;
+  };
+  const branch = form.querySelector<HTMLInputElement>('.auto-branch');
+  const action = btn.dataset.action;
+  if (action === 'auto-trig') {
+    const opts: Opt[] = [...SCHEDULE_CHOICES, ...EVENT_CHOICES].map((v) => ({ value: v, label: t(`auto.c.${v}`), icon: TRIG_ICON[v], group: isEventKind(v) ? t('auto.event') : t('auto.schedule') }));
+    openPop(btn, opts, f.kind, (v) => {
+      f.kind = v as TriggerChoice;
+      form.dataset.kind = v;
+      set(TRIG_ICON[f.kind], t(`auto.c.${f.kind}`));
+      if (branch && !branch.value.trim() && takesBranch(v)) branch.value = repoBranch(f.repo);
+    }, 200);
+  } else if (action === 'auto-repo') {
+    const opts: Opt[] = [{ value: '', label: t('auto.anyRepo') }, ...autoRepos().map((r) => ({ value: r, label: r }))];
+    openPop(btn, opts, f.repo, (v) => {
+      if (branch && branch.value.trim() === repoBranch(f.repo)) branch.value = repoBranch(v);
+      f.repo = v;
+      set(null, v || t('auto.anyRepo'));
+    }, 200);
+  } else {
+    const opts: Opt[] = [1, 2, 3, 4, 5, 6, 0].map((d) => ({ value: String(d), label: dayName(d) }));
+    openPop(btn, opts, String(f.day), (v) => { f.day = Number(v); set(null, dayName(f.day)); }, 120);
+  }
+}
+
+/** The Automations tab: its heading with "New automation", the form when that is picked, then the ones set up. */
 export function autosHtml() {
   const list = S!.automations;
+  ui.autoNew ??= freshAutoForm();
   if (ui.autoEdit && !list.some((a) => a.id === ui.autoEdit!.id)) ui.autoEdit = null;
-  const add = autoFormHtml() + formErrHtml('auto');
-  // With none set up the form is all there is, open; it stays open once the first one is added.
-  if (!list.length) { ui.autoSel ??= 'new'; return `${add}<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`; }
-  ui.autoSel = keepPick(['new', ...list.map((a) => a.id)], ui.autoSel, null);
-  const isNew = ui.autoSel === 'new';
-  const head = slotHtml('new', isNew, add, rowHtml('auto', 'new', isNew, `${sym('s-plus')}<span class="t"><b>${t('auto.new')}</b></span>`), ' new');
-  return `${head}<div class="sect"><div class="ins-h"><b role="heading" aria-level="2">${t('ins.tabAuto')}</b><small>${list.length}</small></div><div class="group">${list.map(autoSlot).join('')}</div></div>`;
+  // With none set up the form is open; once there are some, the + in the heading opens it. Right after one is added
+  // the list may not have it yet, so the form stays until it does.
+  if (list.length) ui.autoSel = keepPick(['new', ...list.map((a) => a.id)], ui.autoSel, null);
+  const isNew = ui.autoSel === 'new' || !list.length;
+  const plus = `<button type="button" class="btn btn-icon btn-sm btn-ghost" data-action="pick" data-tab="auto" data-id="new" data-tip="${t('auto.new')}" aria-label="${t('auto.new')}"><svg aria-hidden="true"><use href="#s-plus"/></svg></button>`;
+  const head = `<div class="ins-h"><b role="heading" aria-level="2">${t('ins.tabAuto')}</b>${list.length ? `<small>${list.length}</small>` : ''}<span class="gap"></span>${plus}</div>`;
+  const add = isNew ? slotHtml('new', true, `<div class="memo auto open">${autoFormHtml()}${formErrHtml('auto')}</div>`, '', ' new') : '';
+  const body = list.length ? `<div class="group">${list.map(autoSlot).join('')}</div>` : `<div class="allclear"><svg class="big" aria-hidden="true"><use href="#s-refresh"/></svg><b>${t('auto.empty')}</b></div>`;
+  return `<div class="sect">${head}${add}${body}</div>`;
 }
 
-/** What a form says, or null after pointing at the field that is empty or not a time. `e` is '-e' for the form that changes one. */
-function readAutoForm(e: '' | '-e', kind: 'daily' | 'merged', wk: boolean): { prompt: string; trigger: Automation['trigger'] } | null {
+/** What a form says, or null after pointing at the field that is empty or wrong. `e` is '-e' for the form that changes one. */
+function readAutoForm(e: '' | '-e'): { prompt: string; trigger: AutoTrigger; maxPerDay: number | null } | null {
+  const f = autoFormState(e);
   const inp = $<HTMLTextAreaElement>(`#auto-prompt${e}`);
   const prompt = inp?.value.trim();
+  if (!f) return null;
   if (!prompt) { inp?.focus(); return null; }
-  if (kind === 'merged') return { prompt, trigger: { kind: 'merged' } };
-  const time = parseTime($<HTMLInputElement>(`#auto-time${e}`)?.value ?? '');
-  if (!time) { toast(t('auto.badTime'), true); $<HTMLInputElement>(`#auto-time${e}`)?.focus(); return null; }
-  return { prompt, trigger: { kind: 'daily', time, weekdays: wk } };
+  const val = (name: string) => $<HTMLInputElement>(`#auto-${name}${e}`)?.value ?? '';
+  const k = f.kind;
+  const raw: AutoTrigger = k === 'daily' || k === 'weekdays' ? { kind: 'daily', time: val('time'), weekdays: k === 'weekdays' }
+    : k === 'weekly' ? { kind: 'weekly', time: val('time'), day: f.day }
+    : k === 'every' ? { kind: 'every', hours: Number(val('hours')) }
+    : { kind: k, repo: f.repo || undefined, branch: takesBranch(k) ? val('branch') : undefined, label: k === 'issueLabel' ? val('label') : undefined };
+  const n = normalizeTrigger(raw);
+  if ('error' in n) {
+    toast(t(`auto.${n.error}`), true);
+    $<HTMLInputElement>(`#auto-${n.error === 'badHours' ? 'hours' : n.error === 'badLabel' ? 'label' : 'time'}${e}`)?.focus();
+    return null;
+  }
+  return { prompt, trigger: n, maxPerDay: clampPerDay(val('max')) };
 }
 
 export async function addAuto() {
-  const f = readAutoForm('', ui.autoKind, ui.autoWk);
+  const f = readAutoForm('');
   if (!f) return;
   // The text stays until it is saved; a failure is shown under it (L8).
-  const r = await tryCall('auto:add', f.prompt, f.trigger);
+  const r = await tryCall('auto:add', f.prompt, f.trigger, f.maxPerDay);
   ui.formErr.auto = r.ok ? '' : r.error;
-  if (r.ok) { const now = $<HTMLTextAreaElement>('#auto-prompt'); if (now) now.value = ''; }
+  if (r.ok) {
+    const now = $<HTMLTextAreaElement>('#auto-prompt');
+    if (now) now.value = '';
+    ui.autoNew = freshAutoForm();
+    ui.autoSel = null;
+  }
+  renderChatInspector();
+}
+
+/** Cancel on the add form: what was typed goes, and the form closes (it stays open while there are none). */
+export function cancelAddAuto() {
+  const p = $<HTMLTextAreaElement>('#auto-prompt');
+  if (p) p.value = '';
+  ui.autoNew = freshAutoForm();
+  ui.formErr.auto = '';
+  ui.autoSel = null;
   renderChatInspector();
 }
 
@@ -1192,7 +1329,8 @@ export async function addAuto() {
 export function editAuto(id: string) {
   const a = S!.automations.find((x) => x.id === id);
   if (!a) return;
-  ui.autoEdit = { id, kind: a.trigger.kind, wk: a.trigger.kind === 'daily' && !!a.trigger.weekdays };
+  const tr = a.trigger;
+  ui.autoEdit = { id, kind: choiceOf(tr), repo: isEventKind(tr.kind) ? (tr as { repo?: string }).repo ?? '' : autoRepos()[0] ?? '', day: tr.kind === 'weekly' ? tr.day : 1 };
   ui.autoSel = id;
   ui.memoDel = null;
 }
@@ -1201,9 +1339,9 @@ export function editAuto(id: string) {
 export async function saveAuto() {
   const e = ui.autoEdit;
   if (!e) return;
-  const f = readAutoForm('-e', e.kind, e.wk);
+  const f = readAutoForm('-e');
   if (!f) return;
-  const r = await tryCall('auto:update', e.id, f.prompt, f.trigger);
+  const r = await tryCall('auto:update', e.id, f.prompt, f.trigger, f.maxPerDay);
   if (!r.ok) { toast(r.error, true); return; }
   if (ui.autoEdit?.id === e.id) ui.autoEdit = null;
   renderChatInspector();
