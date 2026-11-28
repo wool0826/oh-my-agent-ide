@@ -68,7 +68,8 @@ flow('copy buttons write a saved script, a run with its output and a code block,
   await app.until("String(getSelection()).trim() === 'gh pr checks 212 --watch'", 'the code selected');
 });
 
-flow('the side terminal runs lines apart from the chat in the dock under it, recalls them with the up arrow, folds stderr and clears', {}, async (app) => {
+// The line mode: the real terminal turned off (as when node-pty does not load).
+flow('the side terminal runs lines apart from the chat in the dock under it, recalls them with the up arrow, folds stderr and clears', { env: { OMA_PTY: '0' } }, async (app) => {
   // Ctrl+` opens it with its input focused, in the dock between the chat and the composer.
   await app.key('Backquote', '`', 192, 2);
   await app.until("!document.querySelector('#tm').hidden && document.activeElement?.id === 'tm-input'", 'the open terminal');
@@ -314,5 +315,115 @@ flow('with the real terminal off, a tab does not open and the terminal keeps its
   await assert.rejects(app.evaluate("return ide.call('pty:open');"), /could not start a shell/);
   const v = await app.evaluate("return ide.call('pty:state');");
   assert.equal(v.available, false);
+  assert.equal(v.reason, undefined, 'turned off on purpose: no warning');
   assert.deepEqual(v.tabs, []);
+  // The panel is the line mode's: no tabs, no new tab button, no warning.
+  await app.key('Backquote', '`', 192, 2);
+  await app.until("!document.querySelector('#tm').hidden && document.activeElement?.id === 'tm-input'", 'the line mode');
+  assert.equal(await app.evaluate("return ['#tm-x', '#tm-tabs', '#tm-new', '#tm-off'].every((s) => document.querySelector(s).hidden);"), true);
+});
+
+// The side terminal's window side (ui/xterm.ts): keys typed into xterm.js reach the shell, and its output comes back.
+flow('the side terminal is a real terminal: a shell tab opens with it and gets every key but the app\'s, tabs switch and close, and exit puts it away', {}, async (app) => {
+  const win = process.platform === 'win32';
+  await app.size(900, 700);
+  await app.evaluate(PTY_SETUP);
+  // Ctrl+` opens a tab of the user's shell, with the keys in it, instead of the line input.
+  await app.key('Backquote', '`', 192, 2);
+  await app.until("document.activeElement?.closest('#tm-x') && document.querySelectorAll('#tm-tabs .tm-tab').length === 1", 'a shell tab with the keys', 30_000);
+  assert.equal(await app.evaluate("return document.querySelector('#tm-form').hidden && document.querySelector('#tm-thread').hidden && !document.querySelector('#tm-new').hidden;"), true);
+  const first = await app.evaluate("return document.querySelector('#tm-tabs .tm-tab').dataset.id;");
+  const text = (id) => `window.__ptyText(${JSON.stringify(id)})`;
+  const seen = (id, s, what, ms = 60_000) => app.until(`${text(id)}.includes(${JSON.stringify(s)})`, what, ms, `${text(id)}.slice(-1500)`);
+  const typed = async (s) => { await app.cdp('Input.insertText', { text: s }); await app.key('Enter', 'Enter', 13); };
+  // A line typed runs, and a prompt waits for the answer typed next.
+  await typed(win ? "Write-Output ('ui' + '-ok')" : "printf 'ui-%s\\n' ok");
+  await seen(first, 'ui-ok', 'the output of a typed line');
+  await typed(win ? "$a = Read-Host 'name?'; Write-Output ('got-' + $a)" : "printf 'na%s' 'me?> '; read -r a; printf 'got-%s\\n' \"$a\"");
+  await seen(first, win ? 'name?: ' : 'name?> ', 'the prompt');
+  await typed('abc');
+  await seen(first, 'got-abc', 'the answer read by the line');
+  // Esc and Ctrl+K are the shell's here: the dock stays, the palette stays shut.
+  await app.key('Escape', 'Escape', 27);
+  await app.key('KeyK', 'k', 75, 2);
+  assert.equal(await app.evaluate("return !document.querySelector('#dock').hidden && !!document.activeElement?.closest('#tm-x') && document.querySelector('#cmdk').hidden;"), true);
+  // Ctrl+C stops what runs, long before its 30 s.
+  await typed(win ? "Write-Output ('zz-' + 'started'); Start-Sleep -Seconds 30" : "printf 'zz-%s\\n' started; sleep 30");
+  await seen(first, 'zz-started', 'the long command started');
+  await app.key('KeyC', 'c', 67, 2);
+  for (const end = Date.now() + 20_000; ;) {
+    await typed(win ? "Write-Output ('after' + '-ctrlc')" : "printf 'after-%s\\n' ctrlc");
+    try { await seen(first, 'after-ctrlc', 'the next line, once Ctrl+C stopped the long one', 2500); break; } catch (e) { if (Date.now() > end) throw e; }
+  }
+  // The shell has the panel's size.
+  await typed(win ? "Write-Output ('w=' + $Host.UI.RawUI.WindowSize.Width + '|')" : "printf 'sz=%s|\\n' \"$(stty size)\"");
+  await app.until(`/(w=|sz=\\d+ )\\d+\\|/.test(${text(first)})`, 'the size printed', 30_000);
+  const cols = Number((await app.evaluate(`return ${text(first)};`)).match(/(?:w=|sz=\d+ )(\d+)\|/)[1]);
+  const room = await app.evaluate("const r = document.querySelector('#tm-x').getBoundingClientRect(); return r.width;");
+  assert.ok(cols > 40 && cols * 5 < room && cols * 12 > room, `${cols} columns in ${room}px`);
+  // Right-click copies the selection (the top line, after a clear), and pastes when nothing is selected.
+  await typed(win ? 'Clear-Host' : 'clear');
+  await typed(win ? "Write-Output ('copy' + '-me')" : "printf 'copy-%s\\n' me");
+  await seen(first, 'copy-me', 'the line to copy');
+  await app.evaluate("window.__copied = []; navigator.clipboard.writeText = (s) => { window.__copied.push(s); return Promise.resolve(); }; navigator.clipboard.readText = () => Promise.resolve(" + JSON.stringify(win ? "Write-Output ('pas' + 'ted')" : "printf 'pas%s\\n' ted") + "); return 1;");
+  const scr = await app.evaluate("const r = document.querySelector('#tm-x .xterm-screen').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width };");
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: scr.x + 2, y: scr.y + 4, button: 'left', buttons: 1, clickCount: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: scr.x + scr.w - 8, y: scr.y + 4, button: 'left', buttons: 1 });
+  await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: scr.x + scr.w - 8, y: scr.y + 4, button: 'left', buttons: 0, clickCount: 1 });
+  const right = async () => {
+    await app.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: scr.x + 20, y: scr.y + 4, button: 'right', buttons: 2, clickCount: 1 });
+    await app.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: scr.x + 20, y: scr.y + 4, button: 'right', buttons: 0, clickCount: 1 });
+  };
+  await right();
+  await app.until("window.__copied.length === 1 && window.__copied[0].includes('copy')", 'the top line copied', 10_000, 'window.__copied');
+  await right();
+  await app.key('Enter', 'Enter', 13);
+  await seen(first, 'pasted', 'the pasted line run');
+  // + opens another tab, Ctrl+PgUp goes back to the first; the chips say which shows.
+  await app.click('#tm-new');
+  await app.until("document.querySelectorAll('#tm-tabs .tm-tab').length === 2 && document.activeElement?.closest('#tm-x')", 'the second tab', 30_000);
+  const second = await app.evaluate("return document.querySelector('#tm-tabs .tm-tab[aria-selected=\"true\"]').dataset.id;");
+  assert.notEqual(second, first);
+  await app.key('PageUp', 'PageUp', 33, 2);
+  await app.until(`document.querySelector('#tm-tabs .tm-tab[aria-selected="true"]')?.dataset.id === ${JSON.stringify(first)}`, 'the first tab again');
+  // The header holds at a narrow window: nothing goes past its edge.
+  assert.equal(await app.evaluate("const h = document.querySelector('#dock .dock-h'); return h.scrollWidth <= h.clientWidth + 1 && document.documentElement.scrollWidth <= innerWidth;"), true);
+  // × closes a tab; its shell ends.
+  await app.click(`#tm-tabs .tm-close[data-id="${second}"]`);
+  await app.until(`ide.call('pty:state').then((v) => v.tabs.length === 1) && document.querySelectorAll('#tm-tabs .tm-tab').length === 1`, 'the second tab closed', 15_000);
+  // A shell ended with an error code stays as a grey chip; exit with 0 takes the last tab, and the dock, away.
+  await typed('exit 3');
+  await app.until("document.querySelector('#tm-tabs .tm-chip')?.classList.contains('ended')", 'the ended tab', 30_000);
+  assert.match(await app.evaluate("return document.querySelector('#tm-tabs .tm-tab').dataset.tip;"), /3/);
+  await app.click('#tm-new');
+  await app.until("document.querySelectorAll('#tm-tabs .tm-tab').length === 2 && document.activeElement?.closest('#tm-x')", 'a new tab', 30_000);
+  await app.click(`#tm-tabs .tm-close[data-id="${first}"]`);
+  await app.until("document.querySelectorAll('#tm-tabs .tm-tab').length === 1", 'the ended tab closed');
+  const third = await app.evaluate("return document.querySelector('#tm-tabs .tm-tab').dataset.id;");
+  await seen(third, win ? 'PS ' : '', 'the prompt of the new tab', 60_000);
+  await typed('exit');
+  await app.until("document.querySelector('#dock').hidden && document.activeElement?.id === 'chat-input'", 'the dock put away, the chat with the keys', 30_000);
+  assert.deepEqual((await app.evaluate("return ide.call('pty:state');")).tabs, []);
+});
+
+flow('after a reload the side terminal finds its shells again, with what they printed, and goes on', {}, async (app) => {
+  const win = process.platform === 'win32';
+  await app.evaluate(PTY_SETUP);
+  await app.key('Backquote', '`', 192, 2);
+  await app.until("document.activeElement?.closest('#tm-x') && document.querySelectorAll('#tm-tabs .tm-tab').length === 1", 'a shell tab', 30_000);
+  const id = await app.evaluate("return document.querySelector('#tm-tabs .tm-tab').dataset.id;");
+  await app.cdp('Input.insertText', { text: win ? "Write-Output ('before' + '-reload')" : "printf 'before-%s\\n' reload" });
+  await app.key('Enter', 'Enter', 13);
+  await app.until(`window.__ptyText(${JSON.stringify(id)}).includes('before-reload')`, 'the line before the reload', 60_000);
+  await app.cdp('Page.reload');
+  await app.until("!window.__pty && !!document.querySelector('#chat-ins .seg')", 'the window loaded again', 30_000);
+  await app.evaluate(PTY_SETUP);
+  // The same shell, drawn again from its replay: no new tab.
+  await app.key('Backquote', '`', 192, 2);
+  await app.until(`document.querySelector('#tm-tabs .tm-tab')?.dataset.id === ${JSON.stringify(id)} && document.activeElement?.closest('#tm-x')`, 'the tab found again', 30_000);
+  assert.equal((await app.evaluate("return ide.call('pty:state');")).tabs.length, 1);
+  assert.match((await app.evaluate(`return ide.call('pty:attach', ${JSON.stringify(id)});`)).replay, /before-reload/);
+  await app.cdp('Input.insertText', { text: win ? "Write-Output ('after' + '-reload')" : "printf 'after-%s\\n' reload" });
+  await app.key('Enter', 'Enter', 13);
+  await app.until(`window.__ptyText(${JSON.stringify(id)}).includes('after-reload')`, 'the line after the reload', 60_000);
 });

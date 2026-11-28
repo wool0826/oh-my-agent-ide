@@ -5,6 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: oma-shot:; media-src 'self' data:">
 <title>Oh My Agent IDE</title>
 <link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="xterm.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -123,7 +124,7 @@
       <div class="edge-rz h" id="dock-rz" role="separator" aria-orientation="horizontal" aria-controls="dock" tabindex="0" data-i18n-tip="dock.rz" data-tip-key="↑ ↓"></div>
       <header class="dock-h">
         <div class="dock-tabs" role="tablist" aria-label="Terminal and side question" data-i18n-aria="dock.aria"><button type="button" role="tab" class="dock-tab" id="dock-tab-tm" data-action="dock-tab" data-v="tm" aria-controls="tm" aria-selected="false"><svg class="sym" aria-hidden="true"><use href="#s-term"/></svg><span id="tm-title" data-i18n="term.title">Terminal</span></button><button type="button" role="tab" class="dock-tab" id="dock-tab-sq" data-action="dock-tab" data-v="sq" aria-controls="sq" aria-selected="false"><svg class="sym" aria-hidden="true"><use href="#s-side-q"/></svg><span id="sq-title" data-i18n="sq.title">Side question</span></button></div>
-        <div class="dock-tools" data-for="tm"><span id="tm-cwd-slot"></span><span class="gap"></span><button type="button" class="tm-tb" data-action="tm-clear" data-i18n="term.clear">Clear</button></div>
+        <div class="dock-tools" data-for="tm"><div class="tm-tabs" id="tm-tabs" role="tablist" data-i18n-aria="term.tabs" hidden></div><button type="button" class="tm-ib" id="tm-new" data-action="pty-new" data-i18n-aria="term.new" data-i18n-tip="term.new" hidden><svg class="sym" aria-hidden="true"><use href="#s-plus"/></svg></button><span id="tm-cwd-slot"></span><span class="gap"></span><span class="tm-off" id="tm-off" role="img" data-i18n-aria="term.err.ptyOff" data-i18n-tip="term.err.ptyOff" tabindex="0" hidden><svg class="sym" aria-hidden="true"><use href="#s-alert"/></svg></span><button type="button" class="tm-tb" data-action="tm-clear" data-i18n="term.clear">Clear</button></div>
         <div class="dock-tools" data-for="sq" hidden><span class="sq-wall"><svg class="sym" aria-hidden="true"><use href="#s-lock"/></svg><span data-i18n="sq.wall">Separate context</span></span><span class="gap"></span><button type="button" class="tm-tb" data-action="sq-close" data-i18n="sq.close">Close and forget</button></div>
         <button type="button" class="dock-ib" id="dock-hide" data-action="dock-hide"><svg aria-hidden="true"><use href="#s-chev"/></svg></button>
       </header>
@@ -132,6 +133,7 @@
         <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send" data-i18n-tip="send"><svg class="sym"><use href="#s-up"/></svg></button></form>
       </section>
       <section class="tm" id="tm" role="tabpanel" aria-labelledby="dock-tab-tm" hidden>
+        <div class="tm-x" id="tm-x" hidden></div>
         <div class="tm-t" id="tm-thread" role="log"></div>
         <form class="tm-c" id="tm-form" autocomplete="off"><span class="tm-ps" aria-hidden="true">$</span><textarea class="tm-input" id="tm-input" rows="1" spellcheck="false" data-i18n-aria="term.inputAria" data-i18n-ph="term.placeholder"></textarea></form>
       </section>
