@@ -1366,3 +1366,27 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Rejected: `@lydell/node-pty` (Linux prebuilds and the execute bit, but a beta repackaged by one person),
       node-pty in main (a native crash would end the Dispatcher), a pipe-backed shell kept running (no terminal, so
       no prompts, colours, sizes or full-screen programs).
+263. **The side terminal draws its shells with xterm.js, one tab each, and keys go to the shell unless the app needs them** (T-0165, PR 2 of 3; follows 262).
+    - Each tab is an `@xterm/xterm@6` terminal (fit, WebGL, web links, Unicode 11), pinned as devDependencies since
+      they are bundled. WebGL draws it; when the GPU context is lost it falls back to xterm's DOM renderer. The line
+      mode's thread and input stay in the page for `OMA_PTY=0` or a `node-pty` that does not load.
+    - Keys (`termKey`, shared/pty.ts): the shell gets Esc, Tab, the arrows, Ctrl+C/D/Z/L/R, Ctrl+K and Ctrl+F, so
+      vim, less and readline work. The app keeps Ctrl+` (put it away), Ctrl+PgUp/PgDn (tabs) and, on the Mac, every
+      ⌘ key. Copy and paste are as in Windows Terminal: Ctrl+Shift+C, Ctrl+C with a selection or Ctrl+Insert;
+      Ctrl+V, Ctrl+Shift+V or Shift+Insert. A right-click copies the selection, or pastes when there is none.
+      Links open on Ctrl+click (⌘ on the Mac), so a plain click can still select.
+    - Colours are tokens, `--term-*` and the 16 `--ansi-*`, in both themes, applied again when the theme or the text
+      size changes. The font is `--font-mono` with Korean fonts before `monospace` (`termFont`).
+    - The shell starts at the size the panel measures: Windows PowerShell's PSReadLine drew over its first prompt
+      when a resize came right after the start.
+    - Tabs came forward from PR 3: chips in the terminal's toolbar, a + to open one, × on each, styled as the dock's
+      own tabs (selection follows `.dock-tab`). A tab whose shell ended by itself with 0 (`exit`) goes away
+      (`ptyGone`), and the dock is put away with the last one; one that failed or was stopped stays, dim, with how it
+      ended in its tip. Choosing another folder opens a new tab there. PR 3 keeps search, a shell picker, restarting
+      an ended tab and the docs.
+    - `node-pty` failing to load shows one warning icon with the reason in its tip; `OMA_PTY=0` shows none, being
+      chosen.
+    - After a reload the window attaches to each tab and draws its replay (262); pieces already in it are not drawn
+      twice (`ptyFresh`).
+    - Rejected: Ctrl+C always to the shell with copy only on Ctrl+Shift+C (Windows users have Windows Terminal's
+      habit), xterm's canvas addon (gone in xterm 6) and links on a plain click (a click to select would open them).

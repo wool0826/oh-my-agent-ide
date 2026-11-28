@@ -54,7 +54,7 @@ export function renderDock() {
   el.hidden = !tab;
   $('#chat-thread').parentElement!.classList.toggle('dock-open', !!tab);
   if (!tab) return;
-  for (const b of el.querySelectorAll<HTMLElement>('[role="tab"]')) {
+  for (const b of el.querySelectorAll<HTMLElement>('.dock-tab')) {
     const on = b.dataset.v === tab;
     b.setAttribute('aria-selected', String(on));
     b.tabIndex = on ? 0 : -1;
@@ -68,7 +68,8 @@ export function renderDock() {
 
 /** ← → between the tabs, as a tab list does; the tab follows the focus. */
 function tabKeys(e: KeyboardEvent, open: (tab: DockTab) => void) {
-  const b = (e.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
+  // The terminal's own tabs (ui/xterm.ts) are a tab list of their own.
+  const b = (e.target as HTMLElement).closest<HTMLElement>('.dock-tab');
   if (!b || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return false;
   e.preventDefault();
   const next = (b.dataset.v === 'tm' ? 'sq' : 'tm') as DockTab;

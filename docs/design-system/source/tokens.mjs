@@ -160,6 +160,12 @@ export const themes = {
     'diff-add-text': '{ref.green.300}', 'diff-del-text': '{ref.red.300}',
     // scrollbar
     'scrollbar-thumb': 'rgba(255, 255, 255, .16)',
+    // side terminal (xterm.js): its ground, text, cursor and selection, and the 16 colours programs print in
+    'term-bg': '{ref.gray.900}', 'term-fg': '{ref.gray.50}', 'term-cursor': '{ref.gray.50}', 'term-selection': 'rgba(100, 177, 255, .3)',
+    'ansi-black': '{ref.gray.750}', 'ansi-red': '{ref.red.400}', 'ansi-green': '{ref.green.400}', 'ansi-yellow': '{ref.yellow.400}',
+    'ansi-blue': '{ref.blue.400}', 'ansi-magenta': '{ref.purple.400}', 'ansi-cyan': '{ref.teal.400}', 'ansi-white': '{ref.gray.300}',
+    'ansi-bright-black': '{ref.gray.500}', 'ansi-bright-red': '{ref.red.300}', 'ansi-bright-green': '{ref.green.300}', 'ansi-bright-yellow': '{ref.yellow.300}',
+    'ansi-bright-blue': '{ref.blue.300}', 'ansi-bright-magenta': '{ref.purple.300}', 'ansi-bright-cyan': '{ref.teal.300}', 'ansi-bright-white': '{ref.gray.0}',
   },
   light: {
     'color-scheme': 'light',
@@ -216,6 +222,11 @@ export const themes = {
     'diff-add-bg': 'rgba(52, 199, 89, .16)', 'diff-del-bg': 'rgba(255, 59, 48, .12)', 'diff-hunk-bg': 'rgba(0, 122, 255, .07)',
     'diff-add-text': '{ref.green.700}', 'diff-del-text': '{ref.red.700}',
     'scrollbar-thumb': 'rgba(0, 0, 0, .2)',
+    'term-bg': '{ref.gray.0}', 'term-fg': '{ref.gray.900}', 'term-cursor': '{ref.gray.900}', 'term-selection': 'rgba(0, 122, 255, .2)',
+    'ansi-black': '{ref.gray.900}', 'ansi-red': '{ref.red.600}', 'ansi-green': '{ref.green.600}', 'ansi-yellow': '{ref.yellow.600}',
+    'ansi-blue': '{ref.blue.600}', 'ansi-magenta': '{ref.purple.600}', 'ansi-cyan': '{ref.teal.700}', 'ansi-white': '{ref.gray.500}',
+    'ansi-bright-black': '{ref.gray.600}', 'ansi-bright-red': '{ref.red.700}', 'ansi-bright-green': '{ref.green.700}', 'ansi-bright-yellow': '{ref.yellow.700}',
+    'ansi-bright-blue': '{ref.blue.700}', 'ansi-bright-magenta': '{ref.purple.700}', 'ansi-bright-cyan': '{ref.teal.500}', 'ansi-bright-white': '{ref.gray.400}',
   },
 };
 

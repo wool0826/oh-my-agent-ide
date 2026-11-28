@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyShells, ptySize } from '../src/shared/pty';
+import fs from 'node:fs';
+import { ANSI, Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyFresh, ptyGone, ptyLabel, ptyShells, ptySize, termFont, termKey, termTheme } from '../src/shared/pty';
 
 const none = () => false;
 
@@ -139,4 +140,73 @@ test('pty: a reload of the window forgets what was waiting to be drawn', () => {
   assert.equal(f.reset(), true);
   assert.equal(f.unacked, 0);
   assert.equal(f.reset(), false);
+});
+
+test('pty: a piece of output the window drew already (in the replay) is not drawn again, and one half drawn goes on where it was', () => {
+  assert.equal(ptyFresh('abc', 10, 7), 'abc');
+  assert.equal(ptyFresh('abc', 10, 12), '');
+  assert.equal(ptyFresh('abc', 10, 10), '');
+  assert.equal(ptyFresh('abcdef', 10, 7), 'def');
+});
+
+test("pty: a tab's chip names the program in front or the shell, and the repository it started in", () => {
+  assert.equal(ptyLabel({ name: 'pwsh', fg: '', repo: '' }), 'pwsh');
+  assert.equal(ptyLabel({ name: 'zsh', fg: 'vim', repo: 'app' }), 'vim · app');
+});
+
+test('pty: a tab goes away when its shell ended by itself with 0, and stays when stopped, failed or ended otherwise', () => {
+  assert.equal(ptyGone({ code: 0, stopped: false }), true);
+  assert.equal(ptyGone({ code: 0, stopped: true }), false);
+  assert.equal(ptyGone({ code: 1, stopped: false }), false);
+  assert.equal(ptyGone({ code: null, stopped: false }), false);
+  assert.equal(ptyGone({ code: 0, error: 'spawn failed', stopped: false }), false);
+});
+
+const key = (code: string, m: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean } = {}) => ({ code, ctrlKey: !!m.ctrl, shiftKey: !!m.shift, altKey: !!m.alt, metaKey: !!m.meta });
+
+test('pty: in the terminal the shell gets Esc, Tab, Ctrl+C and the keys the app uses elsewhere', () => {
+  const win = { mac: false, selection: false };
+  for (const k of [key('Escape'), key('Tab'), key('KeyC', { ctrl: true }), key('KeyL', { ctrl: true }), key('KeyF', { ctrl: true }), key('KeyK', { ctrl: true }), key('KeyJ', { ctrl: true }), key('Slash', { ctrl: true }), key('KeyR', { ctrl: true }), key('ArrowUp'), key('KeyA')]) {
+    assert.equal(termKey(k, win), 'shell', k.code);
+  }
+  assert.equal(termKey(key('KeyC', { ctrl: true }), { mac: true, selection: true }), 'shell', 'Ctrl+C on the Mac is always the shell');
+});
+
+test('pty: the app keeps Ctrl+` and the tab keys, and on the Mac the ⌘ keys', () => {
+  for (const mac of [false, true]) {
+    assert.equal(termKey(key('Backquote', { ctrl: true }), { mac, selection: false }), 'app');
+    assert.equal(termKey(key('PageDown', { ctrl: true }), { mac, selection: false }), 'app');
+  }
+  assert.equal(termKey(key('KeyK', { meta: true }), { mac: true, selection: false }), 'app');
+  assert.equal(termKey(key('KeyV', { meta: true }), { mac: true, selection: false }), 'app');
+});
+
+test('pty: on Windows Ctrl+C copies only while text is selected; Ctrl+Shift+C, Ctrl+V and Shift+Insert copy and paste', () => {
+  const sel = { mac: false, selection: true };
+  const none = { mac: false, selection: false };
+  assert.equal(termKey(key('KeyC', { ctrl: true }), sel), 'copy');
+  assert.equal(termKey(key('KeyC', { ctrl: true, shift: true }), none), 'copy');
+  assert.equal(termKey(key('Insert', { ctrl: true }), none), 'copy');
+  assert.equal(termKey(key('KeyV', { ctrl: true }), none), 'paste');
+  assert.equal(termKey(key('KeyV', { ctrl: true, shift: true }), none), 'paste');
+  assert.equal(termKey(key('Insert', { shift: true }), none), 'paste');
+  assert.equal(termKey(key('KeyC', { ctrl: true, alt: true }), sel), 'shell', 'AltGr+C types a character');
+});
+
+test('pty: every colour the terminal takes is a token of both themes', () => {
+  const tokens = fs.readFileSync('src/renderer/tokens.css', 'utf8');
+  const block = (sel: string) => tokens.slice(tokens.indexOf(sel), tokens.indexOf('}', tokens.indexOf(sel)));
+  const asked: string[] = [];
+  const th = termTheme((t) => { asked.push(t); return `v${t}`; });
+  assert.equal(Object.keys(th).length, 5 + ANSI.length * 2);
+  assert.equal(th.brightMagenta, 'v--ansi-bright-magenta');
+  for (const theme of [':root, [data-theme="dark"] {', '[data-theme="light"] {']) {
+    for (const t of new Set(asked)) assert.ok(block(theme).includes(`${t}:`), `${t} in ${theme}`);
+  }
+});
+
+test('pty: the terminal font puts fonts with Korean before the generic monospace', () => {
+  assert.equal(termFont('Menlo, Consolas, monospace'), 'Menlo, Consolas, "D2Coding", "Malgun Gothic", "Apple SD Gothic Neo", monospace');
+  assert.equal(termFont('"Fira Code"'), '"Fira Code", "D2Coding", "Malgun Gothic", "Apple SD Gothic Neo", monospace');
+  assert.equal(termFont(''), '"D2Coding", "Malgun Gothic", "Apple SD Gothic Neo", monospace');
 });

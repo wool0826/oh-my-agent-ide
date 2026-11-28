@@ -7,7 +7,7 @@ import { loadSettings } from './settings';
 import { t } from './i18n';
 import { log } from './log';
 import { nowIso, uid } from './util';
-import { keepTail, PTY_EMPTY, PTY_MAX_TABS, PTY_QUIT_GRACE, ptyArgs, ptyChunks, ptyEnv, ptyShells, ptySize, type PtyShell, type PtyTab, type PtyView } from '../shared/pty';
+import { keepTail, PTY_EMPTY, PTY_MAX_TABS, PTY_QUIT_GRACE, ptyArgs, ptyChunks, ptyEnv, ptyGone, ptyShells, ptySize, type PtyShell, type PtyTab, type PtyView } from '../shared/pty';
 import type { HostIn, HostOut } from './ptyHost';
 
 interface Tab extends PtyTab {
@@ -15,6 +15,8 @@ interface Tab extends PtyTab {
   replay: string;
   /** Characters of output so far: each piece the window gets says where it ends, so a replay is not drawn twice. */
   total: number;
+  /** Stopped from the app (kill or close), not ended by itself. */
+  stopped?: boolean;
 }
 
 const isFile = (f: string) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
@@ -37,7 +39,11 @@ class Ptys {
   private quitting = false;
 
   /** `here`: the folder of the built main script, where ptyHost.cjs is. */
-  init(here: string) { this.here = here; }
+  init(here: string) {
+    this.here = here;
+    // Turned off: the window knows from the start, and shows the line mode.
+    if (process.env.OMA_PTY === '0') this.view = { ...this.view, available: false };
+  }
   onChange(fn: (v: PtyView) => void) { this.stateFns.push(fn); }
   onData(fn: (id: string, d: string, end: number) => void) { this.dataFns.push(fn); }
   state(): PtyView { return this.view; }
@@ -95,7 +101,10 @@ class Ptys {
 
   /** Stops a tab's shell; the tab stays, showing that it ended. */
   kill(id: string) {
-    if (this.live(id)) this.send({ t: 'kill', id });
+    const tab = this.live(id);
+    if (!tab) return;
+    tab.stopped = true;
+    this.send({ t: 'kill', id });
   }
 
   /** Stops a tab's shell if it still runs, and takes the tab away. */
@@ -123,7 +132,8 @@ class Ptys {
   /** The host, started once; false when node-pty could not be loaded (then for good) or the host did not start. */
   private start(): Promise<boolean> {
     if (this.ready) return this.ready;
-    if (process.env.OMA_PTY === '0') return (this.ready = Promise.resolve(this.setAvailable(false, 'OMA_PTY=0')));
+    // Turned off on purpose: the line mode, with no warning (that is for node-pty not loading).
+    if (process.env.OMA_PTY === '0') return (this.ready = Promise.resolve(this.setAvailable(false)));
     // Kept out of the asar beside node-pty (package.json asarUnpack), so its worker and helper run from real files.
     const file = path.join(this.here, 'ptyHost.cjs').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
     const host = utilityProcess.fork(file, [], { serviceName: 'Oh My Agent IDE terminal', stdio: 'ignore' });
@@ -182,6 +192,7 @@ class Ptys {
     } else if (m.t === 'exit') {
       Object.assign(tab, { live: false, code: m.code, ...(m.error ? { error: m.error } : {}) });
       log.info(`pty ${tab.id} ended`, m.code, m.error ?? '');
+      if (ptyGone({ code: m.code, error: m.error, stopped: !!tab.stopped })) this.tabs = this.tabs.filter((x) => x !== tab);
       this.emit();
     }
   }

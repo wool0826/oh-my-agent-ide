@@ -1,5 +1,6 @@
-// The side terminal (shared/terminal.ts, main/terminal.ts): a tab of the dock under the chat (ui/dock.ts) where
-// lines run as "!" lines do, without the chat. Enter runs, ↑ / ↓ go through what was run, Esc puts the dock away.
+// The side terminal: a tab of the dock under the chat (ui/dock.ts). The user's own shells, a tab each (ui/xterm.ts,
+// main/pty.ts); in the line mode (OMA_PTY=0, or node-pty not loading) lines run as "!" lines do, without the chat
+// (shared/terminal.ts, main/terminal.ts): Enter runs, ↑ / ↓ go through what was run. Esc puts the dock away.
 import { pushHistory, TERM_EMPTY, type TermRun, type TermView } from '../../shared/terminal';
 import { shellClock, shellTook } from '../../shared/shell';
 import { $, esc, isMac, S, sym, t, toast, tryCall, ui } from './core';
@@ -7,6 +8,7 @@ import { openPop, pop } from './controls';
 import { setTip } from './tip';
 import { dock, onDock, setDock } from './dock';
 import { cwdButton, outHtml } from './shell';
+import { bindPty, closeTab, focusPty, newTab, pty, ptyOn, renderPty } from './xterm';
 
 const REPO_KEY = 'oma.termRepo';
 
@@ -34,7 +36,21 @@ function repoNow(): string {
 export function openTerm() {
   setDock('tm');
   renderTerm();
+  if (!ptyOn()) { $<HTMLTextAreaElement>('#tm-input').focus(); return; }
+  // The first tab opens with the terminal.
+  if (pty.view.tabs.length || pty.opening) focusPty(); else void newTermTab();
+}
+
+/** A tab in the folder picked; the line mode when the real terminal turns out to be off. */
+export async function newTermTab() {
+  if (await newTab(repoNow()) || ptyOn() || !term.open) return;
   $<HTMLTextAreaElement>('#tm-input').focus();
+}
+
+/** The last tab closed puts the dock away first, so it never shows empty. */
+export function closeTermTab(id: string) {
+  if (pty.view.tabs.length === 1 && pty.view.tabs[0].id === id) hideTerm();
+  void closeTab(id);
 }
 
 /** Puts the dock away; the runs stay. */
@@ -74,7 +90,8 @@ export function pickTermFolder(owner: HTMLElement) {
     localStorage.setItem(REPO_KEY, v);
     term.key = '';
     renderTerm();
-    $<HTMLTextAreaElement>('#tm-input').focus();
+    // A shell runs where it started: a folder picked opens a new tab there.
+    if (ptyOn()) void newTermTab(); else $<HTMLTextAreaElement>('#tm-input').focus();
   }, 200);
 }
 
@@ -120,6 +137,8 @@ export function bindTerm() {
   const input = $<HTMLTextAreaElement>('#tm-input');
   input.addEventListener('input', () => { fitInput(input); term.at = term.history.length; });
   onDock(renderTerm);
+  // The last tab gone (exit): the dock goes away, and the chat gets the keys if the terminal had them.
+  bindPty({ render: renderTerm, empty: () => hideTerm($('#dock').contains(document.activeElement)) });
   $('#tm-thread').addEventListener('scroll', () => {
     const th = $('#tm-thread');
     stick = th.scrollHeight - th.scrollTop - th.clientHeight < 24;
@@ -185,12 +204,23 @@ export function renderTerm() {
   const panel = $('#tm');
   panel.hidden = !term.open;
   if (!term.open) return;
+  const on = ptyOn();
+  $('#tm-x').hidden = !on;
+  $('#tm-tabs').hidden = !on;
+  $('#tm-new').hidden = !on;
+  $('#tm-thread').hidden = on;
+  $('#tm-form').hidden = on;
+  // node-pty did not load: a warning, its reason in the log (turned off on purpose: none).
+  $('#tm-off').hidden = on || !pty.view.reason;
   const repo = repoNow();
   const where = repo || t('shell.home');
+  const slot = $('#tm-cwd-slot');
+  const cwd = cwdButton('tm-cwd', where, 'tm-cwd');
+  if (slot.dataset.html !== cwd) { slot.dataset.html = cwd; slot.innerHTML = cwd; }
+  if (on) { renderPty(); return; }
   const key = JSON.stringify([term.view, where, t('term.title'), [...ui.errOpen]]);
   if (key === term.key) return;
   term.key = key;
-  $('#tm-cwd-slot').innerHTML = cwdButton('tm-cwd', where, 'tm-cwd');
   const th = $('#tm-thread');
   patchRuns(th, term.view.runs);
   if (stick) th.scrollTop = th.scrollHeight;

@@ -1936,6 +1936,33 @@ mark.find.cur.arrive { animation: hit-pulse calc(var(--dur-slow) * 2) var(--ease
 .tm-tb { flex: none; height: 20px; padding: 0 var(--space-8); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font: inherit; font-size: var(--fs-caption2); font-weight: 600; cursor: pointer; }
 .tm-tb:hover { background: var(--surface-hover); color: var(--text-primary); }
 .tm-tb:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+/* The real terminal (ui/xterm.ts): a chip per shell in the header, as the dock's own tabs but smaller and in mono;
+   one that ended goes grey. Each tab's xterm.js view fills the panel on the terminal's own colours (--term-*). */
+.tm-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--space-2); overflow-x: auto; scrollbar-width: none; }
+.tm-chip { flex: 0 1 auto; min-width: 64px; max-width: 200px; display: inline-flex; align-items: center; border-radius: var(--radius-full); color: var(--text-secondary); }
+.tm-chip:hover { background: var(--surface-hover); color: var(--text-primary); }
+.tm-chip:has(> .tm-tab[aria-selected="true"]) { background: var(--surface-selected); color: var(--text-primary); box-shadow: var(--rim); }
+.tm-chip.ended { color: var(--text-tertiary); }
+.tm-tab { flex: 1 1 auto; min-width: 0; height: 20px; display: inline-flex; align-items: center; padding: 0 var(--space-2) 0 var(--space-8); border: 0; border-radius: var(--radius-full); background: none; color: inherit; font: inherit; font-family: var(--font-mono); font-size: var(--fs-caption2); font-weight: 600; cursor: pointer; }
+.tm-tab span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-tab:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.tm-close { flex: none; width: 16px; height: 16px; margin-right: var(--space-2); padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-tertiary); display: grid; place-items: center; cursor: pointer; }
+.tm-close .sym { width: 8px; height: 8px; }
+.tm-close:hover { background: var(--surface-hover); color: var(--text-primary); }
+.tm-close:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.tm-ib { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
+.tm-ib .sym { font-size: var(--icon-sm); }
+.tm-ib:hover { background: var(--surface-hover); color: var(--text-primary); }
+.tm-ib:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.tm-off { flex: none; display: grid; place-items: center; color: var(--warning-text); font-size: var(--icon-sm); border-radius: 50%; }
+.tm-off:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.tm-x { flex: 1 1 auto; min-height: 0; position: relative; background: var(--term-bg); font-size: var(--fs-code); }
+.tm-v { position: absolute; inset: 0; }
+/* Room round the text; xterm's fit takes the padding off. */
+.tm-v .xterm { height: 100%; padding: var(--space-8) 0 var(--space-4) var(--space-12); }
+/* Over xterm.css's black: the padding round the text, and the Korean being composed (IME). */
+.tm-v .xterm .xterm-viewport { background-color: var(--term-bg); }
+.tm-v .xterm .composition-view { background: var(--term-bg); color: var(--term-fg); }
 /* Room under the header, and lines scrolled up fade out under it rather than being cut (G1). */
 .tm-t { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-10); padding: var(--space-12) var(--space-12) var(--space-10); background: var(--surface-code); -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--mask-solid) 10px); mask-image: linear-gradient(to bottom, transparent 0, var(--mask-solid) 10px); }
 .tm-empty { margin: auto 0; font-size: var(--fs-caption); color: var(--text-tertiary); text-align: center; }

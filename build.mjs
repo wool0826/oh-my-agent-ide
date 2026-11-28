@@ -4,6 +4,8 @@ import fs from 'node:fs';
 const watch = process.argv.includes('--watch');
 fs.mkdirSync('dist/renderer', { recursive: true });
 for (const f of ['index.html', 'tokens.css', 'styles.css', 'quick.html']) fs.copyFileSync(`src/renderer/${f}`, `dist/renderer/${f}`);
+// xterm.js's own sheet, as it ships: kept out of src/renderer, where every sheet is checked for tokens (cssTokens.test).
+fs.copyFileSync('node_modules/@xterm/xterm/css/xterm.css', 'dist/renderer/xterm.css');
 
 const common = { bundle: true, sourcemap: true, logLevel: 'info' };
 const configs = [

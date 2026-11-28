@@ -166,6 +166,77 @@ export class OutBatch {
 }
 
 /**
+ * What the window draws of a piece of a tab's output: `end` is where the piece ends in all of the tab's output, `have`
+ * how much of it the window has drawn (the replay and the pieces after it). Nothing is drawn twice.
+ */
+export function ptyFresh(d: string, end: number, have: number): string {
+  if (end <= have) return '';
+  const start = end - d.length;
+  return start >= have ? d : d.slice(have - start);
+}
+
+/** A tab's name on its chip: the program in front (or the shell), and the repository it started in. */
+export function ptyLabel(tab: Pick<PtyTab, 'name' | 'fg' | 'repo'>): string {
+  const who = tab.fg || tab.name;
+  return tab.repo ? `${who} · ${tab.repo}` : who;
+}
+
+/** A tab whose shell ended by itself, all well (`exit`, Ctrl+D), goes away as in other terminals; one stopped, failed
+ * or ended with an error code stays, showing how it ended. */
+export function ptyGone(o: { code: number | null; error?: string; stopped: boolean }): boolean {
+  return !o.stopped && o.code === 0 && !o.error;
+}
+
+export type TermKey = 'app' | 'copy' | 'paste' | 'shell';
+
+/**
+ * Where a key pressed in the side terminal goes. The shell gets it unless it is one of these, so Esc, Tab, the arrows,
+ * Ctrl+C, Ctrl+L and Ctrl+R work as in any terminal:
+ * - the app: Ctrl+` (put the terminal away), Ctrl+PgUp / PgDn (the tab before / after), and on the Mac every ⌘ key
+ *   (⌘C and ⌘V are the app's own copy and paste);
+ * - on Windows and Linux, copy: Ctrl+Shift+C, Ctrl+Insert, or Ctrl+C while text is selected; paste: Ctrl+V,
+ *   Ctrl+Shift+V, Shift+Insert (as Windows Terminal).
+ */
+export function termKey(k: { code: string; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean }, o: { mac: boolean; selection: boolean }): TermKey {
+  const ctrlOnly = k.ctrlKey && !k.shiftKey && !k.altKey && !k.metaKey;
+  if (ctrlOnly && (k.code === 'Backquote' || k.code === 'PageUp' || k.code === 'PageDown')) return 'app';
+  if (o.mac) return k.metaKey ? 'app' : 'shell';
+  if (k.altKey || k.metaKey) return 'shell';
+  if (k.ctrlKey && k.code === 'KeyC' && (k.shiftKey || o.selection)) return 'copy';
+  if (ctrlOnly && k.code === 'Insert') return 'copy';
+  if (k.ctrlKey && k.code === 'KeyV') return 'paste';
+  if (k.shiftKey && !k.ctrlKey && k.code === 'Insert') return 'paste';
+  return 'shell';
+}
+
+/** The eight ANSI colours, in xterm.js's names; each has a token `--ansi-<name>` and `--ansi-bright-<name>`. */
+export const ANSI = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const;
+
+/** xterm.js's theme from the tokens (tokens.css); `get` reads one, as `get('--term-bg')`. */
+export function termTheme(get: (token: string) => string): Record<string, string> {
+  const th: Record<string, string> = {
+    background: get('--term-bg'),
+    foreground: get('--term-fg'),
+    cursor: get('--term-cursor'),
+    cursorAccent: get('--term-bg'),
+    selectionBackground: get('--term-selection'),
+  };
+  for (const c of ANSI) {
+    th[c] = get(`--ansi-${c}`);
+    th[`bright${c[0].toUpperCase()}${c.slice(1)}`] = get(`--ansi-bright-${c}`);
+  }
+  return th;
+}
+
+/** The terminal's font: the app's mono one, with fonts that have Korean in them before its generic end. */
+export function termFont(mono: string): string {
+  const ko = '"D2Coding", "Malgun Gothic", "Apple SD Gothic Neo"';
+  const m = mono.trim();
+  if (!m) return `${ko}, monospace`;
+  return /,\s*monospace$/.test(m) ? m.replace(/,\s*monospace$/, `, ${ko}, monospace`) : `${m}, ${ko}, monospace`;
+}
+
+/**
  * Flow control: output sent and not yet drawn. `sent` says when the shell should pause (past PTY_HIGH), `drawn`
  * when it may go on (back under PTY_LOW); each says so once.
  */

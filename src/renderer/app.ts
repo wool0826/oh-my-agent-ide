@@ -41,7 +41,8 @@ import { initTip } from './ui/tip';
 import { copyText } from './ui/copy';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
 import { bindDock } from './ui/dock';
-import { bindTerm, hideTerm, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
+import { bindTerm, closeTermTab, hideTerm, newTermTab, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
+import { clearPty, ptyOn, selectTab } from './ui/xterm';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { navItem, navItems, noteNav, rove } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
@@ -279,7 +280,11 @@ export async function act(el: HTMLElement, e: Event) {
       document.querySelector<HTMLElement>(`[data-action="out-err"][data-k="${CSS.escape(k)}"]`)?.focus({ preventScroll: true });
       break;
     }
-    case 'tm-clear': await call('term:clear'); $('#tm-input').focus(); break;
+    case 'tm-clear': if (ptyOn()) clearPty(); else { await call('term:clear'); $('#tm-input').focus(); } break;
+    // The real terminal's tabs (ui/xterm.ts).
+    case 'pty-new': void newTermTab(); break;
+    case 'pty-tab': selectTab(id); break;
+    case 'pty-close': closeTermTab(id); break;
     case 'tm-stop': (el as HTMLButtonElement).disabled = true; void tryCall('term:stop', id); break;
     case 'tm-cwd': pickTermFolder(el); break;
     case 'sq-close': void closeSide(); break;
