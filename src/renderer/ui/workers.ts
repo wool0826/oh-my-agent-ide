@@ -8,6 +8,7 @@ import { queueLine, queueWhy, type QueueCtx } from '../../shared/queueWhy';
 import { leftKey, phaseKey, queueRows, type QueueRow } from '../../shared/mergeQueue';
 import { patchLines } from '../../shared/diffComment';
 import { lastLines } from '../../shared/runOutput';
+import { workerPort } from '../../shared/runEnv';
 import type { Checkpoint } from '../../shared/checkpoints';
 import { taskMinutes, workerTotals } from '../../shared/workerSummary';
 import { scopeHtml, taskPermsHtml, taskTimeHtml, weekHtml, workerRetroStats } from './retro';
@@ -451,6 +452,17 @@ export function waitingCardHtml(x: Task, owner: string | null, ctx = queueCtx())
     </div>`;
 }
 
+/** The port this Worker's run gets (or got, when its own was taken), with a button to open it while the run is up (13A). */
+function portRow(w: Worker) {
+  const repo = w.repo ? S!.repos.find((r) => r.name === w.repo) : null;
+  if (!repo?.run?.trim() || w.status === 'archived') return '';
+  const r = S!.runs.find((x) => x.workerId === w.id);
+  const port = r?.port ?? workerPort(repo, w.id);
+  if (!port) return '';
+  const open = r?.running && r.port ? `<button class="btn btn-icon btn-sm" data-action="open-url" data-href="http://localhost:${port}/" aria-label="${t('run.openPort')}" data-tip="${t('run.openPort')}">${sym('s-open')}</button>` : '';
+  return `<span>${t('kv.port')}</span><span class="kv-port"><b class="mono">${port}</b>${open}</span>`;
+}
+
 /** The repository's run command in this Worker's worktree: start and stop it, the address it printed, and the end of its output. */
 export function runHtml(w: Worker) {
   const repo = w.repo ? S!.repos.find((r) => r.name === w.repo) : null;
@@ -462,8 +474,10 @@ export function runHtml(w: Worker) {
     : `${r ? `<button class="btn" data-action="run-clear" data-id="${w.id}">${t('run.clear')}</button>` : ''}<button class="btn" data-action="run-start" data-id="${w.id}">${t(r ? 'run.again' : 'run.start')}</button>`;
   const url = r?.url && r.running ? `<a class="run-url" tabindex="0" role="link" data-action="open-url" data-href="${esc(r.url)}">${esc(r.url)}</a>` : '';
   const out = r?.tail.trim() ? `<pre class="run-out" data-scroll="run-${w.id}">${esc(lastLines(r.tail, 14))}</pre>` : '';
-  return `<div class="ins-h"><b role="heading" aria-level="2">${t('run.title')}</b>${state}</div>
-    <div class="group run"><code class="run-cmd" data-tip="${esc(repo.run)}">${esc(oneLine(repo.run, 80))}</code>${url}${out}<div class="ins-act">${btns}</div></div>`;
+  const port = r?.port ? `<span class="pill run-port" aria-label="${t('kv.port')} ${r.port}">${sym('s-box')}${r.port}</span>` : '';
+  const busy = r?.busyPort && r.port && r.running ? `<div class="run-warn" role="status">${sym('s-alert')}<span>${t('run.portBusy', { busy: r.busyPort, port: r.port })}</span></div>` : '';
+  return `<div class="ins-h"><b role="heading" aria-level="2">${t('run.title')}</b><span class="run-pills">${state}${port}</span></div>
+    <div class="group run"><code class="run-cmd" data-tip="${esc(repo.run)}">${esc(oneLine(repo.run, 80))}</code>${busy}${url}${out}<div class="ins-act">${btns}</div></div>`;
 }
 
 /**
@@ -557,6 +571,7 @@ export function renderWorkerInspector() {
       ${cur?.status === 'blocked' ? `<span>${t('kv.startsAfter')}</span><span>${esc(cur.afterTaskId ?? '')} ${t('pr.merged')}</span>` : ''}
       ${cur && overlapLine(cur) ? `<span>${t('kv.overlap')}</span><span class="warn" data-tip="${esc(cur.overlaps!.map((o) => `${o.taskId}: ${o.files.join(', ')}`).join('\n'))}">${esc(overlapLine(cur))}</span>` : ''}
       <span>${t('kv.folder')}</span><span><a tabindex="0" role="link" data-action="reveal" data-path="${esc(w.cwd)}" data-tip="${esc(w.cwd)}">${esc(base(w.cwd))}</a></span>
+      ${portRow(w)}
       <span>${t('kv.model')}</span><span>${modelLabel(w.model)} · ${t(`effort.${(S!.settings.effortPerTask && cur?.effort) || S!.settings.workerEffort}` as Key)}</span>
       <span>${t('kv.account')}</span><span>${esc(acctLabel(w.accountId))}</span>
       <span>${t('kv.context')}</span><span>${k(w.contextTokens)} / ${k(CONTEXT_WINDOW)}</span>

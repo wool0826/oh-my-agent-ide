@@ -299,10 +299,11 @@ export async function listIssues(name: string): Promise<Issue[] | null> {
   return parseIssues(r.stdout);
 }
 
-export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description' | 'setup' | 'run'>>) {
+export function updateRepo(name: string, patch: Partial<Pick<Repo, 'description' | 'setup' | 'run' | 'basePort' | 'portStep'>>) {
   const r = store.repo(name);
   if (!r) return;
   Object.assign(r, patch);
+  if (!r.basePort) delete r.basePort;
   store.changed();
 }
 
