@@ -141,6 +141,12 @@ test('shots: the switches come from the before/after shots only, never from a sh
   assert.deepEqual(names(setView(sets[0], firstPick(sets[0])).extras), ['card-narrow.png']);
 });
 
+test('shots: a set without before/after shows every shot, each labelled by its parts in the order the report names them, with no switch', () => {
+  const { sets } = shotSets(['/r/publish-dark.png', '/r/publish-light.png']);
+  assert.deepEqual(sets[0].axes, {});
+  assert.deepEqual(setView(sets[0], firstPick(sets[0])).extras.map(shotTags), [['dark'], ['light']]);
+});
+
 // The screenshots T-0181 reported (T-0187): its "changes" screen showed a third image beside its pair and two images
 // of other screens squeezed after it.
 const T0181 = ['app\\worker-head-dark-before.png', 'app\\worker-head-dark-after.png', 'app12\\export-head-dark-before.png', 'app12\\export-head-dark-after.png',

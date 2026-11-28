@@ -81,7 +81,9 @@ function setHtml(key: string, i: number, set: ShotSet) {
   const pick = pickOf(key, set);
   const v = setView(set, pick);
   const sw = AXES.filter((a) => set.axes[a]).map((a) => `<span class="seg" role="group" aria-label="${esc(t(AXIS_KEY[a]))}">${set.axes[a]!.map((val) => `<button type="button" data-action="shot-axis" data-key="${esc(key)}" data-i="${i}" data-axis="${a}" data-v="${val}" aria-pressed="${pick[a] === val}">${t(VALUE_KEY[val])}</button>`).join('')}</span>`);
-  const count = v.hidden ? `<span class="gap"></span><span class="shot-n" data-tip="${esc(t('shot.count', { n: set.shots.length }))}">${sym('s-image')}${set.shots.length}</span>` : '';
+  // The count is of the shots behind the switches; the others are all in sight.
+  const n = set.shots.length - v.extras.length;
+  const count = v.hidden ? `<span class="gap"></span><span class="shot-n" data-tip="${esc(t('shot.count', { n }))}">${sym('s-image')}${n}</span>` : '';
   // A screen told by its name's words gets its name above it; a lone image with nothing to tell it by is captioned
   // with its file name instead.
   const tagged = set.shots.some((s) => shotTags(s).length);
