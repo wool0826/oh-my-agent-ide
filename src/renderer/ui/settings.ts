@@ -245,7 +245,7 @@ export function stepper(id: string, value: number, min: number, max: number, lab
   const never = !!unit && value === 0;
   const extra = unit ? ` data-never="${esc(t('set.never'))}" aria-describedby="${id}-u"` : '';
   const u = unit ? `<span class="step-u" id="${id}-u"${never ? ' hidden' : ''}>${t(unit)}</span>` : '';
-  return `<span class="step${unit ? ' unit' : ''}" role="group" aria-label="${esc(label)}"><button type="button" data-step="-1" data-for="${id}" aria-label="-">${sym('s-minus')}</button><input id="${id}" class="step-v${never ? ' never' : ''}" inputmode="numeric" value="${never ? esc(t('set.never')) : value}" data-min="${min}" data-max="${max}"${extra} aria-label="${esc(label)}">${u}<button type="button" data-step="1" data-for="${id}" aria-label="+">${sym('s-plus')}</button></span>`;
+  return `<span class="step${unit ? ' unit' : ''}" role="group" aria-label="${esc(label)}"><button type="button" data-step="-1" data-for="${id}" aria-label="${t('set.stepDown')}" data-tip="${t('set.stepDown')}">${sym('s-minus')}</button><input id="${id}" class="step-v${never ? ' never' : ''}" inputmode="numeric" value="${never ? esc(t('set.never')) : value}" data-min="${min}" data-max="${max}"${extra} aria-label="${esc(label)}">${u}<button type="button" data-step="1" data-for="${id}" aria-label="${t('set.stepUp')}" data-tip="${t('set.stepUp')}">${sym('s-plus')}</button></span>`;
 }
 
 export function slider(id: string, value: number, label: string) {
@@ -289,7 +289,7 @@ export function accountCard(a: AccountView, i: number) {
     <span class="avatar" style="background:${AVATAR[i % AVATAR.length]}">${esc(initials(a.label))}</span>
     <span class="acc-main">${name}<span class="acc-kind">${kind}</span>${accountState(a)}</span>
     <span class="acc-meters">${usageWindows(a).map((w) => meter(w.label, w.v)).join('')}</span>
-    <span class="acc-ctl">${assign}<span class="acc-more"><button class="btn btn-icon btn-lg" data-action="acc-menu" data-id="${a.id}" aria-haspopup="menu" aria-expanded="${ui.accMenu === a.id}" aria-label="${t('acc.options')}">${sym('s-more')}</button>${menu}</span></span>
+    <span class="acc-ctl">${assign}<span class="acc-more"><button class="btn btn-icon btn-lg" data-action="acc-menu" data-id="${a.id}" aria-haspopup="menu" aria-expanded="${ui.accMenu === a.id}" aria-label="${t('acc.options')}" data-tip="${t('acc.options')}">${sym('s-more')}</button>${menu}</span></span>
   </div>`;
 }
 

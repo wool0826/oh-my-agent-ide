@@ -129,7 +129,7 @@
       </header>
       <section class="sq" id="sq" role="tabpanel" aria-labelledby="dock-tab-sq" hidden>
         <div class="sq-t" id="sq-thread"></div>
-        <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button></form>
+        <form class="composer sq-c" id="sq-form" autocomplete="off"><textarea class="field input" id="sq-input" rows="1" data-i18n-aria="sq.title" data-i18n-ph="sq.placeholder"></textarea><span class="ctx" id="sq-ctx" role="img"></span><button class="send" type="submit" id="sq-send" aria-label="Send" data-i18n-tip="send"><svg class="sym"><use href="#s-up"/></svg></button></form>
       </section>
       <section class="tm" id="tm" role="tabpanel" aria-labelledby="dock-tab-tm" hidden>
         <div class="tm-t" id="tm-thread" role="log"></div>
@@ -148,7 +148,7 @@
       <button type="button" class="sqb" id="chat-tm" data-action="tm-toggle" aria-pressed="false" aria-label="Terminal"></button>
       <button type="button" class="sqb" id="chat-sq" data-action="sq-toggle" aria-pressed="false" aria-label="Side question"></button>
       <button type="button" class="ctx" id="chat-ctx" data-action="ctx-menu" aria-haspopup="menu"></button>
-      <button class="send" type="submit" id="chat-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
+      <button class="send" type="submit" id="chat-send" aria-label="Send" data-i18n-tip="send"><svg class="sym"><use href="#s-up"/></svg></button>
     </form>
   </main>
   <aside class="inspector view" aria-label="Right sidebar" data-i18n-aria="ins.tabs" data-view="chat" id="chat-ins"></aside>
@@ -171,7 +171,7 @@
         <div class="rchip" id="ws-reply" hidden></div>
         <div class="fchips" id="ws-files" hidden></div>
         <textarea class="field input" id="ws-input" rows="1" aria-label="Message to the Worker" data-i18n-aria="aria.wsMessage"></textarea>
-        <button class="send" type="submit" id="ws-send" aria-label="Send"><svg class="sym"><use href="#s-up"/></svg></button>
+        <button class="send" type="submit" id="ws-send" aria-label="Send" data-i18n-tip="send"><svg class="sym"><use href="#s-up"/></svg></button>
       </form>
     </div>
   </main>
