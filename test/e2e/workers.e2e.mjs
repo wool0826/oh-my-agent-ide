@@ -227,3 +227,46 @@ flow('a running row shows a card with its whole title, its steps and what it doe
   await app.key('Escape', 'Escape', 27);
   await app.until(`!${CARD} && !document.activeElement.hasAttribute('aria-describedby')`, 'the card closed and the button as it was');
 });
+
+flow('a Worker folder opens in the editor, the terminal and the file manager, and a missing editor says so', { repos: ['demo'] }, async (app) => {
+  const mod = process.platform === 'darwin' ? 4 : 2;
+  const opened = () => app.evaluate("return await window.ide.call('e2e:opened');");
+  const last = async (n) => { let o = []; await app.until(`return (await window.ide.call('e2e:opened')).length >= ${n}`, `${n} things opened`); o = await opened(); return o[n - 1]; };
+  await app.say('@fake task demo Open the folder\n@@fake write README.md # Demo\n@@fake result Done.');
+  await app.until("document.querySelectorAll('#chat-ins .res').length >= 1", 'the task done');
+  const w = (await app.state()).workers[0];
+  await app.click('#side [data-action="done-toggle"]');
+  await app.until(`!!document.querySelector('#side [data-action="open-worker"][data-id="${w.id}"]')`, 'the Worker row');
+  await app.click(`#side [data-action="open-worker"][data-id="${w.id}"]`);
+  await app.until("!!document.querySelector('#ws-open [data-action=\"open-editor\"]')", 'the open button in the Worker header');
+  assert.equal(await app.evaluate("return document.querySelector('#ws-open .osplit-main').getAttribute('aria-label');"), 'Open in VS Code');
+
+  // The main part opens the default editor; Ctrl/Cmd+O does the same for the open Worker.
+  await app.click('#ws-open [data-action="open-editor"]');
+  assert.deepEqual(await last(1), ['open:with', `code ${w.cwd}`]);
+  await app.evaluate("document.activeElement?.blur(); return 1;");
+  await app.key('KeyO', 'o', 79, mod);
+  assert.deepEqual(await last(2), ['open:with', `code ${w.cwd}`]);
+
+  // The menu: the editors found, the terminal, the file manager, then the copies.
+  await app.click('#ws-open [data-action="open-menu"]');
+  await app.until("!document.getElementById('ctxmenu').hidden && document.getElementById('ctxmenu').dataset.for === 'open'", 'the open menu');
+  assert.equal(await app.evaluate("return document.querySelector('#ws-open [data-action=\"open-menu\"]').getAttribute('aria-expanded');"), 'true');
+  const items = await app.evaluate("return [...document.querySelectorAll('#ctxmenu .menu-item')].map((b) => b.dataset.v);");
+  assert.deepEqual(items, ['vscode', 'terminal', 'reveal', 'path', 'branch']);
+  await app.click('#ctxmenu [data-v="terminal"]');
+  const term = await last(3);
+  assert.equal(term[0], 'open:with');
+  assert.ok(term[1].endsWith(w.cwd), term[1]);
+  await app.click('#ws-open [data-action="open-menu"]');
+  await app.until("!document.getElementById('ctxmenu').hidden", 'the open menu again');
+  await app.click('#ctxmenu [data-v="reveal"]');
+  assert.deepEqual(await last(4), ['open:path', w.cwd]);
+
+  // An editor that is not on this computer: nothing starts, a toast names it and leads to Settings.
+  await app.evaluate("await window.ide.call('settings:save', { editor: 'cursor' }); return 1;");
+  await app.until("document.querySelector('#ws-open .osplit-main').getAttribute('aria-label') === 'Open in Cursor'", 'Cursor as the default');
+  await app.click('#ws-open [data-action="open-editor"]');
+  await app.until("[...document.querySelectorAll('.toast')].some((t) => /Cursor/.test(t.textContent) && /cursor/.test(t.textContent))", 'the missing-editor toast');
+  assert.equal((await opened()).length, 4);
+});

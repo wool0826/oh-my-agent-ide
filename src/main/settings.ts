@@ -12,6 +12,7 @@ import { FONT_SIZE_DEFAULT, clampFontSize, normalizeFontFamily } from '../shared
 import { MAX_WORKERS_DEFAULT, WAIT_SLOT_DEFAULT, clampMaxWorkers, clampWaitSlot } from '../shared/slots';
 import { USAGE_INTERVAL_DEFAULT, clampUsageMins } from '../shared/usage';
 import { cleanPause } from '../shared/accountPause';
+import { EDITOR_DEFAULT, cleanEditor, cleanEditorCmd, cleanTerminal, terminalsFor } from '../shared/openWith';
 
 export interface StoredAccount {
   id: string;
@@ -97,6 +98,9 @@ export const DEFAULTS: SettingsView = {
   background: true,
   openAtLogin: false,
   keepAwake: true,
+  editor: EDITOR_DEFAULT,
+  editorCmd: '',
+  terminal: terminalsFor(process.platform)[0].id,
 };
 
 /**
@@ -135,6 +139,9 @@ function fix(s: SettingsView) {
   s.quietTo = cleanTime(s.quietTo);
   s.doneSound = cleanDoneSound(s.doneSound);
   s.quickKey = normalizeQuickKey(String(s.quickKey ?? '')) ?? QUICK_KEY_DEFAULT;
+  s.editor = cleanEditor(s.editor);
+  s.editorCmd = cleanEditorCmd(s.editorCmd);
+  s.terminal = cleanTerminal(s.terminal, process.platform);
 }
 
 function fixAccount(a: Partial<StoredAccount>): StoredAccount {

@@ -180,6 +180,8 @@ export const ui = {
   fontApplied: '' as string,
   accKey: '' as string,
   accMenu: null as string | null,
+  /** The Worker whose open menu (item 3A) is showing. */
+  openMenu: null as string | null,
   accRename: null as string | null,
   accRemove: null as string | null,
   setQ: '',
