@@ -38,6 +38,7 @@ export const scale = {
   'ui-font-size': '13px',
   px: 'calc(var(--ui-font-size) / 13)',
   fs: {
+    micro: 'calc(9 * var(--px))', // the two letters of an editor's badge (open in editor)
     caption2: 'calc(11 * var(--px))', // badges, pills, timestamps, meter labels, section headers
     caption: 'calc(12 * var(--px))', // secondary lines, buttons, chips, inputs in panels
     body: 'var(--ui-font-size)', // default UI and message text
@@ -88,6 +89,8 @@ const common = {
   'pr-closed': 'var(--state-idle)', 'pr-closed-text': 'var(--text-secondary)', 'pr-closed-soft': 'var(--neutral-soft)',
   // Account avatars: white initials on a fill that holds 4.5:1 in both themes.
   'avatar-1': 'var(--accent-solid)', 'avatar-2': 'var(--success-solid)', 'avatar-3': '{ref.purple.600}', 'avatar-4': '{ref.orange.600}',
+  // Editor badges (open in editor): two letters on a fill, not the product's logo.
+  'editor-vscode': '{ref.blue.600}', 'editor-cursor': '{ref.gray.900}', 'editor-idea': '{ref.orange.600}',
 };
 
 export const themes = {

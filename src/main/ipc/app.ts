@@ -11,6 +11,7 @@ import { updateBlockers } from '../snapshot';
 import { fakeMode } from '../fake';
 import { e2eOpened } from './e2e';
 import { autoSleep } from '../sleep';
+import { editorsFound, openWith, type OpenWhat } from '../openWith';
 import { setBadge } from '../notify';
 import { store } from '../store';
 
@@ -32,6 +33,10 @@ export function registerAppIpc() {
   // A screenshot pasted into a composer is kept under the IDE home, so the agent can still read it later.
   handle('attach:pasteImage', (type: string, bytes: Uint8Array) => savePastedImage(path.join(paths().data, 'pasted'), type, bytes));
   handle('reveal:path', (p: string) => shell.showItemInFolder(p));
+  // A Worker's folder in the editor, a terminal or the file manager (item 3A); which editors this computer has.
+  handle('open:with', (what: OpenWhat, folder: string) => openWith(what, String(folder ?? '')));
+  handle('open:editors', () => editorsFound());
+  handle('open:exists', (folder: string) => { try { return fs.statSync(String(folder)).isDirectory(); } catch { return false; } });
   handle('app:version', () => app.getVersion());
   // The waiting decisions on the taskbar button or the Dock, with the overlay image the window drew for Windows.
   handle('app:badge', (n: number, png: string) => setBadge(n, String(png ?? '')));

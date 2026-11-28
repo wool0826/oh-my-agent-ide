@@ -1508,3 +1508,11 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
    - Side-by-side panes (15A) are not in main yet, and the composer chips of saved prompts (6A, 275) came in while this was made: neither is restored yet; their rows of the mock-up follow on their own.
    - Drafts over a million characters in all are not written: the screen still is, and the drafts on disk stay as they were.
    - Rejected: a separate `window.json` (the state file already has backups and read-only mode); saving on every keystroke (a second's interval is enough and costs one compare).
+
+280. **A Worker's folder opens from a split button in its header, its sidebar row's menu and Ctrl/Cmd+O, in the editor and terminal picked in Settings › General › Workspace** (T-0181, item 3A of the convenience mock-up).
+    - **Editors:** VS Code, Cursor and IntelliJ IDEA as presets (their CLI on the PATH; on macOS `open -a <App>` when the CLI is missing), plus a custom command with `{path}` (the folder goes at the end when it has none). Typing a command other than the preset's template makes the editor custom. Each shows as a two-letter coloured badge, not the product's logo.
+    - **Menu:** the default editor and the other presets found on this computer, the terminal, the file manager, then copy path and copy branch name. A worktree cleaned up after its merge is checked when the menu opens: a warning line and everything but copy branch name off.
+    - **Terminals per OS:** Windows Terminal (falls back to PowerShell), PowerShell (pwsh when there), Command Prompt; Terminal and iTerm on macOS; `x-terminal-emulator` or `gnome-terminal` on Linux. A Windows `.cmd` launcher (code.cmd) runs through `cmd.exe /d /s /c` with the line quoted for it.
+    - **Errors:** a missing editor is a toast naming its program with a Settings button, and Settings marks the command row with the same words. Ctrl/Cmd+O takes the focused sidebar row first, else the open Worker.
+    - **e2e:** in fake mode only `code` and `wt` exist and nothing starts; what would start is recorded for `e2e:opened`.
+    - Below 1000px the button shows only the badge. Rejected: brand logos (licensing, two themes), listing every preset whether installed or not, a shortcut for the menu.

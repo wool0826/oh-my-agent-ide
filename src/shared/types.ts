@@ -6,6 +6,7 @@ import type { UpdateView } from './update';
 import type { ChatEv } from './chatEvents';
 import type { SleepView } from './autoSleep';
 import type { TelegramView } from './remote';
+import type { EditorId, TerminalId } from './openWith';
 
 export type Lang = 'en' | 'ko';
 
@@ -495,6 +496,11 @@ export interface SettingsView {
   openAtLogin: boolean;
   /** The computer does not sleep while a Worker works or the Dispatcher is in a turn (shared/awake.ts). */
   keepAwake: boolean;
+  /** The editor a Worker's folder opens in (shared/openWith.ts), and the command when it is 'custom'. */
+  editor: EditorId;
+  editorCmd: string;
+  /** The terminal "Open in terminal" starts. */
+  terminal: TerminalId;
 }
 
 /** What Settings shows about the user's Claude Code setup. */

@@ -72,6 +72,7 @@
   --font-mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
   --ui-font-size: 13px;
   --px: calc(var(--ui-font-size) / 13);
+  --fs-micro: calc(9 * var(--px));
   --fs-caption2: calc(11 * var(--px));
   --fs-caption: calc(12 * var(--px));
   --fs-body: var(--ui-font-size);
@@ -204,6 +205,9 @@
   --avatar-2: var(--success-solid);
   --avatar-3: var(--ref-purple-600);
   --avatar-4: var(--ref-orange-600);
+  --editor-vscode: var(--ref-blue-600);
+  --editor-cursor: var(--ref-gray-900);
+  --editor-idea: var(--ref-orange-600);
   --border-subtle: rgba(255, 255, 255, .09);
   --border-default: rgba(255, 255, 255, .14);
   --border-strong: rgba(255, 255, 255, .4);
@@ -355,6 +359,9 @@
   --avatar-2: var(--success-solid);
   --avatar-3: var(--ref-purple-600);
   --avatar-4: var(--ref-orange-600);
+  --editor-vscode: var(--ref-blue-600);
+  --editor-cursor: var(--ref-gray-900);
+  --editor-idea: var(--ref-orange-600);
   --border-subtle: rgba(0, 0, 0, .08);
   --border-default: rgba(0, 0, 0, .12);
   --border-strong: rgba(0, 0, 0, .45);
@@ -505,6 +512,9 @@
     --avatar-2: var(--success-solid);
     --avatar-3: var(--ref-purple-600);
     --avatar-4: var(--ref-orange-600);
+    --editor-vscode: var(--ref-blue-600);
+    --editor-cursor: var(--ref-gray-900);
+    --editor-idea: var(--ref-orange-600);
     --border-subtle: rgba(0, 0, 0, .08);
     --border-default: rgba(0, 0, 0, .12);
     --border-strong: rgba(0, 0, 0, .45);

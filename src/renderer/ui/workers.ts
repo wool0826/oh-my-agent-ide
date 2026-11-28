@@ -12,6 +12,7 @@ import { workerPort } from '../../shared/runEnv';
 import type { Checkpoint } from '../../shared/checkpoints';
 import { taskMinutes, workerTotals } from '../../shared/workerSummary';
 import { scopeHtml, taskPermsHtml, taskTimeHtml, weekHtml, workerRetroStats } from './retro';
+import { openSplitHtml } from './openWith';
 import { composerAnswers, workerDecisions } from '../../shared/inbox';
 import { canStop } from '../../shared/canStop';
 import { ALLOW, DENY } from '../../shared/types';
@@ -206,6 +207,8 @@ export function renderSession(force = false, older = false) {
   const x = workerTask(w);
   $('#ws-title').textContent = `${w.id} ${x?.title ?? w.title}`;
   $('#ws-sub').textContent = [w.repo ?? t('general'), x?.branch, modelLabel(w.model)].filter(Boolean).join(' · ');
+  const split = openSplitHtml(w);
+  if ($('#ws-open').innerHTML !== split) $('#ws-open').innerHTML = split;
   const tabs = w.repo ? (['chat', 'changes', 'summary'] as const) : (['chat', 'summary'] as const);
   if (!w.repo && ui.wTab === 'changes') ui.wTab = 'chat';
   $('#ws-tabs').hidden = false;

@@ -26,7 +26,7 @@ import { cardKey, keyAnswer } from '../shared/decisionView';
 import { closePop, markFont, openFontPicker, pop, popKeys, stepValue, syncStep } from './ui/controls';
 import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleShellAsk } from './ui/shell';
 import { closeCpop, cpopKeys, historyKeys, historyTyped, rememberSent } from './ui/cpop';
-import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
+import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, sym, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
@@ -34,9 +34,10 @@ import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
 import { addRepo, jira, loadJira, loadPreflight, renderRepos, setJira, syncPorts } from './ui/repos';
 import { copyStatus, toggleStatus } from './ui/status';
-import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
+import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll, glideSoon, hostOnly, loadModels, markQuiet, openModelPicker, openSettings, openWorkspacePicker, pickSeg, previewFont, readSettingsForm, saveSettingsNow, saveSoon, showPane, syncAccRows, syncSlider, syncSoundRows } from './ui/settings';
 import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
 import { renderSleep, setSleep } from './ui/sleep';
+import { copyValue, folderThere, loadEditors, openFolder, openMenuHtml, rowOpenItems } from './ui/openWith';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderAccountsOff, renderSidebar, renderUsage, showUsagePop, togglePanel, toggleUsagePin, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
 import { initSwipe } from './ui/swipe';
@@ -443,6 +444,29 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'open-worker': openWorker(id); break;
+    // A Worker's folder in the editor, a terminal or the file manager (item 3A).
+    case 'open-editor': closeCtxMenu(); void openFolder(id, 'editor', () => openSettings('general')); break;
+    case 'open-with': void openFolder(id, el.dataset.v ?? 'editor', () => openSettings('general')); break;
+    case 'open-copy': {
+      const text = copyValue(id, el.dataset.v ?? 'path');
+      if (text) await navigator.clipboard.writeText(text).then(() => toast(t('sel.copied')), () => toast(t('copy.failed'), true));
+      break;
+    }
+    case 'open-menu': {
+      const menu = $('#ctxmenu');
+      if (!menu.hidden && menu.dataset.for === 'open') { closeCtxMenu(true); break; }
+      const w = worker(id);
+      if (!w) break;
+      const [, there] = await Promise.all([loadEditors(), folderThere(id)]);
+      menu.dataset.for = 'open';
+      menu.innerHTML = openMenuHtml(w, !there);
+      ui.openMenu = id;
+      el.setAttribute('aria-expanded', 'true');
+      // Below the split button, its left edge on the button's.
+      const r = (el.closest('.osplit') ?? el).getBoundingClientRect();
+      openCtxMenu(r.left, r.bottom + 4, el);
+      break;
+    }
     case 'open-queued': ui.qSel = id; go({ view: 'worker', wSel: null, wOpen: false }); renderWorkerInspector(); break;
     case 'chat-stop': {
       const b = el as HTMLButtonElement;
@@ -868,8 +892,14 @@ function openCtxMenu(x: MenuAt, y: MenuAt, back = document.activeElement as HTML
   menu.style.top = `${p.top}px`;
   menu.querySelector<HTMLElement>('button')?.focus();
 }
+/** The open menu's button reads as closed again. */
+function menuGone() {
+  ui.openMenu = null;
+  document.querySelector('[data-action="open-menu"][aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
+}
 export function closeCtxMenu(refocus = false) {
   const menu = $('#ctxmenu');
+  menuGone();
   if (menu.hidden) return;
   menu.hidden = true;
   if (refocus && ctxReturn?.isConnected) ctxReturn.focus();
@@ -1081,7 +1111,7 @@ export function init() {
     const segBtn = tgt.closest<HTMLButtonElement>('[data-segc]');
     if (segBtn) { pickSeg(segBtn); return; }
     const dd = tgt.closest<HTMLElement>('[data-dd]');
-    if (dd) { openModelPicker(dd); return; }
+    if (dd) { if (dd.dataset.pick) openWorkspacePicker(dd); else openModelPicker(dd); return; }
     const combo = tgt.closest<HTMLElement>('[data-combo]');
     if (combo) {
       const inp = document.getElementById(combo.dataset.combo!) as HTMLInputElement;
@@ -1096,7 +1126,7 @@ export function init() {
     if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure, [data-action="bundle-merge"]')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell, .osplit') || el?.hasAttribute('data-close')) { $('#ctxmenu').hidden = true; menuGone(); }
   });
   document.addEventListener('change', (e) => void (async () => {
     const el = e.target as HTMLSelectElement;
@@ -1373,6 +1403,14 @@ export function init() {
     if (mod && e.key === ',') { e.preventDefault(); if ($('#dlg').hidden) openSettings(); }
     // Ctrl/Cmd+L: to the message field of the view (K1).
     if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyL') { e.preventDefault(); if (!covered) focusComposer(); return; }
+    // Ctrl/Cmd+O: the sidebar Worker row with the focus, or the Worker on screen, in the default editor (item 3A).
+    if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyO') {
+      e.preventDefault();
+      const row = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[data-ctx="worker"]')?.dataset.id;
+      const id = row ?? (ui.view === 'worker' && ui.wOpen ? ui.wSel : null);
+      if (!covered && id) void openFolder(id, 'editor', () => openSettings('general'));
+      return;
+    }
     if (mod && /^[1-4]$/.test(e.key) && covered) e.preventDefault();
     else if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); go({ view: (['chat', 'worker', 'repo', 'memory'] as const)[Number(e.key) - 1] }); }
     const dir = navKey(e);
@@ -1393,7 +1431,7 @@ export function init() {
       const w = worker(id);
       const cur = w ? workerTask(w) : null;
       menu.dataset.for = 'worker';
-      menu.innerHTML = `<button class="menu-item" role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${t('wk.open')}</button>${w && canStop(w, cur) ? `<button class="menu-item" role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${t('wk.stop')}</button>` : ''}`;
+      menu.innerHTML = `${w ? rowOpenItems(w) : ''}<button class="menu-item" role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${sym('s-open')}<span>${t('open.worker')}</span></button>${w && canStop(w, cur) ? `<button class="menu-item is-danger" role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${sym('s-stop16')}<span>${t('wk.stop')}</span></button>` : ''}`;
       openCtxMenu(x, y);
       return;
     }

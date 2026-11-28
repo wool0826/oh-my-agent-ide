@@ -1,6 +1,6 @@
 // The Settings window.
 import { WARN_LEVELS, clampWarnAt } from '../../shared/usageForecast';
-import type { ClaudeInfo, ModelList, AccountView, SoundName, Lang } from '../../shared/types';
+import type { ClaudeInfo, ModelList, AccountView, SoundName, Lang, SettingsView } from '../../shared/types';
 import { EFFORTS, MAX_ACCOUNTS, type Effort } from '../../shared/types';
 import { ASK_RULES } from '../../shared/grants';
 import { type Key } from '../../shared/i18n';
@@ -16,12 +16,14 @@ import { MAX_WORKERS_MAX, MAX_WORKERS_MIN, WAIT_SLOT_MAX, clampMaxWorkers, clamp
 import { fitAll } from './fit';
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, clampFontSize, fontStack, normalizeFontFamily } from '../../shared/font';
 import { closePop, installedFonts, markFont, openPop, Opt, pop, stepNum } from './controls';
-import { $, applyStaticText, call, cap1, esc, holdWhileComposing, isMac, meterLevel, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
+import { $, applyStaticText, call, cap1, esc, holdWhileComposing, ide, isMac, meterLevel, markBad, modelLabel, Pane, pct, S, scrollQuietly, setCustomCache, shortPath, swapIn, sym, t, toast, ui, when } from './core';
 import { renderMemSync } from './memory';
 import { loadPreflight, preflightRows } from './repos';
 import { ms, offText, untilText, usageWindows } from './sidebar';
 import { activeOf, allPaused, assignMode, runningOn } from '../../shared/accountPause';
 import { telegramClosed, telegramDialog, telegramGroup } from './telegram';
+import { EDITORS, cleanEditor, editorLabel, editorProgram, presetTemplate, terminalsFor, type EditorId } from '../../shared/openWith';
+import { badge, editorsFound, loadEditors, terminalName } from './openWith';
 
 /** Apply the UI font and text size as CSS variables. Also used for the live preview in Settings. */
 /** Puts the chosen appearance on the page; the tokens do the rest (tokens.css). */
@@ -406,7 +408,7 @@ export function settingsHtml() {
       ${row(`${t('set.keepAwake')}<span class="lbl-note">${t('set.keepAwakeNote')}</span>`, 'set-awake', `<input class="switch" id="set-awake" type="checkbox" ${st.keepAwake !== false ? 'checked' : ''}>`, 'note')}
       ${row(t('set.shellProfile'), 'set-shprof', `<input class="switch" id="set-shprof" type="checkbox" ${st.shellProfile !== false ? 'checked' : ''}>`)}
       ${row(t('set.quickKey'), 'set-qkey', `<input class="inp w" id="set-qkey" value="${esc(quickKeyLabel(st.quickKey, isMac))}" spellcheck="false" autocomplete="off">`)}
-      ${row(t('set.diag'), 'set-diag', `<button class="btn btn-lg" id="set-diag" data-action="diag-export">${t('set.diagExport')}</button>`)}`)}${grp(`
+      ${row(t('set.diag'), 'set-diag', `<button class="btn btn-lg" id="set-diag" data-action="diag-export">${t('set.diagExport')}</button>`)}`)}${grp(workspaceRows(row), t('set.workspace'))}${grp(`
       ${row(t('upd.version'), 'set-ver-v', `<span class="sval" id="set-ver-v" tabindex="0">${ui.version ? `v${esc(ui.version)}` : ''}</span>`)}
       ${row(t('set.updateCheck'), 'set-upd', `<input class="switch" id="set-upd" type="checkbox" ${st.updateCheck ? 'checked' : ''}>`)}
       <div id="upd-rows">${updateRows()}</div>`, t('upd.group'))}${grp(
@@ -502,7 +504,7 @@ export function openSettings(pane?: Pane) {
   if (!pane && ui.settingsShown && holdWhileComposing($('#sheet'), () => { if (ui.settingsShown) openSettings(); }, 'input, textarea')) return;
   if (pane) ui.pane = pane;
   // Each time the window opens (button, shortcut or first run), not on every re-render.
-  if (!ui.settingsShown) { void loadClaudeInfo(); void loadPreflight(); if (ui.pane === 'models') void loadModels('fresh'); }
+  if (!ui.settingsShown) { void loadClaudeInfo(); void loadPreflight(); void refreshEditors(); if (ui.pane === 'models') void loadModels('fresh'); }
   closePop();
   const root = $('#sheet');
   const keep = new Map<string, string | boolean>();
@@ -609,6 +611,66 @@ export async function saveSettingsNow() {
   if (r?.restart && ui.settingsShown) { ui.restartAsk = true; openSettings(); }
 }
 
+/* ---------- Workspace: the editor and the terminal a Worker's folder opens in (item 3A) ---------- */
+
+type Row = (label: string, forId: string, control: string, cls?: string) => string;
+
+function ddPick(id: string, value: string, label: string, kind: 'editor' | 'terminal', face: string) {
+  return `<span class="dd"><input type="hidden" id="${id}" value="${esc(value)}"><button type="button" class="dd-btn" data-dd="${id}" data-pick="${kind}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(label)}">${face}${sym('s-updown')}</button></span>`;
+}
+
+function editorFace(id: EditorId, cmd: string) {
+  if (id === 'custom') return `<span>${t('set.editorCustom')}</span>`;
+  const l = editorLabel(id, cmd);
+  return `${badge(id, l.badge)}<span>${esc(l.name)}</span>`;
+}
+
+function workspaceRows(row: Row) {
+  const st = S!.settings;
+  // A preset that is not on this computer shows its command, marked, so it can be fixed here; a custom one always.
+  const missing = editorsFound[st.editor] === false && (st.editor !== 'custom' || !!st.editorCmd);
+  const showCmd = st.editor === 'custom' || missing;
+  const cmd = st.editor === 'custom' ? st.editorCmd : presetTemplate(st.editor);
+  const warn = missing ? `<span class="ewarn" role="alert">${sym('s-alert')}${esc(t('set.editorMissing', { prog: editorProgram(st.editor, st.editorCmd) }))}</span>` : '';
+  return `${row(t('set.editor'), 'set-editor', ddPick('set-editor', st.editor, t('set.editor'), 'editor', editorFace(st.editor, st.editorCmd)))}
+    ${showCmd ? row(t('set.editorCmd'), 'set-ecmd', `${warn}<input class="inp w mono${missing ? ' bad' : ''}" id="set-ecmd" value="${esc(cmd)}" placeholder="code -n {path}" spellcheck="false" autocomplete="off"${missing ? ' aria-invalid="true"' : ''}>`, 'ecmd') : ''}
+    ${row(t('set.terminal'), 'set-term', ddPick('set-term', st.terminal, t('set.terminal'), 'terminal', `<span>${esc(terminalName(st.terminal))}</span>`))}`;
+}
+
+/** The editor or terminal list of the Workspace group. Picking saves at once; the rows are drawn again for it. */
+export function openWorkspacePicker(btn: HTMLElement) {
+  if (pop.owner === btn) { closePop(); return; }
+  const inp = document.getElementById(btn.dataset.dd!) as HTMLInputElement | null;
+  if (!inp) return;
+  const items: Opt[] = btn.dataset.pick === 'editor'
+    ? [...EDITORS.map((e) => ({ value: e.id, label: e.name, html: badge(e.id, e.badge) })), { value: 'custom', label: t('set.editorCustom') }]
+    : terminalsFor(ide.platform).map((x) => ({ value: x.id, label: terminalName(x.id) }));
+  openPop(btn, items, inp.value, (v) => {
+    if (v === inp.value) return;
+    inp.value = v;
+    // A preset picked over a shown command: that command is the old editor's, not an edit that makes it custom.
+    if (btn.dataset.pick === 'editor' && v !== 'custom') document.getElementById('set-ecmd')?.closest('.srow')?.remove();
+    void saveSettingsNow().then(() => { if (ui.settingsShown) openSettings(); });
+  }, 220);
+}
+
+/** The editor the form asks for: typing a command other than the preset's makes it a custom one. */
+function formEditor() {
+  const st = S!.settings;
+  const picked = cleanEditor(($('#set-editor') as HTMLInputElement | null)?.value ?? st.editor);
+  const field = document.getElementById('set-ecmd') as HTMLInputElement | null;
+  const typed = field ? field.value.trim() : st.editorCmd;
+  const custom = picked === 'custom' || (!!field && typed !== presetTemplate(picked));
+  return { editor: custom ? 'custom' as const : picked, editorCmd: custom ? typed : st.editorCmd };
+}
+
+/** Which editors there are is read each time Settings opens; the rows are drawn again when that changed. */
+export async function refreshEditors() {
+  const before = JSON.stringify(editorsFound);
+  await loadEditors();
+  if (ui.settingsShown && JSON.stringify(editorsFound) !== before) openSettings();
+}
+
 /** Search box: keep only the sections whose labels match, and show the first match. */
 export function filterPanes() {
   const q = ui.setQ.trim().toLowerCase();
@@ -712,5 +774,7 @@ export function readSettingsForm() {
     claudeMemory: ($('#set-cmem') as HTMLInputElement).checked,
     claudeConnectors: ($('#set-cconn') as HTMLInputElement).checked,
     artifactAutoReply: ($('#set-creply') as HTMLInputElement).checked,
+    ...formEditor(),
+    terminal: (($('#set-term') as HTMLInputElement | null)?.value ?? S!.settings.terminal) as SettingsView['terminal'],
   };
 }
