@@ -19,6 +19,9 @@ class Runs {
   private pushTimer: NodeJS.Timeout | null = null;
   /** Workers whose run is looking for a free port, so a second click does not start it twice. */
   private starting = new Set<string>();
+  /** Port searches run one at a time, and a port found stays reserved until its run is listed: two runs started together never get the same one. */
+  private portQueue: Promise<unknown> = Promise.resolve();
+  private reserved = new Set<number>();
 
   views(): RunView[] {
     return [...this.procs.values()].map((r) => r.view);
@@ -34,7 +37,7 @@ class Runs {
     // The Worker's own port, or the next free one above it when something else holds it (13A).
     const want = workerPort(repo, w.id);
     let port = want;
-    try { if (want) port = (await firstFree(portCandidates(want))) ?? want; } finally { this.starting.delete(workerId); }
+    try { if (want) port = (await this.pickPort(want)) ?? want; } finally { this.starting.delete(workerId); }
     const vars = runEnv({ repoPath: repo.path, workerId: w.id, worktree: w.cwd, port });
     const win = process.platform === 'win32';
     const line = win ? psPrelude(vars.map(([k]) => k)) + cmd : cmd;
@@ -45,6 +48,7 @@ class Runs {
     });
     const entry = { proc, out: '', view: { workerId, running: true, code: null, tail: '', url: null, startedAt: nowIso(), ...(port ? { port } : {}), ...(want && port !== want ? { busyPort: want } : {}) } as RunView };
     this.procs.set(workerId, entry);
+    if (port) this.reserved.delete(port);
     const keep = (d: Buffer) => {
       entry.out = appendOutput(entry.out, d.toString());
       entry.view.tail = entry.out;
@@ -67,6 +71,18 @@ class Runs {
     proc.on('close', (code) => end(code));
     log.info(`run started in ${w.cwd}`, cmd);
     store.emit('changed');
+  }
+
+  /** The first free port from `want` up that no other run was given, reserved until the caller lists its run. */
+  private pickPort(want: number): Promise<number | null> {
+    const next = this.portQueue.then(async () => {
+      const held = new Set([...this.reserved, ...[...this.procs.values()].filter((r) => r.view.running).map((r) => r.view.port)]);
+      const p = await firstFree(portCandidates(want).filter((x) => !held.has(x)));
+      if (p) this.reserved.add(p);
+      return p;
+    });
+    this.portQueue = next.catch(() => null);
+    return next;
   }
 
   stop(workerId: string) {
