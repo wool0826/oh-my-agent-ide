@@ -397,13 +397,63 @@ flow('the side terminal is a real terminal: a shell tab opens with it and gets e
   assert.match(await app.evaluate("return document.querySelector('#tm-tabs .tm-tab').dataset.tip;"), /3/);
   await app.click('#tm-new');
   await app.until("document.querySelectorAll('#tm-tabs .tm-tab').length === 2 && document.activeElement?.closest('#tm-x')", 'a new tab', 30_000);
-  await app.click(`#tm-tabs .tm-close[data-id="${first}"]`);
+  await app.click(`#tm-tabs [data-action="pty-close"][data-id="${first}"]`);
   await app.until("document.querySelectorAll('#tm-tabs .tm-tab').length === 1", 'the ended tab closed');
   const third = await app.evaluate("return document.querySelector('#tm-tabs .tm-tab').dataset.id;");
   await seen(third, win ? 'PS ' : '', 'the prompt of the new tab', 60_000);
   await typed('exit');
   await app.until("document.querySelector('#dock').hidden && document.activeElement?.id === 'chat-input'", 'the dock put away, the chat with the keys', 30_000);
   assert.deepEqual((await app.evaluate("return ide.call('pty:state');")).tabs, []);
+});
+
+flow('the side terminal finds what a shell printed, opens another shell from its menu and starts an ended shell again', {}, async (app) => {
+  const win = process.platform === 'win32';
+  await app.size(900, 700);
+  await app.evaluate(PTY_SETUP);
+  await app.key('Backquote', '`', 192, 2);
+  await app.until("document.activeElement?.closest('#tm-x') && document.querySelectorAll('#tm-tabs .tm-tab').length === 1", 'a shell tab', 30_000);
+  const first = await app.evaluate("return document.querySelector('#tm-tabs .tm-tab').dataset.id;");
+  const text = (id) => `window.__ptyText(${JSON.stringify(id)})`;
+  const seen = (id, s, what, ms = 60_000) => app.until(`${text(id)}.includes(${JSON.stringify(s)})`, what, ms, `${text(id)}.slice(-1500)`);
+  const typed = async (s) => { await app.cdp('Input.insertText', { text: s }); await app.key('Enter', 'Enter', 13); };
+  await typed(win ? "1..3 | ForEach-Object { 'needle' + '-' + $_ }" : "for i in 1 2 3; do printf 'needle-%s\n' $i; done");
+  await seen(first, 'needle-3', 'the lines to look for');
+
+  // ⌘F on the Mac, Ctrl+Shift+F elsewhere: the search bar over the terminal, with the keys.
+  await app.key('KeyF', 'f', 70, process.platform === 'darwin' ? 4 : 10);
+  await app.until("!document.querySelector('#tm-find').hidden && document.activeElement?.id === 'tm-q'", 'the search bar with the keys');
+  await app.cdp('Input.insertText', { text: 'needle-' });
+  const count = "document.querySelector('#tm-cnt').textContent";
+  await app.until(`Number(${count}.split('/')[1]) >= 3`, 'every line found', 10_000);
+  const at = await app.evaluate(`return ${count};`);
+  await app.key('Enter', 'Enter', 13);
+  await app.until(`${count} !== ${JSON.stringify(at)}`, 'the next match', 10_000);
+  // Esc closes it; the keys are the shell's again and the dock stays.
+  await app.key('Escape', 'Escape', 27);
+  await app.until("document.querySelector('#tm-find').hidden && !!document.activeElement?.closest('#tm-x') && !document.querySelector('#dock').hidden", 'the search closed, the keys in the shell');
+
+  // Another shell, from the menu by the + button (when there is more than one).
+  if (await app.evaluate("return !document.querySelector('#tm-shell').hidden;")) {
+    await app.click('#tm-shell');
+    await app.until("!document.querySelector('#ctxmenu').hidden && document.querySelectorAll('#ctxmenu .menu-item').length > 1", 'the shells');
+    const shell = await app.evaluate("return document.querySelectorAll('#ctxmenu .menu-item')[1].dataset.id;");
+    await app.click('#ctxmenu .menu-item:nth-child(2)');
+    await app.until("document.querySelectorAll('#tm-tabs .tm-tab').length === 2 && document.querySelector('#ctxmenu').hidden", 'a tab of the shell chosen', 30_000);
+    const tabs = (await app.evaluate("return ide.call('pty:state');")).tabs;
+    assert.equal(tabs[1].shell, shell);
+    await app.click(`#tm-tabs [data-action="pty-close"][data-id="${tabs[1].id}"]`);
+    await app.until("document.querySelectorAll('#tm-tabs .tm-tab').length === 1", 'the second tab closed');
+    await app.click(`#tm-tabs .tm-tab[data-id="${first}"]`);
+  }
+
+  // An ended shell starts again in its own tab.
+  await typed('exit 3');
+  await app.until("!!document.querySelector('#tm-tabs .tm-chip.ended .tm-re')", 'the ended tab with its restart button', 30_000);
+  await app.click(`#tm-tabs .tm-re[data-id="${first}"]`);
+  await app.until(`!document.querySelector('#tm-tabs .tm-chip.ended') && document.querySelector('#tm-tabs .tm-tab')?.dataset.id === ${JSON.stringify(first)} && !!document.activeElement?.closest('#tm-x')`, 'the same tab live again, with the keys', 30_000);
+  assert.equal((await app.evaluate("return ide.call('pty:state');")).tabs[0].live, true);
+  await typed(win ? "Write-Output ('again' + '-ok')" : "printf 'again-%s\n' ok");
+  await seen(first, 'again-ok', 'the restarted shell answering');
 });
 
 flow('after a reload the side terminal finds its shells again, with what they printed, and goes on', {}, async (app) => {

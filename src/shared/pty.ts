@@ -187,19 +187,21 @@ export function ptyGone(o: { code: number | null; error?: string; stopped: boole
   return !o.stopped && o.code === 0 && !o.error;
 }
 
-export type TermKey = 'app' | 'copy' | 'paste' | 'shell';
+export type TermKey = 'app' | 'copy' | 'find' | 'paste' | 'shell';
 
 /**
  * Where a key pressed in the side terminal goes. The shell gets it unless it is one of these, so Esc, Tab, the arrows,
  * Ctrl+C, Ctrl+L and Ctrl+R work as in any terminal:
  * - the app: Ctrl+` (put the terminal away), Ctrl+PgUp / PgDn (the tab before / after), and on the Mac every ⌘ key
  *   (⌘C and ⌘V are the app's own copy and paste);
+ * - find in the terminal: ⌘F on the Mac, Ctrl+Shift+F elsewhere (Ctrl+F is the shell's);
  * - on Windows and Linux, copy: Ctrl+Shift+C, Ctrl+Insert, or Ctrl+C while text is selected; paste: Ctrl+V,
  *   Ctrl+Shift+V, Shift+Insert (as Windows Terminal).
  */
 export function termKey(k: { code: string; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean }, o: { mac: boolean; selection: boolean }): TermKey {
   const ctrlOnly = k.ctrlKey && !k.shiftKey && !k.altKey && !k.metaKey;
   if (ctrlOnly && (k.code === 'Backquote' || k.code === 'PageUp' || k.code === 'PageDown')) return 'app';
+  if (k.code === 'KeyF' && !k.altKey && (o.mac ? k.metaKey && !k.ctrlKey && !k.shiftKey : k.ctrlKey && k.shiftKey && !k.metaKey)) return 'find';
   if (o.mac) return k.metaKey ? 'app' : 'shell';
   if (k.altKey || k.metaKey) return 'shell';
   if (k.ctrlKey && k.code === 'KeyC' && (k.shiftKey || o.selection)) return 'copy';
@@ -226,6 +228,12 @@ export function termTheme(get: (token: string) => string): Record<string, string
     th[`bright${c[0].toUpperCase()}${c.slice(1)}`] = get(`--ansi-bright-${c}`);
   }
   return th;
+}
+
+/** How a search marks what it found (xterm's search addon), from the tokens: every match, and the current one. */
+export function termMatch(get: (token: string) => string) {
+  const all = get('--term-match'), cur = get('--term-match-current');
+  return { matchBackground: all, matchOverviewRuler: all, activeMatchBackground: cur, activeMatchColorOverviewRuler: cur };
 }
 
 /** The terminal's font: the app's mono one, with fonts that have Korean in them before its generic end. */

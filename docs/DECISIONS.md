@@ -1390,3 +1390,18 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
       twice (`ptyFresh`).
     - Rejected: Ctrl+C always to the shell with copy only on Ctrl+Shift+C (Windows users have Windows Terminal's
       habit), xterm's canvas addon (gone in xterm 6) and links on a plain click (a click to select would open them).
+264. **The side terminal finds text, opens the shell picked from a menu, and starts an ended shell again in its own tab** (T-0165, PR 3 of 3; follows 262, 263).
+    - Find: ⌘F on the Mac, Ctrl+Shift+F elsewhere (Ctrl+F is readline's), or the toolbar's search icon. It is the
+      thread's find bar (228) with a field, over the terminal: xterm's search addon marks every match in
+      `--term-match` and the current one in `--term-match-current` (six-digit hex tokens, which the addon needs),
+      with a count; Enter and Shift+Enter step, Esc closes it and gives the keys back to the shell. It follows the tab
+      showing and the theme.
+    - Another shell: ▾ beside + lists `pty:shells` in the app's context menu, shown only when there is more than one.
+      + still opens the default shell (the first of 186's order).
+    - Restart: an ended tab (an error code, stopped, or its host gone) gets ↻ before its ×. Main starts the same shell
+      in the same folder under the same id (`pty:restart`), so the tab keeps its place; the screen is cleared first,
+      its replay starts again, and the count of its output goes on so nothing is drawn twice (262).
+    - Docs: README's usage list, the design spec's dock part, and the real-use checklist row 9.11 (vim, ssh password,
+      the Korean IME, npm prompts, Ctrl+C, resizing, by hand on Windows; zsh with 8.3 on a Mac).
+    - Rejected: a find of the app's own (the addon already marks what scrolled away), a shell picker in Settings (one
+      more place; the menu is where a tab is opened), and restarting into a new tab (the ended tab would stay to close).

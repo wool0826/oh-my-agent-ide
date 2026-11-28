@@ -11,7 +11,7 @@ Every row carries one of these:
 | Tag | Meaning | Rows |
 |---|---|---|
 | `e2e` | The app's own path, drivable with the fake agents (`@fake` scripts) and the gh stand-in (`test/e2e/gh-stub.mjs`). Not part of the hands-on pass: each runs in the flow its row names. | 15 |
-| `win` | Needs the user's hands and eyes on Windows: tray, notifications, sound, global shortcut, installer, screen reader, OS theme. | 12 |
+| `win` | Needs the user's hands and eyes on Windows: tray, notifications, sound, global shortcut, installer, screen reader, OS theme, the side terminal. | 13 |
 | `mac` | Needs a real Mac. Never run there so far. | 1 |
 | `real` | Needs a real model, a real account, real GitHub, Jira, ChatGPT or a Telegram bot. | 23 |
 
@@ -62,13 +62,14 @@ The hands-on rows in run order. About four and a half hours of hands-on time; th
 | C4 | 2.2 | real | 15 min | | | | |
 | C5 | 2.6 | real | 20 min | | | | |
 | C6 | 2.7 | real | 15 min | | | | |
-| **D. Eyes and ears on Windows** (≈50 min) | | | | | | | |
+| **D. Eyes and ears on Windows** (≈65 min) | | | | | | | |
 | D1 | 3.7 | win | 5 min | | | | |
 | D2 | 9.2 | win | 10 min | | | | |
 | D3 | 9.3 | win | 5 min | | | | |
 | D4 | 9.4 | win | 5 min | | | | |
 | D5 | 9.1 | win | 15 min | | | | |
 | D6 | 9.10 | win | 15 min | | | | |
+| D7 | 9.11 | win | 15 min | | | | |
 | **E. Closing** (≈10 min) | | | | | | | |
 | E1 | 3.3 | win | 5 min | | | | |
 | **F. Alongside a normal working day** (not timed) | | | | | | | |
@@ -89,7 +90,7 @@ The hands-on rows in run order. About four and a half hours of hands-on time; th
 
 ## All rows
 
-The original 45 rows and the 6 Telegram rows with their tag, and where each one is run: a pass order above, or the end-to-end flow that covers it, as `file`: "flow name" (the file is `test/e2e/<file>.e2e.mjs`).
+The original 45 rows, the 6 Telegram rows and the side terminal's row (9.11) with their tag, and where each one is run: a pass order above, or the end-to-end flow that covers it, as `file`: "flow name" (the file is `test/e2e/<file>.e2e.mjs`).
 
 ### 1. A real task from start to finish
 
@@ -164,7 +165,7 @@ The original 45 rows and the 6 Telegram rows with their tag, and where each one 
 |---|---|---|---|---|
 | 8.1 | Install the new build over the old one. | Settings, tasks and conversations are kept. | win | A1 |
 | 8.2 | Publish a release (docs/RELEASING.md: push the tag, publish the draft), then start an older build. | Within a minute the gear has a dot, and Settings shows "Get <version>" linking to the release. | real | G1 |
-| 8.3 | On a Mac: `npm run dist:mac`, install, and repeat 1.1, 3.1, 3.2, 3.4 and 3.7 (⌘⇧Space). | The same results. CI builds the app on macOS; it has never been used there. | mac | H1 |
+| 8.3 | On a Mac: `npm run dist:mac`, install, and repeat 1.1, 3.1, 3.2, 3.4, 3.7 (⌘⇧Space) and 9.11 (zsh, ⌘C/⌘V, ⌘F). | The same results. CI builds the app on macOS; it has never been used there. | mac | H1 |
 
 ### 9. What only eyes and ears can check
 
@@ -180,6 +181,7 @@ The original 45 rows and the 6 Telegram rows with their tag, and where each one 
 | 9.8 | Restart the app while a task with an "Allow for this task" is still running. | The allowance is still listed under the task and still applies. | e2e | `realuse`: "row 9.8: an "Allow for this task" outlives a restart of the app, listed under the task and still applied" |
 | 9.9 | Search the palette for something said weeks ago in the chat. | The chat opens at that message, marked for a moment. | e2e | `search`: "the palette finds something said and shows the chat from that message" |
 | 9.10 | Use the app for a few minutes with a screen reader (Narrator, VoiceOver). | Controls are announced by sensible names, and a new decision is noticed. Note what is confusing. | win | D6 (VoiceOver goes with H1) |
+| 9.11 | In the side terminal (Ctrl+`): a full-screen program, an `ssh` password, Korean typed with the IME, `npm init`'s questions, Ctrl+C, resizing; a Command Prompt tab from ▾, ended and started again. | Programs draw and leave cleanly, the password is hidden, Korean composes at the cursor, prompts take answers, Ctrl+C stops at once, lines reflow, the restarted tab answers. | win | D7 (zsh goes with H1) |
 
 ### 10. Telegram
 
@@ -331,6 +333,15 @@ For every hands-on row: what to do, what to look at, and what counts as pass. "T
 1. Start Narrator (Win+Ctrl+Enter). Tab through the main screen, the sidebar, a Worker, Settings.
 2. Have a Worker ask for a permission while the window has focus.
 - Pass: controls are announced by names that say what they do (no "button", no raw icon names), and the new decision is announced. Note what is confusing.
+
+**9.11 The side terminal by hand** (win)
+1. Ctrl+` opens a PowerShell tab. Run `vim` (Git for Windows has one in its `usr/bin` folder), type a line, leave with `:q!`.
+2. `ssh` to a host that asks for a password: type a wrong one, then Ctrl+C.
+3. Switch the IME to Korean and type `echo 한글 입력`, then Enter.
+4. In an empty folder, `npm init`: answer two questions, then Ctrl+C.
+5. `ping -t localhost`, Ctrl+C. Run it again and drag the dock's top edge and the window's edge while it scrolls; Ctrl+C.
+6. ▾ beside + → Command Prompt. `dir`, then `exit 2`, then ↻ on its tab and `dir` again.
+- Pass: each program draws and quits cleanly, the password is not shown, Korean composes at the cursor with nothing doubled or misplaced, the prompts take answers, Ctrl+C stops at once, lines reflow to the new size, the restarted tab answers.
 
 ### E. Closing
 

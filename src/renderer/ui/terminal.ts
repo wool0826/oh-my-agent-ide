@@ -42,8 +42,9 @@ export function openTerm() {
 }
 
 /** A tab in the folder picked; the line mode when the real terminal turns out to be off. */
-export async function newTermTab() {
-  if (await newTab(repoNow()) || ptyOn() || !term.open) return;
+/** A new tab in the folder chosen, with `shell` by its id ('' for the default one). */
+export async function newTermTab(shell = '') {
+  if (await newTab(repoNow(), shell) || ptyOn() || !term.open) return;
   $<HTMLTextAreaElement>('#tm-input').focus();
 }
 
@@ -203,6 +204,8 @@ export function renderTerm() {
   $('#tm-x').hidden = !on;
   $('#tm-tabs').hidden = !on;
   $('#tm-new').hidden = !on;
+  $('#tm-shell').hidden = !on || pty.shells.length < 2;
+  $('#tm-find-btn').hidden = !on || !pty.view.tabs.length;
   $('#tm-thread').hidden = on;
   $('#tm-form').hidden = on;
   // node-pty did not load: a warning, its reason in the log (turned off on purpose: none).

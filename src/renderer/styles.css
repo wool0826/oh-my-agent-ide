@@ -1948,12 +1948,15 @@ mark.find.cur.arrive { animation: hit-pulse calc(var(--dur-slow) * 2) var(--ease
 .tm-tab:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .tm-close { flex: none; width: 16px; height: 16px; margin-right: var(--space-2); padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-tertiary); display: grid; place-items: center; cursor: pointer; }
 .tm-close .sym { width: 8px; height: 8px; }
+.tm-close.tm-re .sym { width: 11px; height: 11px; }
 .tm-close:hover { background: var(--surface-hover); color: var(--text-primary); }
 .tm-close:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .tm-ib { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
 .tm-ib .sym { font-size: var(--icon-sm); }
 .tm-ib:hover { background: var(--surface-hover); color: var(--text-primary); }
 .tm-ib:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.tm-pick { width: 14px; margin-left: calc(var(--space-2) * -1); }
+.tm-pick .sym { width: 6px; height: 9px; transform: rotate(90deg); }
 .tm-off { flex: none; display: grid; place-items: center; color: var(--warning-text); font-size: var(--icon-sm); border-radius: 50%; }
 .tm-off:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 .tm-x { flex: 1 1 auto; min-height: 0; position: relative; background: var(--term-bg); font-size: var(--fs-code); }
@@ -1963,6 +1966,8 @@ mark.find.cur.arrive { animation: hit-pulse calc(var(--dur-slow) * 2) var(--ease
 /* Over xterm.css's black: the padding round the text, and the Korean being composed (IME). */
 .tm-v .xterm .xterm-viewport { background-color: var(--term-bg); }
 .tm-v .xterm .composition-view { background: var(--term-bg); color: var(--term-fg); }
+.tm-find input { width: 14em; min-width: 0; padding: 0 var(--space-4); border: 0; background: none; color: var(--text-primary); font: inherit; outline: none; }
+.tm-find:focus-within { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 /* Room under the header, and lines scrolled up fade out under it rather than being cut (G1). */
 .tm-t { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-10); padding: var(--space-12) var(--space-12) var(--space-10); background: var(--surface-code); -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--mask-solid) 10px); mask-image: linear-gradient(to bottom, transparent 0, var(--mask-solid) 10px); }
 .tm-empty { margin: auto 0; font-size: var(--fs-caption); color: var(--text-tertiary); text-align: center; }

@@ -264,6 +264,8 @@
   --term-fg: var(--ref-gray-50);
   --term-cursor: var(--ref-gray-50);
   --term-selection: rgba(100, 177, 255, .3);
+  --term-match: var(--ref-yellow-700);
+  --term-match-current: var(--ref-orange-600);
   --ansi-black: var(--ref-gray-750);
   --ansi-red: var(--ref-red-400);
   --ansi-green: var(--ref-green-400);
@@ -413,6 +415,8 @@
   --term-fg: var(--ref-gray-900);
   --term-cursor: var(--ref-gray-900);
   --term-selection: rgba(0, 122, 255, .2);
+  --term-match: var(--ref-yellow-300);
+  --term-match-current: var(--ref-orange-300);
   --ansi-black: var(--ref-gray-900);
   --ansi-red: var(--ref-red-600);
   --ansi-green: var(--ref-green-600);
@@ -561,6 +565,8 @@
     --term-fg: var(--ref-gray-900);
     --term-cursor: var(--ref-gray-900);
     --term-selection: rgba(0, 122, 255, .2);
+    --term-match: var(--ref-yellow-300);
+    --term-match-current: var(--ref-orange-300);
     --ansi-black: var(--ref-gray-900);
     --ansi-red: var(--ref-red-600);
     --ansi-green: var(--ref-green-600);

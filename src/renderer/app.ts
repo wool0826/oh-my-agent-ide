@@ -42,7 +42,7 @@ import { copyText } from './ui/copy';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
 import { bindDock } from './ui/dock';
 import { bindTerm, hideTerm, newTermTab, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
-import { clearPty, closeTab, ptyOn, selectTab } from './ui/xterm';
+import { clearPty, closeTab, closeTermFind, openTermFind, pty, ptyOn, restartTab, selectTab, termFindStep } from './ui/xterm';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { navItem, navItems, noteNav, rove } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
@@ -282,9 +282,24 @@ export async function act(el: HTMLElement, e: Event) {
     }
     case 'tm-clear': if (ptyOn()) clearPty(); else { await call('term:clear'); $('#tm-input').focus(); } break;
     // The real terminal's tabs (ui/xterm.ts).
-    case 'pty-new': void newTermTab(); break;
+    case 'pty-new': void newTermTab(id); break;
+    case 'pty-shells': {
+      const menu = $('#ctxmenu');
+      if (!menu.hidden && menu.dataset.for === 'pty') { menu.hidden = true; break; }
+      menu.dataset.for = 'pty';
+      menu.innerHTML = pty.shells.map((s) => `<button class="menu-item" role="menuitem" data-action="pty-new" data-id="${esc(s.id)}" data-close>${esc(s.name)}</button>`).join('');
+      // Below the button, its left edge on the button's.
+      const r = el.getBoundingClientRect();
+      openCtxMenu(r.left, r.bottom + 4, el);
+      break;
+    }
     case 'pty-tab': selectTab(id); break;
     case 'pty-close': void closeTab(id); break;
+    case 'pty-restart': void restartTab(id); break;
+    case 'tm-find': openTermFind(); break;
+    case 'tm-find-prev': termFindStep(-1); break;
+    case 'tm-find-next': termFindStep(1); break;
+    case 'tm-find-close': closeTermFind(); break;
     case 'tm-stop': (el as HTMLButtonElement).disabled = true; void tryCall('term:stop', id); break;
     case 'tm-cwd': pickTermFolder(el); break;
     case 'sq-close': void closeSide(); break;
@@ -987,7 +1002,7 @@ export function init() {
     if (ui.mergeAsk && !tgt.closest('.prmerge.sure, .h-act.sure, [data-action="bundle-merge"]')) { ui.mergeAsk = null; renderAll(true); }
     const el = tgt.closest<HTMLElement>('[data-action]');
     if (el) void act(el, e);
-    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
+    if (!(e.target as HTMLElement).closest('#ctxmenu, #chat-ctx, #tm-shell') || el?.hasAttribute('data-close')) $('#ctxmenu').hidden = true;
   });
   document.addEventListener('change', (e) => void (async () => {
     const el = e.target as HTMLSelectElement;

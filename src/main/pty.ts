@@ -63,14 +63,30 @@ class Ptys {
     if (!(await this.start()) || !this.host) throw new Error(t('term.err.ptyOff'));
     // Again: other tabs may have opened while the host started.
     if (this.tabs.length >= PTY_MAX_TABS) throw new Error(t('term.err.tooMany', { n: PTY_MAX_TABS }));
-    const size = ptySize(o.cols, o.rows);
     const tab: Tab = { id: uid(), shell: sh.id, name: sh.name, repo: where.repo, fg: '', live: true, code: null, startedAt: nowIso(), replay: '', total: 0 };
     this.tabs.push(tab);
-    const profile = loadSettings().shellProfile !== false;
-    const env = ptyEnv(ghEnv(), { platform: process.platform, version: app.getVersion() });
-    this.send({ t: 'spawn', id: tab.id, file: sh.file, args: ptyArgs(sh, profile), cwd: where.cwd, env, ...size });
-    log.info(`pty ${tab.id}: ${sh.file} in ${where.cwd}, ${size.cols}x${size.rows}${profile ? ', profile' : ''}`);
-    this.emit();
+    this.spawn(tab, sh, where.cwd, o);
+    return this.copy(tab);
+  }
+
+  /**
+   * Starts an ended tab's shell again in the same tab: its shell, in its folder, at the size given. What it printed
+   * before is not drawn again; the count of its output goes on, so a piece the window has is still known.
+   */
+  async restart(o: { id?: unknown; cols?: unknown; rows?: unknown } = {}): Promise<PtyTab> {
+    const tab = this.tabs.find((x) => x.id === o.id);
+    if (!tab) throw new Error(t('term.err.noTab'));
+    if (tab.live) return this.copy(tab);
+    const where = shellCwd(tab.repo || null);
+    const sh = this.shells().find((s) => s.id === tab.shell);
+    if (!sh) throw new Error(t('term.err.noShell', { name: tab.name }));
+    if (!(await this.start()) || !this.host) throw new Error(t('term.err.ptyOff'));
+    // Again: it may have been started or closed while the host started.
+    if (tab.live || !this.tabs.includes(tab)) return this.copy(tab);
+    delete tab.error;
+    delete tab.stopped;
+    Object.assign(tab, { live: true, code: null, fg: '', startedAt: nowIso(), replay: '' });
+    this.spawn(tab, sh, where.cwd, o);
     return this.copy(tab);
   }
 
@@ -120,6 +136,15 @@ class Ptys {
     for (const tab of this.tabs) if (tab.live) this.send({ t: 'kill', id: tab.id, grace: PTY_QUIT_GRACE });
     const host = this.host;
     if (host) setTimeout(() => host.kill(), 500).unref();
+  }
+
+  private spawn(tab: Tab, sh: PtyShell, cwd: string, o: { cols?: unknown; rows?: unknown }) {
+    const size = ptySize(o.cols, o.rows);
+    const profile = loadSettings().shellProfile !== false;
+    const env = ptyEnv(ghEnv(), { platform: process.platform, version: app.getVersion() });
+    this.send({ t: 'spawn', id: tab.id, file: sh.file, args: ptyArgs(sh, profile), cwd, env, ...size });
+    log.info(`pty ${tab.id}: ${sh.file} in ${cwd}, ${size.cols}x${size.rows}${profile ? ', profile' : ''}`);
+    this.emit();
   }
 
   private live(id: string): Tab | undefined {
