@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyEnv, ptyShells, ptySize } from '../src/shared/pty';
+import { Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyShells, ptySize } from '../src/shared/pty';
 
 const none = () => false;
 
@@ -64,6 +64,14 @@ test('pty: a size is whole columns and rows in range, 80 × 24 for nonsense', ()
   assert.deepEqual(ptySize(1, 0.5), { cols: 2, rows: 24 });
   assert.deepEqual(ptySize(99999, 9999), { cols: 500, rows: 300 });
   assert.deepEqual(ptySize('x', -3), { cols: 80, rows: 24 });
+});
+
+test('pty: a long paste goes in pieces of the most a write takes, never inside an emoji', () => {
+  assert.deepEqual(ptyChunks('abcdefg', 3), ['abc', 'def', 'g']);
+  assert.deepEqual(ptyChunks('', 3), []);
+  // '😀' is two UTF-16 units: the piece that would end on its first half ends before it.
+  assert.deepEqual(ptyChunks('ab😀cd', 3), ['ab', '😀c', 'd']);
+  assert.equal(ptyChunks('x'.repeat(10)).length, 1);
 });
 
 test('pty: the output kept to draw again is its end, from a line start', () => {

@@ -7,7 +7,7 @@ import { loadSettings } from './settings';
 import { t } from './i18n';
 import { log } from './log';
 import { nowIso, uid } from './util';
-import { keepTail, PTY_EMPTY, PTY_MAX_TABS, PTY_WRITE_MAX, ptyArgs, ptyEnv, ptyShells, ptySize, type PtyShell, type PtyTab, type PtyView } from '../shared/pty';
+import { keepTail, PTY_EMPTY, PTY_MAX_TABS, PTY_QUIT_GRACE, ptyArgs, ptyChunks, ptyEnv, ptyShells, ptySize, type PtyShell, type PtyTab, type PtyView } from '../shared/pty';
 import type { HostIn, HostOut } from './ptyHost';
 
 interface Tab extends PtyTab {
@@ -55,6 +55,8 @@ class Ptys {
     const sh = o.shell ? shells.find((s) => s.id === o.shell) : shells[0];
     if (!sh) throw new Error(t('term.err.noShell', { name: String(o.shell) }));
     if (!(await this.start()) || !this.host) throw new Error(t('term.err.ptyOff'));
+    // Again: other tabs may have opened while the host started.
+    if (this.tabs.length >= PTY_MAX_TABS) throw new Error(t('term.err.tooMany', { n: PTY_MAX_TABS }));
     const size = ptySize(o.cols, o.rows);
     const tab: Tab = { id: uid(), shell: sh.id, name: sh.name, repo: where.repo, fg: '', live: true, code: null, startedAt: nowIso(), replay: '', total: 0 };
     this.tabs.push(tab);
@@ -70,7 +72,7 @@ class Ptys {
   write(id: string, d: unknown) {
     const tab = this.live(id);
     if (!tab || typeof d !== 'string' || !d) return;
-    for (let i = 0; i < d.length; i += PTY_WRITE_MAX) this.send({ t: 'write', id, d: d.slice(i, i + PTY_WRITE_MAX) });
+    for (const piece of ptyChunks(d)) this.send({ t: 'write', id, d: piece });
   }
 
   resize(id: string, cols: unknown, rows: unknown) {
@@ -103,10 +105,10 @@ class Ptys {
     this.emit();
   }
 
-  /** The app quits: every shell is stopped, then the host. */
+  /** The app quits: every shell is stopped, for good soon (before the host goes), then the host. */
   stopAll() {
     this.quitting = true;
-    for (const tab of this.tabs) if (tab.live) this.send({ t: 'kill', id: tab.id });
+    for (const tab of this.tabs) if (tab.live) this.send({ t: 'kill', id: tab.id, grace: PTY_QUIT_GRACE });
     const host = this.host;
     if (host) setTimeout(() => host.kill(), 500).unref();
   }

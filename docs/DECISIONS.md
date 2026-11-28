@@ -1358,9 +1358,9 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
       and a UTF-8 `LANG` on macOS when none is set.
     - Output goes in batches (16 ms or 64 KB), and the shell pauses while 512 KB are sent and not drawn. Main keeps
       the last 256 KB of each tab to draw again after a reload. Nothing typed or printed is logged.
-    - Stopping a tab: a hang-up, then `SIGKILL` to its process group 3 s later on macOS; on Windows the pseudo
-      console ends every process on it. On quit every shell is stopped without asking, as the side terminal was
-      (193). No PID file for orphans: when the host dies the operating system ends what was on its terminals.
+    - Stopping a tab: a hang-up, then `SIGKILL` to its process group 3 s later on macOS (300 ms on quit, before the
+      host goes); on Windows the pseudo console ends every process on it. On quit every shell is stopped without
+      asking, as the side terminal was (193). No PID file for orphans: when the host dies the operating system ends what was on its terminals.
     - `OMA_PTY=0`, or `node-pty` failing to load, keeps today's line mode. "!" lines, saved scripts and what goes to
       the Dispatcher stay one process per line: they need the exit code and the end of the output exactly.
     - Rejected: `@lydell/node-pty` (Linux prebuilds and the execute bit, but a beta repackaged by one person),

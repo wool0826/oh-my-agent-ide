@@ -1,5 +1,5 @@
 import type { IPty } from 'node-pty';
-import { Flow, OutBatch } from '../shared/pty';
+import { Flow, OutBatch, PTY_KILL_GRACE } from '../shared/pty';
 
 /**
  * The PTY host (T-0165): a utility process main/pty.ts starts, holding the side terminal's shells in pseudo terminals
@@ -13,7 +13,7 @@ export type HostIn =
   | { t: 'resize'; id: string; cols: number; rows: number }
   | { t: 'drawn'; id: string; n: number }
   | { t: 'reset'; id: string }
-  | { t: 'kill'; id: string };
+  | { t: 'kill'; id: string; grace?: number };
 
 export type HostOut =
   | { t: 'ready' }
@@ -64,8 +64,11 @@ function spawn(m: Extract<HostIn, { t: 'spawn' }>, pty: typeof import('node-pty'
   poll.unref();
 }
 
-/** Stop: a hang-up, as when a terminal window closes, then for good if the shell is still there 3 s later. */
-function kill(id: string) {
+/**
+ * Stop: a hang-up, as when a terminal window closes, then for good if the shell is still there `grace` ms later
+ * (PTY_KILL_GRACE, or PTY_QUIT_GRACE when the app quits and this process goes soon after).
+ */
+function kill(id: string, grace = PTY_KILL_GRACE) {
   const tab = tabs.get(id);
   if (!tab || tab.ended) return;
   // On Windows node-pty ends every process on the pseudo console with it.
@@ -74,7 +77,7 @@ function kill(id: string) {
   setTimeout(() => {
     if (tab.ended) return;
     try { process.kill(-tab.pty.pid, 'SIGKILL'); } catch { try { tab.pty.kill('SIGKILL'); } catch { /* gone */ } }
-  }, 3000).unref();
+  }, grace).unref();
 }
 
 async function main() {
@@ -95,7 +98,7 @@ async function main() {
       else if (m.t === 'resize') tab.pty.resize(m.cols, m.rows);
       else if (m.t === 'drawn') { if (tab.flow.drawn(m.n)) tab.pty.resume(); }
       else if (m.t === 'reset') { if (tab.flow.reset()) tab.pty.resume(); }
-      else if (m.t === 'kill') kill(m.id);
+      else if (m.t === 'kill') kill(m.id, m.grace);
     } catch { /* the shell ended in between: its exit comes */ }
   });
   post({ t: 'ready' });

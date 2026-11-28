@@ -45,6 +45,9 @@ export const PTY_BATCH_MAX = 64 * 1024;
 /** The shell is paused while this much output is sent and not yet drawn, until it is back under PTY_LOW. */
 export const PTY_HIGH = 512 * 1024;
 export const PTY_LOW = 128 * 1024;
+/** A stopped shell that is still there after a hang-up is ended for good this much later; sooner when the app quits. */
+export const PTY_KILL_GRACE = 3000;
+export const PTY_QUIT_GRACE = 300;
 
 const base = (f: string) => (f.split(/[\\/]/).pop() ?? f).replace(/\.exe$/i, '');
 
@@ -113,6 +116,19 @@ export function ptySize(cols: unknown, rows: unknown): { cols: number; rows: num
     return Number.isFinite(x) && x > 0 ? Math.min(hi, Math.max(lo, x)) : d;
   };
   return { cols: n(cols, 2, 500, 80), rows: n(rows, 1, 300, 24) };
+}
+
+/** What is typed or pasted, in pieces of at most `max` (PTY_WRITE_MAX), never between the two halves of an emoji. */
+export function ptyChunks(d: string, max = PTY_WRITE_MAX): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < d.length;) {
+    let end = Math.min(d.length, i + max);
+    const last = d.charCodeAt(end - 1);
+    if (end < d.length && end - i > 1 && last >= 0xd800 && last <= 0xdbff) end--;
+    out.push(d.slice(i, end));
+    i = end;
+  }
+  return out;
 }
 
 /** The output kept to draw again (PTY_REPLAY): its end, from a line start so it does not begin inside a code. */

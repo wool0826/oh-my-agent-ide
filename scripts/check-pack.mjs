@@ -12,12 +12,14 @@ const resources = mac
   : fs.readdirSync(release).filter((d) => d.endsWith('-unpacked')).map((d) => path.join(release, d, 'resources'));
 if (!resources.length) throw new Error(`no unpacked app in ${release}`);
 const arch = process.arch;
-let bad = 0;
+let failed = 0;
 for (const res of resources) {
+  let bad = 0;
   const unpacked = path.join(res, 'app.asar.unpacked');
   const pty = path.join(unpacked, 'node_modules', 'node-pty');
-  const need = [path.join(unpacked, 'dist', 'ptyHost.cjs'), path.join(pty, 'lib', 'index.js'), path.join(pty, 'prebuilds', `${process.platform}-${arch}`, 'pty.node')];
-  if (process.platform === 'win32') need.push(path.join(pty, 'prebuilds', `win32-${arch}`, 'conpty.node'), path.join(pty, 'lib', 'worker', 'conoutSocketWorker.js'));
+  const pre = path.join(pty, 'prebuilds', `${process.platform}-${arch}`);
+  const need = [path.join(unpacked, 'dist', 'ptyHost.cjs'), path.join(pty, 'lib', 'index.js'), path.join(pre, 'pty.node')];
+  if (process.platform === 'win32') need.push(path.join(pre, 'conpty.node'), path.join(pre, 'conpty', 'OpenConsole.exe'), path.join(pre, 'conpty', 'conpty.dll'), path.join(pty, 'lib', 'worker', 'conoutSocketWorker.js'));
   for (const f of need) if (!fs.existsSync(f)) { console.error(`missing: ${f}`); bad++; }
   if (mac) {
     const helper = path.join(pty, 'prebuilds', `darwin-${arch}`, 'spawn-helper');
@@ -26,5 +28,6 @@ for (const res of resources) {
   const pdb = fs.readdirSync(pty, { recursive: true }).filter((f) => String(f).endsWith('.pdb'));
   if (pdb.length) { console.error(`debug symbols packed: ${pdb.join(', ')}`); bad++; }
   console.log(`${res}: ${bad ? 'not ok' : 'ok'}`);
+  failed += bad;
 }
-process.exit(bad ? 1 : 0);
+process.exit(failed ? 1 : 0);
