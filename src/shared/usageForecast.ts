@@ -87,7 +87,9 @@ export function newWarnings(list: readonly WarnAccount[], warnAt: number, seen: 
   for (const a of list) {
     const w = accountWarning(a, warnAt, now);
     if (w?.kind !== 'warn') continue;
-    const key = `${a.id}|${w.win}|${w.reset ?? ''}`;
+    // The reset comes as ISO text from the usage API and as epoch seconds from a session: the same period, rounded.
+    const reset = w.reset ? Math.round(Date.parse(w.reset) / 600_000) : '';
+    const key = `${a.id}|${w.win}|${reset}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(w);

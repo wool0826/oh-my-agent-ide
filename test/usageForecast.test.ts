@@ -62,6 +62,13 @@ test('usageForecast: a crossing is told once per window period', () => {
   assert.equal(newWarnings([acc('a', 91, 390)], 90, seen, NOW).length, 1);
 });
 
+test('usageForecast: the same reset written another way is the same period', () => {
+  const seen = new Set<string>();
+  const iso = new Date(Date.parse(at(90)) + 412).toISOString();
+  assert.equal(newWarnings([acc('a', 91, 90, { fiveHour: { utilization: 91, resetsAt: iso } })], 90, seen, NOW).length, 1);
+  assert.equal(newWarnings([acc('a', 92, 90, { fiveHour: { utilization: 92, resetsAt: at(90).replace('.000Z', 'Z') } })], 90, seen, NOW).length, 0);
+});
+
 test('usageForecast: near the limit means past the threshold in a live window', () => {
   assert.equal(nearLimit(acc('a', 91, 90), 90, NOW), true);
   assert.equal(nearLimit(acc('a', 89, 90), 90, NOW), false);
