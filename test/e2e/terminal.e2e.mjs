@@ -126,8 +126,13 @@ flow('a side question is asked and answered in its own panel, and reaches the Di
   await app.until("!document.querySelector('#chat-reply').hidden && document.querySelector('#sq').hidden", 'the chip, and the panel minimised');
   const chip = await app.evaluate("const c = document.querySelector('#chat-reply'); return { who: c.querySelector('b').textContent, quote: c.querySelector('span').textContent, count: document.querySelector('#chat-sq i')?.textContent ?? '' };");
   assert.deepEqual(chip, { who: 'From a side question', quote: 'It is 4.', count: '2' });
-  // Close forgets the thread.
+  // Close forgets the thread. In a narrow window the header's chip gives way, so Close is whole and clear of the hide button.
   await app.click('#chat-sq');
+  await app.size(507, 427);
+  await app.until("!document.querySelector('#dock').hidden && !!document.querySelector('#dock [data-action=\"sq-close\"]')?.offsetParent", 'the side question open in the narrow window');
+  assert.deepEqual(await app.evaluate(`const c = document.querySelector('#dock [data-action="sq-close"]').getBoundingClientRect(), h = document.querySelector('#dock-hide').getBoundingClientRect(), d = document.querySelector('#dock .dock-h');
+    return { clear: c.right <= h.left, fits: d.scrollWidth <= d.clientWidth };`), { clear: true, fits: true });
+  await app.size(1320, 860);
   await app.click('#dock [data-action="sq-close"]');
   await app.until("document.querySelector('#dock').hidden && !document.querySelector('#chat-sq i')", 'the thread forgotten');
 });

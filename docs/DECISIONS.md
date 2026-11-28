@@ -1281,3 +1281,15 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
       changes and the main process sets the overlay again with `webContents.getZoomFactor()`.
     - Rejected: turning the page zoom off (it is the only way to make the whole window larger or smaller), and drawing the
       caption buttons in the page (loses the system's snap layouts and its own hover and close colours).
+
+256. **A narrow or short window keeps the toolbar's rings, the usage popover's foot and the side question's Close in reach** (T-0163).
+    - Found in the UI audit of 0.8.0. The rule that hides "Resets in …" beside the rings under 1100px never applied:
+      `.pill`, declared later with the same weight, set `display` again. It is now `.usage .ulim`, so the words go and
+      the view tabs and rings keep their room.
+    - The usage popover is as tall as its accounts. In a short window (760×640 at 150% zoom is 427px high) four accounts
+      pushed the refresh button and the interval under the window's edge with no way to reach them. It now stops above
+      the bottom edge and scrolls.
+    - The side question's header let "Close and forget" run under the hide button when the row was short. The
+      "Separate context" chip gives way first (its words are cut with an ellipsis, the lock stays).
+    - Not changed here: under about 600px of page width the view tabs and the rings shrink to slivers. That needs a
+      compact toolbar (icons or a menu for the views), which is a layout change and is left as a proposal.
