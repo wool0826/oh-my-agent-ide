@@ -25,6 +25,7 @@ export function registerToolIpc() {
     shell: typeof o?.shell === 'string' ? o.shell : null, repo: typeof o?.repo === 'string' ? o.repo : null, cols: o?.cols, rows: o?.rows,
   }));
   handle('pty:attach', (id: string) => ptys.attach(String(id)));
+  handle('pty:restart', (o?: { id?: unknown; cols?: unknown; rows?: unknown }) => ptys.restart({ id: String(o?.id ?? ''), cols: o?.cols, rows: o?.rows }));
   handle('pty:kill', (id: string) => ptys.kill(String(id)));
   handle('pty:close', (id: string) => ptys.close(String(id)));
   handle('pty:state', () => ptys.state());

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { ANSI, Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyFresh, ptyGone, ptyLabel, ptyShells, ptySize, termFont, termKey, termTheme } from '../src/shared/pty';
+import { ANSI, Flow, keepTail, OutBatch, PTY_BATCH_MAX, PTY_BATCH_MS, ptyArgs, ptyChunks, ptyEnv, ptyFresh, ptyGone, ptyLabel, ptyShells, ptySize, termFont, termKey, termMatch, termTheme } from '../src/shared/pty';
 
 const none = () => false;
 
@@ -181,6 +181,14 @@ test('pty: the app keeps Ctrl+` and the tab keys, and on the Mac the ⌘ keys', 
   assert.equal(termKey(key('KeyV', { meta: true }), { mac: true, selection: false }), 'app');
 });
 
+test('pty: the terminal search opens with ⌘F on the Mac and Ctrl+Shift+F elsewhere, and Ctrl+F stays with the shell', () => {
+  assert.equal(termKey(key('KeyF', { meta: true }), { mac: true, selection: false }), 'find');
+  assert.equal(termKey(key('KeyF', { ctrl: true, shift: true }), { mac: false, selection: false }), 'find');
+  assert.equal(termKey(key('KeyF', { ctrl: true }), { mac: false, selection: false }), 'shell');
+  assert.equal(termKey(key('KeyF', { ctrl: true }), { mac: true, selection: false }), 'shell');
+  assert.equal(termKey(key('KeyF', { meta: true, shift: true }), { mac: true, selection: false }), 'app');
+});
+
 test('pty: on Windows Ctrl+C copies only while text is selected; Ctrl+Shift+C, Ctrl+V and Shift+Insert copy and paste', () => {
   const sel = { mac: false, selection: true };
   const none = { mac: false, selection: false };
@@ -198,10 +206,17 @@ test('pty: every colour the terminal takes is a token of both themes', () => {
   const block = (sel: string) => tokens.slice(tokens.indexOf(sel), tokens.indexOf('}', tokens.indexOf(sel)));
   const asked: string[] = [];
   const th = termTheme((t) => { asked.push(t); return `v${t}`; });
+  const marks = termMatch((t) => { asked.push(t); return `v${t}`; });
+  assert.equal(marks.activeMatchBackground, 'v--term-match-current');
   assert.equal(Object.keys(th).length, 5 + ANSI.length * 2);
   assert.equal(th.brightMagenta, 'v--ansi-bright-magenta');
   for (const theme of [':root, [data-theme="dark"] {', '[data-theme="light"] {']) {
     for (const t of new Set(asked)) assert.ok(block(theme).includes(`${t}:`), `${t} in ${theme}`);
+    // The search addon takes #RRGGBB only.
+    for (const t of ['--term-match', '--term-match-current']) {
+      const ref = new RegExp(`${t}: var\\((--ref-[a-z]+-\\d+)\\);`).exec(block(theme))?.[1];
+      assert.match(tokens, new RegExp(`${ref}: #[0-9a-f]{6};`), `${t} in ${theme} is a colour of six hex digits`);
+    }
   }
 });
 

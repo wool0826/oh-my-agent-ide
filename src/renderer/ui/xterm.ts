@@ -3,10 +3,12 @@
 // and said drawn for the shell's flow control, while the dock is put away; a view goes on the page when it first shows.
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { PTY_EMPTY, PTY_REPLAY, PTY_SCROLLBACK, ptyFresh, ptyLabel, termFont, termKey, termTheme, type PtyTab, type PtyView } from '../../shared/pty';
+import { PTY_EMPTY, PTY_REPLAY, PTY_SCROLLBACK, ptyFresh, ptyLabel, termFont, termKey, termMatch, termTheme, type PtyTab, type PtyView } from '../../shared/pty';
+import { findCount } from '../../shared/findMarks';
 import { $, esc, ide, isMac, sym, t, toast, tryCall } from './core';
 
 /** A piece of a tab's output; `acked` when said drawn already (it came before the tab could draw it). */
@@ -15,6 +17,7 @@ interface Piece { d: string; end: number; acked?: boolean }
 interface View {
   id: string;
   term: Terminal;
+  search: SearchAddon;
   fit: FitAddon;
   el: HTMLElement;
   opened: boolean;
@@ -30,6 +33,8 @@ export const pty = {
   active: '',
   /** A tab is being opened: its view is made, to be measured, before its id is known. */
   opening: false,
+  /** The shells a tab can open (pty:shells), the default first. */
+  shells: [] as { id: string; name: string }[],
 };
 
 /** The real terminal is on: not turned off, and node-pty loaded (or not asked for yet). */
@@ -59,6 +64,8 @@ function makeView(id: string): View {
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  const search = new SearchAddon();
+  term.loadAddon(search);
   const uni = new Unicode11Addon();
   term.loadAddon(uni);
   term.unicode.activeVersion = '11';
@@ -67,11 +74,13 @@ function makeView(id: string): View {
   const el = document.createElement('div');
   el.className = 'tm-v';
   el.hidden = true;
-  const v: View = { id, term, fit, el, opened: false, have: -1, early: [] };
+  const v: View = { id, term, search, fit, el, opened: false, have: -1, early: [] };
+  search.onDidChangeResults(({ resultIndex, resultCount }) => { if (v.id === pty.active) $('#tm-cnt').textContent = findCount(resultIndex, resultCount); });
   term.attachCustomKeyEventHandler((e) => {
     const k = termKey(e, { mac: isMac, selection: term.hasSelection() });
     if (k === 'shell') return true;
     if (k === 'copy' && e.type === 'keydown') { e.preventDefault(); copy(v); }
+    if (k === 'find' && e.type === 'keydown') { e.preventDefault(); openTermFind(); }
     // Paste: the page's own paste reaches xterm (bracketed). The app's keys go on to app.ts.
     return false;
   });
@@ -168,7 +177,7 @@ export function setPtyView(v: PtyView) {
 }
 
 /** Opens a tab in `repo` ('' for the IDE home) and shows it. */
-export async function newTab(repo: string): Promise<boolean> {
+export async function newTab(repo: string, shell = ''): Promise<boolean> {
   if (pty.opening) return false;
   pty.opening = true;
   const v = makeView('');
@@ -179,7 +188,7 @@ export async function newTab(repo: string): Promise<boolean> {
     // drawing in the wrong place.
     await measured(v);
     const cols = v.term.cols, rows = v.term.rows;
-    const r = await tryCall<PtyTab>('pty:open', { repo: repo || null, cols, rows });
+    const r = await tryCall<PtyTab>('pty:open', { repo: repo || null, shell: shell || null, cols, rows });
     if (!r.ok) {
       // Off: the state says so, and the line mode shows.
       if (ptyOn()) toast(r.error, true);
@@ -221,6 +230,58 @@ function stepTab(dir: -1 | 1) {
 export async function closeTab(id: string) {
   const r = await tryCall('pty:close', id);
   if (!r.ok) toast(r.error, true);
+}
+
+/** Tabs whose shell is being started again (a second click waits for the first). */
+const restarting = new Set<string>();
+
+/** Starts an ended tab's shell again, on a cleared screen; the old screen comes back when it cannot start. */
+export async function restartTab(id: string) {
+  const v = views.get(id);
+  const tab = pty.view.tabs.find((x) => x.id === id);
+  if (!v || !tab || tab.live || restarting.has(id)) return;
+  restarting.add(id);
+  selectTab(id, false);
+  v.term.reset();
+  if (!$('#tm-find').hidden) { v.search.clearDecorations(); termFindStep(0); }
+  try {
+    const r = await tryCall('pty:restart', { id, cols: v.term.cols, rows: v.term.rows });
+    if (!r.ok) {
+      toast(r.error, true);
+      const a = await tryCall<{ replay: string; end: number }>('pty:attach', id);
+      if (a.ok && views.get(id) === v) v.term.write(a.v.replay);
+    }
+  } finally {
+    restarting.delete(id);
+  }
+  if (pty.active === id) focusPty();
+}
+
+/** The search bar over the tab showing: what is typed is looked for at once, Enter goes on, Esc closes it. */
+export function openTermFind() {
+  const bar = $('#tm-find');
+  const q = $<HTMLInputElement>('#tm-q');
+  const sel = views.get(pty.active)?.term.getSelection() ?? '';
+  if (sel && !/[\r\n]/.test(sel)) q.value = sel;
+  bar.hidden = false;
+  q.focus();
+  q.select();
+  termFindStep(0);
+}
+
+export function termFindStep(dir: -1 | 0 | 1) {
+  const v = views.get(pty.active);
+  const q = $<HTMLInputElement>('#tm-q').value;
+  if (!v) return;
+  if (!q) { v.search.clearDecorations(); $('#tm-cnt').textContent = ''; return; }
+  const o = { incremental: dir === 0, decorations: termMatch(css) };
+  if (dir < 0) v.search.findPrevious(q, o); else v.search.findNext(q, o);
+}
+
+export function closeTermFind() {
+  $('#tm-find').hidden = true;
+  for (const v of views.values()) v.search.clearDecorations();
+  focusPty();
 }
 
 export function focusPty() {
@@ -265,13 +326,25 @@ function fitNow(v: View | undefined) {
 export function renderPty() {
   const strip = $('#tm-tabs');
   const tabs = pty.view.tabs;
-  const key = JSON.stringify([tabs, pty.active, t('term.closeTab', { name: '' })]);
+  const key = JSON.stringify([tabs, pty.active, t('term.closeTab', { name: '' }), t('term.restart', { name: '' })]);
   if (strip.dataset.key !== key) {
     strip.dataset.key = key;
     strip.innerHTML = tabs.map(chipHtml).join('');
   }
   const v = views.get(pty.active);
   if (v && !pty.opening) show(v);
+  // The search follows the tab showing.
+  const find = $('#tm-find');
+  if (find.dataset.tab !== pty.active) {
+    for (const x of views.values()) if (x !== v) x.search.clearDecorations();
+    find.dataset.tab = pty.active;
+    if (!find.hidden) termFindStep(0);
+  }
+  if (!tabs.length) {
+    find.hidden = true;
+    $('#tm-cnt').textContent = '';
+    delete find.dataset.tab;
+  }
 }
 
 function chipHtml(tab: PtyTab) {
@@ -280,8 +353,10 @@ function chipHtml(tab: PtyTab) {
   const how = tab.live ? '' : tab.error || (tab.code == null ? t('shell.stopped') : t('shell.exit', { n: tab.code }));
   const tip = how ? `${label} · ${how}` : label;
   const close = t('term.closeTab', { name: label });
+  const again = t('term.restart', { name: label });
+  const restart = tab.live ? '' : `<button type="button" class="tm-close tm-re" data-action="pty-restart" data-id="${esc(tab.id)}" tabindex="-1" aria-label="${esc(again)}" data-tip="${esc(again)}">${sym('s-refresh')}</button>`;
   return `<span class="tm-chip${tab.live ? '' : ' ended'}"><button type="button" role="tab" class="tm-tab" data-action="pty-tab" data-id="${esc(tab.id)}" aria-selected="${on}" aria-controls="tm-x" tabindex="${on ? 0 : -1}" data-tip="${esc(tip)}"><span>${esc(label)}</span></button>`
-    + `<button type="button" class="tm-close" data-action="pty-close" data-id="${esc(tab.id)}" tabindex="-1" aria-label="${esc(close)}" data-tip="${esc(close)}">${sym('s-x')}</button></span>`;
+    + restart + `<button type="button" class="tm-close" data-action="pty-close" data-id="${esc(tab.id)}" tabindex="-1" aria-label="${esc(close)}" data-tip="${esc(close)}">${sym('s-x')}</button></span>`;
 }
 
 /** The theme, the mono font and the text size, again on every view when one of them changed. */
@@ -299,6 +374,12 @@ function restyle() {
     v.term.options.fontSize = size;
   }
   fitNow(views.get(pty.active));
+  // What a search marked, in the new colours.
+  if (!$('#tm-find').hidden) {
+    // The addon marks again only for another word: its marks go first.
+    views.get(pty.active)?.search.clearDecorations();
+    termFindStep(0);
+  }
 }
 
 export function bindPty(o: { render: () => void; empty: () => void }) {
@@ -306,6 +387,18 @@ export function bindPty(o: { render: () => void; empty: () => void }) {
   ide.onPtyData(onData);
   ide.onPtyState((v) => setPtyView(v));
   void tryCall<PtyView>('pty:state').then((r) => { if (r.ok) setPtyView(r.v); });
+  void tryCall<{ id: string; name: string }[]>('pty:shells').then((r) => { if (r.ok) { pty.shells = r.v; hooks.render(); } });
+  const q = $<HTMLInputElement>('#tm-q');
+  q.addEventListener('input', () => termFindStep(0));
+  q.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter') termFindStep(e.shiftKey ? -1 : 1);
+    else if (e.key === 'Escape') closeTermFind();
+    else if (termKey(e, { mac: isMac, selection: false }) === 'find') q.select();
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  });
   let frame = 0;
   new ResizeObserver(() => {
     cancelAnimationFrame(frame);
