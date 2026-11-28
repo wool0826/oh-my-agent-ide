@@ -9,11 +9,11 @@ type Dec = Pick<Decision, 'id' | 'source' | 'options' | 'status'>;
 
 const NOW = 1_800_000_000_000;
 
-function setup(o: { level?: 'title' | 'summary'; requests?: boolean; buttons?: boolean; held?: boolean; busy?: boolean; refs?: Record<number, string>; waiting?: HeldMessage[]; fail?: boolean; decisions?: Dec[]; files?: boolean; fetchFail?: boolean } = {}) {
+function setup(o: { level?: 'title' | 'summary'; requests?: boolean; buttons?: boolean; held?: boolean; busy?: boolean; refs?: Record<number, string>; waiting?: HeldMessage[]; fail?: boolean; decisions?: Dec[]; files?: boolean; fetchFail?: boolean; fetchWait?: Promise<void> } = {}) {
   const seen = new Set<number>();
   const kept = { list: o.waiting ?? [] };
   const log = {
-    sent: [] as { text: string; replyTo: string | null; files?: string[] }[], fetched: [] as string[], answers: [] as { text: string; replyTo?: number; buttons?: unknown }[], flushes: 0, locked: 0, stops: 0,
+    sent: [] as { text: string; replyTo: string | null; files?: string[] }[], fetched: [] as string[], dropped: [] as string[], answers: [] as { text: string; replyTo?: number; buttons?: unknown }[], flushes: 0, locked: 0, stops: 0,
     decided: [] as [string, string][], acks: [] as [string, string | undefined][], cleared: [] as number[],
   };
   let requests = o.requests ?? true;
@@ -29,9 +29,11 @@ function setup(o: { level?: 'title' | 'summary'; requests?: boolean; buttons?: b
     files: () => o.files ?? true,
     fetchFile: async (file) => {
       if (o.fetchFail) throw new Error('network');
+      await o.fetchWait;
       log.fetched.push(file.fileId);
-      return `/saved/${file.name}`;
+      return `/saved/${file.fileId}/${file.name}`;
     },
+    dropFiles: (files) => { log.dropped.push(...files); },
     stop: async () => { log.stops++; return !!o.busy; },
     lock: () => { log.locked++; requests = false; buttons = false; },
     requests: () => requests,
@@ -275,8 +277,8 @@ test('remoteInbound: a photo goes to the Dispatcher as an attached file, with it
   assert.deepEqual(log.fetched, ['p1', 'd1']);
   assert.equal(log.sent.length, 2);
   assert.equal(log.sent[0].text, 'what is wrong here?');
-  assert.match(log.sent[0].files![0], /^\/saved\/photo-\d{8}-\d{6}\.jpg$/);
-  assert.deepEqual(log.sent[1], { text: '', replyTo: null, files: ['/saved/spec.pdf'] });
+  assert.match(log.sent[0].files![0], /^\/saved\/p1\/photo-\d{8}-\d{6}\.jpg$/);
+  assert.deepEqual(log.sent[1], { text: '', replyTo: null, files: ['/saved/d1/spec.pdf'] });
 });
 
 test('remoteInbound: a forwarded caption is marked as not the user\u2019s words', async () => {
@@ -335,4 +337,38 @@ test('remoteInbound: a file sent while the app was off waits with its words, and
   await inbound.handle(press('h:run', 600));
   assert.equal(log.sent[0].text, 'look');
   assert.equal(log.sent[0].files!.length, 1);
+});
+
+test('remoteInbound: a file that finishes downloading after /lock or another bot does not go, and is deleted', async () => {
+  let land = () => {};
+  const { inbound, log } = setup({ fetchWait: new Promise<void>((r) => { land = r; }) });
+  const pending = inbound.handle(fileMsg('p1'));
+  inbound.forget();
+  land();
+  await pending;
+  assert.deepEqual(log.sent, []);
+  assert.equal(log.dropped.length, 1);
+});
+
+test('remoteInbound: /lock right after an album drops it instead of sending it', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { inbound, log } = setup();
+  await inbound.handle(fileMsg('a1', { group: 'g1' }));
+  await inbound.handle(fileMsg('a2', { group: 'g1' }));
+  await inbound.handle(msg('/lock'));
+  t.mock.timers.tick(2_000);
+  assert.deepEqual(log.sent, []);
+  assert.equal(log.dropped.length, 2);
+});
+
+test('remoteInbound: an album refused at its first file is answered once', async () => {
+  const { inbound, log } = setup({ files: false });
+  for (const id of ['a1', 'a2', 'a3']) await inbound.handle(fileMsg(id, { group: 'g1' }));
+  assert.deepEqual(log.answers.map((a) => a.text), ['tg.r.filesOff']);
+});
+
+test('remoteInbound: /drop deletes the files the waiting messages brought', async () => {
+  const { inbound, log } = setup({ waiting: [{ text: 'look', replyTo: null, files: ['/saved/x/a.png'] }] });
+  await inbound.handle(msg('/drop'));
+  assert.deepEqual(log.dropped, ['/saved/x/a.png']);
 });

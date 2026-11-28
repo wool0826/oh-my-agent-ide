@@ -10,6 +10,7 @@ test('remoteFile: a name keeps its last path part only, without characters a fil
   assert.equal(safeFileName('a<b>:c"|?*.md', 'file'), 'abc.md');
   assert.equal(safeFileName('report.txt:hidden', 'file'), 'report.txthidden');
   assert.equal(safeFileName('line\nbreak\u0007.txt', 'file'), 'linebreak.txt');
+  assert.equal(safeFileName('photo\u202egpj.exe', 'file'), 'photogpj.exe');
 });
 
 test('remoteFile: an empty, dotted or device name becomes a safe one', () => {
@@ -40,7 +41,8 @@ test('remoteFile: a size past the download limit is left for a smaller one, or r
 
 test('remoteFile: a document keeps its safe name; programs and shortcuts are refused', () => {
   assert.deepEqual(pickFile({ date: DATE, document: { file_id: 'd', file_name: 'spec.pdf', file_size: 10 } }), { kind: 'file', file: { fileId: 'd', name: 'spec.pdf', size: 10 } });
-  for (const name of ['setup.exe', 'invoice.pdf.EXE', 'run.bat ', 'x.ps1.', 'Link.lnk', 'tool.app', 'disk.dmg']) {
+  for (const name of ['setup.exe', 'invoice.pdf.EXE', 'run.bat ', 'x.ps1.', 'Link.lnk', 'tool.app', 'disk.dmg', 'a.js', 'x.scpt', 'invoice\u202efdp.exe',
+    `${'a'.repeat(120)}.settingcontent-ms`, 'CON.exe']) {
     assert.deepEqual(pickFile({ date: DATE, document: { file_id: 'd', file_name: name } }), { kind: 'blocked' }, name);
   }
   assert.equal(pickFile({ date: DATE }), null);

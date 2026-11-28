@@ -16,3 +16,13 @@ export function saveRemoteFile(dir: string, name: string, bytes: Uint8Array, at 
   fs.writeFileSync(file, bytes, { flag: 'wx' });
   return file;
 }
+
+/** Removes files written by saveRemoteFile (dropped, or no longer wanted), each with its folder; anything else is left. */
+export function dropRemoteFiles(dir: string, files: string[]) {
+  const root = path.resolve(dir);
+  for (const f of files) {
+    const folder = path.dirname(path.resolve(f));
+    if (path.dirname(folder) !== root) continue;
+    try { fs.rmSync(folder, { recursive: true, force: true }); } catch { /* in use: left for now */ }
+  }
+}

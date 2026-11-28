@@ -17,11 +17,17 @@ export type PickedFile =
 
 /** Kinds that run, install or open something else when double-clicked on Windows or macOS: never written. */
 const RUNS = new Set([
-  'exe', 'msi', 'msix', 'appx', 'bat', 'cmd', 'com', 'scr', 'pif', 'cpl', 'lnk', 'url', 'hta', 'reg', 'vbs', 'vbe',
-  'wsf', 'wsh', 'jse', 'ps1', 'psm1', 'msc', 'jar', 'app', 'command', 'pkg', 'dmg', 'workflow', 'inetloc', 'webloc',
+  // Windows: programs, installers, scripts Windows Script Host or PowerShell runs, shortcuts and handlers.
+  'exe', 'msi', 'msix', 'msp', 'mst', 'appx', 'appref-ms', 'application', 'bat', 'cmd', 'com', 'scr', 'pif', 'cpl',
+  'dll', 'lnk', 'url', 'scf', 'hta', 'chm', 'reg', 'js', 'jse', 'vb', 'vbs', 'vbe', 'ws', 'wsc', 'wsf', 'wsh', 'ps1',
+  'psm1', 'ps1xml', 'psc1', 'msc', 'jar', 'jnlp', 'gadget', 'diagcab', 'xll', 'library-ms', 'search-ms',
+  'settingcontent-ms',
+  // macOS and Linux desktops.
+  'app', 'command', 'tool', 'terminal', 'action', 'workflow', 'scpt', 'applescript', 'pkg', 'dmg', 'inetloc',
+  'webloc', 'desktop',
 ]);
 
-const ext = (name: string) => (/\.([^.]+)$/.exec(name)?.[1] ?? '').toLowerCase();
+const ext = (name: string) => (/\.([^.]+)$/.exec(name.trim().replace(/[.\s]+$/, ''))?.[1] ?? '').toLowerCase();
 
 /** Windows device names, which cannot be a file name with any extension. */
 const DEVICE = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
@@ -32,7 +38,8 @@ const DEVICE = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
  */
 export function safeFileName(raw: string | undefined, fallback: string): string {
   let name = (raw ?? '').split(/[\\/]/).pop() ?? '';
-  name = name.replace(/[\u0000-\u001f\u007f<>:"|?*]/g, '').replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
+  // Direction marks too: they make a name read as something it is not (`gpj.exe` shown as `exe.jpg`).
+  name = name.replace(/[\u0000-\u001f\u007f<>:"|?*\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
   if (!name) name = fallback;
   if (DEVICE.test(name)) name = `_${name}`;
   if (name.length > 100) {
@@ -59,7 +66,8 @@ export function pickFile(m: Pick<TgMessage, 'photo' | 'document' | 'date'>): Pic
   if (!d) return null;
   if ((d.file_size ?? 0) > TG_FILE_MAX) return { kind: 'tooBig' };
   const name = safeFileName(d.file_name, 'file');
-  if (RUNS.has(ext(name))) return { kind: 'blocked' };
+  // Judged on the name as sent as well: what cleaning removes never turns a program into something else.
+  if (RUNS.has(ext(name)) || RUNS.has(ext(d.file_name ?? ''))) return { kind: 'blocked' };
   return { kind: 'file', file: { fileId: d.file_id, name, size: d.file_size ?? null } };
 }
 

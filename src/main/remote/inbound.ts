@@ -23,6 +23,8 @@ export interface InboundDeps {
   files(): boolean;
   /** Downloads a file the owner sent and writes it on the computer; its path there. */
   fetchFile(file: TgAttachment): Promise<string>;
+  /** Deletes files fetched for messages that will not go (dropped, locked meanwhile, another bot). */
+  dropFiles(files: string[]): void;
   /** Stops the Dispatcher's turn; true when one was running. */
   stop(): Promise<boolean>;
   /** Turns requests and answers from the phone off (/lock); only the desktop turns them on again. */
@@ -66,6 +68,10 @@ export class Inbound {
   private staleTimer: NodeJS.Timeout | null = null;
   /** The album coming in: its photos and files go to the Dispatcher together once no more arrive. */
   private album: { id: string; text: string[]; files: string[]; to: string | null; msg: number; stale: boolean; timer: NodeJS.Timeout } | null = null;
+  /** An album whose first file was refused: the rest of it is passed over without a word. */
+  private skipGroup: string | null = null;
+  /** Counts forget(): a download that ends after it belongs to the bot before. */
+  private gen = 0;
 
   constructor(private readonly d: InboundDeps) {
     this.stale = d.waiting.load();
@@ -124,11 +130,14 @@ export class Inbound {
     const { say } = this.d;
     const picked = pickFile(m);
     if (picked) return this.takeFile(m, picked);
-    // An album is over once anything else comes.
-    if (this.album) this.sendAlbum();
     const r = readInbound(m);
     // /lock and /stop always go through; everything else, answers included, counts towards the limit.
     const urgent = r.kind === 'command' && (r.name === 'lock' || r.name === 'stop');
+    // An album is over once anything else comes; /lock and /stop mean it should not go at all.
+    if (this.album) {
+      if (urgent) this.dropAlbum();
+      else this.sendAlbum();
+    }
     if (!urgent && !(r.kind === 'text' && isStale(m.date, this.d.now())) && !this.allow(m.message_id)) return;
     if (r.kind === 'unsupported') return this.d.answer(say('tg.r.unsupported'), m.message_id);
     if (r.kind === 'command') return this.command(r.name, m.message_id);
@@ -156,18 +165,30 @@ export class Inbound {
     const { say } = this.d;
     const stale = isStale(m.date, this.d.now());
     const group = m.media_group_id;
+    if (group && group === this.skipGroup) return;
     const more = !!group && this.album?.id === group;
     if (!more && this.album) this.sendAlbum();
-    if (!more && !stale && !this.allow(m.message_id)) return;
-    if (!this.d.requests()) return more ? undefined : this.d.answer(say('tg.r.locked'), m.message_id);
-    if (!this.d.files()) return more ? undefined : this.d.answer(say('tg.r.filesOff'), m.message_id);
-    if (picked.kind !== 'file') return this.d.answer(say(picked.kind === 'tooBig' ? 'tg.r.tooBig' : 'tg.r.blocked'), m.message_id);
+    // One answer for an album: the rest of one refused is passed over.
+    const refuse = (key: 'tg.r.locked' | 'tg.r.filesOff' | 'tg.r.tooBig' | 'tg.r.blocked' | 'tg.r.fileFailed') => {
+      if (group && !more) this.skipGroup = group;
+      this.d.answer(say(key), m.message_id);
+    };
+    if (!more && !stale && !this.allow(m.message_id)) {
+      if (group) this.skipGroup = group;
+      return;
+    }
+    if (!this.d.requests()) return refuse('tg.r.locked');
+    if (!this.d.files()) return refuse('tg.r.filesOff');
+    if (picked.kind !== 'file') return refuse(picked.kind === 'tooBig' ? 'tg.r.tooBig' : 'tg.r.blocked');
+    const gen = this.gen;
     let file: string;
     try {
       file = await this.d.fetchFile(picked.file);
     } catch {
-      return this.d.answer(say('tg.r.fileFailed'), m.message_id);
+      return refuse('tg.r.fileFailed');
     }
+    // Locked, switched off or another bot while it came: it does not go.
+    if (gen !== this.gen || !this.d.requests() || !this.d.files()) return this.d.dropFiles([file]);
     const caption = (m.caption ?? '').trim();
     const text = caption && m.forward_origin ? forwardedBlock(caption) : caption;
     const ref = this.d.refOf(m.reply_to_message?.message_id);
@@ -193,6 +214,14 @@ export class Inbound {
     const timer = setTimeout(() => this.sendAlbum(), ALBUM_SETTLE_MS);
     timer.unref?.();
     return timer;
+  }
+
+  private dropAlbum() {
+    const a = this.album;
+    if (!a) return;
+    this.album = null;
+    clearTimeout(a.timer);
+    this.d.dropFiles(a.files);
   }
 
   private sendAlbum() {
@@ -231,7 +260,7 @@ export class Inbound {
         if (!this.d.requests()) return this.d.answer(say('tg.r.locked'), msg);
         return this.d.answer(say((await this.d.stop()) ? 'tg.r.stopped' : 'tg.r.idle'), msg);
       case 'drop': {
-        const n = this.clearStale();
+        const n = this.clearStale(true);
         return this.d.answer(say('tg.r.dropped', { n }), msg);
       }
       case 'run': {
@@ -264,13 +293,15 @@ export class Inbound {
 
   /** The bot changed or was disconnected: the waiting messages were its. */
   forget() {
-    if (this.album) clearTimeout(this.album.timer);
-    this.album = null;
-    this.clearStale();
+    this.gen++;
+    this.dropAlbum();
+    this.clearStale(true);
   }
 
-  private clearStale(): number {
+  /** Empties the waiting messages; `drop`: they will not go, so the files they brought are deleted. */
+  private clearStale(drop = false): number {
     const n = this.stale.length;
+    if (drop) this.d.dropFiles(this.stale.flatMap((x) => x.files ?? []));
     this.stale = [];
     this.d.waiting.save(this.stale);
     if (this.staleTimer) { clearTimeout(this.staleTimer); this.staleTimer = null; }

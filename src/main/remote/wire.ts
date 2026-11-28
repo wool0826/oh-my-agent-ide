@@ -14,7 +14,7 @@ import { userAnswer } from '../ipc/decisions';
 import { shownAnswer } from '../../shared/remoteDecision';
 import { TG_FILE_MAX } from '../../shared/remoteFile';
 import { paths } from '../paths';
-import { saveRemoteFile } from './files';
+import { dropRemoteFiles, saveRemoteFile } from './files';
 
 /** Update ids kept: as many as the poller remembers (remote.ts Seen). */
 const SEEN_MAX = 200;
@@ -39,6 +39,7 @@ export function wireRemote() {
     buttons: () => telegram.prefs().buttons,
     files: () => telegram.prefs().files,
     fetchFile: async (file) => saveRemoteFile(path.join(paths().data, 'telegram'), file.name, await telegram.download(file.fileId, TG_FILE_MAX)),
+    dropFiles: (files) => dropRemoteFiles(path.join(paths().data, 'telegram'), files),
     level: () => telegram.prefs().level,
     answer: (text, to, buttons) => { outbox.answer(text, to, buttons); },
     decision: (id) => store.data.decisions.find((d) => d.id === id) ?? null,

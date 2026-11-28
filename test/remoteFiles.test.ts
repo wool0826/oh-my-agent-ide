@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { saveRemoteFile } from '../src/main/remote/files';
+import { dropRemoteFiles, saveRemoteFile } from '../src/main/remote/files';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'oma-tgfiles-'));
 
@@ -27,4 +27,18 @@ test('remoteFiles: a name that leads out of its folder is refused', () => {
     for (const name of ['../out.txt', 'sub/inner.txt', '..']) assert.throws(() => saveRemoteFile(dir, name, new Uint8Array([1])), /bad file name/, name);
     assert.deepEqual(fs.readdirSync(dir), []);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('remoteFiles: dropping removes a saved file with its folder, and nothing outside the app folder', () => {
+  const dir = tmp();
+  const other = tmp();
+  try {
+    const a = saveRemoteFile(dir, 'a.txt', new Uint8Array([1]));
+    const outside = path.join(other, 'keep', 'b.txt');
+    fs.mkdirSync(path.dirname(outside));
+    fs.writeFileSync(outside, 'b');
+    dropRemoteFiles(dir, [a, outside, path.join(dir, 'loose.txt')]);
+    assert.deepEqual(fs.readdirSync(dir), []);
+    assert.ok(fs.existsSync(outside));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(other, { recursive: true, force: true }); }
 });
