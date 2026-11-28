@@ -175,6 +175,41 @@ export function ptyFresh(d: string, end: number, have: number): string {
   return start >= have ? d : d.slice(have - start);
 }
 
+/**
+ * The tabs as the window shows them: main's view, with the tabs the window opened that no view holds yet at the end.
+ * Main sends the view with a new tab before it answers pty:open, but the two go apart and the answer may come first;
+ * a view sent before the tab opened may come later still. A tab leaves the kept ones once a view holds it, and one a
+ * view has held is never kept again (it ended and went, or the answer came last).
+ */
+export class OpenedTabs {
+  private main: PtyView = { available: null, tabs: [] };
+  private kept: PtyTab[] = [];
+  private seen = new Set<string>();
+
+  /** A view from main. */
+  view(v: PtyView): PtyView {
+    this.main = v;
+    for (const x of v.tabs) this.seen.add(x.id);
+    return this.shown();
+  }
+
+  /** The answer to pty:open. */
+  opened(tab: PtyTab): PtyView {
+    if (!this.seen.has(tab.id) && !this.kept.some((x) => x.id === tab.id)) this.kept.push(tab);
+    return this.shown();
+  }
+
+  /** The window closes a tab: it is no longer kept. */
+  closed(id: string) {
+    this.kept = this.kept.filter((x) => x.id !== id);
+  }
+
+  private shown(): PtyView {
+    this.kept = this.kept.filter((x) => !this.seen.has(x.id));
+    return this.kept.length ? { ...this.main, tabs: [...this.main.tabs, ...this.kept] } : this.main;
+  }
+}
+
 /** A tab's name on its chip: the program in front (or the shell), and the repository it started in. */
 export function ptyLabel(tab: Pick<PtyTab, 'name' | 'fg' | 'repo'>): string {
   const who = tab.fg || tab.name;
