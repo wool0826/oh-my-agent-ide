@@ -78,10 +78,10 @@ flow('an automation is changed from its card: the form opens filled in, Cancel k
   await app.click(`${slot} [data-action="pick"]`);
   await app.click(`${slot} [data-action="auto-edit"]`);
   // The form is the card, filled in with what the automation is, and the text has the focus.
-  const form = `const f = document.querySelector('${slot} .auto-add'); return f && [f.querySelector('#auto-prompt-e').value, f.querySelector('#auto-time-e').value, f.querySelector('#auto-kind-e').value, f.querySelector('#auto-wk-e').checked, document.activeElement?.id];`;
-  assert.deepEqual(await app.evaluate(form), ['Check the build\nand say what broke', '09:00', 'daily', false, 'auto-prompt-e']);
-  // The form that adds one is still there, empty, with its own fields.
-  assert.deepEqual(await app.evaluate("return [document.querySelectorAll('#auto-prompt').length, document.getElementById('auto-prompt').value, document.getElementById('auto-time').value]"), [1, '', '09:00']);
+  const form = `const f = document.querySelector('${slot} .auto-add'); return f && [f.querySelector('#auto-prompt-e').value, f.querySelector('#auto-time-e').value, f.dataset.kind, document.activeElement?.id];`;
+  assert.deepEqual(await app.evaluate(form), ['Check the build\nand say what broke', '09:00', 'daily', 'auto-prompt-e']);
+  // The form that adds one stays closed until + is pressed.
+  assert.equal(await app.evaluate("document.querySelectorAll('#auto-prompt').length"), 0);
   // Cancel: nothing is saved and the card is back.
   await app.evaluate("document.getElementById('auto-prompt-e').value = 'Thrown away'; return 1;");
   await app.click(`${slot} [data-action="auto-edit-cancel"]`);
@@ -96,7 +96,9 @@ flow('an automation is changed from its card: the form opens filled in, Cancel k
   assert.deepEqual(await app.evaluate(auto), before);
   // Save: the text, its name, the time and the weekdays change; it stays switched off and keeps its id.
   await app.evaluate("document.getElementById('auto-time-e').value = '7:30'; return 1;");
-  await app.click('#auto-wk-e');
+  await app.click(`${slot} [data-action="auto-trig"]`);
+  await app.until("!!document.querySelector('.menu-item[data-v=\"weekdays\"]')", 'the trigger menu');
+  await app.click('.menu-item[data-v="weekdays"]');
   await app.click(`${slot} [data-action="auto-save"]`);
   await app.until(`!document.querySelector('${slot} .auto-add') && (document.querySelector('${slot} .memo')?.innerText ?? '').includes('Weekdays 07:30')`, 'the card after Save');
   const after = await app.evaluate(auto);
@@ -104,13 +106,55 @@ flow('an automation is changed from its card: the form opens filled in, Cancel k
     [id, 'Check the tests', 'Check the tests\nand the lint', { kind: 'daily', time: '07:30', weekdays: true }, false, before.createdAt]);
   assert.notEqual(after.nextRunAt, before.nextRunAt);
   assert.match(await app.evaluate(`document.querySelector('${slot} .memo').innerText`), /Check the tests[\s\S]*Weekdays 07:30/);
-  // To "When a PR merges": the time fades out in place, and the saved trigger has none.
+  // To "PR merged": the time gives way to the repository and branch, and the saved trigger has no time.
   await app.click(`${slot} [data-action="auto-edit"]`);
-  await app.click(`${slot} [data-segc="auto-kind-e"][data-v="merged"]`);
-  assert.equal(await app.evaluate(`document.querySelector('${slot} .auto-add').classList.contains('merged')`), true);
+  await app.click(`${slot} [data-action="auto-trig"]`);
+  await app.until("!!document.querySelector('.menu-item[data-v=\"merged\"]')", 'the trigger menu');
+  await app.click('.menu-item[data-v="merged"]');
+  const shown = `const f = document.querySelector('${slot} .auto-add'); const on = (s) => getComputedStyle(f.querySelector(s)).display !== 'none'; return [f.dataset.kind, on('#auto-time-e'), on('[data-action="auto-repo"]'), on('#auto-branch-e')];`;
+  assert.deepEqual(await app.evaluate(shown), ['merged', false, true, true]);
   await app.click(`${slot} [data-action="auto-save"]`);
   await app.until("return (await window.ide.call('state')).automations[0].trigger.kind === 'merged'", 'the merged trigger');
   assert.equal((await app.evaluate(auto)).nextRunAt, null);
+});
+
+flow('a CI failure on GitHub sets off its automation, up to its limit a day', {
+  repos: ['demo'],
+  gh: { runs: [{ databaseId: 1, conclusion: 'failure', headBranch: 'main', displayTitle: 'Old', url: 'https://github.com/o/demo/actions/runs/1' }] },
+}, async (app) => {
+  const run = (id, branch = 'main', conclusion = 'failure') => ({ databaseId: id, conclusion, headBranch: branch, displayTitle: `Run ${id}`, url: `https://github.com/o/demo/actions/runs/${id}` });
+  // With none set up the form is open; the trigger menu picks "CI failed", which shows the repository and its branch.
+  await app.click('#chat-ins [data-action="ins-tab"][data-v="auto"]');
+  await app.until("!!document.getElementById('auto-prompt')", 'the form for a new automation');
+  await app.evaluate("document.getElementById('auto-prompt').value = 'Fix CI\\n@fake say CI fixed.'; return 1;");
+  await app.click('#chat-ins [data-action="auto-trig"]');
+  await app.until("!!document.querySelector('.menu-item[data-v=\"ciFailed\"]')", 'the trigger menu');
+  assert.deepEqual(await app.evaluate("[...document.querySelectorAll('.menu .menu-h')].map((h) => h.textContent)"), ['Schedule', 'Event']);
+  await app.click('.menu-item[data-v="ciFailed"]');
+  assert.deepEqual(await app.evaluate("[document.querySelector('#chat-ins [data-action=\"auto-repo\"]').innerText.trim(), document.getElementById('auto-branch').value, document.getElementById('auto-max').value]"), ['demo', 'main', '3']);
+  await app.evaluate("document.getElementById('auto-max').value = '1'; return 1;");
+  await app.click('[data-action="auto-add"]');
+  const auto = "return (await window.ide.call('state')).automations[0]";
+  await app.until("return (await window.ide.call('state')).automations[0]?.trigger.kind === 'ciFailed'", 'the automation in the list');
+  const made = await app.evaluate(auto);
+  assert.deepEqual([made.trigger, made.maxPerDay], [{ kind: 'ciFailed', repo: 'demo', branch: 'main' }, 1]);
+  // The first look only takes note: the failure already there does not set it off.
+  await app.evaluate("await window.ide.call('e2e:autoPoll'); await window.ide.call('e2e:autoPoll'); return 1;");
+  assert.ok(app.gh().calls.some((c) => c.startsWith('run list')), 'gh run list was asked');
+  assert.equal((await app.evaluate(auto)).lastRunAt, null);
+  // A new failure on main sets it off (one on another branch, or a pass, does not), told which run it was.
+  await app.ghEdit((db) => { db.runs = [run(4, 'dev'), run(3, 'main', 'success'), run(2), ...db.runs]; });
+  await app.evaluate("await window.ide.call('e2e:autoPoll'); return 1;");
+  await app.until("document.querySelector('#chat-thread').innerText.includes('CI fixed.')", "the automation's turn in the chat");
+  const fired = await app.evaluate(auto);
+  assert.deepEqual(fired.runs?.n, 1);
+  assert.match(await app.evaluate("document.querySelector('#chat-thread').innerText"), /actions\/runs\/2/);
+  // At its limit: the next failure waits for tomorrow, and the card says so.
+  await app.ghEdit((db) => { db.runs = [run(5), ...db.runs]; });
+  await app.evaluate("await window.ide.call('e2e:autoPoll'); return 1;");
+  assert.equal((await app.evaluate(auto)).runs.n, 1);
+  await app.until("!!document.querySelector('#chat-ins .memo.auto .alimit')", 'the limit line on the card');
+  assert.match(await app.evaluate("document.querySelector('#chat-ins .memo.auto').innerText"), /CI failed · main[\s\S]*1\/1/);
 });
 
 flow('an issue of a repository is handed to the Dispatcher', {
