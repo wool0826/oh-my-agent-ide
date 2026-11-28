@@ -1,4 +1,6 @@
-import { handle } from './handle';
+import { handle, type IpcContext } from './handle';
+import { cancelPublish, exportSource, publishExport, saveExport } from '../exportMd';
+import { exportShots, publishTitle } from '../../shared/exportMd';
 import { userAnswer } from './decisions';
 import { store } from '../store';
 import { workers } from '../agents/workers';
@@ -11,7 +13,7 @@ import { answerTarget } from '../../shared/inbox';
 import { PAGE } from '../../shared/paging';
 
 /** A Worker's conversation, its tasks, checkpoints and archive, and the merge queue. */
-export function registerWorkerIpc() {
+export function registerWorkerIpc(ctx: IpcContext) {
   // A page of a Worker's conversation: the latest, or the one before line `before` (decision 85).
   handle('worker:log', (id: string, opts?: { before?: number; limit?: number }) => store.readLog(id, opts?.before, Math.min(opts?.limit ?? PAGE.log, 1000)));
   handle('worker:send', (id: string, text: string, files?: string[], answerId?: string | null) => {
@@ -26,6 +28,16 @@ export function registerWorkerIpc() {
   handle('task:cancel', (id: string) => workers.cancelTask(id, 'user'));
   handle('queue:clear', () => workers.clearQueue('user'));
   handle('worker:diff', (id: string) => workers.diff(id));
+  // Exporting a Worker's work (item 12A): the window writes the Markdown from this, then copies, saves or publishes it.
+  handle('worker:export', (id: string) => exportSource(id));
+  handle('worker:exportSave', (name: string, md: string) => saveExport(ctx.win(), name, md));
+  // The images to upload are the ones the Worker's reports named, looked up here rather than taken from the window.
+  // The title is the Markdown's heading, where secrets are already hidden.
+  handle('worker:publish', async (id: string, md: string, shots?: boolean) => {
+    const src = shots ? await exportSource(id) : null;
+    return publishExport(String(md), publishTitle(String(md)), src ? exportShots(src) : []);
+  });
+  handle('worker:publishCancel', () => cancelPublish());
   handle('worker:checkpoints', (id: string) => workers.checkpoints(id));
   handle('worker:restore', (id: string, ref: string) => workers.restore(id, ref));
   handle('mq:add', (taskIds: string[]) => queueMerge(Array.isArray(taskIds) ? taskIds.map(String) : []));

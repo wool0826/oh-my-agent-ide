@@ -10,6 +10,8 @@ import { e2eWindow } from '../windowPlace';
 
 /** With fake agents (the end-to-end tests), what would have been opened on the computer, kept instead. */
 export const e2eOpened: [string, string][] = [];
+/** With fake agents, how the next artifact publish ends (shared/exportMd.ts) and how long it takes. */
+export const e2ePublish: { why: 'login' | 'failed' | null; delay: number } = { why: null, delay: 0 };
 
 /** Hooks for the end-to-end tests (test/e2e), which have no button for them; the window does not call them. */
 export function registerE2eIpc(awake: { readonly held: boolean }) {
@@ -22,6 +24,7 @@ export function registerE2eIpc(awake: { readonly held: boolean }) {
   // What a test run would have opened on the computer (open:path, open:external keep it instead).
   handle('e2e:opened', () => e2eOpened);
   handle('e2e:badge', () => badge);
+  handle('e2e:publish', (why: 'login' | 'failed' | null, delay?: number) => { e2ePublish.why = why === 'login' || why === 'failed' ? why : null; e2ePublish.delay = Math.min(Number(delay) || 0, 10_000); });
   // A session reports an account's 5h usage; the usage warnings told so far (T-0180).
   handle('e2e:usage', (id: string, pct: number, resetsAt: string) => accounts.applyUsage(id, { five_hour: { utilization: pct, resets_at: resetsAt } }));
   handle('e2e:usageNotes', () => usageNotes);
