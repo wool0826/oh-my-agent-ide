@@ -22,6 +22,10 @@ export function shortcutsHtml() {
     row(t('chat.reply'), ['R']),
   ].join('')) + group('keys.worker', [
     row(t('keys.publish'), publishKeys()),
+  ].join('')) + group('keys.changes', [
+    row(t('keys.fileStep'), ['J', 'K']),
+    row(t('diff.seen'), ['V']),
+    row(t('keys.layout'), ['S']),
   ].join('')) + group('keys.composer', [
     row(t('keys.history'), ['↑']),
     row(t('keys.prompts'), ['/']),

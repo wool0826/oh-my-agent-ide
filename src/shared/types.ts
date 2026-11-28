@@ -610,7 +610,8 @@ export interface AppState {
   dispatcher: { busy: boolean; contextTokens: number; accountId: string | null; statusText: string; spend: Spend | null; busySince?: string | null };
 }
 
-export interface DiffFile { path: string; added: number; removed: number; status: 'A' | 'M' | 'D' | 'R' | '?'; patch: string }
+/** `bytes`: the file's size in the worktree, for a big file shown folded (none when it was deleted). */
+export interface DiffFile { path: string; added: number; removed: number; status: 'A' | 'M' | 'D' | 'R' | '?'; patch: string; bytes?: number }
 export interface DiffView { base: string; branch: string; files: DiffFile[]; truncated: boolean; error?: string }
 
 /** A note the user keeps in the app. A shared one is also given to the Dispatcher with its system prompt. */

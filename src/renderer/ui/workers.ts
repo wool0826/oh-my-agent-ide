@@ -7,6 +7,8 @@ import { overlapLine } from '../../shared/overlap';
 import { queueLine, queueWhy, type QueueCtx } from '../../shared/queueWhy';
 import { leftKey, phaseKey, queueRows, type QueueRow } from '../../shared/mergeQueue';
 import { patchLines } from '../../shared/diffComment';
+import { seenCount } from '../../shared/diffView';
+import { fileCardHtml, fileListHtml, isOpen, layoutNow, seenSet } from './diffView';
 import { lastLines } from '../../shared/runOutput';
 import { workerPort } from '../../shared/runEnv';
 import type { Checkpoint } from '../../shared/checkpoints';
@@ -26,7 +28,7 @@ import { linkUrl, linkify, reportLinks, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
 import { sentFiles, shotsOf } from './shotview';
-import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, sentMentions, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, worker, workerTask } from './core';
+import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, sentMentions, setThread, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, worker, workerTask } from './core';
 import { grantsHtml } from './repos';
 import { workerIcon } from './sidebar';
 import { refreshFind } from './find';
@@ -250,22 +252,6 @@ export function renderSession(force = false, older = false) {
   watchTop(th, () => { if (ui.wSel) void olderLog(ui.wSel); });
 }
 
-/** A file's diff. Each line takes a click to comment on it; the comments and the one being written sit under their lines. */
-export function diffLines(wid: string, path: string, patch: string) {
-  const key = esc(`${wid}:${path}`);
-  const notes = (ui.diffNotes.get(wid) ?? []).filter((n) => n.path === path);
-  const draft = ui.diffDraft?.wid === wid && ui.diffDraft.path === path ? ui.diffDraft.at : -1;
-  return patchLines(patch).map((l, i) => {
-    const c = l.kind === 'ctx' ? '' : l.kind;
-    const line = l.kind === 'h'
-      ? `<span class="dl h">${esc(l.text) || ' '}</span>`
-      : `<span class="dl ${c} can" role="button" tabindex="0" data-action="diff-note" data-id="${key}" data-i="${i}" data-tip="${t('diff.note')}">${esc(l.text) || ' '}</span>`;
-    const said = notes.filter((n) => n.at === i).map((n) => `<div class="dnote"><p>${esc(n.text)}</p><button class="btn btn-icon btn-sm clear-x" data-action="diff-note-del" data-id="${key}" data-i="${i}" data-tip="${t('diff.noteDel')}" aria-label="${t('diff.noteDel')}"><svg><use href="#s-x"/></svg></button></div>`).join('');
-    const box = draft === i ? `<div class="dnote edit"><textarea class="inp" id="dnote-in" data-keep="dnote-${key}-${i}" data-enter="diff-note-add" placeholder="${t('diff.note')}" aria-label="${t('diff.note')}"></textarea><div class="btns"><button class="btn" data-action="diff-note-cancel">${t('cancel')}</button><button class="btn btn-primary" data-action="diff-note-add">${t('diff.noteAdd')}</button></div></div>` : '';
-    return line + said + box;
-  }).join('');
-}
-
 /** "12m", "1h 5m": how long something took. */
 export function tookText(mins: number) {
   if (mins < 60) return t('time.min', { n: Math.max(1, mins) });
@@ -350,29 +336,28 @@ export function addDiffNote() {
   renderDiff(w);
 }
 
+/**
+ * The Changes tab (item 10A): the branch, how many files were seen, one column or side by side, fold all, then the
+ * list of files and a card per file (ui/diffView.ts). Side by side needs a pane 900 wide; below that the switch is off.
+ */
 export function renderDiff(w: Worker) {
   const root = $('#ws-diff');
   const v = ui.diffs.get(w.id);
   if (v === undefined) { void loadDiff(w.id); }
-  if (v === undefined || v === 'loading') { root.innerHTML = `<div class="skel-list" role="status" aria-label="${t('diff.loading')}">${skel(3, 'file')}</div>`; return; }
+  if (v === undefined || v === 'loading') { root.innerHTML = `<div class="diff-state" role="status"><span class="sq-spin" aria-hidden="true"></span><span>${t('diff.loading')}</span></div>`; return; }
   if (v === null) { root.innerHTML = `<div class="empty-view"><span>${t('diff.noRepo')}</span></div>`; return; }
   if (v.error === 'missing') { root.innerHTML = `<div class="empty-view"><span>${t('diff.missing')}</span></div>`; return; }
-  // Any other failure says what went wrong, with a way to ask again (L17).
-  if (v.error) { root.innerHTML = `<div class="empty-view" role="alert"><span>${esc(t('diff.failed', { msg: v.error }))}</span><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('retry')}</button></div>`; return; }
-  const add = v.files.reduce((n, f) => n + f.added, 0), del = v.files.reduce((n, f) => n + f.removed, 0);
+  // Any other failure says so, with a way to ask again (L17); what went wrong is on the line's tooltip.
+  if (v.error) { root.innerHTML = `<div class="diff-err" role="alert" data-tip="${esc(v.error)}">${sym('s-alert')}<span>${t('diff.readFailed')}</span><button type="button" class="btn" data-action="diff-refresh" data-id="${w.id}">${t('retry')}</button></div>`; return; }
   const nNotes = ui.diffNotes.get(w.id)?.length ?? 0;
-  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span><span class="sum">${t('diff.files', { n: v.files.length })} <b class="plus">+${add}</b> <b class="minus">−${del}</b></span>${nNotes ? `<button class="btn btn-primary" data-action="diff-notes-send">${t('diff.noteSend', { n: nNotes })}</button>` : ''}<button class="btn" data-action="ckpt-menu" data-id="${w.id}" aria-haspopup="listbox">${t('ckpt.title')}</button><button class="btn" data-action="diff-refresh" data-id="${w.id}">${t('diff.refresh')}</button></div>`;
-  if (!v.files.length) { root.innerHTML = `${head}${ckptAskHtml(w)}<div class="empty-view"><span>${t('diff.none', { base: v.base })}</span></div>`; return; }
-  const files = v.files.map((f) => {
-    const key = `${w.id}:${f.path}`;
-    const open = ui.diffOpen.has(key);
-    const st = f.status === '?' ? 'A' : f.status;
-    return `<div class="df${open ? ' open' : ''}">
-      <button class="df-h" data-action="diff-file" data-id="${esc(key)}" aria-expanded="${open}"><svg class="chev" aria-hidden="true"><use href="#s-chev"/></svg><span class="st st-${st}">${st}</span><span class="p">${esc(f.path)}</span>${f.status === '?' ? `<small>${t('diff.untracked')}</small>` : ''}<span class="n"><b class="plus">+${f.added}</b> <b class="minus">−${f.removed}</b></span></button>
-      ${open ? `<pre class="df-b" data-scroll="diff-${esc(key)}">${f.patch ? diffLines(w.id, f.path, f.patch) : `<span class="dl h">${t('diff.binary')}</span>`}</pre>` : ''}
-    </div>`;
-  }).join('');
-  keepInputs(root, () => { root.innerHTML = `${head}${ckptAskHtml(w)}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}<div class="dfs">${files}</div>`; });
+  const { layout, canSplit } = layoutNow();
+  const anyOpen = v.files.some((f) => isOpen(w.id, f));
+  const seg = (val: 'unified' | 'split', label: string) => `<button type="button" data-action="diff-layout" data-v="${val}" aria-pressed="${layout === val}"${val === 'split' && !canSplit ? ' disabled' : ''}>${label}</button>`;
+  const files = v.files.length;
+  const head = `<div class="diff-h"><span class="br">${esc(v.branch || 'HEAD')} <small>→ ${esc(v.base)}</small></span>${nNotes ? `<button class="btn btn-primary" data-action="diff-notes-send">${t('diff.noteSend', { n: nNotes })}</button>` : ''}${files ? `<span class="seen-n">${esc(t('diff.seenOf', { n: seenCount(v.files, seenSet(w.id)), m: files }))}</span><span class="seg" role="group" aria-label="${t('diff.layout')}">${seg('unified', t('diff.unified'))}${seg('split', t('diff.split'))}</span><button type="button" class="btn btn-icon" data-action="diff-fold-all" aria-label="${t(anyOpen ? 'diff.foldAll' : 'diff.unfoldAll')}" data-tip="${t(anyOpen ? 'diff.foldAll' : 'diff.unfoldAll')}">${sym('s-updown')}</button>` : ''}<button type="button" class="btn btn-icon" data-action="ckpt-menu" data-id="${w.id}" aria-haspopup="listbox" aria-label="${t('ckpt.title')}" data-tip="${t('ckpt.title')}">${sym('s-back')}</button><button type="button" class="btn btn-icon" data-action="diff-refresh" data-id="${w.id}" aria-label="${t('diff.refresh')}" data-tip="${t('diff.refresh')}">${sym('s-refresh')}</button></div>`;
+  if (!files) { root.innerHTML = `${head}${ckptAskHtml(w)}<div class="empty-view"><span>${t('diff.none')}</span></div>`; return; }
+  const cards = v.files.map((f) => fileCardHtml(w, f, layout === 'split')).join('');
+  keepInputs(root, () => { root.innerHTML = `${head}${ckptAskHtml(w)}${v.truncated ? `<div class="diff-note">${t('diff.truncated')}</div>` : ''}${fileListHtml(w, v.files)}<div class="dfs">${cards}</div>`; });
 }
 
 export async function loadDiff(id: string) {

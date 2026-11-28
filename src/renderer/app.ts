@@ -40,6 +40,7 @@ import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll
 import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
 import { renderSleep, setSleep } from './ui/sleep';
 import { copyValue, folderThere, loadEditors, openFolder, openMenuHtml, rowOpenItems } from './ui/openWith';
+import { bindDiffKeys, foldAll, goTo, setLayout, setSeen, showFocused, startFileComment, toggleFold, watchDiffWidth } from './ui/diffView';
 import { closePublish, copyExport, exportMenuHtml, exportPartChanged, openPublish, publishGo, publishOpen, saveExport } from './ui/exportMd';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderAccountsOff, renderSidebar, renderUsage, showUsagePop, togglePanel, toggleUsagePin, usagePop } from './ui/sidebar';
 import { initResize } from './ui/resize';
@@ -658,10 +659,18 @@ export async function act(el: HTMLElement, e: Event) {
       go({ wTab: 'chat' });
       break;
     }
-    case 'diff-file': {
-      if (ui.diffOpen.has(id)) ui.diffOpen.delete(id); else ui.diffOpen.add(id);
+    case 'diff-file': case 'diff-goto': case 'diff-comment': case 'diff-big': case 'diff-layout': case 'diff-fold-all': {
       const w = worker(ui.wSel);
-      if (w) renderDiff(w);
+      if (!w) break;
+      if (a === 'diff-file') toggleFold(w, id);
+      else if (a === 'diff-goto') goTo(w, id);
+      else if (a === 'diff-comment') startFileComment(w, id);
+      else if (a === 'diff-big') ui.diffBig.add(id);
+      else if (a === 'diff-layout') setLayout(el.dataset.v === 'split' ? 'split' : 'unified');
+      else foldAll(w);
+      renderDiff(w);
+      if (a === 'diff-goto') showFocused();
+      if (a === 'diff-comment') $<HTMLTextAreaElement>('#dnote-in')?.focus();
       break;
     }
     case 'answer': {
@@ -1166,6 +1175,11 @@ export function init() {
     if (el.id === 'repo-step') syncPorts();
     if (el.dataset.change === 'sound-kind') syncSoundRows();
     if (el.dataset.change === 'export-part') { exportPartChanged(); return; }
+    if (el.dataset.change === 'diff-seen') {
+      const w = worker(ui.wSel);
+      if (w && el.dataset.id) { setSeen(w, el.dataset.id, (el as unknown as HTMLInputElement).checked); renderDiff(w); }
+      return;
+    }
     if (el.classList?.contains('step-v')) syncStep(el as unknown as HTMLInputElement, true);
     // The Jira token goes to the main process by itself and is cleared from the field: it is never part of the page's state.
     if (el.id?.startsWith('tg-') && await telegramChange(el as unknown as HTMLInputElement, () => openSettings())) return;
@@ -1561,6 +1575,10 @@ export function init() {
   bindTerm();
   bindDock((tab) => { if (tab === 'sq') openSide(); else openTerm(); });
   bindBranches();
+  // The Changes tab's keys, and its redraw when the pane crosses the width side by side needs (item 10A).
+  const diffWorker = () => (ui.view === 'worker' && ui.wOpen && ui.wTab === 'changes' ? worker(ui.wSel) ?? null : null);
+  bindDiffKeys(diffWorker, renderDiff);
+  watchDiffWidth(() => { const w = diffWorker(); if (w) renderDiff(w); });
   ide.onTermState(setTermView);
   void call('term:state').then((v) => { if (v) setTermView(v); });
   ide.onSideState(setSideView);

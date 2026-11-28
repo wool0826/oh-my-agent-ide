@@ -7,6 +7,7 @@ import { splitMentions } from '../../shared/mentions';
 import { currentTask } from '../../shared/currentTask';
 import type { SideView } from '../../shared/side';
 import type { TriggerChoice } from '../../shared/automations';
+import type { DiffLayout } from '../../shared/diffView';
 import type { TermView } from '../../shared/terminal';
 import type { PtyView } from '../../shared/pty';
 import { tr, type Key } from '../../shared/i18n';
@@ -198,7 +199,13 @@ export const ui = {
   sumScope: 'worker' as 'worker' | 'week',
   permFilter: 'all' as PermFilter,
   diffs: new Map<string, DiffView | 'loading' | null>(),
-  diffOpen: new Set<string>(),
+  /** Files folded or opened by hand ("wid:path" → open); the rest are open until marked seen (item 10A). */
+  diffFold: new Map<string, boolean>(),
+  /** Files marked seen, per Worker, by shared/diffView.ts seenKey; big files expanded on request; the file J/K is on. */
+  diffSeen: new Map<string, Set<string>>(),
+  diffBig: new Set<string>(),
+  diffFocus: null as { wid: string; path: string } | null,
+  diffLayout: (localStorage.getItem('oma.diffLayout') === 'split' ? 'split' : 'unified') as DiffLayout,
   /** Review comments not sent yet, per Worker, and the line a comment is being written for. */
   diffNotes: new Map<string, DiffNote[]>(),
   diffDraft: null as { wid: string; path: string; at: number } | null,

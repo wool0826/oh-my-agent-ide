@@ -47,5 +47,8 @@ export async function worktreeDiff(defaultBranch: string, dir: string, local = f
     budget -= body.length;
     if (budget < 0) view.truncated = true;
   }
+  await Promise.all(view.files.map(async (f) => {
+    try { f.bytes = (await fs.promises.stat(path.join(dir, f.path))).size; } catch { /* deleted */ }
+  }));
   return view;
 }

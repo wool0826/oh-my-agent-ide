@@ -1332,15 +1332,28 @@ kbd { font: inherit; font-size: var(--fs-caption2); font-weight: 600; padding: 0
 .diff-h { display: flex; align-items: center; gap: var(--space-10); font-size: var(--fs-caption); }
 .diff-h .br { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .diff-h .br small { font-size: var(--fs-caption2); font-weight: 400; color: var(--text-secondary); }
-.diff-h .sum { color: var(--text-secondary); white-space: nowrap; }
+.diff-h .seen-n { color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.diff-h .seg { flex: none; }
 .diff-note { font-size: var(--fs-caption); color: var(--warning-text); }
 b.plus { color: var(--diff-add-text); font-weight: 600; }
 b.minus { color: var(--diff-del-text); font-weight: 600; }
-.dfs { display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); overflow: hidden; }
-.df + .df { border-top: .5px solid var(--border-subtle); }
-.df-h { width: 100%; display: flex; align-items: center; gap: var(--space-8); height: 34px; padding: 0 var(--space-12); border: 0; background: none; color: var(--text-primary); font-size: var(--fs-caption); text-align: left; cursor: pointer; }
-.df-h:hover { background: var(--surface-hover); }
-.df-h:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+/* the Changes tab's states, file list and file cards (item 10A) */
+.diff-state { display: flex; align-items: center; justify-content: center; gap: var(--space-8); padding: var(--space-24) 0; color: var(--text-secondary); font-size: var(--fs-body); }
+.diff-err { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-6) var(--space-6) var(--space-6) var(--space-12); border-radius: var(--radius-lg); background: var(--warning-soft); color: var(--warning-text); font-size: var(--fs-body); font-weight: 600; }
+.diff-err > svg { width: var(--icon-sm); height: var(--icon-sm); flex: none; }
+.diff-err > span { flex: 1; min-width: 0; }
+.dlist { display: flex; flex-direction: column; padding: var(--space-4) 0; border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); }
+.dli { display: flex; align-items: center; gap: var(--space-10); padding: 0 var(--space-12); }
+.dli:hover { background: var(--surface-hover); }
+.dli-p { flex: 1; min-width: 0; padding: var(--space-6) 0; border: 0; background: none; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-code); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; cursor: pointer; }
+.dli-p:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.dli .n, .df-h .n { flex: none; font-family: var(--font-mono); font-size: var(--fs-code); font-variant-numeric: tabular-nums; }
+.dfs { display: flex; flex-direction: column; gap: var(--space-10); }
+.df { border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--rim); overflow: hidden; }
+.df.focus { box-shadow: 0 0 0 2px var(--accent); }
+.df-h { display: flex; align-items: center; gap: var(--space-8); min-height: var(--control-h, 34px); padding: 0 var(--space-8) 0 var(--space-12); font-size: var(--fs-caption); }
+.df-t { flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: var(--space-8); padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.df-t:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
 .df-h .chev { flex: none; width: 8px; height: 10px; color: var(--text-tertiary); transition: transform var(--dur-fast); }
 .df.open .df-h .chev { transform: rotate(90deg); }
 .df-h .st { flex: none; width: 16px; height: 16px; border-radius: var(--radius-xs); display: grid; place-items: center; font-size: var(--fs-caption2); font-weight: 600; color: var(--text-secondary); background: var(--neutral-soft); }
@@ -1348,14 +1361,37 @@ b.minus { color: var(--diff-del-text); font-weight: 600; }
 .df-h .st-D { background: var(--danger-soft); color: var(--danger-text); }
 .df-h .st-M { background: var(--warning-soft); color: var(--warning-text); }
 .df-h .st-R { background: var(--review-soft); color: var(--review-text); }
-.df-h .p { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.df-h .p { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-code); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
 .df-h small { flex: none; color: var(--text-tertiary); }
-.df-h .n { flex: none; font-variant-numeric: tabular-nums; }
-.df-b { margin: 0; padding: var(--space-6) 0; max-height: 520px; overflow: auto; background: var(--surface-sunken); font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code); user-select: text; border-top: .5px solid var(--border-subtle); }
-.dl { display: block; padding: 0 var(--space-12); white-space: pre; min-width: max-content; }
-.dl.add { color: inherit; font-weight: 400; background: var(--diff-add-bg); }
-.dl.del { color: inherit; font-weight: 400; background: var(--diff-del-bg); }
-.dl.h { color: var(--text-tertiary); background: var(--diff-hunk-bg); }
+.df-seen { flex: none; display: flex; align-items: center; gap: var(--space-6); color: var(--text-secondary); white-space: nowrap; cursor: pointer; }
+.df-b { margin: 0; max-height: 520px; overflow: auto; background: var(--surface-sunken); font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code); user-select: text; border-top: .5px solid var(--border-subtle); }
+.dr { position: relative; display: flex; white-space: pre; min-width: max-content; }
+.dr .ln { flex: none; width: 3.6em; padding: 0 var(--space-8); text-align: right; color: var(--text-tertiary); font-variant-numeric: tabular-nums; user-select: none; }
+.dr .dc { flex: 1; padding: 0 var(--space-12) 0 var(--space-4); }
+.dr.add { background: var(--diff-add-bg); }
+.dr.del { background: var(--diff-del-bg); }
+.dr.h { color: var(--text-tertiary); background: var(--diff-hunk-bg); }
+.dr.nil { background: repeating-linear-gradient(135deg, transparent 0 .4em, var(--border-subtle) .4em .5em); }
+.dr.can { cursor: pointer; }
+.dr.can:hover { background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }
+.dr.can:hover > .ln:first-child { color: var(--accent-text); }
+.dr.can:hover > .ln:first-child::before { content: '+'; float: left; font-weight: 700; }
+.dr.can:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.df-b.s { overflow-x: hidden; }
+.df-b.s .sr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.df-b.s .dr { min-width: 0; }
+.df-b.s .dr + .dr { border-left: .5px solid var(--border-subtle); }
+.df-b.s .dc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.df-big { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-6) var(--space-8) var(--space-6) var(--space-12); color: var(--text-secondary); font-family: var(--font); font-size: var(--fs-caption); }
+.df-big > svg { width: var(--icon-sm); height: var(--icon-sm); flex: none; }
+.df-big > span { flex: 1; min-width: 0; }
+.dnotes { position: sticky; left: 0; padding-left: 7.2em; }
+.df-b.s .dnotes { padding-left: 3.6em; }
+.hl-kw { color: var(--syn-kw); }
+.hl-fn { color: var(--syn-fn); }
+.hl-str { color: var(--syn-str); }
+.hl-num { color: var(--syn-num); }
+.hl-com { color: var(--syn-com); font-style: italic; }
 
 /* plan card */
 .plan-md { max-height: 320px; overflow-y: auto; padding: var(--space-8) var(--space-12); border-radius: var(--radius-lg); background: var(--surface-sunken); box-shadow: var(--well); font-size: var(--fs-caption); line-height: var(--lh-body); user-select: text; overflow-wrap: anywhere; }
@@ -1514,9 +1550,7 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 
 /* ---------- review comments on a diff ---------- */
 /* A line takes a click to comment on it. Comments sit under their line, in the UI font, and are sent together. */
-.dl.can { cursor: pointer; }
-.dl.can:hover { background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }
-.dnote { position: sticky; left: 0; width: min(100%, 640px); margin: var(--space-4) var(--space-12); padding: var(--space-6) var(--space-8) var(--space-6) var(--space-10); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--rim); display: flex; align-items: flex-start; gap: var(--space-8); font-family: var(--font); font-size: var(--fs-caption); line-height: var(--lh-body); white-space: normal; animation: rise-in var(--dur-base) var(--ease-out); }
+.dnote { width: min(100%, 640px); margin: var(--space-4) var(--space-12); padding: var(--space-6) var(--space-8) var(--space-6) var(--space-10); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--rim); display: flex; align-items: flex-start; gap: var(--space-8); font-family: var(--font); font-size: var(--fs-caption); line-height: var(--lh-body); white-space: normal; animation: rise-in var(--dur-base) var(--ease-out); }
 .dnote p { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dnote .clear-x { opacity: 1; margin-top: var(--space-2); }
 .dnote.edit { flex-direction: column; align-items: stretch; box-shadow: var(--rim); }
@@ -2061,7 +2095,6 @@ mark.find.cur.arrive { animation: hit-pulse calc(var(--dur-slow) * 2) var(--ease
 .ferr > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 /* Diff lines take the keyboard as well as a click (L14). */
-.dl.can:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
 
 /* Read by screen readers only. */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

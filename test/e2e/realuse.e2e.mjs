@@ -98,11 +98,11 @@ flow('row 5.1: two comments on lines in the Changes tab reach the Worker as one 
   const wid = task(await settled(app, 'Add a list'), 'Add a list').workerId;
   await openWorker(app, wid);
   await app.click('#ws-tab-changes');
-  await app.until("[...document.querySelectorAll('#ws-diff .df-h')].some((b) => b.innerText.includes('list.txt'))", 'the changed file');
-  await app.evaluate("[...document.querySelectorAll('#ws-diff .df-h')].find((b) => b.innerText.includes('list.txt')).click(); return 1;");
+  // A file not marked as seen is open.
+  await app.until("[...document.querySelectorAll('#ws-diff .df.open .df-h')].some((b) => b.innerText.includes('list.txt'))", 'the changed file, open');
   const comment = async (line, text) => {
-    await app.until(`[...document.querySelectorAll('#ws-diff [data-action="diff-note"]')].some((l) => l.textContent === '+${line}')`, `the line ${line}`);
-    await app.evaluate(`[...document.querySelectorAll('#ws-diff [data-action="diff-note"]')].find((l) => l.textContent === '+${line}').click(); return 1;`);
+    await app.until(`[...document.querySelectorAll('#ws-diff [data-action="diff-note"]')].some((l) => l.querySelector('.dc').textContent === '${line}')`, `the line ${line}`);
+    await app.evaluate(`[...document.querySelectorAll('#ws-diff [data-action="diff-note"]')].find((l) => l.querySelector('.dc').textContent === '${line}').click(); return 1;`);
     await app.until("!!document.getElementById('dnote-in')", 'the comment box');
     await app.evaluate(`document.getElementById('dnote-in').value = ${JSON.stringify(text)}; return 1;`);
     await app.click('#ws-diff [data-action="diff-note-add"]');
