@@ -30,7 +30,12 @@ const PROBE = `window.__strip = (want) => {
     const gap = parseFloat(getComputedStyle(document.body).getPropertyValue('--space-12'));
     near('left sidebar top', box(side).top, s.bottom + gap); near('main column top', box(main).top, s.bottom); near('right sidebar top', box(ins).top, s.bottom + gap);
     near('main column inset', parseFloat(getComputedStyle(main).paddingTop), gap);
-    if (document.querySelector('#win').classList.contains('side-min')) near('rail right', box(side).right, 60);
+    if (document.querySelector('#win').classList.contains('side-min')) {
+      near('rail right', box(side).right, 60);
+      // Away from the traffic lights the sidebar's button stands over the rail's icons (T-0170).
+      const mid = (r) => (r.left + r.right) / 2, icon = side.querySelector('.rail-b');
+      if (!document.body.classList.contains('platform-darwin') && icon) near('sidebar button over the rail', mid(box(document.querySelector('#side-toggle'))), mid(box(icon)));
+    }
     // What the strip holds: in order, apart, and between its two ends.
     const kids = [...bar.children].filter(shown);
     if (!kids.length || kids[0].id !== 'side-toggle') bad.push('the sidebar button is not first in the strip');
