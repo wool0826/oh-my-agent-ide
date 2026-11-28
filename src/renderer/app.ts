@@ -1090,6 +1090,11 @@ export function init() {
     upop.querySelector<HTMLElement>('.ubtn:not(:disabled), [data-segc][aria-checked="true"]')?.focus();
   });
   window.addEventListener('resize', () => { closePop(); hideUsagePop(); });
+  // A zoom changes the pixel ratio: the window's buttons over the strip are resized to match it (windowButtons).
+  // Once at load too, for a page that comes back already zoomed (a reload keeps the zoom).
+  let ratio = window.devicePixelRatio;
+  void call('window:zoom');
+  window.addEventListener('resize', () => { if (window.devicePixelRatio === ratio) return; ratio = window.devicePixelRatio; void call('window:zoom'); });
   // Scroll events don't bubble; capturing on document sees every scrolling element.
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
   // The focus in the right sidebar's list selects nothing; it only makes that item the list's Tab stop.

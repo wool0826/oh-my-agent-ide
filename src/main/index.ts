@@ -70,7 +70,7 @@ const updateHooks = {
 
 /**
  * The parts of the look the page cannot paint follow the theme: the native frame and menus (themeSource), the
- * backdrop behind the page, and on Windows the caption buttons over the title bar.
+ * backdrop behind the page, and on Windows the caption buttons over the title bar. Also called when the page zoom changes.
  */
 function applyTheme() {
   const theme = loadSettings().theme;
@@ -79,7 +79,7 @@ function applyTheme() {
   const c = windowColors(look);
   if (!win || win.isDestroyed()) return;
   win.setBackgroundColor(c.background);
-  if (process.platform !== 'darwin') { try { win.setTitleBarOverlay(windowButtons(process.platform, look)); } catch { /* no overlay on this platform */ } }
+  if (process.platform !== 'darwin') { try { win.setTitleBarOverlay(windowButtons(process.platform, look, win.webContents.getZoomFactor())); } catch { /* no overlay on this platform */ } }
 }
 
 function quitApp() {

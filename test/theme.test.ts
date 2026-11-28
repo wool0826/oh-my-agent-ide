@@ -43,6 +43,14 @@ test("strip: the caption buttons take the look's colour over nothing of their ow
   assert.deepEqual(windowButtons('linux', 'dark'), { height: STRIP_H, color: '#00000000', symbolColor: windowColors('dark').symbol });
 });
 
+test("strip: the window's buttons follow the page zoom, so their hover fill stays inside the strip", () => {
+  // Ctrl+- once is zoom level -0.5: a factor of 1.2^-0.5.
+  assert.equal(windowButtons('win32', 'dark', 1.2 ** -0.5).height, 40);
+  assert.equal(windowButtons('win32', 'dark', 1.2 ** 0.5).height, 48);
+  assert.equal(windowButtons('darwin', 'dark', 1.25).height, 55);
+  for (const bad of [0, -1, Number.NaN, Infinity]) assert.equal(windowButtons('win32', 'dark', bad).height, STRIP_H, String(bad));
+});
+
 test("strip: only the strip's two ends read the box the window reports, and the left sidebar is below the strip", () => {
   const css = read('src/renderer/styles.css');
   const readers = css.split('\n').filter((l) => !l.trimStart().startsWith('/*') && l.includes('env(titlebar-area-'));
