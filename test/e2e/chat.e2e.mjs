@@ -181,3 +181,55 @@ flow('attached files with long names stay one-line chips that keep their extensi
   });
   assert.match(chips[0].text, /^KakaoTalk_.*….*\.pdf$/);
 });
+
+flow('Up in an empty composer lists the prompts sent from it, narrows as typed and fills the composer', {}, async (app) => {
+  const set = (box, v) => app.evaluate(`const i = document.querySelector('#${box}-input'); i.focus(); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  const send = async (v) => { await set('chat', v); await app.evaluate("document.querySelector('#chat-form').requestSubmit(); return 1;"); };
+  await send('Write the release notes');
+  await app.until("return (await window.ide.call('history:list', 'chat')).length === 1", 'the first prompt kept');
+  await send('Run the tests again');
+  await app.until("return (await window.ide.call('history:list', 'chat')).length === 2", 'both prompts kept');
+  const rows = () => app.evaluate("return [...document.querySelectorAll('#cpop-chat .cpop-it')].map((r) => (r.classList.contains('on') ? '*' : '') + r.querySelector('span').textContent)");
+  await set('chat', '');
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  await app.until("document.querySelectorAll('#cpop-chat .cpop-it').length === 2", 'the history open');
+  assert.deepEqual(await rows(), ['*Run the tests again', 'Write the release notes']);
+  assert.equal(await app.evaluate("document.querySelector('#chat-input').getAttribute('aria-activedescendant')"), 'cpop-chat-0');
+  // Up goes to the older prompt, Down back; past the newest the list closes and the draft is as it was.
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  assert.deepEqual(await rows(), ['Run the tests again', '*Write the release notes']);
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  await app.key('ArrowDown', 'ArrowDown', 40);
+  await app.until("!document.querySelector('#cpop-chat')", 'the list closed past the newest');
+  assert.equal(await app.evaluate("document.querySelector('#chat-input').value"), '');
+  // Typing narrows it and marks the match; Enter fills the composer and sends nothing.
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  await app.until("!!document.querySelector('#cpop-chat')", 'the history open again');
+  await set('chat', 'notes');
+  await app.until("document.querySelectorAll('#cpop-chat .cpop-it').length === 1", 'one prompt left');
+  assert.equal(await app.evaluate("document.querySelector('#cpop-chat .cpop-it .hl').textContent"), 'notes');
+  await app.key('Enter', 'Enter', 13);
+  await app.until("!document.querySelector('#cpop-chat') && document.querySelector('#chat-input').value === 'Write the release notes'", 'the composer filled');
+  assert.equal((await app.state()).chat.filter((c) => c.kind === 'user').length, 2);
+  // Esc closes it and keeps the draft; with text in the composer Up is the caret's.
+  await set('chat', '');
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  await app.until("!!document.querySelector('#cpop-chat')", 'the history open for Esc');
+  await set('chat', 'Run');
+  await app.key('Escape', 'Escape', 27);
+  await app.until("!document.querySelector('#cpop-chat')", 'closed by Esc');
+  assert.equal(await app.evaluate("document.querySelector('#chat-input').value"), 'Run');
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  assert.equal(await app.evaluate("!!document.querySelector('#cpop-chat')"), false);
+  // A Worker's composer has its own history.
+  await app.say('@fake task - Check the build\n@@fake result Done.');
+  await app.until("(document.querySelectorAll('#chat-ins .res').length >= 1)", 'the task done');
+  const wid = (await app.state()).workers[0].id;
+  await app.click('#side [data-action="done-toggle"]');
+  await app.until(`!!document.querySelector('#side [data-action="open-worker"][data-id="${wid}"]')`, 'the Worker in the sidebar');
+  await app.click(`#side [data-action="open-worker"][data-id="${wid}"]`);
+  await app.until("!!document.querySelector('#ws-form').offsetParent", 'the Worker conversation');
+  await set('ws', '');
+  await app.key('ArrowUp', 'ArrowUp', 38);
+  await app.until("!!document.querySelector('#cpop-ws .cpop-none')", 'an empty history for the Worker');
+});
