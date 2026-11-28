@@ -1273,3 +1273,11 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - Usage of an off account is still polled, so its figures are current when it comes back.
     - Differences from the mock-up: a failed usage read is a pill whose tooltip holds the message, not a disclosure
       row; the "Dispatcher assignment" table in the mock-up only explained the routing and is not built.
+
+255. **The window's own buttons are as tall as the top strip at the page's zoom, not at a fixed 44** (T-0162, follows 249).
+    - Cause of the minimize button's fill hanging below the strip: Ctrl+- (or Ctrl+wheel) zooms the page, so the strip
+      shrank to about 40 while the caption buttons stayed 44 and their hover fill covered the panel under the strip.
+    - `windowButtons(platform, look, zoom)` rounds `STRIP_H * zoom`; the window calls `window:zoom` when its pixel ratio
+      changes and the main process sets the overlay again with `webContents.getZoomFactor()`.
+    - Rejected: turning the page zoom off (it is the only way to make the whole window larger or smaller), and drawing the
+      caption buttons in the page (loses the system's snap layouts and its own hover and close colours).

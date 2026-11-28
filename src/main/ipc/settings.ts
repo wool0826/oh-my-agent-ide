@@ -21,6 +21,8 @@ import type { AccountPlan, ClaudeInfo, SettingsView } from '../../shared/types';
 export function registerSettingsIpc(ctx: IpcContext) {
   handle('preflight:run', async () => { const r = await runPreflight(); ctx.pushState(); return r; });
   handle('diag:export', () => exportDiagnostics(ctx.win()));
+  // The page zoomed: the window's buttons take the strip's new height (windowButtons).
+  handle('window:zoom', () => ctx.applyTheme());
   // The main process's clipboard: it takes text without the window being focused, unlike navigator.clipboard.
   handle('clipboard:write', async (text: string) => { await clipboard.writeText(String(text)); });
   handle('settings:save', (patch: Partial<SettingsView>) => {

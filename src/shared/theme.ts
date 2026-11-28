@@ -33,7 +33,10 @@ export interface WindowButtons { height: number; color?: string; symbolColor?: s
  * - macOS: the traffic lights, where the system puts them from the left. A height and no position is what makes
  *   Electron centre them in that height, whatever their size on that macOS; with a position too it does not, and
  *   places them wrongly on macOS 26 (electron#49183). The page reads where they end (env(titlebar-area-x)).
+ * - The page's zoom (Ctrl+-, Ctrl+wheel) scales the strip but not the buttons, so their height follows it: at a fixed
+ *   44 a zoomed-out strip left the buttons' hover fill hanging below the strip (T-0162).
  */
-export function windowButtons(platform: string, look: 'dark' | 'light'): WindowButtons {
-  return platform === 'darwin' ? { height: STRIP_H } : { height: STRIP_H, color: '#00000000', symbolColor: windowColors(look).symbol };
+export function windowButtons(platform: string, look: 'dark' | 'light', zoom = 1): WindowButtons {
+  const height = Number.isFinite(zoom) && zoom > 0 ? Math.round(STRIP_H * zoom) : STRIP_H;
+  return platform === 'darwin' ? { height } : { height, color: '#00000000', symbolColor: windowColors(look).symbol };
 }
