@@ -1431,3 +1431,8 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - The user picked 1C and 2B. 1C: both sidebars and the resize handles get a `--space-12` top margin and the main column the same top padding, so the three tops line up; the strip loses its hairline and its tinted fill (the settings strip `.stopbar` keeps both). Same in both themes, wide and narrow, open and as a rail.
     - 2B: `.dock:has(.tm:focus-within)` adds `0 0 0 1px var(--border-strong)` between the rim and the shadow, for the PTY and the line mode alike; the accent line under the input is gone. With forced colours the dock's border turns `Highlight`.
     - Rejected: the gap on the left sidebar only (1B "sidebar only"; the columns' tops would not line up), and a brighter prompt as the only sign (2C; too faint to see the focus).
+
+267. **Away from the traffic lights the sidebar's button is centred over the rail's icons** (T-0170, follows 266).
+    - On Windows and Linux `#side-toggle` gets `margin-left: --toggle-shift`, `(--panel-inset + --rail-w - --control-lg) / 2 - --strip-start` (6px at the usual sizes), so its centre is the rail's at any zoom; the view tabs' margin subtracts the same shift and stay on the main column's line. Open, the button lines up with the sidebar rows' icons too.
+    - macOS is left as is: there the button sits after the traffic lights, not over the rail.
+    - Rejected: moving `--strip-start` (it also places Settings' back button and the strip checks), and a fixed 18px.

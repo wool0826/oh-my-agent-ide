@@ -166,9 +166,14 @@ body { --strip-start: var(--space-12); --strip-end: var(--space-12); }
 .stopbar { border-bottom: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--surface-panel) 55%, transparent); }
 .toolbar { grid-row: 1; grid-column: 1 / 4; display: flex; align-items: center; gap: var(--space-8); padding: 0 var(--strip-end) 0 var(--strip-start); white-space: nowrap; min-width: 0; }
 .toolbar > * { flex: none; }
+/* Away from the traffic lights the sidebar's button stands over the rail's icons (T-0170): its centre is the rail's,
+   (--panel-inset + --rail-w) / 2. The view tabs' margin takes the shift back out, so they stay on the main column's line. */
+.toolbar { --toggle-shift: 0px; }
+:is(.platform-win32, .platform-linux) .toolbar { --toggle-shift: max(0px, calc((var(--panel-inset) + var(--rail-w) - var(--control-lg)) / 2 - var(--strip-start))); }
+.toolbar > #side-toggle { margin-left: var(--toggle-shift); }
 /* The view tabs start on the main column's line, or after the sidebar's button where that is further right (a rail
    beside the traffic lights). They give way first when the row is short, so nothing runs under the window's buttons. */
-.toolbar > #views { flex: 0 1 auto; min-width: 0; overflow: clip; overflow-clip-margin: var(--space-4); margin-left: max(0px, calc(var(--side-col) + var(--space-12) - var(--strip-start) - var(--control-lg) - var(--space-8))); transition: margin-left var(--dur-slow) var(--ease-standard); }
+.toolbar > #views { flex: 0 1 auto; min-width: 0; overflow: clip; overflow-clip-margin: var(--space-4); margin-left: max(0px, calc(var(--side-col) + var(--space-12) - var(--strip-start) - var(--toggle-shift) - var(--control-lg) - var(--space-8))); transition: margin-left var(--dur-slow) var(--ease-standard); }
 /* Segmented control and tab pill: one component (design system 2.9). The chosen segment is the one its ARIA state names. */
 .seg { position: relative; isolation: isolate; display: inline-flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-full); background: var(--surface-track); box-shadow: var(--rim); }
 .seg > button { min-height: var(--control-sm); padding: 0 var(--space-12); border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); font-size: var(--fs-caption); font-weight: 500; white-space: nowrap; cursor: pointer; transition: color var(--dur-base); }
