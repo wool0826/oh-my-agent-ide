@@ -74,6 +74,16 @@ flow('the side terminal runs lines apart from the chat in the dock under it, rec
   await app.key('Backquote', '`', 192, 2);
   await app.until("!document.querySelector('#tm').hidden && document.activeElement?.id === 'tm-input'", 'the open terminal');
   assert.equal(await app.evaluate("return document.querySelector('#dock-tab-tm').getAttribute('aria-selected');"), 'true');
+  // In use, the dock gets a grey edge and its input no accent line under it (T-0169).
+  const edges = await app.evaluate(`const dock = document.querySelector('#dock'), c = document.querySelector('#tm .tm-c');
+    const on = { dock: getComputedStyle(dock).boxShadow, line: getComputedStyle(c).boxShadow };
+    document.querySelector('#chat-input').focus();
+    const off = { dock: getComputedStyle(dock).boxShadow, line: getComputedStyle(c).boxShadow };
+    document.querySelector('#tm-input').focus();
+    return { on, off };`);
+  assert.notEqual(edges.on.dock, edges.off.dock, `the dock's edge shows the focus: ${JSON.stringify(edges)}`);
+  assert.equal(edges.on.line, edges.off.line, `no line under the input on focus: ${JSON.stringify(edges)}`);
+  assert.ok(!edges.on.line.includes('-2px'),`no accent line under the input: ${edges.on.line}`);
   // The dock covers nothing: the chat ends above it, and it ends above the composer.
   const layout = await app.evaluate("const r = (s) => document.querySelector(s).getBoundingClientRect(); return { chat: r('#chat-thread').bottom, top: r('#dock').top, bottom: r('#dock').bottom, composer: r('#chat-form').top };");
   assert.ok(layout.chat <= layout.top + 0.5, `the chat ends above the dock: ${JSON.stringify(layout)}`);

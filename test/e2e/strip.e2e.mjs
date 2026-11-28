@@ -24,9 +24,12 @@ const PROBE = `window.__strip = (want) => {
     near('back button left', box(settings.querySelector('.sback')).left, from);
     near('settings nav top', box(settings.querySelector('.snav')).top, s.bottom);
   } else {
-    // The panels and the main column: below the strip, never beside it.
+    // The panels and the main column: below the strip, never beside it; the panels and the main column's contents a
+    // --space-12 gap lower (T-0169).
     const main = document.querySelector('.content.view:not([hidden])'), ins = document.querySelector('.inspector.view:not([hidden])'), side = document.querySelector('.sidebar');
-    near('left sidebar top', box(side).top, s.bottom); near('main column top', box(main).top, s.bottom); near('right sidebar top', box(ins).top, s.bottom);
+    const gap = parseFloat(getComputedStyle(document.body).getPropertyValue('--space-12'));
+    near('left sidebar top', box(side).top, s.bottom + gap); near('main column top', box(main).top, s.bottom); near('right sidebar top', box(ins).top, s.bottom + gap);
+    near('main column inset', parseFloat(getComputedStyle(main).paddingTop), gap);
     if (document.querySelector('#win').classList.contains('side-min')) near('rail right', box(side).right, 60);
     // What the strip holds: in order, apart, and between its two ends.
     const kids = [...bar.children].filter(shown);

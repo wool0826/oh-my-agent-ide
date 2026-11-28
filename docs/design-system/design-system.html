@@ -1094,10 +1094,10 @@ table.t td code { white-space: nowrap; }
 /* Main-screen mockup */
 .mock-wrap { overflow-x: auto; padding: var(--space-8) 0 var(--space-24); }
 .mock { position: relative; width: 100%; min-width: 1080px; height: 760px; border-radius: 12px; overflow: hidden; background: var(--bg-backdrop); box-shadow: var(--shadow-5), 0 0 0 .5px var(--border-default); display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--inspector-w); grid-template-rows: var(--toolbar-h) minmax(0, 1fr); }
-.mock .sidebar { grid-row: 2; grid-column: 1; margin: 0 0 var(--panel-inset) var(--panel-inset); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.mock .sidebar { grid-row: 2; grid-column: 1; margin: var(--space-12) 0 var(--panel-inset) var(--panel-inset); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .mock .side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-10); display: flex; flex-direction: column; gap: var(--space-16); }
 .mock .side-foot { padding: var(--space-8) var(--space-10) var(--space-10); }
-.mock .toolbar { grid-row: 1; grid-column: 1 / 4; display: flex; align-items: center; gap: var(--space-8); padding: 0 150px 0 var(--space-12); min-width: 0; border-bottom: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--surface-panel) 55%, transparent); }
+.mock .toolbar { grid-row: 1; grid-column: 1 / 4; display: flex; align-items: center; gap: var(--space-8); padding: 0 150px 0 var(--space-12); min-width: 0; }
 .mock .toolbar .tbtn { flex: none; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 0; border-radius: var(--radius-full); background: none; color: var(--text-secondary); display: grid; place-items: center; }
 .mock .toolbar .tbtn svg { width: var(--icon-md); height: var(--icon-md); }
 .mock .toolbar #mock-views { margin-left: calc(var(--sidebar-w) - var(--control-lg) - var(--space-8)); }
@@ -1105,10 +1105,10 @@ table.t td code { white-space: nowrap; }
 .mock .caption-btns span { width: 46px; display: grid; place-items: center; color: var(--text-secondary); }
 .mock .caption-btns svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
 .mock .toolbar .usage { margin-left: auto; }
-.mock .content { grid-row: 2; grid-column: 2; position: relative; min-height: 0; display: flex; flex-direction: column; }
+.mock .content { grid-row: 2; grid-column: 2; position: relative; min-height: 0; padding-top: var(--space-12); display: flex; flex-direction: column; }
 .mock .content .thread { flex: 1; overflow-y: auto; padding: var(--space-12) var(--space-20) 100px; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
 .mock .content .composer { position: absolute; left: var(--space-16); right: var(--space-16); bottom: var(--space-16); z-index: var(--z-composer); }
-.mock .inspector { grid-row: 2; grid-column: 3; margin: 0 var(--panel-inset) var(--panel-inset); min-height: 0; overflow-y: auto; padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-10); }
+.mock .inspector { grid-row: 2; grid-column: 3; margin: var(--space-12) var(--panel-inset) var(--panel-inset); min-height: 0; overflow-y: auto; padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-10); }
 .mock .lst { padding: 0 var(--space-12) var(--space-12); display: flex; flex-direction: column; overflow-y: auto; }
 .mock [data-view][hidden] { display: none !important; }
 .mock .searchbar { margin: 0 var(--space-20) var(--space-10); }
