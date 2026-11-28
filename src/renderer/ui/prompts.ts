@@ -172,8 +172,8 @@ const newBtn = () => `<button type="button" class="btn pr-new" data-action="prom
 /** The Memos tab: its two segments, then the memos or the prompts. */
 export function memoTabHtml(memos: () => string) {
   const n = S?.prompts.length ?? 0;
-  const tab = (v: 'memo' | 'prompt', label: string) => `<button type="button" role="tab" data-action="memo-seg" data-v="${v}" aria-selected="${ui.memoSeg === v}">${label}</button>`;
-  const seg = `<div class="seg memo-seg" role="tablist" aria-label="${t('ins.tabMemo')}">${tab('memo', t('ins.tabMemo'))}${tab('prompt', `${t('prompt.tab')}${n ? ` <span class="count">${n}</span>` : ''}`)}</div>`;
+  const tab = (v: 'memo' | 'prompt', label: string) => `<button type="button" data-action="memo-seg" data-v="${v}" aria-pressed="${ui.memoSeg === v}">${label}</button>`;
+  const seg = `<div class="seg memo-seg" role="group" aria-label="${t('ins.tabMemo')}">${tab('memo', t('ins.tabMemo'))}${tab('prompt', `${t('prompt.tab')}${n ? ` <span class="count">${n}</span>` : ''}`)}</div>`;
   return seg + (ui.memoSeg === 'prompt' ? promptsHtml() : memos());
 }
 
