@@ -201,7 +201,7 @@ body { --strip-start: var(--space-12); --strip-end: var(--space-12); }
 /* No background transition on the buttons: a control drawn anew showed its chosen button's own fill first and
    faded it out under the sliding pill, so a tab switch showed two pills. The pill alone marks the choice. */
 @media (prefers-reduced-motion: reduce) { .glide-ready::before { transition: none; } .glide-move::before { animation: none; } }
-.usage { margin-left: auto; box-sizing: border-box; height: var(--control-lg); padding: 0 var(--space-4); border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); display: flex; align-items: center; justify-content: center; gap: var(--space-8); }
+.usage { margin-left: auto; box-sizing: border-box; height: var(--control-lg); padding: 0 var(--space-4); border-radius: var(--radius-full); background: var(--surface-panel); -webkit-backdrop-filter: var(--blur-panel); backdrop-filter: var(--blur-panel); box-shadow: var(--rim), var(--shadow-2); display: flex; align-items: center; justify-content: safe center; gap: var(--space-8); }
 .toolbar > .usage { flex: 0 1 auto; min-width: var(--control-lg); overflow: hidden; }
 /* One ring per account: the 5-hour window outside, the 7-day window inside. Its name and numbers are in the popover (.upop). */
 .usage:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
