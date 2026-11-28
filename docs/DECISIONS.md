@@ -1308,3 +1308,17 @@ The survey is in [RESEARCH-agent-ides.md](RESEARCH-agent-ides.md).
     - A stepper's buttons were named "-" and "+" (read aloud as "minus" or not at all) and had no tooltip: now
       "Decrease" / "Increase" (`set.stepDown`, `set.stepUp`). The account's "…" button shows its name as a tooltip.
     - Rejected: dropping the early return in `updateSendButton` (it is there so a redraw does not rebuild the button).
+260. **A PowerShell line goes in encoded, so what PowerShell says about a line it cannot read is readable** (T-0163).
+    - Found in the UI audit on a Korean Windows: `echo a && echo b` (not valid in Windows PowerShell) or an open quote
+      showed a block of broken characters in the terminal and under a "!" line. PowerShell reads the whole of
+      `-Command` before running any of it, so the error was written before the line that switches the output to UTF-8
+      had run, in the console's code page (CP949), and the app reads the output as UTF-8.
+    - `psLine` hands the line and the exit-code tail over as base64 and builds a script block from it after the UTF-8
+      line; a line that cannot be read prints PowerShell's own message and ends with 1, as before. The block is
+      dot-sourced, so it runs in the scope the profile was loaded into, and exit codes are the same as before
+      (compared over 18 lines: native exit codes, `exit N`, errors, `throw`, several lines, Korean output).
+    - A line whose base64 is over `PS_ENCODED_MAX` (24,000 characters) goes as it did: Windows takes about 32,000
+      characters for a command line.
+    - Rejected: decoding the output as the console's code page (the app cannot know which part is in which encoding),
+      `chcp 65001` before PowerShell (a second process per line, and it does not change what Windows PowerShell writes
+      for a parse error), `-EncodedCommand` (it turns the output into CLIXML for a non-interactive host).
