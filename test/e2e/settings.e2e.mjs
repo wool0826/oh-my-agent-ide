@@ -231,7 +231,7 @@ flow('do-not-disturb hours are set in Settings and kept as times', {}, async (ap
     await app.key('Escape', 'Escape', 27);
     await app.until(`return ${shut};`, 'the popover closed before the narrow window');
     await app.size(900, 427);
-    await app.until("getComputedStyle(document.querySelector('#usage .ulim')).display === 'none'", 'no reset time beside the rings in a narrow window');
+    await app.until("[...document.querySelectorAll('#usage .ulim')].every((l) => getComputedStyle(l).display === 'none')", 'no reset time beside the rings in a narrow window');
     await app.hover('#usage .uacct');
     await app.until("!document.querySelector('#usage-pop').hidden && !document.querySelector('#usage-pop').classList.contains('out')", 'the popover open in the short window');
     assert.deepEqual(await app.evaluate(`const p = document.querySelector('#usage-pop'), b = p.querySelector('.ubtn');
