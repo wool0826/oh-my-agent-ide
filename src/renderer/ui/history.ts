@@ -1,5 +1,6 @@
 // Screen history: every navigation goes through go(), so Back and Forward can retrace it.
 import { History, NavInput, sameScreen, type NavDir, type NavSource, type Screen } from '../../shared/history';
+import { onePerPane } from '../../shared/split';
 import { autosize, setView, swapDraft } from '../app';
 import { closePop } from './controls';
 import { $, call, isMac, S, ui, worker } from './core';
@@ -13,7 +14,7 @@ export const nav = new History<Screen>(sameScreen);
 export const navInput = new NavInput();
 
 export function screen(): Screen {
-  return { view: ui.view, wSel: ui.wSel, wOpen: ui.wOpen, wTab: ui.wTab, repoSel: ui.repoSel, memSel: ui.memSel, wFilter: ui.wFilter };
+  return { view: ui.view, wSel: ui.wSel, wOpen: ui.wOpen, wTab: ui.wTab, repoSel: ui.repoSel, memSel: ui.memSel, wFilter: ui.wFilter, pair: ui.pair };
 }
 
 /**
@@ -32,13 +33,18 @@ export function go(next: Partial<Screen>) {
 /** Puts a screen on the window, loading what it needs that `from` did not show. */
 export function show(to: Screen, from: Screen) {
   const conv = (s: Screen) => (s.view === 'worker' && s.wOpen ? s.wSel : null);
+  // One Worker is never in both panes (15A): opening the other pane's selects that pane.
+  to = { ...to, ...onePerPane(from, to) };
   Object.assign(ui, to);
   if (to.wSel !== from.wSel) swapDraft(from.wSel, to.wSel);
   const opened = conv(to);
-  if (opened && opened !== conv(from)) { ui.lastLogKey = ''; void loadLog(opened); }
-  if (to.wTab !== from.wTab) ui.lastLogKey = '';
+  // The other pane's Worker, selected, is on screen already: its conversation and changes stay as they are drawn.
+  const beside = !!opened && from.pair?.id === opened && conv(from) !== null;
+  if (opened && opened !== conv(from) && !(beside && ui.logs.has(opened))) { ui.lastLogKey = ''; void loadLog(opened); }
+  if (to.wTab !== from.wTab || opened !== conv(from)) ui.lastLogKey = '';
   // Fresh changes each time a Worker's Changes tab comes on screen.
-  if (to.wTab === 'changes' && to.wSel && (from.wTab !== 'changes' || from.wSel !== to.wSel)) ui.diffs.delete(to.wSel);
+  const shown = beside && from.pair?.tab === to.wTab;
+  if (to.wTab === 'changes' && to.wSel && (from.wTab !== 'changes' || from.wSel !== to.wSel) && !shown) ui.diffs.delete(to.wSel);
   if (to.memSel !== from.memSel) {
     ui.memText = '';
     if (to.memSel) void readMemFile(to.memSel);
@@ -56,6 +62,7 @@ export async function readMemFile(id: string) {
 /** What a saved screen looks like now: a removed repository is deselected; a Worker that is gone too, and its conversation dropped. */
 export function stillThere(s: Screen): Screen | null {
   if (s.repoSel && !S?.repos.some((r) => r.name === s.repoSel)) s = { ...s, repoSel: null };
+  if (s.pair && !worker(s.pair.id)) s = { ...s, pair: null };
   if (!s.wSel || worker(s.wSel)) return s;
   return s.view === 'worker' && s.wOpen ? null : { ...s, wSel: null, wOpen: false };
 }

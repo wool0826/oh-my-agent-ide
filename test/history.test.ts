@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ECHO_MS, HISTORY_MAX, History, NavInput, restoreScreen, sameScreen, type Screen } from '../src/shared/history';
 
 function scr(patch: Partial<Screen> = {}): Screen {
-  return { view: 'chat', wSel: null, wOpen: false, wTab: 'chat', repoSel: null, memSel: null, wFilter: null, ...patch };
+  return { view: 'chat', wSel: null, wOpen: false, wTab: 'chat', repoSel: null, memSel: null, wFilter: null, pair: null, ...patch };
 }
 
 const chat = scr();

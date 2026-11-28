@@ -22,9 +22,9 @@ export function isOpen(wid: string, f: DiffFile) {
 }
 
 /** The layout this pane can show now, and whether side by side is possible at its width. */
-export function layoutNow() {
+export function layoutNow(root = $('#ws-diff')) {
   // A pane not laid out yet (0 wide) is drawn in one column; the width watcher redraws it once it has a width.
-  return diffLayout(ui.diffLayout, $('#ws-diff').clientWidth);
+  return diffLayout(ui.diffLayout, root.clientWidth);
 }
 
 const tick = `<svg class="xck-t" aria-hidden="true"><use href="#s-tick"/></svg>`;
@@ -168,12 +168,11 @@ export function showFocused() {
  * Side by side turns on and off as the pane crosses 900 wide: the tab redraws when what is drawn no longer fits
  * the width (read from the drawn switch, so a redraw at another width in between cannot leave it stale).
  */
-export function watchDiffWidth(redraw: () => void) {
-  const root = $('#ws-diff');
+export function watchDiffWidth(redraw: () => void, root = $('#ws-diff')) {
   new ResizeObserver(() => {
     if (root.hidden || !root.clientWidth) return;
     const btn = root.querySelector<HTMLButtonElement>('[data-action="diff-layout"][data-v="split"]');
-    if (btn && btn.disabled === layoutNow().canSplit) redraw();
+    if (btn && btn.disabled === layoutNow(root).canSplit) redraw();
   }).observe(root);
 }
 

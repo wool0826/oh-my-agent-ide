@@ -40,6 +40,10 @@ export const en = {
   'open.copyPath': 'Copy path',
   'open.copyBranch': 'Copy branch name',
   'open.worker': 'Open Worker',
+  'pane.beside': 'Open beside',
+  'pane.close': 'Close pane',
+  'pane.to': 'Message {id}',
+  'pane.narrow': 'Window too narrow for side by side',
   'open.gone': 'No worktree · cleaned up after merge',
   'open.failed': "Couldn't open {name} · {prog} not found",
   'open.failedMsg': "Couldn't open {name} · {msg}",
@@ -92,6 +96,7 @@ export const en = {
   'ws.tabChat': 'Conversation',
   'ws.tabChanges': 'Changes',
   'ws.tabSummary': 'Summary',
+  'ws.tabChangesShort': 'Changes',
 
   // Why a queued task waits (shared/queueWhy.ts) and its card in the Worker view.
   'q.title': 'Waiting',
@@ -223,6 +228,10 @@ export const ko: Record<keyof typeof en, string> = {
   'open.copyPath': '경로 복사',
   'open.copyBranch': '브랜치 이름 복사',
   'open.worker': 'Worker 열기',
+  'pane.beside': '옆에 열기',
+  'pane.close': '칸 닫기',
+  'pane.to': '{id}에게 보내기',
+  'pane.narrow': '창이 좁아 나란히 볼 수 없음',
   'open.gone': '워크트리 없음 · 머지 후 정리됨',
   'open.failed': '{name}를 열지 못함 · {prog} 명령 없음',
   'open.failedMsg': '{name}를 열지 못함 · {msg}',
@@ -274,6 +283,7 @@ export const ko: Record<keyof typeof en, string> = {
   'ws.tabChat': '대화',
   'ws.tabChanges': '변경 사항',
   'ws.tabSummary': '요약',
+  'ws.tabChangesShort': '변경',
 
   'q.title': '대기 중',
   'q.why': '이유',

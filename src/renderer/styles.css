@@ -1279,6 +1279,7 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .toast { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--space-12); max-width: 100%; background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); color: var(--text-primary); padding: var(--space-8) var(--space-16); border-radius: var(--radius-full); font-size: var(--fs-caption); box-shadow: var(--rim-strong), var(--shadow-3); }
 .toast > span { min-width: 0; overflow-wrap: anywhere; }
 .toast > .ic { --c: var(--state-done); flex: none; width: var(--icon-md); height: var(--icon-md); margin-right: calc(var(--space-6) - var(--space-12)); }
+.toast > .ic.k-err { --c: var(--warning); }
 .toast.err { color: var(--danger-text); padding-right: var(--space-8); }
 .toast .linkbtn { flex: none; font-weight: 600; }
 .toast .toast-x { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
@@ -1325,6 +1326,30 @@ kbd { font: inherit; font-size: var(--fs-caption2); font-weight: 600; padding: 0
 .ebadge.e-idea { background: var(--editor-idea); }
 .ebadge.e-custom { background: var(--surface-thumb); color: var(--text-primary); box-shadow: var(--rim); }
 .shead .ws-tabs[hidden] { display: none; }
+/* Two Workers side by side (item 15A): two panes, the selected one ringed, the other lit under the pointer (a click
+   selects it). Each header is compact: title, tabs, the open button as an icon, ⋯, close. */
+.content.panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-8); padding: 0 var(--space-8) var(--space-8) 0; }
+.content.panes > .wk-session { min-width: 0; border-radius: var(--radius-xl); background: color-mix(in srgb, var(--surface-panel) 60%, transparent); box-shadow: var(--rim); overflow: hidden; }
+.content.panes > #wk-session { box-shadow: var(--rim), inset 0 0 0 2px var(--accent); }
+.content.panes.pair-left > .wk-pair { order: -1; }
+.content.panes > .wk-pair:hover { background: linear-gradient(var(--surface-hover), var(--surface-hover)), color-mix(in srgb, var(--surface-panel) 60%, transparent); }
+.content.panes .shead { gap: var(--space-6); padding: var(--space-6) var(--space-6) var(--space-6) var(--space-12); }
+.content.panes .shead > [data-action="close-session"] { display: none; }
+.content.panes .shead > .st { order: 1; }
+.content.panes .shead > .ws-tabs { order: 2; }
+.content.panes .shead > .osplit { order: 3; }
+.content.panes .shead > .btn-icon { order: 4; }
+.content.panes .shead > .pclose { order: 5; }
+.content.panes .shead .st b { font-size: var(--fs-caption); }
+.content.panes .ws-tabs > button { padding: 0 var(--space-8); font-size: var(--fs-caption2); }
+.content.panes .osplit-l { display: none; }
+.content.panes .osplit > .osplit-main { padding-right: var(--space-6); }
+.content.panes :is(.thread, .diffv) { padding-left: var(--space-12); padding-right: var(--space-12); }
+.content.panes .composer { left: var(--space-8); right: var(--space-8); bottom: var(--space-8); }
+.wk-pair .composer { cursor: text; }
+.wk-pair .send { opacity: .4; }
+.wp-input { flex: 1; min-width: 0; align-self: center; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.wp-input:empty::before { content: attr(data-ph); color: var(--text-tertiary); }
 
 /* worker changes */
 .diffv { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-10) var(--space-20) calc(var(--composer-h, 46px) + 30px); display: flex; flex-direction: column; gap: var(--space-10); }

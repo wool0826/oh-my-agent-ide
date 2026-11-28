@@ -41,6 +41,7 @@ import { applyFont, applyTheme, closeSettings, drawUpdate, filterPanes, glideAll
 import { drawTelegram, telegramAction, telegramChange } from './ui/telegram';
 import { renderSleep, setSleep } from './ui/sleep';
 import { copyValue, folderThere, loadEditors, openFolder, openMenuHtml, rowOpenItems } from './ui/openWith';
+import { besideKey, bindPanes, closePaneOf, keepPanes, openBesideOf, paneKey, renderPair, toggleBesideKey } from './ui/split';
 import { bindDiffKeys, foldAll, goTo, setLayout, setSeen, showFocused, startFileComment, toggleFold, watchDiffWidth } from './ui/diffView';
 import { closePublish, copyExport, exportMenuHtml, exportPartChanged, openPublish, publishGo, publishOpen, saveExport } from './ui/exportMd';
 import { applyPanels, closeDrawer, hideUsagePop, hideUsageSoon, hoverUsage, renderAccountsOff, renderSidebar, renderUsage, showUsagePop, togglePanel, toggleUsagePin, usagePop } from './ui/sidebar';
@@ -110,7 +111,7 @@ export function renderAll(force = false, parts: ReadonlySet<Part> | null = null)
     if (draw('side')) renderSide();
     if (draw('term')) renderTerm();
   }
-  if (ui.view === 'worker' && draw('workers')) { renderWorkerList(); renderSession(force); renderWorkerInspector(); }
+  if (ui.view === 'worker' && draw('workers')) { keepPanes(); renderWorkerList(); renderSession(force); renderPair(force); renderWorkerInspector(); }
   if (ui.view === 'repo' && draw('repos')) renderRepos();
   if (ui.view === 'memory' && force) renderMemory();
   if (focused && focusKey && !focused.isConnected && document.activeElement === document.body) focusRoot?.querySelector<HTMLElement>(focusKey)?.focus({ preventScroll: true });
@@ -451,6 +452,9 @@ export async function act(el: HTMLElement, e: Event) {
       break;
     }
     case 'open-worker': openWorker(id); break;
+    // Two Workers side by side (item 15A).
+    case 'open-beside': closeCtxMenu(); openBesideOf(id); break;
+    case 'pane-close': closePaneOf(el.dataset.v === 'pair' ? 'pair' : 'sel'); break;
     // A Worker's folder in the editor, a terminal or the file manager (item 3A).
     case 'open-editor': closeCtxMenu(); void openFolder(id, 'editor', () => openSettings('general')); break;
     case 'open-with': void openFolder(id, el.dataset.v ?? 'editor', () => openSettings('general')); break;
@@ -960,6 +964,9 @@ export function closeCtxMenu(refocus = false) {
 /** What is written for each Worker that is not on screen: the Worker composer is one field for all of them. */
 const wsDrafts = new Drafts<NonNullable<typeof ui.reply.ws>>();
 
+/** What is written for Worker `id` while it is not the selected one: the pane beside shows it (15A). */
+export const draftOf = (id: string) => wsDrafts.peek(id);
+
 /**
  * Another Worker is selected: the composer's text, files and reply stay with the Worker it leaves, and what was
  * written for the one it comes to is back.
@@ -1029,7 +1036,7 @@ async function restoreSession() {
     drawComposerChips('chat');
     autosize(input);
   }
-  const to = restoreScreen(saved.screen, { worker: (id) => !!worker(id), repo: (name) => !!S?.repos.some((r) => r.name === name) });
+  const to = restoreScreen(saved.screen, { worker: (id) => !!worker(id), repo: (name) => !!S?.repos.some((r) => r.name === name), archived: (id) => worker(id)?.status === 'archived' });
   if (to) show(to, { ...screen(), wSel: null });
   sessionKept = JSON.stringify(sessionNow());
 }
@@ -1480,6 +1487,15 @@ export function init() {
       if (!covered && id) void openFolder(id, 'editor', () => openSettings('general'));
       return;
     }
+    // Ctrl/Cmd+\: the sidebar Worker row with the focus beside the Worker on screen; elsewhere, a second pane on or off (item 15A).
+    if (mod && !e.shiftKey && !e.altKey && e.code === 'Backslash') {
+      e.preventDefault();
+      const row = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[data-ctx="worker"]')?.dataset.id;
+      if (!covered) { if (row) openBesideOf(row); else toggleBesideKey(); }
+      return;
+    }
+    // F6 and Shift+F6: the other pane.
+    if (e.key === 'F6' && !mod && !e.altKey && !covered && paneKey()) { e.preventDefault(); return; }
     if (mod && /^[1-4]$/.test(e.key) && covered) e.preventDefault();
     else if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); go({ view: (['chat', 'worker', 'repo', 'memory'] as const)[Number(e.key) - 1] }); }
     const dir = navKey(e);
@@ -1513,7 +1529,7 @@ export function init() {
       const w = worker(id);
       const cur = w ? workerTask(w) : null;
       menu.dataset.for = 'worker';
-      menu.innerHTML = `${w ? rowOpenItems(w) : ''}<button class="menu-item" role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${sym('s-open')}<span>${t('open.worker')}</span></button>${w && canStop(w, cur) ? `<button class="menu-item is-danger" role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${sym('s-stop16')}<span>${t('wk.stop')}</span></button>` : ''}`;
+      menu.innerHTML = `${w ? rowOpenItems(w) : ''}<button class="menu-item" role="menuitem" data-action="open-worker" data-id="${esc(id)}" data-close>${sym('s-open')}<span>${t('open.worker')}</span></button><button class="menu-item" role="menuitem" data-action="open-beside" data-id="${esc(id)}" data-close>${sym('s-side-r')}<span>${t('pane.beside')}</span><small>${besideKey()}</small></button>${w && canStop(w, cur) ? `<button class="menu-item is-danger" role="menuitem" data-action="worker-stop" data-id="${esc(id)}" data-close>${sym('s-stop16')}<span>${t('wk.stop')}</span></button>` : ''}`;
       openCtxMenu(x, y);
       return;
     }
@@ -1610,6 +1626,8 @@ export function init() {
   const diffWorker = () => (ui.view === 'worker' && ui.wOpen && ui.wTab === 'changes' ? worker(ui.wSel) ?? null : null);
   bindDiffKeys(diffWorker, renderDiff);
   watchDiffWidth(() => { const w = diffWorker(); if (w) renderDiff(w); });
+  watchDiffWidth(() => renderPair(true), $('#wp-diff'));
+  bindPanes();
   ide.onTermState(setTermView);
   void call('term:state').then((v) => { if (v) setTermView(v); });
   ide.onSideState(setSideView);
@@ -1620,6 +1638,7 @@ export function init() {
     // The open Worker's new messages are read out; its thread is not a live region (L14).
     if (ui.view === 'worker' && ui.wOpen && ui.wSel === id && item.from !== 'user') announce(item.text);
     if (ui.view === 'worker' && ui.wSel === id) renderSession();
+    if (ui.view === 'worker' && ui.pair?.id === id) renderPair();
   });
   ide.onOpenResult(gotoResult);
   ide.onUsageOpen(() => { if (!usagePop.pinned) toggleUsagePin(false); });

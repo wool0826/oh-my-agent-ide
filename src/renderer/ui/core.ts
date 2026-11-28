@@ -8,6 +8,7 @@ import { currentTask } from '../../shared/currentTask';
 import type { SideView } from '../../shared/side';
 import type { TriggerChoice } from '../../shared/automations';
 import type { DiffLayout } from '../../shared/diffView';
+import type { Pair } from '../../shared/split';
 import type { TermView } from '../../shared/terminal';
 import type { PtyView } from '../../shared/pty';
 import { tr, type Key } from '../../shared/i18n';
@@ -120,12 +121,14 @@ export function store(key: string, on: boolean) {
 export type Pane = 'accounts' | 'general' | 'display' | 'alerts' | 'memory' | 'models';
 
 export const ui = {
-  // The screen fields (Screen in shared/history: view, wSel, wOpen, wTab, repoSel, memSel, wFilter):
+  // The screen fields (Screen in shared/history: view, wSel, wOpen, wTab, repoSel, memSel, wFilter, pair):
   // a user navigation changes them through go(), so Back and Forward can retrace it.
   view: 'chat' as View,
   wSel: null as string | null,
   wOpen: false,
   wFilter: null as WorkerFilter | null,
+  /** The second Worker pane beside the selected one (item 15A): its Worker, its tab, its side. */
+  pair: null as Pair | null,
   repoSel: null as string | null,
   /** The Repositories view's add form is open in its right panel, and whether an add is under way (a clone can take minutes). */
   repoAdd: false,

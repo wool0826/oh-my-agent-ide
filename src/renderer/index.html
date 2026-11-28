@@ -168,6 +168,7 @@
         <div class="osplit" id="ws-open"></div>
         <button type="button" class="btn btn-icon btn-lg" id="ws-more" data-action="export-menu" aria-haspopup="menu" aria-expanded="false" data-i18n-tip="export.menu"><svg aria-hidden="true"><use href="#s-more"/></svg></button>
         <div class="seg seg-lg ws-tabs" id="ws-tabs" role="tablist"></div>
+        <button type="button" class="btn btn-icon pclose" id="ws-close" data-action="pane-close" data-v="sel" data-i18n-tip="pane.close" hidden><svg aria-hidden="true"><use href="#s-x"/></svg></button>
       </div>
       <div class="thread" id="ws-thread" role="tabpanel" aria-labelledby="ws-tab-chat"></div>
       <div class="diffv" id="ws-diff" role="tabpanel" aria-labelledby="ws-tab-changes" hidden></div>
@@ -181,6 +182,14 @@
         <textarea class="field input" id="ws-input" rows="1" aria-label="Message to the Worker" data-i18n-aria="aria.wsMessage"></textarea>
         <button class="send" type="submit" id="ws-send" aria-label="Send" data-i18n-tip="send"><svg class="sym"><use href="#s-up"/></svg></button>
       </form>
+    </div>
+    <!-- The Worker beside the selected one (item 15A): drawn by ui/panes.ts; a click in it selects it. -->
+    <div class="wk-session wk-pair" id="wk-pair" hidden>
+      <div class="shead" id="wp-head"></div>
+      <div class="thread" id="wp-thread"></div>
+      <div class="diffv" id="wp-diff" hidden></div>
+      <div class="diffv" id="wp-sum" hidden></div>
+      <div class="composer" id="wp-form"><div class="field input wp-input" id="wp-input"></div><span class="send" aria-hidden="true"><svg class="sym"><use href="#s-up"/></svg></span></div>
     </div>
   </main>
   <aside class="inspector view" aria-label="Right sidebar" data-i18n-aria="ins.tabs" data-view="worker" id="wk-ins" hidden></aside>

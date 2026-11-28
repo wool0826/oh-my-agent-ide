@@ -1,7 +1,9 @@
 // End-to-end flows: Workers and their tasks: hand-outs, results, failures, slots, compaction and what is typed for each.
 // Each flow starts the built app on its own empty profile with fake agents and a stand-in for gh. Run with `npm run e2e`.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { flow, waitFor } from './harness.mjs';
 
 const task = (state, title) => state.tasks.find((x) => x.title === title);
@@ -208,6 +210,59 @@ flow('what is typed for one Worker waits for that Worker while another one is op
   assert.equal(await app.evaluate("document.querySelector('#ws-thread').innerText.includes('For the second')"), false);
   await open(b);
   assert.equal(await typed(), '');
+});
+
+flow('two Workers side by side: Ctrl+\\ opens one beside, F6 and a click switch, a narrow window shows one, ✕ closes, a restart brings them back', { repos: ['demo'] }, async (app) => {
+  const mod = process.platform === 'darwin' ? 4 : 2;
+  await app.size(1440, 860);
+  await app.say('@fake task demo Left\n@@fake write src/left.ts export const L = 1;\n@@fake result Done.\n@fake task - Right\n@@fake result Done.');
+  await app.until("document.querySelectorAll('#chat-ins .res').length >= 2", 'both tasks done');
+  await app.click('#side [data-action="done-toggle"]');
+  await app.until("document.querySelectorAll('#side [data-action=\"open-worker\"]').length >= 2", 'both Workers in the sidebar');
+  const [a, b] = (await app.state()).workers.map((w) => w.id);
+  const selected = (id) => `document.querySelector('#ws-title').textContent.startsWith('${id} ')`;
+  const beside = (id) => `!document.querySelector('#wk-pair').hidden && document.querySelector('#wp-head .st b')?.textContent.startsWith('${id} ')`;
+  await app.click(`#side [data-action="open-worker"][data-id="${b}"]`);
+  await app.until(selected(b), `the conversation of ${b}`);
+  await app.evaluate("const i = document.querySelector('#ws-input'); i.focus(); i.value = 'Kept for the right one'; i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return 1;");
+  // Ctrl+\ opens the last other Worker beside and selects it; the first one keeps its side and its draft.
+  await app.key('Backslash', '\\', 220, mod);
+  await app.until(`${selected(a)} && ${beside(b)}`, `${a} selected with ${b} beside it`);
+  await app.until("document.querySelector('#wp-input').textContent === 'Kept for the right one'", 'the draft in the other pane');
+  const leftOf = () => app.evaluate("return document.querySelector('#wk-pair').getBoundingClientRect().x > document.querySelector('#wk-session').getBoundingClientRect().x;");
+  assert.equal(await leftOf(), false, `${b} stays on the left`);
+  // F6 selects the other pane; the panes stay where they are.
+  await app.key('F6', 'F6', 117);
+  await app.until(`${selected(b)} && ${beside(a)}`, `${b} selected with ${a} beside it`);
+  assert.equal(await app.evaluate("document.querySelector('#ws-input').value"), 'Kept for the right one');
+  assert.equal(await leftOf(), true, `${a} stays on the right`);
+  // A click in the other pane selects it, with the tab it was clicked on.
+  await app.click('#wk-pair [data-action="pane-tab"][data-v="summary"]');
+  await app.until(`${selected(a)} && ${beside(b)} && !document.querySelector('#ws-sum').hidden`, `${a} selected on its summary`);
+  await app.click('#wp-thread');
+  await app.until(`${selected(b)} && ${beside(a)}`, `${b} selected again by a click`);
+  // Below the width two panes need, one shows; wide again, both are back.
+  await app.size(1000, 760);
+  await app.until(`document.querySelector('#wk-pair').hidden && ${selected(b)}`, 'one pane in a narrow window');
+  await app.size(1440, 860);
+  await app.until(beside(a), 'both panes again');
+  // A restart opens both as they were, the other pane loading its changes.
+  await app.click('#wk-pair [data-action="pane-tab"][data-v="changes"]');
+  await app.until(`${selected(a)} && !!document.querySelector('#ws-diff .df')`, `${a} selected on its changes`);
+  await app.key('F6', 'F6', 117);
+  await app.until(`${selected(b)} && ${beside(a)} && !document.querySelector('#wp-diff').hidden`, `${a} beside on its changes`);
+  await waitFor(() => { try { const pair = JSON.parse(fs.readFileSync(path.join(app.home, 'data', 'state.json'), 'utf8')).session?.screen?.pair; return pair?.id === a && pair.tab === 'changes'; } catch { return false; } }, 'The pair was never saved');
+  await app.restart();
+  await app.size(1440, 860);
+  await app.until(`${selected(b)} && ${beside(a)} && !!document.querySelector('#wp-diff .df')?.textContent.includes('src/left.ts')`, 'both panes after the restart, with the changes beside');
+  // ✕ closes the other pane; Ctrl+\ in a narrow window says why nothing opens.
+  await app.click('#wp-head [data-action="pane-close"]');
+  await app.until(`document.querySelector('#wk-pair').hidden && ${selected(b)}`, 'one pane after ✕');
+  await app.size(1000, 760);
+  await app.evaluate('document.activeElement?.blur(); return 1;');
+  await app.key('Backslash', '\\', 220, mod);
+  await app.until("[...document.querySelectorAll('.toast')].some((x) => x.textContent.includes('Window too narrow'))", 'the narrow window toast');
+  assert.equal(await app.evaluate("document.querySelector('#wk-pair').hidden"), true);
 });
 
 // A Worker running T-1, with T-2 chained after it on the same Worker (after_task_id): T-2 is last in its taskIds.
