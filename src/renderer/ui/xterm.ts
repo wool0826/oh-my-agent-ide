@@ -9,7 +9,8 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { PTY_EMPTY, PTY_REPLAY, PTY_SCROLLBACK, ptyFresh, ptyLabel, termFont, termKey, termTheme, type PtyTab, type PtyView } from '../../shared/pty';
 import { $, esc, ide, isMac, sym, t, toast, tryCall } from './core';
 
-interface Piece { d: string; end: number }
+/** A piece of a tab's output; `acked` when said drawn already (it came before the tab could draw it). */
+interface Piece { d: string; end: number; acked?: boolean }
 
 interface View {
   id: string;
@@ -114,7 +115,8 @@ function drop(v: View) {
 function put(v: View, p: Piece) {
   const fresh = ptyFresh(p.d, p.end, v.have);
   v.have = Math.max(v.have, p.end);
-  if (fresh) v.term.write(fresh, () => drawn(v.id, p.d.length)); else drawn(v.id, p.d.length);
+  const n = p.acked ? 0 : p.d.length;
+  if (fresh) v.term.write(fresh, () => drawn(v.id, n)); else drawn(v.id, n);
 }
 
 /** A tab found in the state (opened before a reload of the window): the end of its output, then what came since. */
@@ -130,7 +132,7 @@ function onData(id: string, d: string, end: number) {
   if (v && v.have >= 0) { put(v, { d, end }); return; }
   // Waiting for its replay, or for its view: kept, and said drawn now so the shell does not pause in between.
   const list = v ? v.early : (stray.get(id) ?? []);
-  list.push({ d, end });
+  list.push({ d, end, acked: true });
   let size = list.reduce((n, p) => n + p.d.length, 0);
   while (size > PTY_REPLAY && list.length > 1) size -= list.shift()!.d.length;
   if (!v) stray.set(id, list);
@@ -141,6 +143,8 @@ function onData(id: string, d: string, end: number) {
 function syncViews(before: PtyTab[]) {
   const ids = new Set(pty.view.tabs.map((x) => x.id));
   for (const v of [...views.values()]) if (!ids.has(v.id)) drop(v);
+  // Kept output is of a tab gone, or of one its replay below draws (none waits for pty:open now).
+  stray.clear();
   for (const tab of pty.view.tabs) {
     if (views.has(tab.id)) continue;
     const v = makeView(tab.id);
@@ -177,7 +181,6 @@ export async function newTab(repo: string): Promise<boolean> {
     const cols = v.term.cols, rows = v.term.rows;
     const r = await tryCall<PtyTab>('pty:open', { repo: repo || null, cols, rows });
     if (!r.ok) {
-      drop(v);
       // Off: the state says so, and the line mode shows.
       if (ptyOn()) toast(r.error, true);
       return false;
@@ -193,6 +196,7 @@ export async function newTab(repo: string): Promise<boolean> {
     ok = true;
     return true;
   } finally {
+    if (!ok) drop(v);
     pty.opening = false;
     syncViews(pty.view.tabs);
     hooks.render();

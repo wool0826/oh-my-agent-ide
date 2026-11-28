@@ -8,7 +8,7 @@ import { openPop, pop } from './controls';
 import { setTip } from './tip';
 import { dock, onDock, setDock } from './dock';
 import { cwdButton, outHtml } from './shell';
-import { bindPty, closeTab, focusPty, newTab, pty, ptyOn, renderPty } from './xterm';
+import { bindPty, focusPty, newTab, pty, ptyOn, renderPty } from './xterm';
 
 const REPO_KEY = 'oma.termRepo';
 
@@ -48,11 +48,6 @@ export async function newTermTab() {
 }
 
 /** The last tab closed puts the dock away first, so it never shows empty. */
-export function closeTermTab(id: string) {
-  if (pty.view.tabs.length === 1 && pty.view.tabs[0].id === id) hideTerm();
-  void closeTab(id);
-}
-
 /** Puts the dock away; the runs stay. */
 export function hideTerm(focusChat = true) {
   if (!term.open) return;

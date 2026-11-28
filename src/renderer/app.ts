@@ -41,8 +41,8 @@ import { initTip } from './ui/tip';
 import { copyText } from './ui/copy';
 import { cancelScriptEdit, editScript, pickScriptFolder, runScript, saveScript } from './ui/scripts';
 import { bindDock } from './ui/dock';
-import { bindTerm, closeTermTab, hideTerm, newTermTab, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
-import { clearPty, ptyOn, selectTab } from './ui/xterm';
+import { bindTerm, hideTerm, newTermTab, openTerm, pickTermFolder, renderTerm, setTermView, term, toggleTerm } from './ui/terminal';
+import { clearPty, closeTab, ptyOn, selectTab } from './ui/xterm';
 import { bindSide, closeSide, minimiseSide, openSide, pickSideFolder, pickSideModel, renderSide, setSideView, sideToDispatcher, sideToMemo, sq, toggleSide } from './ui/side';
 import { navItem, navItems, noteNav, rove } from './ui/panes';
 import { addDiffNote, archiveWorker, askRepoRemove, confirmCancel, confirmOk, olderLog, openCheckpoints, renderCancelDialog, renderComposerDecision, renderConfirmDialog, renderDiff, renderSession, renderWorkerInspector, renderWorkerList } from './ui/workers';
@@ -284,7 +284,7 @@ export async function act(el: HTMLElement, e: Event) {
     // The real terminal's tabs (ui/xterm.ts).
     case 'pty-new': void newTermTab(); break;
     case 'pty-tab': selectTab(id); break;
-    case 'pty-close': closeTermTab(id); break;
+    case 'pty-close': void closeTab(id); break;
     case 'tm-stop': (el as HTMLButtonElement).disabled = true; void tryCall('term:stop', id); break;
     case 'tm-cwd': pickTermFolder(el); break;
     case 'sq-close': void closeSide(); break;
