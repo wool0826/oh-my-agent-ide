@@ -41,6 +41,8 @@ jobs:
         run: npx electron-builder --dir --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # The terminal's native parts (node-pty) are outside the asar, without debug symbols, and run on macOS.
+      - run: node scripts/check-pack.mjs
 
   # The app itself, with fake agents and a stand-in for gh: no account, no network. test/e2e/shard.mjs deals the
   # test/e2e/*.e2e.mjs files out to the shards by their number of flows, so a new file joins one without a change here.

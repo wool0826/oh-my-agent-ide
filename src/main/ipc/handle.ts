@@ -16,6 +16,13 @@ export function handle(channel: string, fn: (...args: any[]) => any) {
   });
 }
 
+/** A channel the window sends to without waiting for an answer (keys typed into the terminal); an error is only logged. */
+export function listen(channel: string, fn: (...args: any[]) => void) {
+  ipcMain.on(channel, (_e, ...args) => {
+    try { fn(...args); } catch (e) { log.error(`ipc ${channel}`, e); }
+  });
+}
+
 /** What the handlers need from main/index.ts: the window, the state push and the parts that follow the settings. */
 export interface IpcContext {
   /** The folder of the built main script (for the quick message box's page). */

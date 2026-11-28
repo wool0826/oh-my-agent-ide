@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('ide', {
   onSideState: (fn: (v: unknown) => void) => ipcRenderer.on('side-state', (_e, v) => fn(v)),
   /** The side terminal's runs changed (main/terminal.ts). */
   onTermState: (fn: (v: unknown) => void) => ipcRenderer.on('term-state', (_e, v) => fn(v)),
+  /** The real terminal's tabs changed, and the output of one (main/pty.ts); `end` is where that piece ends in all of it. */
+  onPtyState: (fn: (v: unknown) => void) => ipcRenderer.on('pty-state', (_e, v) => fn(v)),
+  onPtyData: (fn: (id: string, d: string, end: number) => void) => ipcRenderer.on('pty-data', (_e, id, d, end) => fn(String(id), String(d), Number(end))),
+  /** Keys typed, a new size and output drawn: sent without waiting for an answer, on these channels only. */
+  ptySend: (what: 'write' | 'resize' | 'drawn', ...args: unknown[]) => { if (what === 'write' || what === 'resize' || what === 'drawn') ipcRenderer.send(`pty:${what}`, ...args); },
   onDoneAlert: (fn: () => void) => ipcRenderer.on('done-alert', () => fn()),
   onOpenResult: (fn: (taskId: string) => void) => ipcRenderer.on('open-result', (_e, id) => fn(String(id))),
   /** Back or Forward from an app command (mouse side buttons, Back keys). */

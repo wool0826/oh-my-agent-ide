@@ -14,6 +14,7 @@ import { workers } from './agents/workers';
 import { runs } from './runs';
 import { shell as shellRuns } from './shell';
 import { terminal } from './terminal';
+import { ptys } from './pty';
 import { side } from './side';
 import { automations } from './automations';
 import { startPrMonitor, checkPrsSoon, prWatchChanged, resumeCiQuestion } from './prmonitor';
@@ -224,6 +225,9 @@ async function boot() {
   store.on('workerLog', (id, item) => win?.webContents.send('workerLog', id, item));
   side.onChange((v) => win?.webContents.send('side-state', v));
   terminal.onChange((v) => win?.webContents.send('term-state', v));
+  ptys.init(here);
+  ptys.onChange((v) => win?.webContents.send('pty-state', v));
+  ptys.onData((id, d, end) => win?.webContents.send('pty-data', id, d, end));
   // Worker news worth a turn of its own: the Dispatcher starts one by itself.
   store.on('wake', () => dispatcher.wake());
   store.on('shell-done', () => dispatcher.shellDone());
@@ -302,6 +306,7 @@ else {
     runs.stopAll();
     shellRuns.stopAll();
     terminal.stopAll();
+    ptys.stopAll();
     side.reset();
     automations.stop();
     void telegram.halt();

@@ -20,7 +20,7 @@ import type { ChatItem, ShellRun } from '../shared/types';
  * The side terminal (main/terminal.ts) runs its lines the same way, kept apart from the chat.
  */
 /** PowerShell 7 on Windows, when it is installed: on the PATH or in its usual folder. Looked up each time (cheap). */
-function findPwsh(): string | null {
+export function findPwsh(): string | null {
   const dirs = [...(process.env.PATH ?? '').split(';'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7')];
   for (const d of dirs) {
     if (!d.trim()) continue;
