@@ -11,9 +11,9 @@ export interface Reply { who: string; quote: string; task?: string; max?: number
 /** A quote is a reminder of the message, not a copy of it. */
 export const QUOTE_MAX = 280;
 
-/** The message as it is quoted: one line, without its attached-files block or code fences, cut at QUOTE_MAX. */
+/** The message as it is quoted: one line, without its attached-files or mentions block or code fences, cut at QUOTE_MAX. */
 export function replyExcerpt(text: string, max = QUOTE_MAX): string {
-  const own = (parseReply(text)?.body ?? text).split('\n\n[Attached files]\n')[0];
+  const own = (parseReply(text)?.body ?? text).split('\n\n[Attached files]\n')[0].split('\n\n[Mentioned]\n')[0];
   const line = own.replace(/```[\w-]*\n?/g, ' ').replace(/\s+/g, ' ').trim();
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 }

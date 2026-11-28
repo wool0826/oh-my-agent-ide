@@ -24,7 +24,7 @@ import { linkUrl, linkify, reportLinks, shortUrls } from '../../shared/linkify';
 import { openPop } from './controls';
 import { layerClose, layerOpen } from './layer';
 import { sentFiles, shotsOf } from './shotview';
-import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, worker, workerTask } from './core';
+import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hhmm, ic, ide, inline, k, keepInputs, keepScroll, lang, markLoading, md, modelLabel, NEW_FROM, olderBtn, oneLine, paged, pillTone, markReplyTarget, prNum, queuedLabel, renderReply, replyable, ring, S, sentMentions, setThread, skel, sym, t, task, taskLabel, toast, ui, unmarkLoading, userText, watchTop, worker, workerTask } from './core';
 import { grantsHtml } from './repos';
 import { workerIcon } from './sidebar';
 import { refreshFind } from './find';
@@ -189,7 +189,7 @@ export function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem 
   switch (it.from) {
     case 'dispatcher': return `${prev?.from === 'dispatcher' ? '' : '<span class="who">Dispatcher</span>'}${replyable(`<div class="bub ai">${md(it.text)}</div>`, 'ws', 'Dispatcher', it.text, undefined, `log:${it.ts}`)}`;
     case 'worker': return `${prev?.from === 'worker' ? '' : `<span class="who">${esc(wid)}</span>`}${replyable(`<div class="bub wk">${workerReport(it.text, `rep:${wid}:${it.ts}`)}</div>`, 'ws', wid, it.text, undefined, `log:${it.ts}`)}`;
-    case 'user': return `<div class="bub me">${userText(it.text, (f) => sentFiles(f, `me:${wid}:${it.ts}`))}</div>`;
+    case 'user': return `${sentMentions(it.text)}<div class="bub me">${userText(it.text, (f) => sentFiles(f, `me:${wid}:${it.ts}`))}</div>`;
     case 'auto': return `<span class="event self">${sym('s-check', 'c-green')}<span>${esc(it.text)}</span></span>`;
     default: return `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(it.text))}</span></span>`;
   }

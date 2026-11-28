@@ -27,6 +27,8 @@ import { closeCpop, cpopKeys, historyKeys, historyTyped, rememberSent } from './
 import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
 import { go, navKey, navStep, readMemFile } from './ui/history';
+import type { Mention } from '../shared/types';
+import { drawComposerChips, dropMentionChip, mentionKeys, mentionsSent, mentionTyped, openMentionChips, withMentions } from './ui/mentions';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
@@ -340,6 +342,8 @@ export async function act(el: HTMLElement, e: Event) {
     case 'prompt-use': if (id) usePrompt(id); break;
     case 'prompt-repo': case 'prompt-model': pickPromptSetting(el, renderChatInspector); break;
     case 'preset-x': dropPreset(el.dataset.k ?? ''); break;
+    case 'mention-x': dropMentionChip(el.dataset.box as Box, Number(el.dataset.i)); break;
+    case 'mention-more': openMentionChips(el.dataset.box as Box); break;
     case 'send-err-x': { const box = el.dataset.box === 'ws' ? 'ws' : 'chat'; setSendErr(box, ''); $(box === 'chat' ? '#chat-input' : '#ws-input').focus(); break; }
     case 'form-err-x': if (id === 'memo' || id === 'auto' || id === 'script' || id === 'prompt') { ui.formErr[id] = ''; renderChatInspector(); } break;
     // The Worker composer: send a normal message past the open decision, or answer it after all (M7).
@@ -876,12 +880,16 @@ export function swapDraft(from: string | null, to: string | null) {
   if (from === to) return;
   closeCpop('ws');
   const input = $<HTMLTextAreaElement>('#ws-input');
-  if (from) wsDrafts.put(from, { text: input.value, files: ui.attach.ws, reply: ui.reply.ws });
+  if (from) wsDrafts.put(from, { text: input.value, files: ui.attach.ws, reply: ui.reply.ws, mentions: ui.mentions.ws });
   wsDrafts.keep((id) => !!worker(id));
   const d = to ? wsDrafts.take(to) : { text: '', files: [], reply: null };
   input.value = d.text;
   ui.attach.ws = d.files;
   ui.reply.ws = d.reply;
+  ui.mentions.ws = d.mentions ?? [];
+  ui.mentionSel.ws = -1;
+  ui.mentionOpen.ws = false;
+  drawComposerChips('ws');
   // A failed send is said where it failed; what was not sent is in that Worker's draft.
   setSendErr('ws', '');
   renderReply('ws');
@@ -903,7 +911,7 @@ export function autosize(el: HTMLTextAreaElement) {
 }
 
 /** `send` resolves to null once the text went, or to why it did not; then the text, files and reply stay (L8). */
-export function bindComposer(box: Box, formSel: string, inputSel: string, send: (text: string, files: string[]) => Promise<string | null>) {
+export function bindComposer(box: Box, formSel: string, inputSel: string, send: (text: string, files: string[], mentions: Mention[]) => Promise<string | null>) {
   // Who a send is on its way to ('' for the Dispatcher): a second Enter for the same one waits, another Worker's does not.
   const sending = new Set<string>();
   const form = $<HTMLFormElement>(formSel);
@@ -918,13 +926,14 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     host.style.setProperty('--composer-h', h);
     if (thread && atEnd) scrollQuietly(thread, thread.scrollHeight);
   }).observe(form);
-  input.addEventListener('input', () => { if (box === 'chat') shellInput(input); autosize(input); updateSendButton(); historyTyped(box); slashTyped(box); });
+  input.addEventListener('input', () => { if (box === 'chat') shellInput(input); autosize(input); updateSendButton(); historyTyped(box); slashTyped(box); mentionTyped(box); });
   // The list over the composer goes with the focus; a press on one of its rows keeps the focus here.
   input.addEventListener('blur', () => closeCpop(box));
   // Files copied in Explorer or Finder attach as if dropped here.
   input.addEventListener('paste', (e) => pasteFiles(box, e));
   input.addEventListener('keydown', (e) => {
     if (cpopKeys(e, box)) return;
+    if (mentionKeys(e, box)) return;
     if (box === 'chat' && shellKeys(e, input)) { updateSendButton(); return; }
     if (historyKeys(e, box, box === 'chat' && ui.shell)) return;
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
@@ -941,6 +950,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     // A shell line takes no files and no reply: they stay for the next message.
     const sh = box === 'chat' && ui.shell;
     const files = sh ? [] : [...ui.attach[box]];
+    const mentions = sh ? [] : [...ui.mentions[box]];
     const typed = input.value;
     const text = typed.trim() || (files.length ? t('attach.defaultText') : '');
     if (!text) return;
@@ -952,12 +962,12 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
       if (box === 'chat') renderChat(true); else renderSession(true);
       scrollQuietly(thread, thread.scrollHeight);
     }
-    const err = await send(text, files);
+    const err = await send(text, files, mentions);
     sending.delete(to);
     if (!err && !sh) void rememberSent(box, target, typed);
     if (box === 'ws' && ui.wSel !== target) {
       // Another Worker is on screen by now: what went leaves the draft kept for the one it went to.
-      if (err) toast(err, true); else if (target) wsDrafts.sent(target, typed, files, reply as typeof ui.reply.ws);
+      if (err) toast(err, true); else if (target) wsDrafts.sent(target, typed, files, reply as typeof ui.reply.ws, mentions);
       return;
     }
     setSendErr(box, err ?? '');
@@ -968,6 +978,7 @@ export function bindComposer(box: Box, formSel: string, inputSel: string, send: 
     if (input.value === typed) input.value = '';
     ui.attach[box] = ui.attach[box].filter((f) => !files.includes(f));
     renderChips(box);
+    if (!sh) mentionsSent(box, mentions);
     autosize(input);
     updateSendButton();
     if (box === 'ws') renderComposerDecision();
@@ -1353,13 +1364,13 @@ export function init() {
     else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeCtxMenu(true); }
   });
 
-  bindComposer('chat', '#chat-form', '#chat-input', async (text, files) => {
+  bindComposer('chat', '#chat-form', '#chat-input', async (text, files, mentions) => {
     if (ui.shell) {
       const r = await tryCall<string>('shell:run', text, shellRepo());
       if (r.ok) leaveShell();
       return r.ok ? null : r.error;
     }
-    const r = await tryCall('chat:send', replyText('chat', text), files, ui.reply.chat?.task ?? null, chatPreset());
+    const r = await tryCall('chat:send', withMentions(replyText('chat', text), mentions), files, ui.reply.chat?.task ?? null, chatPreset());
     // The chips went with it.
     if (r.ok) setPreset(null);
     return r.ok ? null : r.error;
@@ -1378,12 +1389,12 @@ export function init() {
       });
     });
   }
-  bindComposer('ws', '#ws-form', '#ws-input', async (text, files) => {
+  bindComposer('ws', '#ws-form', '#ws-input', async (text, files, mentions) => {
     if (!ui.wSel) return null;
     // The decision the strip above the text names, if any; otherwise a normal message (M7). Main answers it only
     // while it is still open.
     const answers = ui.decShown?.wid === ui.wSel ? ui.decShown.id : null;
-    const r = await tryCall('worker:send', ui.wSel, replyText('ws', text), files, answers);
+    const r = await tryCall('worker:send', ui.wSel, withMentions(replyText('ws', text), mentions), files, answers);
     return r.ok ? null : r.error;
   });
   // The same button as the chat's: with nothing typed, it stops the Worker (L3).

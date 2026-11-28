@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { Drafts } from '../src/shared/drafts';
 import { menuPlace } from '../src/shared/menu';
 
-const none = { text: '', files: [], reply: null };
+const none = { text: '', files: [], reply: null, mentions: [] };
 
 test('a draft waits for its own Worker', () => {
   const d = new Drafts<string>();
   d.put('W-01', { text: 'for one', files: ['a.png'], reply: 'quote' });
   assert.deepEqual(d.take('W-02'), none);
-  assert.deepEqual(d.take('W-01'), { text: 'for one', files: ['a.png'], reply: 'quote' });
+  assert.deepEqual(d.take('W-01'), { text: 'for one', files: ['a.png'], reply: 'quote', mentions: [] });
   // Handed to the composer: not kept twice.
   assert.deepEqual(d.take('W-01'), none);
 });
@@ -36,7 +36,7 @@ test('a message that went while another Worker was open leaves its draft', () =>
   d.put('W-01', { text: 'sent text', files: ['a.png', 'b.png'], reply: 'quote' });
   d.sent('W-01', 'sent text', ['a.png'], 'quote');
   // A file added after the send stays.
-  assert.deepEqual(d.take('W-01'), { text: '', files: ['b.png'], reply: null });
+  assert.deepEqual(d.take('W-01'), { text: '', files: ['b.png'], reply: null, mentions: [] });
   d.put('W-01', { text: 'sent text', files: [], reply: null });
   d.sent('W-01', 'sent text', [], null);
   assert.equal(d.has('W-01'), false);
@@ -44,6 +44,17 @@ test('a message that went while another Worker was open leaves its draft', () =>
   d.put('W-01', { text: 'sent text and more', files: [], reply: null });
   d.sent('W-01', 'sent text', [], null);
   assert.equal(d.take('W-01').text, 'sent text and more');
+});
+
+test('drafts: a Worker keeps its "@" chips, and those that went leave the draft', () => {
+  const d = new Drafts<string>();
+  const a = { kind: 'repo' as const, id: 'app', label: 'app' };
+  const b = { kind: 'task' as const, id: 'T-0001', label: 'T-0001', title: 'x' };
+  d.put('W-01', { text: '', files: [], reply: null, mentions: [a] });
+  assert.deepEqual(d.take('W-01').mentions, [a]);
+  d.put('W-01', { text: 'hi', files: [], reply: null, mentions: [a, b] });
+  d.sent('W-01', 'hi', [], null, [{ ...a }]);
+  assert.deepEqual(d.take('W-01').mentions, [b]);
 });
 
 test('drafts of Workers that are gone are dropped', () => {

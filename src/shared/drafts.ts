@@ -1,31 +1,38 @@
 /** What is written in the Worker composer and not sent yet. One field serves every Worker, so each keeps its own. */
 
-export interface Draft<R> { text: string; files: string[]; reply: R | null }
+import type { Mention } from './types';
+
+/** `mentions`: the "@" chips over the text (decision 7C). */
+export interface Draft<R> { text: string; files: string[]; reply: R | null; mentions?: Mention[] }
 
 export class Drafts<R> {
   private map = new Map<string, Draft<R>>();
 
   /** Keep what the composer holds for `id`. An empty composer leaves nothing. */
   put(id: string, d: Draft<R>): void {
-    if (!d.text.trim() && !d.files.length && !d.reply) this.map.delete(id);
-    else this.map.set(id, { text: d.text, files: [...d.files], reply: d.reply });
+    if (!d.text.trim() && !d.files.length && !d.reply && !d.mentions?.length) this.map.delete(id);
+    else this.map.set(id, { text: d.text, files: [...d.files], reply: d.reply, mentions: [...(d.mentions ?? [])] });
   }
 
   /** The draft for `id`, handed to the composer: it is no longer kept here. */
   take(id: string): Draft<R> {
     const d = this.map.get(id);
     this.map.delete(id);
-    return d ?? { text: '', files: [], reply: null };
+    return d ?? { text: '', files: [], reply: null, mentions: [] };
   }
 
   /**
    * A message for `id` went while another Worker was on screen. What went leaves the draft;
    * text written after the send, and files added after it, stay.
    */
-  sent(id: string, text: string, files: string[], reply: R | null): void {
+  sent(id: string, text: string, files: string[], reply: R | null, mentions: readonly Mention[] = []): void {
     const d = this.map.get(id);
     if (!d) return;
-    this.put(id, { text: d.text === text ? '' : d.text, files: d.files.filter((f) => !files.includes(f)), reply: d.reply === reply ? null : d.reply });
+    const went = (m: Mention) => mentions.some((x) => x.kind === m.kind && x.id === m.id && x.repo === m.repo);
+    this.put(id, {
+      text: d.text === text ? '' : d.text, files: d.files.filter((f) => !files.includes(f)), reply: d.reply === reply ? null : d.reply,
+      mentions: (d.mentions ?? []).filter((m) => !went(m)),
+    });
   }
 
   /** Drop the drafts of Workers that are gone. */

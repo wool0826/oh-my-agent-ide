@@ -34,7 +34,7 @@ import { cardBrief } from '../../shared/brief';
 import { shellBlockHtml, shellKey } from './shell';
 import { fileChips, placeAttached, sentFiles, shotsOf } from './shotview';
 import { planPaste } from '../../shared/paste';
-import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, setThread, stoppedTask, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker, workerTask } from './core';
+import { $, ago, announce, base, call, esc, hhmm, ic, ide, inline, k, keepInputs, lang, locale, markLoading, md, modelLabel, NEW_FROM, markReplyTarget, olderBtn, oneLine, paged, pillTone, prNum, replyable, ring, S, sentMentions, setThread, stoppedTask, sym, t, task, taskLabel, taskStatus, toast, tryCall, ui, unmarkLoading, userText, watchTop, when, worker, workerTask } from './core';
 import { setTip } from './tip';
 import { segc, syncSegs } from './settings';
 import { ms } from './sidebar';
@@ -304,7 +304,7 @@ function viaMark(c: ChatItem): string {
 
 export function chatItemHtml(c: ChatItem) {
   switch (c.kind) {
-    case 'user': return `<div class="bub me">${userText(c.text, (f) => sentFiles(f, `me:${c.id}`))}${viaMark(c)}</div>`;
+    case 'user': return `${sentMentions(c.text, c.preset)}<div class="bub me">${userText(c.text, (f) => sentFiles(f, `me:${c.id}`))}${viaMark(c)}</div>`;
     case 'dispatcher': return replyable(`<div class="bub ai">${md(c.text)}</div>`, 'chat', 'Dispatcher', c.text, c.id, c.id);
     case 'event': return isHandout(c) ? handoutHtml(c) : `<span class="event">${sym('s-cpu', 'c-blue')}<span>${linkify(esc(c.text))}</span></span>`;
     case 'decision': return `<span class="event mine">${sym('s-check', 'c-green')}<span><b>${t('chat.decided')}</b> ${esc(c.text)}</span></span>`;
@@ -340,7 +340,7 @@ function branchRow(c: ChatItem, root: ChatItem, thread: ChatItem[]) {
     const r = parseReply(c.text);
     const inView = !!r && ((r.who === rootWho(root) && (isReport(root) || r.quote === replyExcerpt(root.text)))
       || (r.who === 'Dispatcher' && thread.some((x) => x.kind === 'dispatcher' && replyExcerpt(x.text) === r.quote)));
-    if (r && inView) body = `<div class="bub me">${userText(r.body, (f) => sentFiles(f, `me:${c.id}`))}${viaMark(c)}</div>`;
+    if (r && inView) body = `${sentMentions(r.body, c.preset)}<div class="bub me">${userText(r.body, (f) => sentFiles(f, `me:${c.id}`))}${viaMark(c)}</div>`;
   }
   const go = `<button type="button" class="br-go" data-action="reply-root" data-id="${esc(root.id)}" tabindex="-1" aria-label="${esc(t('reply.toRoot'))}"></button>`;
   return `<div class="br-r ${c.kind === 'user' ? 'me' : 'ai'}" data-k="${esc(root.id)}" data-id="${esc(c.id)}"><i class="el" aria-hidden="true"></i>${go}${body}</div>`;

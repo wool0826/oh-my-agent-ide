@@ -2,7 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- IPC answers are typed by the caller (call<T>), any by default. */
 import { middleName } from '../../shared/middleName';
 import { NOTES } from '../../shared/sounds';
-import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, ModelList, PromptPreset, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
+import type { AppState, ChatItem, ClaudeInfo, DiffView, MemoryFile, MemoryHit, Mention, MentionKind, ModelList, PromptPreset, Task, Worker, WorkerLogItem, SoundName, Lang } from '../../shared/types';
+import { splitMentions } from '../../shared/mentions';
 import { currentTask } from '../../shared/currentTask';
 import type { SideView } from '../../shared/side';
 import type { TermView } from '../../shared/terminal';
@@ -245,6 +246,10 @@ export const ui = {
   promptEdit: null as string | null,
   /** The preset chips over the chat composer, sent with its next message (shared/prompts.ts). */
   presetChat: null as PromptPreset | null,
+  /** The "@" chips over each composer (decision 7C), the one Backspace chose (-1: none), and whether "+N" is open. */
+  mentions: { chat: [] as Mention[], ws: [] as Mention[] },
+  mentionSel: { chat: -1, ws: -1 },
+  mentionOpen: { chat: false, ws: false },
   memoEdit: null as string | null,
   memoDel: null as string | null,
   /** The last chat item and Worker log length already drawn; what comes after them is new. */
@@ -370,10 +375,31 @@ export const sentChip = (f: string) => `<a class="fchip" data-action="reveal" da
 export function userText(text: string, files?: (paths: string[]) => string): string {
   const reply = parseReply(text);
   if (reply) return `${quoteHtml(reply.who, reply.quote)}${userText(reply.body, files)}`;
+  // The "[Mentioned]" block is drawn as chips over the bubble (sentMentions).
+  text = splitMentions(text).text;
   const i = text.indexOf('\n\n[Attached files]\n');
   if (i < 0) return linkify(esc(text));
   const paths = text.slice(i).split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
   return `${linkify(esc(text.slice(0, i)))}${files ? files(paths) : `<span class="sent-files">${paths.map(sentChip).join('')}</span>`}`;
+}
+
+/** The symbol of each kind of "@" chip. */
+export const MENTION_ICON: Record<MentionKind, string> = { repo: 'e-repo', file: 's-doc', pr: 's-pr', task: 'e-started', worker: 's-person' };
+
+/** A chip as it is drawn over the composer's text and over a sent message. */
+export const mentionChip = (m: Pick<Mention, 'kind' | 'label'>, inner = '') => `${sym(MENTION_ICON[m.kind])}<span class="fn">${esc(m.label)}</span>${inner}`;
+
+/** The chips a sent message's "[Mentioned]" block names, as a row over its bubble; nothing when it has none. */
+export function sentMentions(text: string, preset?: PromptPreset): string {
+  const { mentions } = splitMentions(parseReply(text)?.body ?? text);
+  const pre = preset ? [
+    preset.repo ? `<span class="fchip pchip">${sym('s-folder')}<span class="fn">${esc(preset.repo)}</span></span>` : '',
+    preset.model ? `<span class="fchip pchip">${sym('s-cpu')}<span class="fn">${esc(modelLabel(preset.model))}</span></span>` : '',
+    preset.planFirst ? `<span class="fchip pchip">${sym('s-doc')}<span class="fn">${esc(t('prompt.planFirst'))}</span></span>` : '',
+  ].join('') : '';
+  const men = mentions.map((m) => `<span class="fchip mchip">${mentionChip(m)}</span>`).join('');
+  if (!pre && !men) return '';
+  return `<div class="sent-chips">${pre}${pre && men ? '<span class="chip-sep" aria-hidden="true"></span>' : ''}${men}</div>`;
 }
 
 export function oneLine(s: string, n = 120) {
