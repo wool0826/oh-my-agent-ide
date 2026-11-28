@@ -46,6 +46,7 @@ export function snapshot(): AppState {
     memos: d.memos ?? [],
     automations: automations.list(),
     scripts: d.scripts ?? [],
+    prompts: d.prompts ?? [],
     runs: runs.views(),
     memorySync: memorySync(),
     update: updateView(updateBlockers()),

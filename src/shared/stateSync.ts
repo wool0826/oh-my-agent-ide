@@ -205,6 +205,7 @@ export const PART_PANELS: Record<Part, readonly Panel[]> = {
   memos: ['chatIns'],
   automations: ['chatIns'],
   scripts: ['chatIns'],
+  prompts: ['chatIns'],
   runs: ['workers'],
   memorySync: ['memSync'],
   dispatcher: ['dispatcher', 'chat'],

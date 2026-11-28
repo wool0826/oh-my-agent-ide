@@ -21,6 +21,7 @@ export function shortcutsHtml() {
     row(t('chat.reply'), ['R']),
   ].join('')) + group('keys.composer', [
     row(t('keys.history'), ['↑']),
+    row(t('keys.prompts'), ['/']),
   ].join('')) + group('keys.any', [
     row(t('next.tip'), [mod, 'I']),
     row(t('next.prev'), isMac ? ['⇧', '⌘', 'I'] : ['Ctrl', 'Shift', 'I']),

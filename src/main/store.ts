@@ -21,7 +21,7 @@ import { stampHistory } from '../shared/retro';
 import { callers, moveLine, statusMoves } from '../shared/taskStatus';
 import { log } from './log';
 import { clearForeignPrs } from '../shared/prOwner';
-import type { Memo, Automation, MergeQueueEntry, ShellScript } from '../shared/types';
+import type { Memo, Automation, MergeQueueEntry, SavedPrompt, ShellScript } from '../shared/types';
 import type { ChatEv } from '../shared/chatEvents';
 import type { AutoAnswer, ChatItem, ChatKind, Decision, LogPage, MemorySuggestion, Repo, Task, TaskStatus, Worker, WorkerLogItem } from '../shared/types';
 
@@ -60,6 +60,8 @@ export interface Data {
   autoSeen?: Record<string, string[]>;
   /** Saved shell scripts (shared/scripts.ts). Unset in state files saved before they existed. */
   scripts?: ShellScript[];
+  /** Saved prompts (shared/prompts.ts). Unset in state files saved before they existed. */
+  prompts?: SavedPrompt[];
   /** Paths the user attached to messages (see attachments.ts) */
   attachments?: string[];
   /** The merge queue (shared/mergeQueue.ts). Unset in state files saved before it existed. */

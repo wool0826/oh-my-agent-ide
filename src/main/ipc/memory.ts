@@ -6,6 +6,8 @@ import { t } from '../i18n';
 import { nowIso, uid } from '../util';
 import { cleanMemo } from '../../shared/memos';
 import { PAGE } from '../../shared/paging';
+import { addPrompt, removePrompt, updatePrompt } from '../prompts';
+import type { PromptInput } from '../../shared/prompts';
 
 /** IDE memory and memos. */
 export function registerMemoryIpc() {
@@ -41,6 +43,10 @@ export function registerMemoryIpc() {
     store.changed();
     if (memo.shared) dispatcher.refreshContext();
   });
+  // Saved prompts, kept in the Memos tab and put into a composer with "/" (main/prompts.ts).
+  handle('prompt:add', (input: Partial<PromptInput>) => addPrompt(input));
+  handle('prompt:update', (id: string, input: Partial<PromptInput>) => updatePrompt(id, input));
+  handle('prompt:remove', (id: string) => removePrompt(id));
   handle('memory:sync', () => syncMemory());
   handle('memory:search', (q: string, offset?: number) => searchMemoryPage(q, Math.max(0, offset ?? 0), PAGE.memHits));
   handle('memory:promote', async (repoName: string) => {
