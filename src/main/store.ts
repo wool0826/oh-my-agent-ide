@@ -70,6 +70,11 @@ export interface Data {
   remote?: { telegramSeen?: number[]; telegramHeld?: { text: string; replyTo: string | null; files?: string[] }[] };
   /** Prompts sent from each composer, newest first, by shared/quickInput.ts historyKey(). Unset before they existed. */
   history?: Record<string, SentPrompt[]>;
+  /**
+   * What the next start opens as this one was left (5A): the window (shared/windowState.ts), the screen
+   * (shared/history.ts restoreScreen) and the drafts not sent (shared/drafts.ts). Unset before they existed.
+   */
+  session?: { window?: unknown; screen?: unknown; drafts?: unknown };
 }
 
 type ChatPage = { items: ChatItem[]; more: boolean };
@@ -383,6 +388,12 @@ class Store extends EventEmitter {
   worker(id: string) { return this.data.workers.find((w) => w.id === id) ?? null; }
   task(id: string) { return this.data.tasks.find((t) => t.id === id) ?? null; }
   repo(name: string) { return this.data.repos.find((r) => r.name.toLowerCase() === name.toLowerCase()) ?? null; }
+
+  /** Keeps part of the session for the next start. Written with the state, but nothing on screen changes with it. */
+  saveSession(patch: NonNullable<Data['session']>) {
+    this.data.session = { ...this.data.session, ...patch };
+    this.persist();
+  }
 
   /** The prompts sent from one composer (shared/quickInput.ts historyKey()), newest first. */
   sentPrompts(key: string): SentPrompt[] {

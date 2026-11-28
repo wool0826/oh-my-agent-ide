@@ -15,8 +15,9 @@ import { threadKeys } from './ui/thread';
 import { focusSelector } from '../shared/focusKey';
 import { PAGE, pagesFor, slideOlder } from '../shared/paging';
 import { FONT_SIZE_DEFAULT } from '../shared/font';
-import { Drafts } from '../shared/drafts';
-import { type Screen, type View, type WorkerFilter } from '../shared/history';
+import { DISPATCHER_DRAFT, Drafts, parseDraft } from '../shared/drafts';
+import { readReply } from '../shared/reply';
+import { restoreScreen, type Screen, type View, type WorkerFilter } from '../shared/history';
 import { menuPlace } from '../shared/menu';
 import { addAuto, cancelAddAuto, pickAutoField, addFiles, addMemo, editAuto, saveAuto, pasteFiles, askMemoDel, Box, checkAway, markSeen, olderChat, removeMemo, bindBranches, renderChat, renderChatInspector, rootEl, renderChips, renderDispatcherStatus, tickDispatcher, saveSug, setAway, spendHtml, updateSendButton, visibleAutos, markDecision, decisionCard, tickDecisions } from './ui/chat';
 import { closeShortcuts, openShortcuts, shortcutsOpen } from './ui/shortcuts';
@@ -27,7 +28,7 @@ import { leaveShell, pickShellFolder, shellInput, shellKeys, shellRepo, toggleSh
 import { closeCpop, cpopKeys, historyKeys, historyTyped, rememberSent } from './ui/cpop';
 import { $, ACTS, announce, applyStaticText, call, esc, hhmm, ide, lang, markBad, onScroll, Pane, playSound, readState, actedSinceWholeDraw, renderReply, replyText, S, scrollQuietly, setS, setSendErr, shownOf, store, swapIn, sym, t, toast, tryCall, ui, worker, workerTask, skipSameHtml, userActed } from './ui/core';
 import { midPath } from '../shared/pathText';
-import { go, navKey, navStep, readMemFile } from './ui/history';
+import { go, navKey, navStep, readMemFile, screen, show } from './ui/history';
 import { loadMemory, renderMemory, renderMemSync, searchMem } from './ui/memory';
 import { closeFind, findOpen, stepFind } from './ui/find';
 import { closePalette, cmdk, findSeed, jumpToChat, openPalette, paletteKeys, renderPalette, runPalette } from './ui/palette';
@@ -928,6 +929,54 @@ export function swapDraft(from: string | null, to: string | null) {
   renderChips('ws');
 }
 
+/** The screen and the drafts as the next start opens them (5A), with what the composers on screen hold now. */
+function sessionNow() {
+  const shown: Record<string, { text: string; files: string[]; reply: unknown }> = {
+    [DISPATCHER_DRAFT]: { text: $<HTMLTextAreaElement>('#chat-input').value, files: ui.attach.chat, reply: ui.reply.chat },
+  };
+  if (ui.wSel) shown[ui.wSel] = { text: $<HTMLTextAreaElement>('#ws-input').value, files: ui.attach.ws, reply: ui.reply.ws };
+  return { screen: screen(), drafts: wsDrafts.saved(shown as Parameters<typeof wsDrafts.saved>[0]) };
+}
+
+let sessionKept = '';
+/** Sends the session to main when it changed since it was last sent; main writes it with the state. */
+export function keepSession() {
+  if (!S) return;
+  const s = sessionNow();
+  const json = JSON.stringify(s);
+  if (json === sessionKept) return;
+  sessionKept = json;
+  ide.call('session:save', s).catch(() => { sessionKept = ''; });
+}
+
+/**
+ * At launch: the last run's drafts go back into their composers and its screen comes back (5A). A Worker that is gone
+ * loses its draft and is deselected; an archived one opens as it was.
+ */
+async function restoreSession() {
+  const saved = await ide.call<{ screen?: unknown; drafts?: Record<string, unknown> } | null>('session:get').catch(() => null);
+  if (!S || !saved) return;
+  const wsReply = (r: unknown) => {
+    const x = readReply(r);
+    const wid = (r as { wid?: unknown }).wid;
+    return x && typeof wid === 'string' ? { ...x, wid } : null;
+  };
+  wsDrafts.load(saved.drafts, (id) => id !== DISPATCHER_DRAFT && !!worker(id), wsReply);
+  const chat = parseDraft(saved.drafts?.[DISPATCHER_DRAFT], readReply);
+  const input = $<HTMLTextAreaElement>('#chat-input');
+  if (chat && !input.value) {
+    input.value = chat.text;
+    ui.attach.chat = chat.files;
+    ui.reply.chat = chat.reply;
+    renderReply('chat');
+    renderChips('chat');
+    autosize(input);
+  }
+  const to = restoreScreen(saved.screen, { worker: (id) => !!worker(id), repo: (name) => !!S?.repos.some((r) => r.name === name) });
+  if (to) show(to, { ...screen(), wSel: null });
+  sessionKept = JSON.stringify(sessionNow());
+}
+
 /** A stand-in button for an action started from the keyboard: `dataset` has no setter, so it is filled key by key. */
 function actionAs(action: string, id?: string) {
   const b = document.createElement('button');
@@ -1510,14 +1559,18 @@ export function init() {
   // The age and slot clock of decisions: their text only, so nothing is drawn again.
   setInterval(() => tickDecisions(), 15_000);
 
-  void ide.call<StateMsg>('state:full').then((msg) => {
+  void ide.call<StateMsg>('state:full').then(async (msg) => {
     const got = readState(msg, gotState);
     if (got) setS(got.state);
     if (!S) return;
     renderAll(true);
+    await restoreSession();
+    setInterval(keepSession, 1000);
+    window.addEventListener('beforeunload', keepSession);
+    if (!S) return;
     if (S.setupNeeded) openSettings('accounts');
-    // The app starts where its main work is: the message field (K1).
-    else if (!document.activeElement || document.activeElement === document.body) focusComposer();
+    // The app starts where its main work is: the message field (K1), unless the last screen it opened on has none.
+    else if ((!document.activeElement || document.activeElement === document.body) && (ui.view === 'chat' || (ui.view === 'worker' && ui.wOpen))) focusComposer();
   });
 }
 
