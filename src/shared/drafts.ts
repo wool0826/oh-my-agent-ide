@@ -47,6 +47,11 @@ export class Drafts<R> {
     return this.map.has(id);
   }
 
+  /** The draft for `id`, still kept here: what the other pane's composer shows while its Worker is not selected (15A). */
+  peek(id: string): Draft<R> | null {
+    return this.map.get(id) ?? null;
+  }
+
   /**
    * The drafts as they are kept on disk for the next start (5A): the ones held here, with what the composers on
    * screen hold now in `shown` (by Worker id, or DISPATCHER_DRAFT). Empty composers leave nothing.

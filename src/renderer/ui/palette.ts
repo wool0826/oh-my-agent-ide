@@ -6,6 +6,7 @@ import { SEARCH_MIN, type TextHit } from '../../shared/textSearch';
 import { PAGE } from '../../shared/paging';
 import { type View } from '../../shared/history';
 import { act, goWaiting, openWorker } from '../app';
+import { toggleBesideKey } from './split';
 import { chatAll, freshAutoForm, renderChat, renderChatInspector } from './chat';
 import { closePop } from './controls';
 import { startFind } from './find';
@@ -48,6 +49,8 @@ export function paletteItems(): Cmd[] {
     out.push({ id: 'export:save', group: g, title: t('export.save'), hint: open.id, icon: sym('s-doc'), run: () => void saveExport(open.id) });
     out.push({ id: 'export:publish', group: g, title: t('export.publish'), hint: open.id, keys: isMac ? '⇧⌘E' : 'Ctrl+Shift+E', icon: sym('s-open'), run: () => void openPublish(open.id) });
   }
+  // A second Worker beside the open one, or the second pane closed (item 15A): what Ctrl/Cmd+\ does there.
+  if (open && s.workers.length > 1) out.push({ id: 'beside', group: 'Worker', title: t(ui.pair ? 'pane.close' : 'pane.beside'), keys: `${mod}\\`, icon: sym('s-side-r'), run: () => toggleBesideKey() });
   const views: [View, string, string][] = [['chat', t('nav.chat'), 's-chat'], ['worker', 'Worker', 's-cpu'], ['repo', t('nav.repo'), 's-box'], ['memory', t('nav.memory'), 's-doc']];
   views.forEach(([v, title, icon], i) => out.push({ id: `view:${v}`, group: t('cmdk.go'), title, keys: `${mod}${i + 1}`, icon: sym(icon), run: () => go({ view: v }) }));
   const tabs: [typeof ui.insTab, Key][] = [['inbox', 'ins.tabInbox'], ['memo', 'ins.tabMemo'], ['auto', 'ins.tabAuto'], ['script', 'ins.tabScript']];

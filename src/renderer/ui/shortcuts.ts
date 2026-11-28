@@ -22,6 +22,7 @@ export function shortcutsHtml() {
     row(t('chat.reply'), ['R']),
   ].join('')) + group('keys.worker', [
     row(t('keys.publish'), publishKeys()),
+    row(t('keys.paneStep'), ['F6']),
   ].join('')) + group('keys.changes', [
     row(t('keys.fileStep'), ['J', 'K']),
     row(t('diff.seen'), ['V']),
@@ -42,6 +43,7 @@ export function shortcutsHtml() {
     row(t('keys.input'), [mod, 'L']),
     row(t('keys.find'), [mod, 'K']),
     row(t('keys.openEditor'), [mod, 'O']),
+    row(t('pane.beside'), [mod, '\\']),
     row(t('keys.findSaid'), [mod, 'F']),
     row(t('keys.view'), [mod, '1–4']),
     row(t('keys.usage'), isMac ? ['⇧', '⌘', 'U'] : ['Ctrl', 'Shift', 'U']),

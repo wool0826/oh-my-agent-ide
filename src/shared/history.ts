@@ -1,5 +1,6 @@
 // Back and forward through the screens the user visited, like a browser (decision 81).
 // Pure, so the renderer and the tests share it.
+import { restorePair, type Pair } from './split';
 
 export type View = 'chat' | 'worker' | 'repo' | 'memory';
 /** The Worker list shows only Workers that finished a task today, or only archived ones. */
@@ -15,6 +16,8 @@ export interface Screen {
   repoSel: string | null;
   memSel: string | null;
   wFilter: WorkerFilter | null;
+  /** The second Worker pane beside the selected one (item 15A), or null for one pane. */
+  pair: Pair | null;
 }
 
 /** Entries kept on each side. */
@@ -22,7 +25,8 @@ export const HISTORY_MAX = 50;
 
 export function sameScreen(a: Screen, b: Screen) {
   return a.view === b.view && a.wSel === b.wSel && a.wOpen === b.wOpen && a.wTab === b.wTab
-    && a.repoSel === b.repoSel && a.memSel === b.memSel && a.wFilter === b.wFilter;
+    && a.repoSel === b.repoSel && a.memSel === b.memSel && a.wFilter === b.wFilter
+    && a.pair?.id === b.pair?.id && a.pair?.tab === b.pair?.tab && a.pair?.left === b.pair?.left;
 }
 
 const VIEWS: readonly View[] = ['chat', 'worker', 'repo', 'memory'];
@@ -32,9 +36,10 @@ const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
 /**
  * The screen the last run ended on (5A), as it can be shown now, or null when nothing usable was kept. A Worker that
  * is gone is deselected with its conversation; an archived one is still there and opens as it was. A removed
- * repository is deselected.
+ * repository is deselected. The pair of panes comes back when both Workers are there and neither is archived;
+ * otherwise the selected one opens alone (15A).
  */
-export function restoreScreen(v: unknown, there: { worker: (id: string) => boolean; repo: (name: string) => boolean }): Screen | null {
+export function restoreScreen(v: unknown, there: { worker: (id: string) => boolean; repo: (name: string) => boolean; archived?: (id: string) => boolean }): Screen | null {
   const o = v as Partial<Record<keyof Screen, unknown>> | null;
   if (!o || !VIEWS.includes(o.view as View)) return null;
   const wSel = str(o.wSel);
@@ -47,8 +52,10 @@ export function restoreScreen(v: unknown, there: { worker: (id: string) => boole
     repoSel: repoSel && there.repo(repoSel) ? repoSel : null,
     memSel: str(o.memSel),
     wFilter: o.wFilter === 'today' || o.wFilter === 'archived' ? o.wFilter : null,
+    pair: null,
   };
   if (!s.wSel) s.wOpen = false;
+  if (s.wOpen) s.pair = restorePair(o.pair, s.wSel, { worker: there.worker, archived: there.archived ?? (() => false) });
   return s;
 }
 

@@ -32,6 +32,7 @@ import { $, acctLabel, ago, agoText, base, call, errText, esc, finishedToday, hh
 import { grantsHtml } from './repos';
 import { workerIcon } from './sidebar';
 import { refreshFind } from './find';
+import { panesShown, renderPair } from './split';
 
 
 /**
@@ -199,6 +200,35 @@ export function logItemHtml(it: WorkerLogItem, wid: string, prev: WorkerLogItem 
   }
 }
 
+/**
+ * A Worker's conversation as loaded: a time stamp after a pause, "new from here" at `seen`, and what it is doing now
+ * while it runs. The pane beside the selected one draws its Worker's with it too (ui/panes.ts).
+ */
+export function logHtml(w: Worker, log: WorkerLogItem[], seen = -1) {
+  if (!log.length) return `<div class="empty-view"><span>${t('ws.empty')}</span></div>${typingHtml(w)}`;
+  let html = '';
+  let last = 0;
+  log.forEach((it, i) => {
+    if (seen > 0 && i === seen) html += NEW_FROM;
+    const ts = Date.parse(it.ts);
+    const gap = ts - last > 30 * 60_000;
+    if (gap) html += `<span class="stamp">${hhmm(it.ts)}</span>`;
+    last = ts;
+    html += logItemHtml(it, w.id, i > 0 && !gap ? log[i - 1] : null);
+  });
+  return html + typingHtml(w);
+}
+
+const typingHtml = (w: Worker) => (w.status === 'running' || w.status === 'starting' ? `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(oneLine(w.statusText, 90))}</div>` : '');
+
+/** The Worker's tabs: Chat, Changes (with a repository) and Summary. Two panes side by side say "Changes" short (15A). */
+export function wTabsOf(w: Worker) {
+  return w.repo ? (['chat', 'changes', 'summary'] as const) : (['chat', 'summary'] as const);
+}
+export function wTabLabel(v: 'chat' | 'changes' | 'summary', short: boolean) {
+  return t(v === 'chat' ? 'ws.tabChat' : v === 'changes' ? (short ? 'ws.tabChangesShort' : 'ws.tabChanges') : 'ws.tabSummary');
+}
+
 /** `older`: a page of the conversation went in above, so the reader's place is kept from the end. */
 export function renderSession(force = false, older = false) {
   const w = worker(ui.wSel);
@@ -212,10 +242,15 @@ export function renderSession(force = false, older = false) {
   const split = openSplitHtml(w);
   if ($('#ws-open').innerHTML !== split) $('#ws-open').innerHTML = split;
   $('#ws-more').dataset.id = w.id;
-  const tabs = w.repo ? (['chat', 'changes', 'summary'] as const) : (['chat', 'summary'] as const);
+  const tabs = wTabsOf(w);
   if (!w.repo && ui.wTab === 'changes') ui.wTab = 'chat';
+  const two = panesShown();
   $('#ws-tabs').hidden = false;
-  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" id="ws-tab-${v}" aria-controls="${v === 'chat' ? 'ws-thread' : v === 'changes' ? 'ws-diff' : 'ws-sum'}" aria-selected="${ui.wTab === v}" tabindex="${ui.wTab === v ? 0 : -1}" data-action="ws-tab" data-v="${v}">${t(v === 'chat' ? 'ws.tabChat' : v === 'changes' ? 'ws.tabChanges' : 'ws.tabSummary')}</button>`).join('');
+  $('#ws-tabs').innerHTML = tabs.map((v) => `<button type="button" role="tab" id="ws-tab-${v}" aria-controls="${v === 'chat' ? 'ws-thread' : v === 'changes' ? 'ws-diff' : 'ws-sum'}" aria-selected="${ui.wTab === v}" tabindex="${ui.wTab === v ? 0 : -1}" data-action="ws-tab" data-v="${v}">${wTabLabel(v, two)}</button>`).join('');
+  // Side by side, each composer says whose it is.
+  const ph = two ? t('pane.to', { id: w.id }) : '';
+  const input = $<HTMLTextAreaElement>('#ws-input');
+  if (input.placeholder !== ph) input.placeholder = ph;
   $('#ws-thread').hidden = ui.wTab !== 'chat';
   $('#ws-diff').hidden = ui.wTab !== 'changes';
   $('#ws-sum').hidden = ui.wTab !== 'summary';
@@ -232,19 +267,8 @@ export function renderSession(force = false, older = false) {
   const key = `${lang()}:${w.id}:${start}:${log.length}:${loading}:${w.status}:${w.statusText}`;
   if (!force && !older && key === ui.lastLogKey) return;
   ui.lastLogKey = key;
-  let html = start > 0 ? olderBtn('log', loading) : '';
-  let last = 0;
   const seen = !older && ui.logSeen?.wid === w.id ? ui.logSeen.n - start : -1;
-  log.forEach((it, i) => {
-    if (seen > 0 && i === seen) html += NEW_FROM;
-    const ts = Date.parse(it.ts);
-    const gap = ts - last > 30 * 60_000;
-    if (gap) html += `<span class="stamp">${hhmm(it.ts)}</span>`;
-    last = ts;
-    html += logItemHtml(it, w.id, i > 0 && !gap ? log[i - 1] : null);
-  });
-  if (!log.length) html = `<div class="empty-view"><span>${t('ws.empty')}</span></div>`;
-  if (w.status === 'running' || w.status === 'starting') html += `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(oneLine(w.statusText, 90))}</div>`;
+  const html = (start > 0 && log.length ? olderBtn('log', loading) : '') + logHtml(w, log, seen);
   ui.logSeen = { wid: w.id, n: start + log.length };
   setThread(th, html, nearBottom || force, older);
   refreshFind('ws-thread');
@@ -264,8 +288,7 @@ export function tookText(mins: number) {
  * spend, time, permissions), then each task, newest first: where its time went, what was asked, where it stands, its
  * report in full, its PR and files, its permission decisions. A switch above turns it to the last seven days (ui/retro.ts).
  */
-export function renderSummary(w: Worker) {
-  const root = $('#ws-sum');
+export function renderSummary(w: Worker, root = $('#ws-sum')) {
   const scope = scopeHtml(w.id);
   if (ui.sumScope === 'week') { keepScroll(root, () => { root.innerHTML = `${scope}${weekHtml()}`; }); return; }
   const tasks = w.taskIds.map((id) => task(id)).filter((x): x is Task => !!x);
@@ -340,8 +363,7 @@ export function addDiffNote() {
  * The Changes tab (item 10A): the branch, how many files were seen, one column or side by side, fold all, then the
  * list of files and a card per file (ui/diffView.ts). Side by side needs a pane 900 wide; below that the switch is off.
  */
-export function renderDiff(w: Worker) {
-  const root = $('#ws-diff');
+export function renderDiff(w: Worker, root = $('#ws-diff')) {
   const v = ui.diffs.get(w.id);
   if (v === undefined) { void loadDiff(w.id); }
   if (v === undefined || v === 'loading') { root.innerHTML = `<div class="diff-state" role="status"><span class="sq-spin" aria-hidden="true"></span><span>${t('diff.loading')}</span></div>`; return; }
@@ -350,7 +372,7 @@ export function renderDiff(w: Worker) {
   // Any other failure says so, with a way to ask again (L17); what went wrong is on the line's tooltip.
   if (v.error) { root.innerHTML = `<div class="diff-err" role="alert" data-tip="${esc(v.error)}">${sym('s-alert')}<span>${t('diff.readFailed')}</span><button type="button" class="btn" data-action="diff-refresh" data-id="${w.id}">${t('retry')}</button></div>`; return; }
   const nNotes = ui.diffNotes.get(w.id)?.length ?? 0;
-  const { layout, canSplit } = layoutNow();
+  const { layout, canSplit } = layoutNow(root);
   const anyOpen = v.files.some((f) => isOpen(w.id, f));
   const seg = (val: 'unified' | 'split', label: string) => `<button type="button" data-action="diff-layout" data-v="${val}" aria-pressed="${layout === val}"${val === 'split' && !canSplit ? ' disabled' : ''}>${label}</button>`;
   const files = v.files.length;
@@ -371,6 +393,7 @@ export async function loadDiff(id: string) {
   }
   const w = worker(id);
   if (w && ui.wSel === id && ui.wTab === 'changes') renderDiff(w);
+  if (ui.pair?.id === id) renderPair();
 }
 
 /** A Worker's conversation opens on its last page. */
