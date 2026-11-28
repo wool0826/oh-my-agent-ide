@@ -22,6 +22,7 @@ import { awayDigest, awayRows, type AwayDigest } from '../../shared/away';
 import { bundleMergeOrder, openBundles } from '../../shared/bundle';
 import { memoSections } from '../../shared/memos';
 import { scriptsHtml } from './scripts';
+import { drawAfterSwipe } from './swipe';
 import { COMPACT_AT, CONTEXT_WINDOW } from '../../shared/context';
 import { CHAT_SNAPSHOT, PAGE, threadStart } from '../../shared/paging';
 import { canStop } from '../../shared/canStop';
@@ -971,6 +972,8 @@ export function awayHtml() {
 }
 
 export function renderChatInspector() {
+  // Not under a row being swiped: drawn once it is let go.
+  if (!drawAfterSwipe(renderChatInspector)) return;
   const s = S!;
   const root = $('#chat-ins');
   const was = document.activeElement as HTMLElement | null;
