@@ -134,3 +134,34 @@ flow('a file beside state.json that lost records gets them back from a backup, a
   await app.restart();
   assert.equal((await app.state()).chat.filter((c) => c.kind === 'error').length, 2);
 });
+
+// 5A: what the next start opens is what this one was left as: the window, the screen and the drafts not sent.
+flow('the next start opens the window where it was, maximized, on the last screen, with the drafts not sent', {}, async (app) => {
+  await app.say('@fake task - Keep a draft\n@@fake result Kept.');
+  const s = await app.until("const s = await window.ide.call('state'); return s.tasks.some((x) => x.title === 'Keep a draft' && x.status === 'done') && s;", 'the task done');
+  const wid = s.workers[0].id;
+  const type = (sel, text) => app.evaluate(`const el = document.querySelector('${sel}'); el.value = ${JSON.stringify(text)}; el.dispatchEvent(new Event('input', { bubbles: true })); return 1;`);
+  await type('#chat-input', 'For the Dispatcher, later');
+  await app.click('button[data-v="worker"]');
+  await app.until(`!!document.querySelector('#wk-list [data-action="select-worker"][data-id="${wid}"]')`, 'the Worker in the list');
+  await app.click(`#wk-list [data-action="select-worker"][data-id="${wid}"]`);
+  await app.until("document.querySelector('#ws-input')?.offsetParent !== null", "the Worker's composer");
+  await type('#ws-input', 'For the Worker, later');
+  // The test window starts hidden: shown, moved and maximized as a user would.
+  const at = { x: 60, y: 40, width: 860, height: 640 };
+  // A screen scaled to 150% rounds the size by a few pixels when the window is made or moved.
+  const near = (b, what) => assert.ok(Object.keys(at).every((k) => Math.abs(b[k] - at[k]) <= 4), `${what}: ${JSON.stringify(b)}`);
+  await app.evaluate(`await window.ide.call('e2e:window', { show: true, bounds: ${JSON.stringify(at)} }); await window.ide.call('e2e:window', { maximize: true }); return 1;`);
+  const kept = () => savedNow(app)?.session;
+  await waitFor(() => { const k = kept(); return k?.window?.maximized && k.screen?.wSel === wid && k.drafts?.[wid]?.text === 'For the Worker, later' && k.drafts?.dispatcher?.text === 'For the Dispatcher, later'; }, 'The session was never saved');
+  const first = kept().window.bounds;
+  near(first, 'the saved bounds');
+  await app.restart();
+  await app.until(`document.querySelector('#views button[aria-selected="true"]')?.dataset.v === 'worker' && document.querySelector('#ws-input').value === 'For the Worker, later'`, "the Worker's conversation with its draft");
+  const win = await app.until("const w = await window.ide.call('e2e:window', { show: true }); return w?.maximized && w;", 'the window maximized once shown');
+  near(win.bounds, 'the bounds at the next start');
+  // Opened and maximized again, it keeps the same bounds: it does not grow by the rounding at each start.
+  await waitFor(() => kept()?.window?.maximized && JSON.stringify(kept().window.bounds) === JSON.stringify(first), `The bounds changed: ${JSON.stringify(kept()?.window)}`);
+  await app.click('button[data-v="chat"]');
+  await app.until("document.querySelector('#chat-input').value === 'For the Dispatcher, later'", "the Dispatcher's draft");
+});

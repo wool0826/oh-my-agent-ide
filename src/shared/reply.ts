@@ -18,6 +18,16 @@ export function replyExcerpt(text: string, max = QUOTE_MAX): string {
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 }
 
+/** A reply kept in a draft on disk (shared/drafts.ts), or null when it is not one. Its own fields only. */
+export function readReply(v: unknown): Reply | null {
+  const o = v as Record<string, unknown> | null;
+  if (!o || typeof o.who !== 'string' || typeof o.quote !== 'string') return null;
+  const r: Reply = { who: o.who, quote: o.quote };
+  for (const k of ['task', 'icon', 'src'] as const) if (typeof o[k] === 'string') r[k] = o[k];
+  if (typeof o.max === 'number') r.max = o.max;
+  return r;
+}
+
 /** The text that is sent and stored for a reply. `who` is the author of the quoted message (Dispatcher, W-03). */
 export function withReply(reply: Reply | null | undefined, text: string): string {
   if (!reply || !reply.quote.trim()) return text;

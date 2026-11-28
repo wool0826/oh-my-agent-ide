@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { QUOTE_MAX, parseReply, replyExcerpt, withReply } from '../src/shared/reply';
+import { QUOTE_MAX, parseReply, readReply, replyExcerpt, withReply } from '../src/shared/reply';
 
 test('a reply carries the quoted message above its own text, and reads back the same', () => {
   const sent = withReply({ who: 'Dispatcher', quote: 'Created 2 tasks. W-02 starts after the first PR is merged.' }, 'Start W-02 now.');
@@ -39,4 +39,10 @@ test('the body keeps its line breaks and its attached files', () => {
 test('a name cannot break out of the heading line', () => {
   const sent = withReply({ who: 'W-0]\n3', quote: 'q' }, 'b');
   assert.deepEqual(parseReply(sent), { who: 'W-0  3', quote: 'q', body: 'b' });
+});
+
+test('reply: a reply kept in a draft on disk is read back with its own fields only', () => {
+  assert.deepEqual(readReply({ who: 'W-03', quote: 'Done.', task: 'T-1', max: 80, extra: 1 }), { who: 'W-03', quote: 'Done.', task: 'T-1', max: 80 });
+  assert.equal(readReply({ who: 'W-03' }), null);
+  assert.equal(readReply('W-03'), null);
 });
