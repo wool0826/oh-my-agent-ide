@@ -35,15 +35,16 @@ export function registerAppIpc() {
   handle('app:version', () => app.getVersion());
   // The waiting decisions on the taskbar button or the Dock, with the overlay image the window drew for Windows.
   handle('app:badge', (n: number, png: string) => setBadge(n, String(png ?? '')));
-  // Something the window noticed that belongs in the app log (a Worker drawn with another task than main's).
-  // At most 50 a run, so a window stuck in a loop cannot fill the log.
   // The screen and the drafts not sent, kept for the next start (5A); the window reads them back once it loads.
   handle('session:get', () => (store.loaded ? { screen: store.data.session?.screen, drafts: store.data.session?.drafts } : null));
   handle('session:save', (s: { screen?: unknown; drafts?: unknown }) => {
-    // A pasted book in a composer is not worth a slow state file.
-    if (!store.loaded || JSON.stringify(s ?? null).length > 1_000_000) return;
-    store.saveSession({ screen: s?.screen, drafts: s?.drafts });
+    if (!store.loaded) return;
+    // A pasted book in a composer is not worth a slow state file: the screen is kept, the drafts stay as they were.
+    const big = JSON.stringify(s?.drafts ?? null).length > 1_000_000;
+    store.saveSession(big ? { screen: s?.screen } : { screen: s?.screen, drafts: s?.drafts });
   });
+  // Something the window noticed that belongs in the app log (a Worker drawn with another task than main's).
+  // At most 50 a run, so a window stuck in a loop cannot fill the log.
   let warns = 0;
   handle('app:warn', (text: unknown) => { if (warns++ < 50) log.warn(`window: ${String(text).slice(0, 500)}`); });
   handle('app:relaunch', () => { if (restartIntoUpdate(updateBlockers())) return; app.relaunch(); app.quit(); });
