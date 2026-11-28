@@ -51,7 +51,13 @@ try {
   } else if (args[0] === 'repo' && args[1] === 'view') {
     out({ squashMergeAllowed: true, mergeCommitAllowed: true, rebaseMergeAllowed: true });
   } else if (args[0] === 'issue' && args[1] === 'list') {
-    out(db.issues);
+    const label = args[args.indexOf('--label') + 1];
+    out(args.includes('--label') ? db.issues.filter((i) => (i.labels ?? []).some((l) => l.name === label)) : db.issues);
+  } else if (args[0] === 'pr' && args[1] === 'list') {
+    // Open PRs for the automations' watch: `reviewPrs` for the review-requested search, `prList` otherwise.
+    out(args.includes('--search') ? db.reviewPrs ?? [] : db.prList ?? []);
+  } else if (args[0] === 'run' && args[1] === 'list') {
+    out(db.runs ?? []);
   } else if (args[0] === '--version') {
     out('gh version 0.0.0 (stand-in)');
   } else if (args[0] === 'auth' && args[1] === 'status') {

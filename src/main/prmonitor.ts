@@ -17,6 +17,8 @@ import { ciReason } from '../shared/askWhy';
 import { evAbout, prNumber } from '../shared/chatEvents';
 import { busyPrs, canMerge, conflictBody, mergeMethod, planConflictFix } from '../shared/prMerge';
 import { PR_POLL, eachLimited, isFullRound, isRateLimited, nextPollDelay, parsePrUrl, prStateQueries, readPrStates, type PrState } from '../shared/prPoll';
+import { eventWatches, freshEvents, parseEvents, watchArgs, watchKey } from '../shared/automations';
+import { ghRepoRef } from '../shared/issues';
 import type { Decision, MergeQueueEntry, MergeQueueLeft, Task } from '../shared/types';
 
 /**
@@ -575,8 +577,42 @@ export function prWatchChanged() {
   if (dueAt - Date.now() > PR_POLL.fast && prsToWatch(ownPrTasks()).length) schedule();
 }
 
+/** How often the automations' GitHub events are read. */
+const AUTO_POLL = 3 * 60_000;
+let autoTimer: NodeJS.Timeout | null = null;
+let autoRunning: Promise<void> | null = null;
+
+/**
+ * The automations' GitHub events (spec 9A): failed CI runs, opened PRs, reviews asked of the user and labelled issues,
+ * read once per repository and kind for the automations switched on. What is new since the last look is handed to
+ * automations.onEvent, oldest first; the first look only takes note. Merges come from the PR watch (settle).
+ */
+export function pollAutomationEvents(): Promise<void> {
+  autoRunning ??= (async () => {
+    const repos = store.data.repos.filter((r) => !r.local && ghRepoRef(r.url));
+    const watches = eventWatches(automations.list(), repos.map((r) => r.name));
+    const seen = (store.data.autoSeen ??= {});
+    const keys = new Set(watches.map(watchKey));
+    for (const k of Object.keys(seen)) if (!keys.has(k)) delete seen[k];
+    const own = new Set(store.data.tasks.map((x) => x.prUrl).filter((u): u is string => !!u));
+    for (const w of watches) {
+      const ref = ghRepoRef(store.repo(w.repo)!.url)!;
+      const r = await run('gh', [...watchArgs(w), '-R', `${ref.host}/${ref.slug}`], { env: { ...ghEnv(), GH_HOST: ref.host }, timeoutMs: 60_000 });
+      if (r.code !== 0) { log.warn('automation events', watchKey(w), r.stderr.trim().slice(0, 200)); continue; }
+      const key = watchKey(w);
+      const { fresh, seen: next } = freshEvents(seen[key], parseEvents(w, r.stdout, own));
+      seen[key] = next;
+      store.changed();
+      for (const ev of fresh.reverse()) automations.onEvent(ev);
+    }
+  })().catch((e) => log.warn('automation events', (e as Error).message)).finally(() => { autoRunning = null; });
+  return autoRunning;
+}
+
 export function startPrMonitor() {
   started = true;
+  autoTimer ??= setInterval(() => void pollAutomationEvents(), AUTO_POLL);
+  autoTimer.unref();
   dueAt = Date.now() + 20_000;
   timer = setTimeout(() => { timer = null; void checkPrs({ full: true }); }, 20_000);
   timer.unref();

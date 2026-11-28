@@ -11,6 +11,8 @@ import { workers, modelLabel } from './workers';
 import { accounts } from '../accounts';
 import { store } from '../store';
 import { automations } from '../automations';
+import { pollAutomationEvents } from '../prmonitor';
+import { PER_DAY_DEFAULT, isEventKind } from '../../shared/automations';
 import { autoSleep } from '../sleep';
 import { SLEEP_SECONDS } from '../../shared/autoSleep';
 import { busyWith } from '../../shared/currentTask';
@@ -26,7 +28,7 @@ import { tellRemote } from '../remote/bridge';
 import { FORWARD_OPEN, remoteRefusal } from '../../shared/remoteChat';
 import { limitResetText, t, langName } from '../i18n';
 import { nowIso, oneLine, today, uid } from '../util';
-import { EFFORTS, type Effort, type Task, type Worker } from '../../shared/types';
+import { EFFORTS, type AutoTrigger, type Effort, type Task, type Worker } from '../../shared/types';
 import { artifactCommentLine } from '../../shared/artifactComment';
 import { hasSpend } from '../../shared/spend';
 import { threadTarget, turnReplyTo } from '../../shared/thread';
@@ -422,17 +424,29 @@ function boardTools(d: Dispatcher) {
           return fail(`Could not start the comparison: ${(e as Error).message}`);
         }
       }),
-      tool('create_automation', 'Set up work that starts by itself: every day at a time, or each time a PR is merged. When it fires you get its prompt as a message starting with "[Automation: title]" and handle it like any request. Use it when the user asks for something to happen regularly or after merges.', {
+      tool('create_automation', 'Set up work that starts by itself: on a schedule (daily, weekly, every N hours) or on a GitHub event (a PR merged or opened, CI failing, a review requested from the user, an issue with a label). When it fires you get its prompt as a message starting with "[Automation: title]", with what set it off, and handle it like any request. Use it when the user asks for something to happen regularly or when something happens on GitHub.', {
         prompt: z.string().describe('What to do each time, written so it stands on its own.'),
         title: z.string().optional().describe('Short name for the list.'),
-        trigger: z.enum(['daily', 'merged']),
-        time: z.string().optional().describe('For daily: local time of day as HH:MM. Default 09:00.'),
+        trigger: z.enum(['daily', 'weekly', 'every', 'merged', 'ciFailed', 'prOpened', 'reviewRequested', 'issueLabel']),
+        time: z.string().optional().describe('For daily and weekly: local time of day as HH:MM. Default 09:00.'),
         weekdays_only: z.boolean().optional().describe('For daily: skip Saturday and Sunday.'),
+        day: z.number().int().min(0).max(6).optional().describe('For weekly: 0 Sunday to 6 Saturday. Default 1 (Monday).'),
+        hours: z.number().int().min(1).max(24).optional().describe('For every: the hours between runs.'),
+        repo: z.string().optional().describe('For events: the registered repository to watch. Omit for all of them.'),
+        branch: z.string().optional().describe('For merged, ciFailed and prOpened: the branch (the PR base, or the branch CI ran on). Omit for any.'),
+        label: z.string().optional().describe('For issueLabel: the label.'),
+        max_per_day: z.number().int().min(1).max(24).optional().describe('At most this many runs a day. Default 3 for events, none for schedules.'),
       }, async (a) => {
         const no = remoteRefusal('create_automation', d.remoteTurn);
         if (no) return fail(no);
         try {
-          const made = automations.add({ prompt: a.prompt, title: a.title, trigger: a.trigger === 'merged' ? { kind: 'merged' } : { kind: 'daily', time: a.time ?? '09:00', weekdays: !!a.weekdays_only } });
+          const k = a.trigger;
+          const trigger: AutoTrigger = k === 'daily' ? { kind: 'daily', time: a.time ?? '09:00', weekdays: !!a.weekdays_only }
+            : k === 'weekly' ? { kind: 'weekly', time: a.time ?? '09:00', day: a.day ?? 1 }
+            : k === 'every' ? { kind: 'every', hours: a.hours ?? 6 }
+            : { kind: k, repo: a.repo, branch: a.branch, label: a.label };
+          const made = automations.add({ prompt: a.prompt, title: a.title, trigger, maxPerDay: a.max_per_day ?? (isEventKind(k) ? PER_DAY_DEFAULT : null) });
+          void pollAutomationEvents();
           return ok(`Automation ${made.id} "${made.title}" created.${made.nextRunAt ? ` Next run: ${made.nextRunAt}.` : ''}`);
         } catch (e) { return fail((e as Error).message); }
       }),

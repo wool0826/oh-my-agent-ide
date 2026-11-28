@@ -1081,6 +1081,11 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .menu-item:disabled { color: var(--text-disabled); }
 .menu-sep { flex: none; height: .5px; margin: var(--space-4) var(--space-8); background: var(--border-subtle); }
 .menu-h { padding: var(--space-4) var(--space-8) var(--space-2) calc(14px + 2 * var(--space-6)); font-size: var(--fs-caption2); font-weight: 600; color: var(--text-tertiary); }
+/* Entries with an icon: the icon leads, the tick goes last, and the group headings line up with the icons. */
+.menu-item .mi { flex: none; width: 14px; height: 14px; color: var(--text-secondary); }
+.menu-item:is(:hover:not(:disabled), :focus) .mi { color: inherit; }
+.menu-item .tick.end { margin-left: auto; padding-left: var(--space-12); box-sizing: content-box; }
+.menu:has(.mi) .menu-h { padding-left: var(--space-6); }
 .acc-more .menu { position: absolute; right: 0; top: 36px; z-index: var(--z-menu); min-width: 200px; }
 .click-catch { position: fixed; inset: 0; z-index: var(--z-menu-catch); }
 .acc-card:has(.menu), .acc-card.editing { position: relative; z-index: var(--z-menu); }
@@ -1442,17 +1447,46 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 /* ---------- automations (the right sidebar's third tab) ---------- */
 .auto-add { display: flex; flex-direction: column; gap: var(--space-8); }
 .auto-add textarea.inp { min-height: 60px; }
-.auto-when { display: flex; align-items: center; gap: var(--space-8); min-height: var(--control-md); }
-.auto-when .seg { flex: none; }
-.auto-when .gap { flex: 1; }
-.auto-when .auto-time { width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
-/* "When a PR merges" fades the daily fields out but keeps their room, so nothing below moves. */
-.auto-daily { transition: opacity var(--dur-base) var(--ease-standard), visibility var(--dur-base); }
-.auto-add.merged .auto-daily { opacity: 0; visibility: hidden; }
-.auto-wk { display: inline-flex; align-items: center; gap: var(--space-8); padding-left: var(--space-4); font-size: var(--fs-caption); color: var(--text-secondary); cursor: pointer; }
+/* A row of the form: its label in a narrow column, then what it takes, wrapping in a narrow sidebar. */
+.auto-f { display: grid; grid-template-columns: calc(var(--space-32) + var(--space-8)) minmax(0, 1fr); align-items: start; gap: var(--space-8); }
+.auto-l { line-height: var(--control-md); font-size: var(--fs-caption); color: var(--text-secondary); }
+.auto-when { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); min-height: var(--control-md); min-width: 0; }
+.auto-when .inp { height: var(--control-md); width: auto; }
+.auto-dd.dd-btn { height: var(--control-md); min-width: 0; max-width: 100%; gap: var(--space-6); padding: 0 var(--space-8) 0 var(--space-10); font-size: var(--fs-caption); font-weight: 500; }
+.auto-dd.dd-btn > span { flex: 0 1 auto; }
+.auto-dd.dd-btn svg:first-child { width: 13px; height: 13px; color: var(--text-secondary); }
+.auto-when :is(.auto-time, .auto-hours, .auto-max) { width: calc(var(--space-48) + var(--space-8)); padding-inline: var(--space-4); text-align: center; font-variant-numeric: tabular-nums; }
+.auto-when :is(.auto-hours, .auto-max) { width: calc(var(--space-32) + var(--space-8)); }
+.auto-when :is(.auto-branch, .auto-label) { flex: 0 1 auto; width: calc(var(--space-48) * 2); min-width: 0; font-family: var(--font-mono); font-size: var(--fs-caption); }
+.auto-every { display: inline-flex; align-items: center; gap: var(--space-6); }
+.auto-u { font-size: var(--fs-caption); color: var(--text-secondary); white-space: nowrap; }
+/* Each trigger shows only its own fields (data-kind is the pick). */
+.auto-ev, .auto-wkly, .auto-sch, .auto-every, .auto-branch, .auto-label { display: none; }
+.auto-add:is([data-kind="daily"], [data-kind="weekdays"], [data-kind="weekly"]) .auto-sch { display: inline-block; }
+.auto-add[data-kind="weekly"] .auto-wkly { display: inline-flex; }
+.auto-add[data-kind="every"] .auto-every { display: inline-flex; }
+.auto-add:is([data-kind="merged"], [data-kind="ciFailed"], [data-kind="prOpened"], [data-kind="reviewRequested"], [data-kind="issueLabel"]) .auto-ev { display: inline-flex; }
+.auto-add:is([data-kind="merged"], [data-kind="ciFailed"], [data-kind="prOpened"]) .auto-branch { display: inline-block; }
+.auto-add[data-kind="issueLabel"] .auto-label { display: inline-block; }
+.auto-btns { display: flex; justify-content: flex-end; gap: var(--space-8); }
 .memo.auto p { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.memo.auto .meta { min-height: var(--control-md); }
+.memo.auto .meta { min-height: var(--control-md); flex-wrap: wrap; row-gap: var(--space-2); }
 .memo.auto .acts { opacity: 1; align-items: center; gap: var(--space-8); }
+.memo.auto .ahead { display: flex; align-items: center; gap: var(--space-8); min-width: 0; }
+.memo.auto .ahead > p { flex: 1 1 auto; min-width: 0; }
+.memo.auto .ahead .acts { flex: none; margin-left: 0; }
+/* Run and change show on a card under the pointer or with the keyboard in it. */
+.ahov { display: inline-flex; gap: var(--space-2); opacity: 0; transition: opacity var(--dur-fast); }
+.memo.auto:is(:hover, :focus-within) .ahov { opacity: 1; }
+.memo.auto p.aprompt { font-weight: 400; white-space: pre-wrap; overflow: visible; color: var(--text-secondary); font-size: var(--fs-caption); }
+/* What sets it off: a pill, tinted for a GitHub event, plain for a schedule. */
+.achip { display: inline-flex; align-items: center; gap: var(--space-4); min-width: 0; max-width: 100%; height: calc(var(--control-sm) - var(--space-2)); padding: 0 var(--space-8) 0 var(--space-6); border-radius: var(--radius-full); background: var(--surface-raised); box-shadow: var(--rim); color: var(--text-secondary); font-size: var(--fs-caption2); font-weight: 500; white-space: nowrap; }
+.achip > span { overflow: hidden; text-overflow: ellipsis; }
+.memo .meta .achip .sym { flex: none; width: 11px; height: 11px; font-size: inherit; color: currentColor; }
+.achip.ev { background: var(--accent-soft); box-shadow: none; color: var(--accent-text); }
+.awhen { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memo.auto .alimit { display: flex; align-items: center; gap: var(--space-6); white-space: normal; font-size: var(--fs-caption2); font-weight: 500; color: var(--warning-text); }
+.alimit .sym { flex: none; width: 12px; height: 12px; }
 /* Switched off: the title steps down, as a row with nothing in it does. */
 .memo.auto.off p { color: var(--text-secondary); font-weight: 500; }
 
