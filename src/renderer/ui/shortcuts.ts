@@ -20,6 +20,8 @@ export function shortcutsHtml() {
   ].join('')) + group('keys.chat', [
     row(t('chat.reply'), ['R']),
   ].join('')) + group('keys.any', [
+    row(t('next.tip'), [mod, 'I']),
+    row(t('next.prev'), isMac ? ['⇧', '⌘', 'I'] : ['Ctrl', 'Shift', 'I']),
     row(t('keys.input'), [mod, 'L']),
     row(t('keys.find'), [mod, 'K']),
     row(t('keys.findSaid'), [mod, 'F']),

@@ -28,6 +28,7 @@ import { runCardHtml } from './runCard';
 import { segc } from './settings';
 import { queueCtx } from './workers';
 import { shownStalled } from '../../shared/stall';
+import { badgeText } from '../../shared/waiting';
 
 export function workerIcon(w: Worker) {
   const x = workerTask(w);
@@ -543,7 +544,10 @@ function toolbarAccount(a: AccountView) {
   return `<span class="uacct${out ? ' limited' : ''}${failed ? ' failed' : ''}" data-id="${esc(a.id)}"><span class="ur">${ringsSvg(a)}</span>${side}</span>`;
 }
 
-/** Put the sidebars away or back, and say so on their buttons. The right one's button counts open decisions while it is hidden. */
+/**
+ * Put the sidebars away or back, and say so on their buttons. The waiting decisions are counted on the strip's Next
+ * button only (and on the taskbar); the right sidebar's button is its icon alone (T-0180).
+ */
 export function applyPanels() {
   const win = $('#win');
   win.classList.toggle('side-min', ui.sideMin);
@@ -555,7 +559,7 @@ export function applyPanels() {
   setTip(left, leftTip, isMac ? '⌘B' : 'Ctrl+B');
   left.setAttribute('aria-label', leftTip);
   left.setAttribute('aria-expanded', String(!ui.sideMin));
-  const n = ui.insMin ? (S?.decisions.filter((d) => d.status === 'pending').length ?? 0) : 0;
+  const n = S?.decisions.filter((d) => d.status === 'pending').length ?? 0;
   $('#fake-badge').hidden = !S?.fake;
   // A failed check comes before a newer release: the gear's dot is red for it.
   document.querySelector('.side-foot [data-action="open-settings"]')?.classList.toggle('has-issue', !!S?.preflightFailed);
@@ -566,15 +570,48 @@ export function applyPanels() {
   find.setAttribute('aria-label', t('cmdk.tip'));
   const right = $('#ins-toggle');
   const key = isMac ? '⌥⌘B' : 'Ctrl+Alt+B';
-  const rightTip = !ui.insMin ? t('ins.collapse') : n ? t('ins.expandDec', { n }) : t('ins.expand');
+  const rightTip = t(ui.insMin ? 'ins.expand' : 'ins.collapse');
   setTip(right, rightTip, key);
   right.setAttribute('aria-label', rightTip);
   right.setAttribute('aria-expanded', String(!ui.insMin));
-  // As a drawer the right sidebar is opened from here: the button says what it holds, with its count.
-  $('#ins-lbl').textContent = t('ins.tabInbox');
-  const badge = $('#ins-count');
-  badge.hidden = !n;
-  badge.textContent = n ? String(n) : '';
+  const next = $('#next-btn');
+  next.hidden = !n;
+  $('#next-count').textContent = n ? String(n) : '';
+  setTip(next, t('next.tip'), isMac ? '⌘I' : 'Ctrl+I');
+  next.setAttribute('aria-label', `${t('next.tip')} ${n}`);
+  syncBadge(n);
+}
+
+let badgeKey = '';
+/**
+ * The taskbar (Windows) or Dock (macOS) badge: the count of waiting decisions. Windows takes an overlay image, drawn
+ * here with the theme's ask colours; 9+ past nine.
+ */
+function syncBadge(n: number) {
+  const text = badgeText(n);
+  const css = getComputedStyle(document.documentElement);
+  const fill = css.getPropertyValue('--state-ask').trim();
+  const ink = css.getPropertyValue('--text-on-ask').trim();
+  const key = `${text}|${fill}|${ink}`;
+  if (key === badgeKey) return;
+  badgeKey = key;
+  let url = '';
+  if (text && !isMac) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const g = c.getContext('2d');
+    if (g) {
+      g.fillStyle = fill;
+      g.beginPath(); g.arc(16, 16, 16, 0, Math.PI * 2); g.fill();
+      g.fillStyle = ink;
+      g.font = `700 ${text.length > 1 ? 17 : 21}px system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(text, 16, 17);
+      url = c.toDataURL('image/png');
+    }
+  }
+  void tryCall('app:badge', n, url);
 }
 
 export let sideAnim: number | undefined;

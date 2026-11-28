@@ -272,11 +272,11 @@ circle.lv-g { stroke: var(--meter-ok); } circle.lv-y { stroke: var(--meter-cauti
 .tbtn svg { width: var(--icon-md); height: var(--icon-md); }
 /* "Sleep when done" armed: the moon in accent with the 2px ring, no fill. */
 .tbtn[aria-pressed="true"] { color: var(--accent-text); box-shadow: 0 0 0 2px var(--accent), var(--shadow-2); }
-/* As a drawer's button it names the drawer, with its count inline (I1). */
-.tbtn .lbl { display: none; }
-.win.ins-over #ins-toggle { width: auto; grid-auto-flow: column; gap: var(--space-6); padding: 0 var(--space-12); font-size: var(--fs-caption); font-weight: 500; }
-.win.ins-over #ins-toggle .lbl { display: inline; }
-.win.ins-over #ins-toggle .n { position: static; }
+/* Next waiting item (T-0180): the ask glyph and its count in one pill; the only count on the strip. */
+.tbtn.wide { width: auto; display: inline-flex; align-items: center; gap: var(--space-6); padding: 0 var(--space-12); font-size: var(--fs-caption); font-weight: 500; color: var(--text-primary); }
+.tbtn.wide[hidden] { display: none; }
+.tbtn.wide .ic { width: var(--icon-md); height: var(--icon-md); }
+.tbtn.wide .n { position: static; }
 .tbtn .n { position: absolute; right: -4px; top: -4px; min-width: 16px; height: 16px; padding: 0 var(--space-4); border-radius: var(--radius-full); background: var(--state-ask); color: var(--text-on-ask); font-size: var(--fs-caption2); line-height: 16px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
 .meter { height: 6px; border-radius: var(--radius-full); background: var(--meter-track); overflow: hidden; }
 .meter > i { display: block; height: 100%; border-radius: inherit; background: var(--meter-ok); }
@@ -1149,6 +1149,7 @@ body.swipe-drag, body.swipe-drag * { user-select: none; -webkit-user-select: non
 .toasts { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: center; gap: var(--space-6); max-width: 70vw; pointer-events: none; }
 .toast { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--space-12); max-width: 100%; background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); color: var(--text-primary); padding: var(--space-8) var(--space-16); border-radius: var(--radius-full); font-size: var(--fs-caption); box-shadow: var(--rim-strong), var(--shadow-3); }
 .toast > span { min-width: 0; overflow-wrap: anywhere; }
+.toast > .ic { --c: var(--state-done); flex: none; width: var(--icon-md); height: var(--icon-md); margin-right: calc(var(--space-6) - var(--space-12)); }
 .toast.err { color: var(--danger-text); padding-right: var(--space-8); }
 .toast .linkbtn { flex: none; font-weight: 600; }
 .toast .toast-x { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--surface-selected); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
@@ -1549,6 +1550,9 @@ main.view:not([hidden]) > :not(.composer):not(.wk-session), .wk-session:not([hid
 /* ---------- command palette ---------- */
 /* Floating glass over a scrim, a third of the way down: a field, then the list. The highlighted row is the menu's. */
 .toolbar > #cmdk-btn { margin-left: auto; }
+/* The Next button, when shown, starts the strip's right group ahead of Find (T-0180). */
+.toolbar > #next-btn { margin-left: auto; }
+.toolbar > #next-btn:not([hidden]) + #cmdk-btn { margin-left: 0; }
 .toolbar > #cmdk-btn + .usage { margin-left: 0; }
 .cmdk { position: fixed; z-index: var(--z-dialog); left: 0; right: 0; top: 16vh; margin-inline: auto; width: 560px; max-width: calc(100% - 32px); max-height: min(440px, 68vh); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-xl); background: var(--surface-overlay); -webkit-backdrop-filter: var(--blur-overlay); backdrop-filter: var(--blur-overlay); box-shadow: var(--rim-strong), var(--shadow-5); }
 .cmdk-in { flex: none; display: flex; align-items: center; gap: var(--space-10); min-height: var(--row-min); padding: 0 var(--space-16); border-bottom: .5px solid var(--border-subtle); color: var(--text-secondary); }
